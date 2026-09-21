@@ -1630,3 +1630,139 @@ NONE
 Code Changes:
 NONE
 ```
+
+---
+
+# BUILD_NOW-004 — DISCIPLINE AUTHORITY RECONCILIATION (ANALYSIS)
+
+**Tracking:** Issue #137 ("BUILD_NOW-004: Discipline Authority Reconciliation")
+**Predecessor:** PR #134, PR #136 (merged) — Discipline Source-to-Consumer Matrix.
+**Nature of this section:** Decision-analysis output based on already-verified evidence above (BUILD_NOW-003). This is a **recommendation for Engineering/Clinical/Compliance review**, not a recorded approval, and not an implementation. No canonical authority has been selected. No code, schema, migration, or workflow change accompanies this section.
+
+## 1. Authority Decision
+
+```text
+Recommended Authority:
+Visit.visit_discipline
+
+Should Visit.visit_discipline become the system discipline authority?
+YES (recommendation only — not an approval)
+```
+
+**Supporting evidence:** Only source proven to drive the live SFV completion runtime path end-to-end (`hope_phase_b_engine.py::complete_sfv_requirement_from_visit()`), already read across `visits.py` (25+ sites), `patient_charts.py`, `billing_engine.py`, `sia_service.py`, `clinical_notes/router.py`.
+
+**Known risks:** `String(32)` column, no enum type, no CHECK constraint — accepts any string; no documented mapping today from its values to `TaskDiscipline` or `ClinicalNote.discipline`.
+
+**Systems affected:** `WORKFLOW_TRIGGER_REGISTRY` (would validate against, not define, this authority), `TaskDiscipline`-based task routing, `ClinicalNote.discipline`/`ck_discipline_valid`, frontend discipline pickers.
+
+**Engineering recommendation:** Adopt as canonical, pending a mapping/reconciliation plan to the database and task vocabularies. Not yet recorded as an approval.
+
+**Clinical recommendation:** Not recorded in this conversation — required before adoption.
+
+**Compliance recommendation:** Not recorded in this conversation — required before adoption, given RN/LVN/SFV trigger eligibility (MAP-C02) is a CMS hospice condition-of-participation concern.
+
+## 2. Database Conflict Assessment
+
+```text
+Conflict:
+ck_discipline_valid vocabulary (RN, LVN, NP, PA, MD, SC, MSW, LCSW, BSW,
+SW, CHAPLAIN, AIDE, CHHA, ADMINISTRATIVE) does not match TaskDiscipline
+(no PA, no ADMINISTRATIVE) or Visit.visit_discipline (unconstrained free text).
+
+Impact:
+A discipline value valid at the Visit or Task layer is not guaranteed
+to be insertable into ClinicalNote.discipline, and vice versa.
+
+Recommendation:
+Reconciliation required before Visit.visit_discipline can be treated as
+authoritative for ClinicalNote writes. Not performed in this pass.
+
+Approval Required:
+Engineering (vocabulary reconciliation plan), Clinical (RN/LVN/PA/
+ADMINISTRATIVE meaning), Compliance (CMS conditions-of-participation
+review).
+```
+
+**Does the database vocabulary intentionally exclude LPN?** No exclusion exists to resolve — `LPN` is not a discipline value anywhere in the backend (no enum member, no CHECK-constraint entry, no `TaskDiscipline` member). It exists only as a credential-matching alias inside `visits.py::CREATE_VISIT_DISCIPLINE_ASSIGNMENT_SETS["LVN"] = {"LVN","LPN"}`, used to look up LPN-licensed staff for an "LVN" visit obligation — not as a stored discipline value. This corrects the earlier working assumption of an "LPN exclusion conflict"; no reconciliation is needed on this specific point.
+
+**Is `ADMINISTRATIVE` intentionally included?** Unknown — not traced to any runtime, Task, or frontend code path that produces it. Requires an Engineering/Clinical answer on whether it is a legitimate, reachable value or vestigial.
+
+## 3. Governance Approvals Required
+
+```text
+Engineering approval:
+NOT RECORDED
+Required to: adopt Visit.visit_discipline as canonical, approve the
+vocabulary reconciliation plan against ck_discipline_valid/TaskDiscipline.
+
+Clinical review:
+NOT RECORDED
+Required to: confirm RN/LVN/LPN/PA/ADMINISTRATIVE behavior is unaffected
+or intentionally changed by adopting Visit.visit_discipline as canonical.
+
+Compliance review:
+NOT RECORDED
+Required to: confirm CMS hospice conditions-of-participation impact of
+any discipline-authority change, particularly RN/LVN SFV trigger
+eligibility (MAP-C02).
+```
+
+Until all three approvals are recorded, `Visit.visit_discipline` remains `RECOMMENDED_CANONICAL_CANDIDATE`, not `CANONICAL_AUTHORITY`.
+
+## 4. Consumer Classification Table
+
+| Authority | Classification |
+|---|---|
+| `Visit.visit_discipline` | AUTHORITY |
+| `WORKFLOW_TRIGGER_REGISTRY` | CONSUMER |
+| `ClinicalNote.discipline` / `ck_discipline_valid` | CONSUMER (conflicting vocabulary — see Database Conflict Assessment) |
+| `TaskDiscipline` | DOMAIN CONSUMER |
+| `CLINICAL_ROLES` | RBAC |
+| `RNICA.jsx` vocabulary | PRESENTATION |
+| `app/domain/forms/enums.py::Discipline`, `clinical_discipline_mapping.py`, `sfv_completion.py`, `sfv_tasks.py::create_sfv_required_task()`, `clinical_workflow_master.yaml`, `ClinicalWorkflowMap` | LEGACY |
+
+## 5. MAP-C02 Closure Assessment
+
+```text
+Can MAP-C02 close if Visit.visit_discipline is approved as authority?
+NO
+```
+
+Blocked on: the `ClinicalNote.discipline`/`ck_discipline_valid` vocabulary conflict (Database Conflict Assessment above) is not yet resolved or explicitly accepted. **MAP-C02 remains OPEN.**
+
+## 6. MAP-C03 Closure Assessment
+
+```text
+Have all competing discipline authorities been identified?
+YES
+```
+
+The remaining work is governance and reconciliation (Engineering/Clinical/Compliance sign-off, vocabulary reconciliation plan), not further discovery. **MAP-C03 remains OPEN** pending that governance work.
+
+## Final Recorded State
+
+```text
+BUILD_NOW-004:
+ANALYSIS_COMPLETE (recommendation only — not approved)
+
+CANONICAL DISCIPLINE AUTHORITY:
+UNRESOLVED (RECOMMENDED_CANONICAL_CANDIDATE: Visit.visit_discipline, pending sign-off)
+
+MAP-C02:
+OPEN (PARTIALLY_RESOLVED)
+
+MAP-C03:
+OPEN
+
+Schema Changes:
+NONE
+
+Migration Changes:
+NONE
+
+Code Changes:
+NONE
+
+Deletions:
+NONE
+```
