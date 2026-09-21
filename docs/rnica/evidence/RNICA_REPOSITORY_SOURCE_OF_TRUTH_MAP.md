@@ -879,3 +879,92 @@ NEW REPLACEMENT REGISTRIES CREATED:     NO
 NEW REPLACEMENT WORKFLOWS CREATED:      NO
 IMPLEMENTATION AUTHORIZATION:           NOT_AUTHORIZED
 ```
+
+## Amendment 5: Portable-Command-Only Reconciliation Pass
+
+Performed from a fresh worktree checked out directly from `origin/main`, using only portable `git` commands (`git status`, `git ls-files`, `git grep`, `git log`, `git check-ignore`, `git diff`) per this pass's constraints — no `find`, `rg`, or platform-specific commands.
+
+### Repository State
+
+```text
+Repository root:   C:/Users/rdsua/.copilot/repos/copilot-worktrees/sns-emr/rnica-p5
+Branch:             docs/rnica-amendment-5
+Commit:             a896e23dd1773a4d0f61787c90a369e1f36a06fd (post-PR #130)
+Working tree:       clean (git status --short --untracked-files=all: no output)
+Staged changes:     none
+Unmerged files:     none (git ls-files --unmerged: no output) — proceeded, stop condition not triggered
+```
+
+### New Finding: Frontend/Backend `FORM_REGISTRY` Naming Collision (not a duplicate SSOT of the same data)
+
+`git grep -n -I -F 'FORM_REGISTRY' -- .` surfaced a previously unexamined identifier collision:
+
+| Symbol | File:Line | Content |
+|---|---|---|
+| `FORM_REGISTRY` (backend) | `backend/app/domain/forms/form_registry.py:467` | Dict keyed by discipline → form type → structured form config (day ranges, allowed forms, metadata) |
+| `FORM_REGISTRY` (frontend) | `sns-emr-frontend/src/components/RNICA.jsx:242` | A flat array of 27 RNICA section-navigation keys (`"demographics"`, `"vitals"`, ..., `"sfv"`, ..., `"finalization"`) used for section ordering/navigation, unrelated in shape and purpose to the backend dict |
+
+**Classification: naming collision only, not a duplicate SSOT** — the two objects do not represent the same domain concept and do not need reconciliation with each other. Documented here to prevent future confusion (e.g., a future engineer searching for "FORM_REGISTRY" usage must disambiguate frontend section-navigation from backend form-configuration).
+
+Also noted in the same file: `UPDATE_HIDDEN_ROUTE_KEYS = new Set(["admissionsOrder", "sfv"])` (`RNICA.jsx:251`) — confirms the frontend explicitly hides the `sfv` section under "Update" assessment mode; not previously documented. Not evaluated for clinical correctness here (discovery only).
+
+### Re-Verification of J2050B and `clinical_workflow_master.yaml` (portable commands only)
+
+```text
+$ git grep -n -I -i -e 'J2050B' -- . ':(exclude)docs/**'
+(no output, exit code 1 -> zero matches in implementation)
+
+$ git ls-files --error-unmatch "backend/clinical_workflow_master.yaml"
+backend/clinical_workflow_master.yaml   -> TRACKED_CURRENT
+
+$ git check-ignore -v "backend/clinical_workflow_master.yaml"
+(no output, exit code 1 -> not ignored; confirms it is a normal tracked file, not a generated/ignored artifact)
+```
+
+**Classification:** J2050B — `CONFIRMED` documentation-only (unchanged). `clinical_workflow_master.yaml` — `TRACKED_CURRENT`, confirmed orphaned/unused at runtime (unchanged from Amendment 3/4).
+
+### Phase 14: Reconciliation of Existing Findings
+
+| Finding | Previous Classification | Current Evidence (this pass) | Final Classification | Reason |
+|---|---|---|---|---|
+| MAP-C02 | 4-source conflict (Amendment 3/4) | `git grep -F "WORKFLOW_TRIGGER_REGISTRY"` and `-F "FORM_REGISTRY"` re-run; identical results to Amendment 4 | `CONFIRMED` | No new source or change found; portable-command-only re-run produced identical evidence |
+| MAP-C03 | 12 confirmed constructs (Amendment 4) | Not re-enumerated line-by-line this pass (already exhaustively verified in Amendment 4 with direct file reads); no contradicting evidence surfaced | `CONFIRMED` | No new discipline-vocabulary construct or contradiction found |
+| MAP-D03 | Duplicate trigger source (Amendment 1/2) | `WORKFLOW_TRIGGER_REGISTRY` remains the only trigger-rule dict found via `git grep -F` | `CONFIRMED` | Unchanged |
+| MAP-D04 | HUV1/HUV2/SFV triple-declared (`form_registry.py`, `TaskType` enum, `SFVRequirement` check constraint) | Not re-traced line-by-line this pass; no contradicting evidence surfaced | `CONFIRMED` | Unchanged |
+| MAP-U09 | `RULE_CLASS_REGISTRY` vs. `WORKFLOW_TRIGGER_REGISTRY` overlap, `UNRESOLVED` | Not re-traced this pass | `CONFIRMED` (still `UNRESOLVED` pending direct cross-reference) | No new evidence gathered |
+| MAP-U10 | `rnica_hope_workflow_service.py` re-confirmed sole HOPE-status authority (Amendment 3/4) | Not re-traced this pass; no contradicting evidence surfaced | `CONFIRMED` | Unchanged |
+
+No prior finding was replaced or found to have insufficient evidence in this pass. Prior entries are preserved above; none were deleted.
+
+### Static-Analysis Limitations (documented per this pass's requirements)
+
+1. `git grep` searches tracked repository content only; untracked files require `git ls-files --others --exclude-standard` (run this pass — none found).
+2. Ignored files require `git check-ignore`; run against `clinical_workflow_master.yaml` this pass — confirmed not ignored.
+3. Static text search cannot detect dynamic imports, reflection, dependency injection, auto-discovery, generated routes, convention-based loading, database-driven configuration, or environment-specific behavior. None of the findings in this document rule out such mechanisms; where relevant, this is noted as a limitation rather than asserted as proof of non-use.
+4. A text reference does not prove runtime execution; absence of a text reference does not prove non-use. Findings in this and prior amendments cite caller/import evidence specifically to distinguish "defined" from "invoked" wherever possible (e.g., the `resolve_workflow()` finding in Amendment 4).
+5. Comments, documentation, tests, and migrations are not treated as runtime consumers without separate execution evidence.
+
+### Amendment 5 Final Report
+
+```text
+COMMANDS RUN:                          Portable git-only (rev-parse, branch, status, diff, ls-files, grep, check-ignore)
+NEW FINDINGS:                          1 (frontend/backend FORM_REGISTRY naming collision — not a duplicate SSOT)
+PRIOR FINDINGS RE-CONFIRMED:            6 (MAP-C02, MAP-C03, MAP-D03, MAP-D04, MAP-U09, MAP-U10)
+PRIOR FINDINGS CORRECTED:               0
+PRIOR FINDINGS REPLACED:                0
+PRIOR FINDINGS REMOVED:                 0
+UNMERGED FILES:                         NONE (stop condition not triggered)
+
+FROZEN DOCUMENTS MODIFIED:              NO
+APPLICATION BEHAVIOR MODIFIED:          NO
+SCHEMA MODIFIED:                        NO
+MIGRATIONS MODIFIED:                    NO
+NEW FILES CREATED:                      NO
+NEW ISSUES CREATED:                     NO
+NEW TRACKERS CREATED:                   NO
+REPLACEMENT REGISTRIES CREATED:         NO
+REPLACEMENT WORKFLOWS CREATED:          NO
+TABLES POPULATED:                       NO
+FILES DELETED:                          NO
+IMPLEMENTATION AUTHORIZATION:           NOT_AUTHORIZED
+```
