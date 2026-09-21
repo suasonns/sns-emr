@@ -123,6 +123,41 @@ path, never as an admission gate). A missing document produces exactly
 one warning string and zero blockers; a present document produces no
 finding at all.
 
+## Pending regulatory update (not yet implemented)
+
+**CMS Model Hospice Election Statement -- mandatory effective October 1,
+2026.** Reference source: `model_example_of_hospice_election_statement_8_18_26-clean.pdf`
+(saved to session files for this project).
+
+The system already has an `ELECTION_STATEMENT` document type (see
+Document types, above) in the patient chart. This is a **content/form
+update to that existing document type, not a new workflow or a new
+document type.** It belongs in the patient chart (`DocumentRecord` /
+election-statement content and any generated form), **not RNICA.**
+
+Content the updated model statement requires that should be verified
+against the current chart form when this is picked up:
+
+- Start-of-care/effective date field with the non-retroactive
+  constraint stated on the form.
+- Attending physician election: opt-out checkbox OR named physician
+  field.
+- Waiver-of-standard-Medicare-benefits acknowledgment language.
+- Reference to the **"Patient Notification of Hospice Non-Covered
+  Items, Services, and Drugs" addendum**, including the regulatory
+  timing: initial addendum furnished within **5 days** of election
+  start, and any addendum **update** furnished within **3 days** of a
+  plan-of-care change affecting the non-covered list. (No system
+  timer/task exists for this yet -- flag for follow-up if one is
+  wanted.)
+- **BFCC-QIO** name/contact fields.
+- Beneficiary or beneficiary-representative signature and date-signed
+  fields.
+
+No implementation, schema change, or form change has been made yet.
+This section is a placeholder for a future, separately-scoped pass on
+the patient chart's election statement content.
+
 ## Non-goals (explicitly out of scope)
 
 - No `POST /admissions/{patient_id}/authorize` semantics change beyond
