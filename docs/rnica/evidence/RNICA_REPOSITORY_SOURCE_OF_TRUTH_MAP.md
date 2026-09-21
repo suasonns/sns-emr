@@ -1493,4 +1493,140 @@ No code deletion in this phase:                     TRUE — confirmed, no code 
 Canonical discipline authority (repository-wide):    UNRESOLVED — see Runtime Authority Evidence Table above
 ```
 
-**Conclusion (verification only, not a decision):** `app/models/enums.py::Discipline` remains the strongest — and now, with the new zero-consumer finding for `app/domain/forms/enums.py::Discipline`, the only actively-used — existing `Discipline` enum class. No new enum was created. Per the plan's own acceptance criteria, Phase 2 (normalizer consolidation) and Phase 3 (MAP-C02 resolution) remain blocked pending recorded Engineering approval of the canonical candidate and recorded Clinical/Compliance approval of workflow implications — neither has occurred in this conversation.
+**Conclusion (verification only, not a decision):** This paragraph, written before the PR #134 corrections below, previously stated that `app/models/enums.py::Discipline` was the strongest and "only actively-used" `Discipline` enum. That framing is **superseded**: `app/domain/forms/enums.py::Discipline` is `EMPTY_OR_UNUSED_SOURCE` (correct), but `app/models/enums.py::Discipline` was never declared canonical, and a third enum (`TaskDiscipline`) plus numerous non-enum discipline-adjacent constructs (`ck_discipline_valid`, `WORKFLOW_TRIGGER_REGISTRY`, `CLINICAL_ROLES`, `Visit.visit_discipline`, etc.) were subsequently identified. See the corrected finding, Runtime Authority Evidence Table, and `CANONICAL DISCIPLINE AUTHORITY: UNRESOLVED` verdict earlier in this document (PR #134 sections above), which are authoritative over this paragraph. No new enum was created. Phase 2 (normalizer consolidation) and Phase 3 (MAP-C02/MAP-C03 resolution) remain blocked pending recorded Engineering approval of a canonical candidate and recorded Clinical/Compliance approval of workflow implications — neither has occurred in this conversation. **Status: `SUPERSEDED_BY_PR_134`.**
+
+---
+
+# BUILD_NOW-003 — DISCIPLINE SOURCE-TO-CONSUMER MATRIX
+
+**Tracking:** Issue #135 ("BUILD_NOW-003: Discipline Source-to-Consumer Matrix")
+**Scope:** Repository discovery only. No canonical-authority selection, no new enum, no normalizer consolidation, no deletion of dead-code candidates, no constraint changes, no schema/migration/workflow changes.
+**Predecessor:** PR #134 (merged `3fcb566`) — `CANONICAL DISCIPLINE AUTHORITY: UNRESOLVED`, `MAP-C02: OPEN`, `MAP-C03: OPEN`.
+
+## Verification Commands Run
+
+```bash
+git grep -n -I -E 'class[[:space:]]+Discipline|enum[[:space:]]+Discipline' -- .
+git grep -n -I -F 'TaskDiscipline' -- .
+git grep -n -I -F 'CLINICAL_ROLES' -- .
+git grep -n -I -F 'normalize_discipline' -- .
+git grep -n -I -i -E 'discipline_id|discipline_code|discipline_type|visit_discipline|assigned_discipline' -- .
+git grep -n -I -F 'complete_sfv_requirement_from_visit' -- .
+git grep -n -I -F 'create_sfv_required_task' -- .
+git grep -n -I -F 'ClinicalNote' -- .
+git grep -n -I -F 'ck_discipline_valid' -- .
+```
+
+All commands were re-run directly against worktree HEAD `3fcb566` (post PR #134 merge). Findings below reflect actual current repository state, not carried-forward assumptions.
+
+## Discipline Source Inventory
+
+| Source | Type | Runtime Consumer | Status |
+|----------|----------|----------|----------|
+| `app/domain/forms/enums.py::Discipline` | Enum | None found (0 importers/callers) | `EMPTY_OR_UNUSED_SOURCE` |
+| `app/models/enums.py::Discipline` | Enum | Verified production importers/callers (see PR #134 Runtime Authority Evidence Table) | `ACTIVE_RUNTIME_INPUT` (not declared canonical) |
+| `TaskDiscipline` (`app/models/enums.py:120`) | Enum | **Expanded this pass**: 20+ backend files — `api/patients.py`, `domain/forms/form_registry.py` (`FORM_FAMILY_BY_TASK_DISCIPLINE`), `models/task.py` (`SAEnum` column binding), `services/admission/admission_task_generation_service.py`, `services/admission_authorization_service.py`, `services/benefit_period_service.py`, `services/idg_physician_review_service.py`, `services/idg_remediation.py`, `services/idg_review_automation.py`, `services/idg_task_generator.py`, `services/physician_order_service.py`, `services/poc_task_service.py`, `services/poc_update_automation.py`, `services/poc_warning_tasks.py`, `services/reconciliation_review_task_service.py`, `services/sfv_tasks.py`, `services/task_completion_evidence.py`, `services/task_engine.py`, `services/task_service.py`, `services/task_sla_engine.py`, plus 8 test files | `DISTINCT_DISCIPLINE_CONSTRUCT` (footprint materially larger than previously documented — see Correction below) |
+| `Visit.visit_discipline` | Runtime Field (DB column, `String(32)`, no CHECK constraint) | `api/visits.py` (25+ call sites), `api/patient_charts.py`, `api/clinical_notes/router.py`, `billing/engine/billing_engine.py`, `billing/services/sia_service.py`, `hope_phase_b_engine.py::complete_sfv_requirement_from_visit()` | `ACTIVE_RUNTIME_INPUT` |
+| `ClinicalNote.discipline` | Database Field (Postgres `CHECK ck_discipline_valid`, 16-value vocabulary) | Clinical Notes read/write path | `ACTIVE_DATABASE_AUTHORITY` |
+| `WORKFLOW_TRIGGER_REGISTRY` (`domain/forms/form_registry.py:912`) | Registry | Workflow/trigger engine, `allowed_disciplines: {"RN"}` per trigger | `ACTIVE_REGISTRY_AUTHORITY` |
+| `CLINICAL_ROLES` (`api/idg/router.py`) | RBAC Vocabulary | 9 backend API files (`benefits.py`, `fax.py`, `f2f.py`, `idg/router.py`, `lab_catalog.py`, `certifications.py`, `order_templates.py`, `patient_orders.py`, `physician_orders.py`) **and** frontend (`IDGWorkspacePage.tsx`, explicitly comment-documented as mirroring the backend list) | `DUPLICATE_RBAC_VOCABULARY` (intentionally mirrored, not accidental — see Correction below) |
+| `RNICA.jsx` Discipline Vocabulary | Frontend Vocabulary | RNICA UI | `FRONTEND_LOCAL_VOCABULARY` |
+| `HospitalizationPreventionPlan.assigned_discipline` (`models/hospitalization_prevention.py:157`) | Database Field (free-text `String`, nullable, no enum/constraint) | Hospitalization-prevention/education task assignment | `NEWLY_IDENTIFIED_UNCONSTRAINED_FIELD` |
+| `normalize_visit_discipline` (`core/visit_types.py:122`, alias of `normalize_visit_service`) | Function alias | Visit-service normalization path (visit-type domain, not a discipline-enum normalizer) | `ADJACENT_NOT_DISCIPLINE_ENUM` (naming risk only) |
+| `sfv_tasks.py::create_sfv_required_task()` | Function (converts free-text `discipline` → `TaskDiscipline`, fallback `TaskDiscipline.RN`) | **0 importers found repository-wide** | `UNUSED_CANDIDATE` (new finding this pass — see below) |
+| `clinical_workflow_master.yaml` | Static YAML | 0 code readers (inventory-listing reference only) | `DEPRECATE_CANDIDATE` (unchanged from PR #134) |
+| `ClinicalWorkflowMap` / `workflow_resolver.py::resolve_workflow()` | DB Model / Query Function | 0 callers of `resolve_workflow()`; table documented as "currently not populated" | `EMPTY_OR_UNUSED_SOURCE` (unchanged from PR #134) |
+| `sfv_completion.py` | Module | Previously classified `UNUSED_CANDIDATE` (PR #134); unchanged this pass | `UNUSED_CANDIDATE` |
+| `clinical_discipline_mapping.py` | Module | Previously classified `UNUSED_CANDIDATE` (PR #134); unchanged this pass | `UNUSED_CANDIDATE` |
+
+## New Findings This Pass
+
+### Finding 1 — `TaskDiscipline` footprint materially larger than previously documented
+
+**Previous finding (PR #134):** `TaskDiscipline` was documented with 4 example consumer files.
+
+**Correction:** Direct `git grep -n -I -F 'TaskDiscipline'` against `3fcb566` returns 20+ distinct backend source files (listed in the inventory row above) plus 8 test files. This is a materially larger active-runtime footprint than previously recorded. Classification (`DISTINCT_DISCIPLINE_CONSTRUCT`) is unchanged, but the evidence supporting it is now complete rather than illustrative.
+
+### Finding 2 — `sfv_tasks.py::create_sfv_required_task()` is an unused SFV/TaskDiscipline bridge
+
+**Evidence:** `backend/app/services/sfv_tasks.py` defines `create_sfv_required_task()`, which converts a free-text `discipline` parameter into a `TaskDiscipline` enum member (`TaskDiscipline(str(discipline).strip().upper())`, falling back to `TaskDiscipline.RN` on failure) when creating an SFV `Task`. `git grep -n -I -F 'create_sfv_required_task'` and searches for `from app.services.sfv_tasks` / `services.sfv_tasks` / `services import sfv_tasks` return **zero results outside the file's own definition** — no importer or caller exists anywhere in the repository.
+
+**Classification:** `UNUSED_CANDIDATE`. Not deleted (per explicit block list). This is a third dead SFV-adjacent construct alongside `sfv_completion.py` and the already-documented `validate_sfv_safe()` (removed in PR #133).
+
+### Finding 3 — `CLINICAL_ROLES` duplication is intentional/documented, not accidental
+
+**Evidence:** `sns-emr-frontend/src/pages/IDGWorkspacePage.tsx:66` contains an explicit code comment: `// Mirrors backend/app/api/idg/router.py::CLINICAL_ROLES. Any clinical role present at IDG ... may record a physician's Reviewed/Deferred decision`.
+
+**Classification:** `DUPLICATE_RBAC_VOCABULARY` is retained, but the duplication is a documented, intentional frontend/backend mirror (not an accidental drift risk that was previously unknown) — still requires manual sync on backend change, since no shared source exists.
+
+### Finding 4 — New unconstrained discipline-adjacent field: `HospitalizationPreventionPlan.assigned_discipline`
+
+**Evidence:** `backend/app/models/hospitalization_prevention.py:157` defines `assigned_discipline = Column(String, nullable=True)` with no enum type and no CHECK constraint, in a domain (hospitalization-prevention/education task assignment) distinct from `Task.discipline` (`TaskDiscipline`), `Visit.visit_discipline`, and `ClinicalNote.discipline`.
+
+**Classification:** `NEWLY_IDENTIFIED_UNCONSTRAINED_FIELD`. This expands the MAP-C03 conflict set to at least 19 discipline-adjacent constructs (previously ~18).
+
+## Consumer Mapping by Domain
+
+**Authentication:** No `User`/`Employee`/`Credential`/`Role` model was found binding directly to any `Discipline`/`TaskDiscipline` enum in this pass; `CLINICAL_ROLES` is the closest RBAC-facing vocabulary and is API-authorization-scoped, not a credential-record field.
+
+**Clinical Documentation:** `ClinicalNote.discipline` (`ck_discipline_valid`, database authority) is the write path for clinical notes; `RNICA.jsx` holds its own frontend-local vocabulary with no confirmed shared backend enum binding.
+
+**HOPE:** `Visit.visit_discipline` → `hope_phase_b_engine.py::complete_sfv_requirement_from_visit()` remains the confirmed active runtime SFV path (unchanged from PR #134). `rnica_hope_workflow_service.py` remains the active HOPE lifecycle authority.
+
+**Workflow:** `WORKFLOW_TRIGGER_REGISTRY` (active) and `clinical_workflow_master.yaml` / `ClinicalWorkflowMap` (both dead/unpopulated) remain as documented in PR #134, unchanged.
+
+**Frontend:** `RNICA.jsx` (discipline vocabulary) and `IDGWorkspacePage.tsx` (`CLINICAL_ROLES` mirror) are the two confirmed frontend discipline-adjacent vocabularies found this pass. A full `.jsx/.tsx/.js/.ts`-wide grep for `discipline|RN|LVN|LPN` was not exhaustively completed in this pass and is flagged as remaining work for a future BUILD_NOW item, not claimed as complete here.
+
+## Explicitly Blocked (Unchanged)
+
+Per Issue #135 scope, none of the following were performed in this pass:
+
+```text
+Select Canonical Authority
+Create New Discipline Enum
+Consolidate Normalizers
+Delete clinical_workflow_master.yaml
+Delete clinical_discipline_mapping.py
+Delete sfv_completion.py
+Delete sfv_tasks.py
+Change ck_discipline_valid
+Resolve MAP-C02
+Resolve MAP-C03
+```
+
+## Completion Status
+
+- [x] Discipline sources identified (11 distinct constructs, expanded from the ~18 discipline-adjacent items already known)
+- [x] Runtime/registry/database consumers documented
+- [x] Frontend consumers documented (partial — full frontend-wide sweep flagged as remaining work)
+- [x] Duplicate SSOTs documented (`TaskDiscipline` vs `Discipline` vs `CLINICAL_ROLES`)
+- [x] New unused-code candidate documented (`sfv_tasks.py::create_sfv_required_task()`)
+- [ ] Canonical authority recommendation — **not prepared** (explicitly out of scope for this pass)
+
+## Final Recorded State
+
+```text
+BUILD_NOW-003:
+COMPLETE (discovery pass)
+
+CANONICAL DISCIPLINE AUTHORITY:
+UNRESOLVED
+
+MAP-C02:
+OPEN
+
+MAP-C03:
+OPEN (EXPANDED_CONFLICT_SET, now ~19 constructs)
+
+sfv_tasks.py::create_sfv_required_task():
+UNUSED_CANDIDATE (new finding)
+
+Schema Changes:
+NONE
+
+Migration Changes:
+NONE
+
+Code Changes:
+NONE
+```
