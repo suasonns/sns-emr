@@ -204,20 +204,16 @@ function EvidenceIntakeAlertBanner({ errorKeys, warningKeys, routeForRequirement
     .filter(({ route }) => route && screenModuleKeys.has(route.key));
   if (scoped.length === 0) return null;
   return (
-    <section className="clinical-command-card rnica-command-card rnica-command-evidence-alert" aria-live="polite">
-      <div className="rnica-command-card__heading">
-        <h2>Missing intake evidence</h2>
-        <span>{scoped.length} item(s)</span>
-      </div>
-      <p>Resolve missing required intake/referral documentation for this screen.</p>
-      <ul className="rnica-command-evidence-alert__list">
-        {scoped.slice(0, 8).map(({ key, route }) => (
-          <li key={key}>
-            <button type="button" onClick={() => onNavigate(route.key)}>{route.label}: {key}</button>
-          </li>
-        ))}
-      </ul>
-    </section>
+    <PrimaryCard
+      title="Missing Intake Evidence"
+      subtitle="Resolve missing required intake/referral documentation for this screen."
+      actions={<StatusChip tone="warning">{scoped.length} item(s)</StatusChip>}
+      aria-live="polite"
+    >
+      {scoped.slice(0, 8).map(({ key, route }) => (
+        <SourceLink key={key} onClick={() => onNavigate(route.key)}>{route.label}: {key}</SourceLink>
+      ))}
+    </PrimaryCard>
   );
 }
 
