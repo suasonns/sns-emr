@@ -10,21 +10,11 @@ import {
   validateRnIcaClinicalNavigation,
 } from "./rnIcaClinicalNavigation";
 import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
+import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
 import {
-  AiAdvisoryCard,
-  AutosaveFooter,
-  ClinicalRiskRow,
-  ContinueAction,
-  MissingInfoCard,
   PrimaryCard,
-  RnicaNarrative,
-  RnicaPageHeader,
-  RnicaPatientHeader,
-  SecondaryCard,
   SourceLink,
   StatusChip,
-  TwoColumnGrid,
-  notYetDocumented,
 } from "./design-system/RnicaDesignSystem";
 import "./RNICACommandWorkspace.css";
 
@@ -102,133 +92,21 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
 
   const functionalDecline = patient.functionalDeclineNarrative;
 
-  const storySteps = [
-    { key: "why", label: "Why Hospice" },
-    { key: "hosp", label: "Recent Hospitalization" },
-    { key: "concerns", label: "Current Clinical Concerns" },
-    { key: "decline", label: "Functional Decline" },
-    { key: "caregiver", label: "Caregiver Overview" },
-  ];
-
   return (
-    <div className="rnica-ds-patient-story" aria-labelledby="patient-story-title">
-      <RnicaPageHeader
-        crumbs={[{ label: "RNICA Dashboard" }, { label: "Patient Story" }]}
-        title={<span id="patient-story-title">Patient Story</span>}
-      />
-
-      <RnicaPatientHeader patient={patient} />
-
-      <p className="rnica-ds-patient-story__intro">
-        This is a read-only summary of information already documented elsewhere in RNICA. It does
-        not store data and is not a certification, eligibility, or prognosis determination.
-      </p>
-
-      <TwoColumnGrid
-        main={(
-          <>
-            <PrimaryCard
-              title="Why Hospice"
-              subtitle="Clinical narrative, owned by Diagnoses & LCD"
-              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "why") + 1}</span>}
-            >
-              <RnicaNarrative
-                text={patient.whyHospiceNarrative}
-                source="Diagnosis & LCD"
-                onNavigateToSource={() => onNavigate("diagnoses")}
-              />
-            </PrimaryCard>
-
-            <PrimaryCard
-              title="Recent Hospitalization"
-              subtitle="Owned by Diagnoses & LCD"
-              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "hosp") + 1}</span>}
-            >
-              <RnicaNarrative
-                text={patient.recentHospitalization}
-                source="Diagnosis & LCD"
-                onNavigateToSource={() => onNavigate("diagnoses")}
-              />
-            </PrimaryCard>
-
-            <PrimaryCard
-              title="Current Clinical Concerns"
-              subtitle="Documented findings requiring review -- no derived risk scoring engine is applied"
-              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "concerns") + 1}</span>}
-            >
-              {documentedRiskRows.length === 0 && (
-                <p className="rnica-ds-muted">No documented clinical concerns currently flagged across Safety, Pain, Psychosocial, or Caregiver screens.</p>
-              )}
-              {documentedRiskRows.map((row) => (
-                <ClinicalRiskRow key={row.moduleKey} label={row.label} detail={row.detail} tone={row.tone} />
-              ))}
-            </PrimaryCard>
-
-            <PrimaryCard
-              title="Functional Decline"
-              subtitle="Owned by Functional Status"
-              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "decline") + 1}</span>}
-            >
-              <RnicaNarrative
-                text={functionalDecline}
-                source="Functional Status"
-                onNavigateToSource={() => onNavigate("performanceStatus")}
-              />
-            </PrimaryCard>
-
-            <SecondaryCard
-              title="Caregiver Overview"
-              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "caregiver") + 1}</span>}
-            >
-              {notYetDocumented(caregiverSummary) ? (
-                <div className="rnica-ds-narrative-empty">
-                  <span className="rnica-ds-undocumented">NOT YET DOCUMENTED</span>
-                  <SourceLink onClick={() => onNavigate("caregiverAssessment")}>Add in Caregiver & Support</SourceLink>
-                </div>
-              ) : (
-                <>
-                  <p>
-                    <SourceLink onClick={() => onNavigate("caregiverAssessment")}>{caregiverSummary}</SourceLink>
-                  </p>
-                  {caregiver.anxietyLevel && <p className="rnica-ds-muted">Anxiety level: {caregiver.anxietyLevel}</p>}
-                  {caregiver.willingToProvideCare === false && (
-                    <StatusChip tone="warning">Not willing to provide care</StatusChip>
-                  )}
-                </>
-              )}
-            </SecondaryCard>
-
-            <ContinueAction
-              label="Continue to Evidence & Intake"
-              sublabel="Review available intake docs next"
-              onClick={() => onNavigate("demographics")}
-            />
-          </>
-        )}
-        rail={(
-          <>
-            <AiAdvisoryCard>
-              {!intelligence && <p className="rnica-ds-muted">Save the assessment to generate the clinical signal summary.</p>}
-              {intelligence && findings.length === 0 && recommendations.length === 0 && (
-                <p className="rnica-ds-muted">No current findings or recommendations.</p>
-              )}
-              {findings.slice(0, 5).map((finding, index) => (
-                <SourceLink key={`story-finding-${index}`} onClick={() => onNavigate("finalization")}>
-                  {finding.title}{finding.details ? ` \u2014 ${finding.details}` : ""}
-                </SourceLink>
-              ))}
-              {recommendations.slice(0, 3).map((rec, index) => (
-                <p key={`story-rec-${index}`}>{typeof rec === "string" ? rec : rec?.text || rec?.title}</p>
-              ))}
-            </AiAdvisoryCard>
-
-            <MissingInfoCard items={missingItems} onNavigate={onNavigate} />
-          </>
-        )}
-      />
-
-      <AutosaveFooter active={saveStatus === "saved" || saving} lastSaved={saveStatus === "saved" ? "Just now" : undefined} version="RNICA v1.2" />
-    </div>
+    <PatientStoryShadcn
+      patient={patient}
+      intelligence={intelligence}
+      findings={findings}
+      recommendations={recommendations}
+      missingItems={missingItems}
+      documentedRiskRows={documentedRiskRows}
+      caregiver={caregiver}
+      caregiverSummary={caregiverSummary}
+      functionalDecline={functionalDecline}
+      saveStatus={saveStatus}
+      saving={saving}
+      onNavigate={onNavigate}
+    />
   );
 }
 

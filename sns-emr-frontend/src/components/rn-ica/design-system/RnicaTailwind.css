@@ -1,0 +1,10 @@
+/* Tailwind entry point scoped to the RNICA module — lets the shadcn/ui
+   primitives under src/components/ui use Tailwind utility classes (mapped
+   to the real --sns-* theme tokens via the "rnica" color namespace in
+   tailwind.config.js) without depending on the separate Owner Platform
+   shell's tailwind.css entry point. Preflight is disabled globally in
+   tailwind.config.js, so this only adds utilities -- it does not reset any
+   existing app styles. */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
