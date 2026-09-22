@@ -345,3 +345,159 @@
   .rnica-diagnosis-ledger__header { display: none; }
   .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(0, 1.5fr); padding: 0.4rem; }
 }
+
+/* Standalone RNICA screen shell (Patient Story and future rebuilt
+   screens) -- replaces the legacy Clinical Command Workspace chrome
+   entirely, not layered on top of it. Uses the same --sns-* tokens as the
+   rest of the redesign so it is theme-aware (Light/Dark) automatically. */
+.rnica-screen {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+  width: 100%;
+  background: var(--sns-bg);
+  color: var(--sns-white);
+}
+
+.rnica-screen__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-card);
+}
+
+.rnica-screen__identity {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+  flex-wrap: wrap;
+}
+
+.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); }
+.rnica-screen__identity > span:last-child { color: var(--sns-muted); }
+
+.rnica-screen__status {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.rnica-screen__status button {
+  min-height: var(--ccw-control-height);
+  padding: 0.35rem 0.65rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font: 700 var(--cw-button-size, 0.8rem) Inter, sans-serif;
+  cursor: pointer;
+}
+
+.rnica-screen__tabs {
+  display: flex;
+  gap: 0.35rem;
+  padding: 0.5rem 1rem;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-bgAlt);
+}
+
+.rnica-screen__tabs button {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: 0 0 auto;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 999px;
+  background: var(--sns-card);
+  color: var(--sns-muted);
+  font: 700 0.75rem Inter, sans-serif;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.rnica-screen__tabs button.is-active {
+  border-color: var(--sns-teal);
+  color: var(--sns-teal);
+  background: var(--sns-cardSoft);
+}
+
+.rnica-screen__tab-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 999px;
+  background: var(--sns-border);
+  color: var(--sns-white);
+  font-size: 0.65rem;
+}
+
+.rnica-screen__tabs button.is-active .rnica-screen__tab-index {
+  background: var(--sns-teal);
+  color: var(--sns-bg);
+}
+
+.rnica-screen__content {
+  flex: 1 1 auto;
+  padding: var(--cw-pad, 1rem);
+  max-width: 72rem;
+  width: 100%;
+  margin: 0 auto;
+}
+
+.rnica-screen__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid var(--sns-border);
+  background: var(--sns-card);
+  color: var(--sns-muted);
+  font-size: 0.8rem;
+  position: sticky;
+  bottom: 0;
+}
+
+.rnica-screen__footer-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.rnica-screen__footer-actions button {
+  min-height: var(--ccw-control-height);
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--sns-teal);
+  border-radius: 0.45rem;
+  background: var(--sns-teal);
+  color: var(--sns-bg);
+  font: 800 0.8rem Inter, sans-serif;
+  cursor: pointer;
+}
+
+.rnica-screen__footer-actions button.is-secondary {
+  background: transparent;
+  color: var(--sns-teal);
+}
+
+.rnica-screen__footer-actions button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 700px) {
+  .rnica-screen__bar { flex-direction: column; align-items: flex-start; }
+  .rnica-screen__status { width: 100%; justify-content: space-between; }
+  .rnica-screen__content { padding: 0.65rem; }
+  .rnica-screen__footer { flex-direction: column; align-items: stretch; gap: 0.5rem; }
+  .rnica-screen__footer-actions { width: 100%; }
+  .rnica-screen__footer-actions button { flex: 1 1 auto; }
+}

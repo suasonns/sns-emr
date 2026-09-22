@@ -18,6 +18,9 @@ import {
   DocumentedValue,
   MissingInfoCard,
   PrimaryCard,
+  RnicaNarrative,
+  RnicaPageHeader,
+  RnicaPatientHeader,
   SecondaryCard,
   SourceLink,
   StatusChip,
@@ -100,6 +103,13 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
 
   return (
     <div className="rnica-ds-patient-story" aria-labelledby="patient-story-title">
+      <RnicaPageHeader
+        crumbs={[{ label: "RNICA Dashboard" }, { label: "Patient Story" }]}
+        title={<span id="patient-story-title">Patient Story</span>}
+      />
+
+      <RnicaPatientHeader patient={patient} />
+
       <p className="rnica-ds-patient-story__intro">
         This is a read-only summary of information already documented elsewhere in RNICA. It does
         not store data and is not a certification, eligibility, or prognosis determination.
@@ -109,23 +119,19 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
         main={(
           <>
             <PrimaryCard title="Why Hospice" subtitle="Clinical narrative, owned by Diagnoses & LCD">
-              {notYetDocumented(patient.whyHospiceNarrative) ? (
-                <SourceLink onClick={() => onNavigate("diagnoses")}>
-                  <DocumentedValue value={patient.whyHospiceNarrative} />
-                </SourceLink>
-              ) : (
-                <p>{patient.whyHospiceNarrative}</p>
-              )}
+              <RnicaNarrative
+                text={patient.whyHospiceNarrative}
+                source="Diagnosis & LCD"
+                onNavigateToSource={() => onNavigate("diagnoses")}
+              />
             </PrimaryCard>
 
             <PrimaryCard title="Recent Hospitalization" subtitle="Owned by Diagnoses & LCD">
-              {notYetDocumented(patient.recentHospitalization) ? (
-                <SourceLink onClick={() => onNavigate("diagnoses")}>
-                  <DocumentedValue value={patient.recentHospitalization} />
-                </SourceLink>
-              ) : (
-                <p>{patient.recentHospitalization}</p>
-              )}
+              <RnicaNarrative
+                text={patient.recentHospitalization}
+                source="Diagnosis & LCD"
+                onNavigateToSource={() => onNavigate("diagnoses")}
+              />
             </PrimaryCard>
 
             <PrimaryCard title="Current Clinical Concerns" subtitle="Documented findings requiring review -- no derived risk scoring engine is applied">
@@ -254,6 +260,56 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
   );
 }
 
+// True standalone RNICA screen shell -- replaces the legacy Clinical Command
+// Workspace chrome entirely (patient bar eyebrow, context-prep bar, module
+// navigator, quick-access grid, Validation/Intelligence rail) for screens
+// that have been rebuilt into the approved 13-screen redesign. It renders
+// only: a compact identity/status bar, the 13-screen tab strip, the screen's
+// own content, and the save/lock controls -- there is no old-workspace
+// content behind it.
+function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, children }) {
+  return (
+    <div className="rnica-screen">
+      <header className="rnica-screen__bar">
+        <div className="rnica-screen__identity">
+          <span className="rnica-command-eyebrow">RNICA</span>
+          <strong>{patient.name}</strong>
+          <span>MRN {patient.mrn}</span>
+        </div>
+        <div className="rnica-screen__status">
+          <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
+          <span>{completedSections.length}/{totalRoutes} sections</span>
+          <button type="button" onClick={onExitPilot}>Use classic view</button>
+        </div>
+      </header>
+
+      <nav className="rnica-screen__tabs" aria-label="RN ICA 13-screen navigator">
+        {RNICA_THIRTEEN_SCREENS.map((screen, index) => (
+          <button
+            type="button"
+            key={screen.key}
+            className={activeScreenKey === screen.key ? "is-active" : ""}
+            onClick={() => onSelectScreenTab(screen)}
+          >
+            <span className="rnica-screen__tab-index">{index + 1}</span>
+            {screen.label}
+          </button>
+        ))}
+      </nav>
+
+      <main className="rnica-screen__content">{children}</main>
+
+      <footer className="rnica-screen__footer">
+        <span>{saveStatus === "saved" ? "Saved" : saving ? "Saving\u2026" : "Autosave active"}</span>
+        <div className="rnica-screen__footer-actions">
+          <button type="button" disabled={saving || locked} onClick={onSave}>{saving ? "Saving\u2026" : "Save assessment"}</button>
+          {canLock && !locked && <button type="button" className="is-secondary" onClick={onLock}>Validate &amp; lock</button>}
+        </div>
+      </footer>
+    </div>
+  );
+}
+
 export default function RNICACommandWorkspace({
   patient,
   routes,
@@ -368,6 +424,58 @@ export default function RNICACommandWorkspace({
     }
   };
 
+  // Screen-tab navigation used by the standalone RnicaScreenShell (below).
+  // Cross-cutting screens (Patient Story, Compliance & Readiness, AI Action
+  // Center) keep their existing selectCrossCuttingScreen behavior; module
+  // screens jump into the legacy workspace at their first module, exactly
+  // like the old navigator did, until each screen is rebuilt in its own
+  // implementation-order turn.
+  const selectScreenTab = (screen) => {
+    if (screen.crossCutting) {
+      selectCrossCuttingScreen(screen);
+      return;
+    }
+    setViewMode("screen");
+    const landing = screen.moduleKeys[0];
+    onSelect(landing);
+    emitRnIcaTelemetry({ name: "section_jump", section: landing, source: `screen_tab:${screen.key}` });
+  };
+
+  if (viewMode === "patientStory") {
+    // Patient Story is a true standalone RNICA screen: no legacy Clinical
+    // Command Workspace chrome renders behind it (no eyebrow/context bar,
+    // no module navigator, no quick-access grid, no generic
+    // Validation/Intelligence rail -- those all live inside PatientStoryPanel
+    // itself, sourced from the same data).
+    return (
+      <RnicaScreenShell
+        patient={patient}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="patientStory"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+      >
+        <PatientStoryPanel
+          patient={patient}
+          intelligence={intelligence}
+          errorKeys={errorKeys}
+          warningKeys={warningKeys}
+          routeForRequirement={routeForRequirement}
+          saveStatus={saveStatus}
+          saving={saving}
+          onNavigate={(key) => select(key, "patient_story")}
+        />
+      </RnicaScreenShell>
+    );
+  }
+
   return (
     <ClinicalCommandWorkspace density={density} ariaLabel="RN ICA Clinical Command Workspace" className="rnica-command">
       <ClinicalCommandHeader className="rnica-command-patientbar">
@@ -415,7 +523,7 @@ export default function RNICACommandWorkspace({
                   <div className="rnica-command-screen-group rnica-command-screen-group--crosscutting" key={screen.key}>
                     <button
                       type="button"
-                      className={`rnica-command-screen-group__header ${(screen.key === "patientStory" ? viewMode === "patientStory" : activeScreen?.key === screen.key) ? "is-active" : ""}`}
+                      className={`rnica-command-screen-group__header ${activeScreen?.key === screen.key ? "is-active" : ""}`}
                       onClick={() => selectCrossCuttingScreen(screen)}
                     >
                       <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
@@ -470,19 +578,7 @@ export default function RNICACommandWorkspace({
         </ScrollRegion>
 
         <ScrollRegion name="detail" className="rnica-command-detail">
-          {viewMode === "patientStory" ? (
-            <PatientStoryPanel
-              patient={patient}
-              intelligence={intelligence}
-              errorKeys={errorKeys}
-              warningKeys={warningKeys}
-              routeForRequirement={routeForRequirement}
-              saveStatus={saveStatus}
-              saving={saving}
-              onNavigate={(key) => select(key, "patient_story")}
-            />
-          ) : (
-            <>
+          <>
               {visitRecorder}
               {alerts}
               {activeScreen?.key === "evidenceIntake" && (
@@ -530,15 +626,13 @@ export default function RNICACommandWorkspace({
                 <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
               </nav>
             </>
-          )}
         </ScrollRegion>
 
         <ScrollRegion name="rail" className="rnica-command-rail">
           <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--desktop" onClick={() => select("finalization")}>
             Narrative &amp; final review
           </button>
-          {viewMode !== "patientStory" && (
-            <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
+          <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
               <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
               {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
               {errorKeys.slice(0, 5).map((key) => (
@@ -554,14 +648,11 @@ export default function RNICACommandWorkspace({
                 </button>
               ))}
             </section>
-          )}
-          {viewMode !== "patientStory" && (
-            <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
+          <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
               <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>
               {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
               {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}
             </section>
-          )}
           <section className="clinical-command-card rnica-command-card rnica-command-save">
             <div><strong>Save &amp; sync</strong><span>{saveStatus === "saved" ? "Saved" : saving ? "Saving…" : "Autosave active"}</span></div>
             <button type="button" disabled={saving || locked} onClick={onSave}>{saving ? "Saving…" : "Save assessment"}</button>
