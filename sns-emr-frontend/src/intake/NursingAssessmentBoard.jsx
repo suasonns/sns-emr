@@ -309,53 +309,75 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
         </div>
       )}
 
-      <div style={styles.historyCard}>
-        <div style={styles.historyHeader}>
+      <div
+        className={workspacePilot ? "nursing-assessment-board__history" : undefined}
+        style={workspacePilot ? undefined : styles.historyCard}
+      >
+        <div className={workspacePilot ? "nursing-assessment-board__history-header" : undefined} style={workspacePilot ? undefined : styles.historyHeader}>
           <div>
-            <div style={styles.eyebrow}>Nursing document history</div>
-            <div style={{ fontSize: 13, color: "#94A3B8", lineHeight: 1.5 }}>
+            <div className={workspacePilot ? "nursing-assessment-board__history-eyebrow" : undefined} style={workspacePilot ? undefined : styles.eyebrow}>Nursing document history</div>
+            <div className={workspacePilot ? "nursing-assessment-board__history-desc" : undefined} style={workspacePilot ? undefined : { fontSize: 13, color: "#94A3B8", lineHeight: 1.5 }}>
               Real RNICA-family records for this patient. Admission, HUV1/HUV2, and future RN recert/update records appear here.
             </div>
           </div>
-          <span style={styles.smallBadge("teal")}>{historyRecords.length} record{historyRecords.length === 1 ? "" : "s"}</span>
+          {workspacePilot ? (
+            <span className="nursing-assessment-board__history-badge">{historyRecords.length} record{historyRecords.length === 1 ? "" : "s"}</span>
+          ) : (
+            <span style={styles.smallBadge("teal")}>{historyRecords.length} record{historyRecords.length === 1 ? "" : "s"}</span>
+          )}
         </div>
         {historyLoading ? (
-          <div style={{ fontSize: 13, color: "#94A3B8" }}>Loading nursing history…</div>
+          <div className={workspacePilot ? "nursing-assessment-board__history-loading" : undefined} style={workspacePilot ? undefined : { fontSize: 13, color: "#94A3B8" }}>Loading nursing history…</div>
         ) : historyError ? (
-          <div style={{ fontSize: 13, color: "#FCA5A5" }}>{historyError}</div>
+          <div className={workspacePilot ? "nursing-assessment-board__history-error" : undefined} style={workspacePilot ? undefined : { fontSize: 13, color: "#FCA5A5" }}>{historyError}</div>
         ) : historyRecords.length === 0 ? (
-          <div style={{ fontSize: 13, color: "#94A3B8" }}>No nursing assessments are on file for this patient yet.</div>
+          <div className={workspacePilot ? "nursing-assessment-board__history-empty" : undefined} style={workspacePilot ? undefined : { fontSize: 13, color: "#94A3B8" }}>No nursing assessments are on file for this patient yet.</div>
         ) : (
-          <div style={styles.historyTableWrap}>
-            <table style={styles.historyTable}>
+          <div className={workspacePilot ? "nursing-assessment-board__history-table-wrap" : undefined} style={workspacePilot ? undefined : styles.historyTableWrap}>
+            <table className={workspacePilot ? "nursing-assessment-board__history-table" : undefined} style={workspacePilot ? undefined : styles.historyTable}>
               <thead>
                 <tr>
-                  <th style={styles.historyTh}>Assessment</th>
-                  <th style={styles.historyTh}>Type</th>
-                  <th style={styles.historyTh}>Status</th>
-                  <th style={styles.historyTh}>Date</th>
-                  <th style={styles.historyTh}>Action</th>
+                  <th style={workspacePilot ? undefined : styles.historyTh}>Assessment</th>
+                  <th style={workspacePilot ? undefined : styles.historyTh}>Type</th>
+                  <th style={workspacePilot ? undefined : styles.historyTh}>Status</th>
+                  <th style={workspacePilot ? undefined : styles.historyTh}>Date</th>
+                  <th style={workspacePilot ? undefined : styles.historyTh}>Action</th>
                 </tr>
               </thead>
               <tbody>
-                {historyRecords.map((record) => (
-                  <tr key={record.assessmentId}>
-                    <td style={styles.historyTd}>
-                      <div style={{ fontWeight: 700 }}>{record.assessmentLabel}</div>
-                      <div style={styles.historyMeta}>{record.assessmentId}</div>
-                    </td>
-                    <td style={styles.historyTd}>{record.assessmentType}</td>
-                    <td style={styles.historyTd}>
-                      <span style={styles.smallBadge(statusTone(record.status))}>{String(record.status || "DRAFT").replaceAll("_", " ")}</span>
-                    </td>
-                    <td style={styles.historyTd}>{formatHistoryDate(record.visitDate || record.createdAt)}</td>
-                    <td style={styles.historyTd}>
-                      <button type="button" style={styles.secondaryButton} onClick={() => setSelectedAssessmentId(record.assessmentId)}>
-                        Open
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {historyRecords.map((record) => {
+                  const tone = statusTone(record.status);
+                  return (
+                    <tr key={record.assessmentId}>
+                      <td style={workspacePilot ? undefined : styles.historyTd}>
+                        <div style={{ fontWeight: 700 }}>{record.assessmentLabel}</div>
+                        <div className={workspacePilot ? "nursing-assessment-board__history-meta" : undefined} style={workspacePilot ? undefined : styles.historyMeta}>{record.assessmentId}</div>
+                      </td>
+                      <td style={workspacePilot ? undefined : styles.historyTd}>{record.assessmentType}</td>
+                      <td style={workspacePilot ? undefined : styles.historyTd}>
+                        {workspacePilot ? (
+                          <span className={`nursing-assessment-board__history-badge${tone !== "teal" ? ` nursing-assessment-board__history-badge--${tone}` : ""}`}>
+                            {String(record.status || "DRAFT").replaceAll("_", " ")}
+                          </span>
+                        ) : (
+                          <span style={styles.smallBadge(tone)}>{String(record.status || "DRAFT").replaceAll("_", " ")}</span>
+                        )}
+                      </td>
+                      <td style={workspacePilot ? undefined : styles.historyTd}>{formatHistoryDate(record.visitDate || record.createdAt)}</td>
+                      <td style={workspacePilot ? undefined : styles.historyTd}>
+                        {workspacePilot ? (
+                          <button type="button" className="nursing-assessment-board__history-open-btn" onClick={() => setSelectedAssessmentId(record.assessmentId)}>
+                            Open
+                          </button>
+                        ) : (
+                          <button type="button" style={styles.secondaryButton} onClick={() => setSelectedAssessmentId(record.assessmentId)}>
+                            Open
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
