@@ -10,6 +10,7 @@ import {
   validateRnIcaClinicalNavigation,
 } from "./rnIcaClinicalNavigation";
 import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
+import { RnicaWorkflowRail, RnicaWorkflowSheet } from "./RnicaWorkflowRail";
 import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
 import {
   PrimaryCard,
@@ -182,7 +183,8 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
 // only: a compact identity/status bar, the 13-screen tab strip, the screen's
 // own content, and the save/lock controls -- there is no old-workspace
 // content behind it.
-function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, children }) {
+function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, children }) {
+  const [mobileNavOpen, setMobileNavOpen] = useState(false);
   return (
     <div className="rnica-screen">
       <header className="rnica-screen__bar">
@@ -194,25 +196,34 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
         <div className="rnica-screen__status">
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
           <span>{completedSections.length}/{totalRoutes} sections</span>
+          <button
+            type="button"
+            className="rnica-screen__mobile-nav-trigger"
+            aria-haspopup="dialog"
+            onClick={() => setMobileNavOpen(true)}
+          >
+            Workflow
+          </button>
           <button type="button" onClick={onExitPilot}>Use classic view</button>
         </div>
       </header>
 
-      <nav className="rnica-screen__tabs" aria-label="RN ICA 13-screen navigator">
-        {RNICA_THIRTEEN_SCREENS.map((screen, index) => (
-          <button
-            type="button"
-            key={screen.key}
-            className={activeScreenKey === screen.key ? "is-active" : ""}
-            onClick={() => onSelectScreenTab(screen)}
-          >
-            <span className="rnica-screen__tab-index">{index + 1}</span>
-            {screen.label}
-          </button>
-        ))}
-      </nav>
+      <div className="rnica-screen__body">
+        <RnicaWorkflowRail
+          activeScreenKey={activeScreenKey}
+          onSelectScreen={onSelectScreenTab}
+          statusContext={statusContext}
+        />
+        <main className="rnica-screen__content">{children}</main>
+      </div>
 
-      <main className="rnica-screen__content">{children}</main>
+      <RnicaWorkflowSheet
+        open={mobileNavOpen}
+        onClose={() => setMobileNavOpen(false)}
+        activeScreenKey={activeScreenKey}
+        onSelectScreen={onSelectScreenTab}
+        statusContext={statusContext}
+      />
 
       <footer className="rnica-screen__footer">
         <span>{saveStatus === "saved" ? "Saved" : saving ? "Saving\u2026" : "Autosave active"}</span>
@@ -361,6 +372,11 @@ export default function RNICACommandWorkspace({
     [screenGroups],
   );
 
+  // Shared status data for the RNICA workflow rail/sheet -- reuses the same
+  // completedSections/validation state already computed above; introduces
+  // no new clinical rule or source of truth (presentation only).
+  const railStatusContext = { completedSections, errorKeys, warningKeys, routeForRequirement };
+
   if (viewMode === "patientStory") {
     // Patient Story is a true standalone RNICA screen: no legacy Clinical
     // Command Workspace chrome renders behind it (no eyebrow/context bar,
@@ -381,6 +397,7 @@ export default function RNICACommandWorkspace({
         onSave={onSave}
         onLock={onLock}
         canLock={canLock}
+        statusContext={railStatusContext}
       >
         <PatientStoryPanel
           patient={patient}
@@ -417,6 +434,7 @@ export default function RNICACommandWorkspace({
         onSave={onSave}
         onLock={onLock}
         canLock={canLock}
+        statusContext={railStatusContext}
       >
         <nav className="rnica-screen__subnav" aria-label="Evidence & Intake modules">
           {evidenceIntakeGroup.routes.map((route) => {
