@@ -426,7 +426,7 @@
   flex: 0 0 15.5rem;
   width: 15.5rem;
   border-right: 1px solid var(--sns-border);
-  background: var(--sns-bgAlt);
+  background: var(--sns-bgNav);
 }
 
 .rnica-rail__heading {
@@ -486,11 +486,21 @@
   cursor: pointer;
 }
 
+.rnica-rail__item:hover:not(.is-active) { background: var(--sns-hoverSurface); color: var(--sns-textStrong); }
+
+.rnica-rail__item:focus-visible {
+  outline: 2px solid var(--sns-focusRing);
+  outline-offset: 1px;
+}
+
+/* ACTIVE SCREEN: selected surface + teal left indicator + selected shadow */
 .rnica-rail__item.is-active {
-  border-color: var(--sns-border);
+  border-color: var(--sns-borderSelected);
+  border-left: 3px solid var(--sns-teal);
+  padding-left: calc(0.55rem - 2px);
   color: var(--sns-white);
-  background: var(--sns-card);
-  box-shadow: 0 1px 2px var(--sns-shadow);
+  background: var(--sns-selectedSurface);
+  box-shadow: 0 0 0 1px var(--sns-tealSoftBorder), 0 4px 12px var(--sns-shadow);
 }
 
 .rnica-rail__index {
@@ -501,23 +511,28 @@
   width: 1.3rem;
   height: 1.3rem;
   border-radius: 999px;
-  background: var(--sns-border);
-  color: var(--sns-white);
+  background: var(--sns-card);
+  color: var(--sns-muted);
   font-size: 0.65rem;
 }
 
+/* ACTIVE: number circle = primary teal, number text = inverse text */
 .rnica-rail__item.is-active .rnica-rail__index {
   background: var(--sns-teal);
-  color: var(--sns-bg);
+  color: var(--sns-textInverse);
 }
 
-.rnica-rail__index--done { background: color-mix(in srgb, var(--sns-teal) 70%, var(--sns-border)); color: var(--sns-bg); }
-.rnica-rail__index--attention { background: var(--sns-red); color: var(--sns-white); }
-.rnica-rail__index--caution { background: var(--sns-orange); color: var(--sns-bg); }
-.rnica-rail__index--partial { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sns-teal) 55%, transparent); }
+/* COMPLETED: number circle = success background, number = success */
+.rnica-rail__index--done { background: var(--sns-successBg); color: var(--sns-green); }
+/* BLOCKED: number circle = critical background, number = critical */
+.rnica-rail__index--attention { background: var(--sns-criticalBg); color: var(--sns-red); }
+/* WARNING: number circle = warning background, number = warning */
+.rnica-rail__index--caution { background: var(--sns-warningBg); color: var(--sns-orange); }
+/* IN PROGRESS: subtle teal ring, no fill */
+.rnica-rail__index--partial { box-shadow: inset 0 0 0 2px var(--sns-tealSoftBorder); }
 
-.rnica-rail__item--attention { color: var(--sns-red); }
-.rnica-rail__item--caution:not(.is-active) { color: var(--sns-orange); }
+.rnica-rail__item--attention:not(.is-active) { color: var(--sns-white); }
+.rnica-rail__item--caution:not(.is-active) { color: var(--sns-white); }
 
 .rnica-rail__label { flex: 1 1 auto; min-width: 0; }
 
@@ -535,10 +550,10 @@
   font-size: 0.6rem;
   line-height: 1;
 }
-.rnica-rail__status-dot--done { background: var(--sns-teal); color: var(--sns-bg); }
-.rnica-rail__status-dot--attention { background: var(--sns-red); color: var(--sns-white); }
-.rnica-rail__status-dot--caution { background: var(--sns-orange); color: var(--sns-bg); }
-.rnica-rail__status-dot--partial { background: color-mix(in srgb, var(--sns-teal) 40%, transparent); color: var(--sns-white); }
+.rnica-rail__status-dot--done { background: var(--sns-green); color: var(--sns-textInverse); }
+.rnica-rail__status-dot--attention { background: var(--sns-red); color: var(--sns-textInverse); }
+.rnica-rail__status-dot--caution { background: var(--sns-orange); color: var(--sns-textInverse); }
+.rnica-rail__status-dot--partial { background: var(--sns-tealSoftBorder); color: var(--sns-white); }
 .rnica-rail__status-dot--neutral { background: var(--sns-border); color: var(--sns-dim); }
 
 /* Mobile workflow sheet/drawer -- opened from the "Workflow" trigger in the

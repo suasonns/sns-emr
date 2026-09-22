@@ -3181,7 +3181,7 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
         )}
       </div>
 
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginTop: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 8 }}>{error}</div>}
 
       {showAdd && (
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
@@ -3837,7 +3837,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
 
   return (
     <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
 
       <Card title="CHHA Plan of Care" cms="Home Health Aide">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 8 }}>
@@ -3845,7 +3845,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             Assigned Home Aide: <strong style={{ color: COLORS.dark }}>{assignedAide || "Not yet assigned"}</strong>
           </div>
           {chhaPoc.completed && (
-            <div style={{ fontSize: 12.5, color: "#22c55e", fontWeight: 700 }}>
+            <div style={{ fontSize: 12.5, color: COLORS.success, fontWeight: 700 }}>
               ✓ Completed{chhaPoc.completedDate ? ` — ${chhaPoc.completedDate}` : ""}{chhaPoc.completedBy ? ` by ${chhaPoc.completedBy}` : ""}
             </div>
           )}
@@ -3864,7 +3864,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             {visibleCategories.map((c) => (
               <span key={c.key} style={{
                 fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
-                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.12)", color: COLORS.error, border: "1px solid rgba(239,68,68,0.3)",
               }}>
                 {c.riskLabel}
               </span>
@@ -3875,7 +3875,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
             {customAlerts.map((a) => <li key={a.key}>{a.text}</li>)}
           </ul>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.error, marginTop: 8 }}>
             Notify {chhaReportToLabel(chhaPoc.reportToRole)} immediately if observed.
           </div>
         </Card>
@@ -3917,7 +3917,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
         </div>
         {["2-person assist required", "Mechanical lift required — no manual lift"].includes(chhaPoc.minimumAssistLevel)
           && !(chhaPoc.tasks || []).some((t) => t.task === "Transfer") && (
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg, borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
             ⚠️ Check "Transfer" in Ordered Tasks below and select {chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "Mechanical lift" : "2-person assist"} —
             a caregiver must never be relied on to manually move this patient at a lower assist level than ordered.
           </div>
@@ -4020,7 +4020,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             const anyMissing = missingInstructions || opt.items.some((i) => missingItemDetail(i.code)) || transferRequiredMissing;
             return (
               <div key={opt.value} style={{
-                borderRadius: 8, border: `1px solid ${anyMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
+                borderRadius: 8, border: `1px solid ${anyMissing ? COLORS.warning : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
               }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: COLORS.dark, cursor: "pointer" }}>
                   <input type="checkbox" checked={checked} onChange={(e) => toggleTask(opt.value, e.target.checked)} />
@@ -4046,7 +4046,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                               onChange={(e) => toggleTaskItem(opt.value, itemDef.code, e.target.checked)}
                             />
                             {itemDef.label}
-                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: "#dc2626" }}>— not safe at this patient's assist level</span>}
+                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: COLORS.error }}>— not safe at this patient's assist level</span>}
                           </label>
                           {itemChecked && itemDef.detail && (
                             <div style={{ marginLeft: 24, marginTop: 4, maxWidth: 420 }}>
@@ -4055,14 +4055,14 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                                 value={selected.detail}
                                 onChange={(v) => updateTaskItemDetail(opt.value, itemDef.code, v)}
                               />
-                              {needsDetail && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                              {needsDetail && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                             </div>
                           )}
                         </div>
                       );
                     })}
                     {transferRequiredMissing && (
-                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "6px 8px" }}>
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg, borderRadius: 6, padding: "6px 8px" }}>
                         ⚠️ Required: this patient's Minimum Safe Assist Level is "{chhaPoc.minimumAssistLevel}" — check{" "}
                         {transferRequiredCode === "MECHANICAL_LIFT" ? "Mechanical lift" : "2-person assist"} above before finishing this plan.
                       </div>
@@ -4078,7 +4078,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                           placeholder="e.g., Shower with chair, standby assist only, water lukewarm"
                         />
                         {missingInstructions && (
-                          <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>
+                          <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>
                         )}
                       </div>
                     </div>
@@ -4103,7 +4103,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
       {/* ── Completion — required before RN ICA can lock if an aide is assigned ── */}
       <Card title="Completion">
         {tasksMissingInstructions > 0 && (
-          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: COLORS.warning }}>
             {tasksMissingInstructions} required field{tasksMissingInstructions > 1 ? "s are" : " is"} still blank in the
             Ordered Tasks above (a specify-box or Instructions). Complete those before marking this plan complete.
           </div>
@@ -4126,7 +4126,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
           </div>
         )}
         {saving && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 6 }}>Saving…</div>}
-        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: COLORS.success, marginTop: 6 }}>{saveMessage}</div>}
       </Card>
     </div>
   );
@@ -4311,7 +4311,7 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
 
   return (
     <Card title="Continuous Care Log" cms="Required hourly documentation while patient is on Continuous Care">
-      {error && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
       {loading ? (
         <div style={{ fontSize: 12, color: COLORS.gray }}>Loading continuous care log…</div>
       ) : (
@@ -4373,7 +4373,7 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
                       <button
                         type="button"
                         onClick={() => handleRemoveEntry(entry.id)}
-                        style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
+                        style={{ border: "none", background: "transparent", color: COLORS.error, cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
                       >
                         Remove
                       </button>
@@ -4394,7 +4394,7 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
                     )}
                     {entry.symptoms && <div>Symptoms: {entry.symptoms}</div>}
                     {entry.care_provided && <div>Care provided: {entry.care_provided}</div>}
-                    {entry.issue_identified && <div style={{ color: "#b91c1c" }}>Issue: {entry.issue_narrative || "(no detail provided)"}</div>}
+                    {entry.issue_identified && <div style={{ color: COLORS.error }}>Issue: {entry.issue_narrative || "(no detail provided)"}</div>}
                     {entry.poc_update_narrative && <div>POC update: {entry.poc_update_narrative}</div>}
                     {entry.narrative && <div>Narrative: {entry.narrative}</div>}
                   </div>
@@ -4844,7 +4844,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
 
   return (
     <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
 
       <Card title="CHHA Visit Note" cms="Home Health Aide">
         {visits.length === 0 ? (
@@ -4874,7 +4874,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         </button>
         {showCreateVisit && (
           <div style={{ ...styles.infoBox, marginTop: 8, maxWidth: 480 }}>
-            {createVisitError && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{createVisitError}</div>}
+            {createVisitError && <div style={{ color: COLORS.error, fontSize: 12.5, marginBottom: 8 }}>{createVisitError}</div>}
             <div style={styles.fieldsGrid}>
               <FormSelect
                 label="Staff Assigned"
@@ -4993,7 +4993,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
             {derivedCategories.map((c) => (
               <span key={c.key} style={{
                 fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
-                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.12)", color: COLORS.error, border: "1px solid rgba(239,68,68,0.3)",
               }}>
                 {c.riskLabel}
               </span>
@@ -5003,7 +5003,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.7 }}>
             {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
           </ul>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.error, marginTop: 8 }}>
             Notify {chhaReportToLabel(reportToRole)} immediately if observed.
           </div>
         </Card>
@@ -5030,7 +5030,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               });
               return (
                 <div key={cat.category} style={{
-                  borderRadius: 8, border: `1px solid ${anyCategoryMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "10px 12px",
+                  borderRadius: 8, border: `1px solid ${anyCategoryMissing ? COLORS.warning : COLORS.border}`, background: COLORS.bg, padding: "10px 12px",
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{cat.categoryLabel}</div>
                   {(cat.dependence || cat.frequency) && (
@@ -5087,7 +5087,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                                   </label>
                                 ))}
                               </div>
-                              {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
+                              {needsChecklist && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Check at least one.</div>}
                               {checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && (
                                 <div style={{ marginTop: 6 }}>
                                   <FormInput
@@ -5097,7 +5097,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                                     placeholder="e.g., Second HA, Maria R."
                                     disabled={visitLocked}
                                   />
-                                  {needsAssistedBy && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                                  {needsAssistedBy && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                                 </div>
                               )}
                             </div>
@@ -5122,7 +5122,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                                 placeholder={result.state === "completed" ? "" : "e.g., Patient asked to skip bathing today, said they were too tired"}
                                 disabled={visitLocked}
                               />
-                              {needsFreeNote && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                              {needsFreeNote && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                             </div>
                           )}
                         </div>
@@ -5140,21 +5140,21 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       <Card title="Skin">
         <FormCheckboxGroup values={note.skin} onChange={(v) => setNote((p) => ({ ...p, skin: v }))} options={CHHA_SKIN_OPTIONS} label="Observed" />
         {skinAbnormal && (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, color: COLORS.error, fontWeight: 700 }}>🚨 RN Notification Required</div>
         )}
       </Card>
 
       <Card title="Respiration">
         <FormCheckboxGroup values={note.respiration} onChange={(v) => setNote((p) => ({ ...p, respiration: v }))} options={CHHA_RESPIRATION_OPTIONS} label="Observed" />
         {respirationAbnormal && (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, color: COLORS.error, fontWeight: 700 }}>🚨 RN Notification Required</div>
         )}
       </Card>
 
       <Card title="Nutrition / Swallowing">
         <FormCheckboxGroup values={note.nutrition} onChange={(v) => setNote((p) => ({ ...p, nutrition: v }))} options={CHHA_NUTRITION_OPTIONS} label="Observed" />
         {nutritionAbnormal && (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, color: COLORS.error, fontWeight: 700 }}>🚨 RN Notification Required</div>
         )}
       </Card>
 
@@ -5235,8 +5235,8 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
 
       <Card title="RN Notification">
         {rnNotificationRequired ? (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, color: "#b91c1c", marginBottom: 4 }}>🚨 RN Notification Required — call {chhaReportToLabel(reportToRole)} now.</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: COLORS.error, marginBottom: 4 }}>🚨 RN Notification Required — call {chhaReportToLabel(reportToRole)} now.</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {rnNotificationReasons.map((r) => <li key={r}>{r}</li>)}
             </ul>
@@ -5258,14 +5258,14 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               onChange={(v) => setNote((p) => ({ ...p, rnNotifiedName: v }))}
               disabled={visitLocked}
             />
-            {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+            {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
           </div>
         )}
       </Card>
 
       <Card title="Submit">
         {missingTaskNotes > 0 && (
-          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: COLORS.warning }}>
             {missingTaskNotes} task{missingTaskNotes > 1 ? "s" : ""} above still {missingTaskNotes > 1 ? "need" : "needs"} a description of what happened.
           </div>
         )}
@@ -5277,7 +5277,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         >
           {saving ? "Saving…" : "Save Visit Note"}
         </button>
-        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: COLORS.success, marginTop: 6 }}>{saveMessage}</div>}
       </Card>
     </div>
   );
@@ -5503,7 +5503,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
       </div>
 
       {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Loading Plan of Care…</div>}
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12, marginBottom: 8 }}>{error}</div>}
       {!loading && problems && problems.length === 0 && (
         <div style={styles.infoBox}>No Plan of Care problems have been recorded yet.</div>
       )}
@@ -5629,7 +5629,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                     {saving ? "Linking…" : "Link Evidence"}
                   </button>
                 </div>
-                {linkError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{linkError}</div>}
+                {linkError && <div style={{ color: COLORS.error, fontSize: 11.5, marginTop: 6 }}>{linkError}</div>}
               </div>
             )}
 
@@ -5666,7 +5666,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                     {saving ? "Merging…" : "Merge Selected"}
                   </button>
                 </div>
-                {mergeError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{mergeError}</div>}
+                {mergeError && <div style={{ color: COLORS.error, fontSize: 11.5, marginTop: 6 }}>{mergeError}</div>}
               </div>
             )}
 
@@ -5726,7 +5726,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, fontSize: 11.5 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Problem History (read-only)</div>
                 {historyLoading && <div style={{ color: COLORS.gray }}>Loading history…</div>}
-                {historyError && <div style={{ color: COLORS.error || "#ef4444" }}>{historyError}</div>}
+                {historyError && <div style={{ color: COLORS.error }}>{historyError}</div>}
                 {!historyLoading && !historyError && historyData && (
                   <div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 6, marginBottom: 8 }}>
@@ -5928,7 +5928,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
 
   const statusColor = (status) => {
     if (status === "APPROVED") return COLORS.success || "#16a34a";
-    if (status === "DENIED") return COLORS.error || "#ef4444";
+    if (status === "DENIED") return COLORS.error;
     return COLORS.gray;
   };
 
@@ -6028,7 +6028,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
       {message && <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>{message}</div>}
 
       {loading && <div style={{ fontSize: 11.5, color: COLORS.gray, marginTop: 8 }}>Loading amendment history…</div>}
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 11.5, marginTop: 8 }}>{error}</div>}
 
       {!loading && amendments.length > 0 && (
         <div style={{ marginTop: 10 }}>
@@ -6054,7 +6054,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
                 </div>
               )}
               {a.status === "DENIED" && a.decisionReason && (
-                <div style={{ color: COLORS.error || "#ef4444", marginTop: 2 }}>Denied: {a.decisionReason}</div>
+                <div style={{ color: COLORS.error, marginTop: 2 }}>Denied: {a.decisionReason}</div>
               )}
               {a.status === "APPROVED" && a.decisionReason && (
                 <div style={{ color: COLORS.gray, marginTop: 2 }}>Note: {a.decisionReason}</div>
@@ -6070,8 +6070,8 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
                   </button>
                   <button type="button" disabled={decidingId === a.id} onClick={() => handleDeny(a.id)} style={{
                     fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 5,
-                    border: `1px solid ${COLORS.error || "#ef4444"}`, background: "transparent",
-                    color: COLORS.error || "#ef4444", cursor: decidingId === a.id ? "wait" : "pointer",
+                    border: `1px solid ${COLORS.error}`, background: "transparent",
+                    color: COLORS.error, cursor: decidingId === a.id ? "wait" : "pointer",
                   }}>
                     Deny
                   </button>
@@ -6172,9 +6172,9 @@ function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateFie
 }
 
 const SEVERITY_COLORS = {
-  CONTRAINDICATED: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
-  MAJOR: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
-  MODERATE: { bg: "#451a03", border: "#f59e0b", text: "#fde68a" },
+  CONTRAINDICATED: { bg: "#450a0a", border: COLORS.error, text: "#fecaca" },
+  MAJOR: { bg: "#450a0a", border: COLORS.error, text: "#fecaca" },
+  MODERATE: { bg: "#451a03", border: COLORS.warning, text: "#fde68a" },
   MINOR: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
   UNKNOWN: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
 };
@@ -6281,7 +6281,7 @@ export function AllergiesCard({ patientId, styles, COLORS }) {
           + Add Allergy
         </button>
       </div>
-      {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+      {allergyError && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
     </div>
   );
 }
@@ -6516,7 +6516,7 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
         </div>
       )}
 
-      {submitError && <div style={{ color: "#ef4444", fontSize: 12.5, margin: "6px 0" }}>{submitError}</div>}
+      {submitError && <div style={{ color: COLORS.error, fontSize: 12.5, margin: "6px 0" }}>{submitError}</div>}
 
       <button type="button" onClick={handleAddMedication} disabled={submitting} style={{ ...styles.btnPrimary, marginTop: 8 }}>
         {submitting ? "Adding…" : "+ Add Medication"}
@@ -6526,7 +6526,7 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
       <div style={{ marginTop: 20 }}>
         <div style={{ ...styles.label, marginBottom: 8 }}>Medication List</div>
         {loading && <div style={{ fontSize: 12.5, color: COLORS.gray }}>Loading…</div>}
-        {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+        {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
         {!loading && meds.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray }}>No medications recorded yet.</div>}
         {meds.length > 0 && (
           <table style={styles.table}>
@@ -6553,11 +6553,11 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
                   <td style={styles.td}>{m.status}{m.flags?.length ? ` (${m.flags.join(", ")})` : ""}</td>
                   <td style={styles.td}>
                     {m.order_status === "APPROVED" || m.order_status === "EXECUTED" ? (
-                      <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                      <span style={{ color: COLORS.success, fontWeight: 600 }}>
                         ✓ Signed{m.signed_by_name ? ` — ${m.signed_by_name}` : ""}
                       </span>
                     ) : m.order_status ? (
-                      <span style={{ color: "#f59e0b", fontWeight: 600 }}>⏳ Awaiting MD Signature</span>
+                      <span style={{ color: COLORS.warning, fontWeight: 600 }}>⏳ Awaiting MD Signature</span>
                     ) : (
                       <span style={{ color: COLORS.gray }}>No signed order on file</span>
                     )}
@@ -8515,9 +8515,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   </button>
                   {assignedAide.trim() && (
                     chhaPocCompleted ? (
-                      <span style={{ fontSize: 11.5, color: "#22c55e", fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
+                      <span style={{ fontSize: 11.5, color: COLORS.success, fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
                     ) : (
-                      <span style={{ fontSize: 11.5, color: "#f59e0b", fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
+                      <span style={{ fontSize: 11.5, color: COLORS.warning, fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
                     )
                   )}
                 </div>
@@ -12203,7 +12203,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           {assessmentId && !locked && (
             <button
               type="button"
-              style={{ ...styles.btnSecondary, color: COLORS.error || "#dc2626", borderColor: COLORS.error || "#dc2626" }}
+              style={{ ...styles.btnSecondary, color: COLORS.error, borderColor: COLORS.error }}
               onClick={handleDelete}
               disabled={saving}
               title="Permanently delete this draft assessment (only available before it is signed)"

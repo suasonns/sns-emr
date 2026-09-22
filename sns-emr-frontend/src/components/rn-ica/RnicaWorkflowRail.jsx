@@ -47,7 +47,7 @@ const STATUS_LABEL = {
 function RailStatusBadge({ status }) {
   if (status.kind === "crossCutting") return null;
   const tone = status.tone;
-  const variant = tone === "attention" ? "red" : tone === "caution" ? "orange" : tone === "done" ? "teal" : "neutral";
+  const variant = tone === "attention" ? "critical" : tone === "caution" ? "warning" : tone === "done" ? "success" : tone === "partial" ? "teal" : "neutral";
   return (
     <Badge variant={variant} className="rnica-rail__status-badge">
       <span className={`rnica-rail__status-dot rnica-rail__status-dot--${tone}`} aria-hidden="true">{STATUS_ICON[tone]}</span>

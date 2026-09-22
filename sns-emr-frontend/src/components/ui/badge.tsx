@@ -12,9 +12,17 @@ const badgeVariants = cva(
     variants: {
       variant: {
         neutral: "bg-rnica-bgAlt text-rnica-muted border border-rnica-border",
-        teal: "bg-[color-mix(in_srgb,var(--sns-teal)_15%,transparent)] text-rnica-teal border border-[color-mix(in_srgb,var(--sns-teal)_40%,transparent)]",
+        teal: "bg-rnica-tealSoftBg text-rnica-teal border border-rnica-tealSoftBorder",
         orange: "bg-[color-mix(in_srgb,var(--sns-orange)_15%,transparent)] text-rnica-orange border border-[color-mix(in_srgb,var(--sns-orange)_40%,transparent)]",
         red: "bg-[color-mix(in_srgb,var(--sns-red)_15%,transparent)] text-rnica-red border border-[color-mix(in_srgb,var(--sns-red)_40%,transparent)]",
+        // Explicit status-semantic variants (Lively Clinical Slate): use
+        // these where color must map to a verified severity/completion
+        // state, keeping "teal" reserved for brand/neutral-informational
+        // labels rather than "done".
+        success: "bg-rnica-successBg text-rnica-green border border-[color-mix(in_srgb,var(--sns-green)_40%,transparent)]",
+        warning: "bg-rnica-warningBg text-rnica-orange border border-rnica-borderWarning",
+        critical: "bg-rnica-criticalBg text-rnica-red border border-rnica-borderCritical",
+        ai: "bg-rnica-aiBg text-rnica-purple border border-rnica-borderAI",
       },
     },
     defaultVariants: {
