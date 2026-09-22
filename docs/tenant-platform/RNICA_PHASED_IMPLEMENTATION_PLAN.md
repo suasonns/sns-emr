@@ -8,6 +8,13 @@ subsequently approved pull request per increment.
 `RNICA_AI_GOVERNANCE.md`, `RNICA_LOCK_READINESS_MATRIX.md`,
 `RNICA_GITHUB_HANDOFF_PLAN.md`, `RNICA_CURRENT_TO_TARGET_GAP_REPORT.md`.
 
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** The final canonical RNICA
+> screen navigation order is: 1 Patient Story, 2 Evidence & Intake,
+> 3 Pain & Symptom Burden, 4 Diagnosis & LCD, 5 Functional Status, 6-13
+> unchanged. See `RNICA_NAVIGATION_SPECIFICATION.md`. The "Increment N"
+> numbers below describe implementation build sequencing, not final
+> screen navigation position.
+
 Each increment below reports, in order: Verified files/components/services
 · Current reusable implementation · Presentation rewiring · Confirmed
 defects · New API/service work · Schema impact · Migration impact ·

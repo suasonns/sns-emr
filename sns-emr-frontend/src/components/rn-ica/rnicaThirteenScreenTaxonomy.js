@@ -38,19 +38,20 @@ export const RNICA_THIRTEEN_SCREENS = [
     moduleKeys: ["demographics", "vitals", "referrals"],
   },
   {
-    // [PRODUCT-AUTHORITY DECISION -- 2026-09-22] Order 3-5 is Diagnosis &
-    // LCD, Pain & Symptom Burden, Functional Status -- see
+    // [PRODUCT-AUTHORITY DECISION -- 2026-09-22, final] Order 3-5 is
+    // Pain & Symptom Burden, Diagnosis & LCD, Functional Status -- see
     // docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md and
-    // RNICA_SCREEN_AUTHORITY_MATRIX.md #3. This supersedes the prior
-    // Functional Status / Pain & Symptom Burden / Diagnosis & LCD order.
-    key: "diagnosisLcd",
-    label: "Diagnosis & LCD",
-    moduleKeys: ["diagnoses"],
-  },
-  {
+    // RNICA_SCREEN_AUTHORITY_MATRIX.md #3. Identify pain/symptom burden
+    // before establishing diagnosis; interpret functional status last,
+    // with both in context.
     key: "painSymptomBurden",
     label: "Pain & Symptom Burden",
     moduleKeys: ["pain", "symptomImpact"],
+  },
+  {
+    key: "diagnosisLcd",
+    label: "Diagnosis & LCD",
+    moduleKeys: ["diagnoses"],
   },
   {
     key: "functionalStatus",

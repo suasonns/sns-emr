@@ -17,8 +17,8 @@ not a suggestion:
 
 1. Patient Story
 2. Evidence & Intake
-3. Diagnosis & LCD
-4. Pain & Symptom Burden
+3. Pain & Symptom Burden
+4. Diagnosis & LCD
 5. Functional Status
 6. Body Systems
 7. Caregiver & Support
@@ -33,6 +33,14 @@ not a suggestion:
 symptom burden is evaluated before deeper functional assessment; functional
 interpretation depends on diagnosis and symptom context. This mirrors the
 hospice nursing thought process.
+
+**[CORRECTED — 2026-09-22]** The clinical rationale for this final order:
+first understand the patient (Patient Story) and available history
+(Evidence & Intake); next identify pain, dyspnea, distress, and current
+symptom burden (Pain & Symptom Burden) before performing deeper assessment
+activities; then establish the diagnosis and disease-specific context
+(Diagnosis & LCD); only after symptoms and diagnosis are understood should
+functional status be interpreted (Functional Status).
 
 **Non-linear navigation remains permitted.** Per
 `RNICA_WORKFLOW_AUTHORITY_MAP.md`, this is the recommended default nurse

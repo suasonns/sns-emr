@@ -7,8 +7,8 @@
 **MIGRATIONS:** BLOCKED
 **CURRENT DEFECT REPAIR:** BLOCKED UNDER THIS DOCUMENT
 
-> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** Screen numbering 3-5 is
-> superseded: **3. Diagnosis & LCD, 4. Pain & Symptom Burden,
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22, final]** Screen numbering 3-5 is
+> superseded: **3. Pain & Symptom Burden, 4. Diagnosis & LCD,
 > 5. Functional Status** (previously 3. Functional Status, 4. Pain &
 > Symptom Burden, 5. Diagnosis & LCD). Per-screen content below is
 > unchanged; only workflow position moved. See
@@ -229,7 +229,46 @@ implies automated eligibility/certification.
 
 ---
 
-# Screen 3. Diagnosis & LCD
+# Screen 3. Pain & Symptom Burden
+
+**Purpose**
+- **[REPOSITORY-DISCOVERED]** Combine Pain Assessment and Symptom Impact
+  while preserving HOPE items and existing derivation behavior.
+
+**Always visible**
+- Pain screening, current burden, pain tool/mode, neuropathic pain, and
+  J2051 symptom-impact summary.
+
+**Conditionally visible**
+- PAINAD/FLACC/verbal detail according to current assessment mode;
+  advanced detail only when applicable.
+
+**AI content**
+- **[REPOSITORY-DISCOVERED]** Pain threshold findings/recommendations and
+  missing evidence from the Intelligence output.
+
+**Compliance content**
+- **[REPOSITORY-DISCOVERED]** J0900, J0915, and J2051 mappings and
+  validation remain visible.
+
+**Required actions / Completion criteria**
+- Complete hard-required pain fields and review all applicable symptom-
+  impact items.
+
+**Do not show**
+- Derived values as if independently clinician-entered; technical engine
+  details as primary workflow copy.
+
+**Do not touch**
+- Blank-only auto-derivation. It must never overwrite a manual entry.
+
+**Pass:** Manual values remain authoritative and HOPE gaps are actionable.
+**Fail:** Derived values overwrite clinical input or required mappings
+disappear.
+
+---
+
+# Screen 4. Diagnosis & LCD
 
 **Purpose**
 - Document terminal diagnosis, related diagnoses/comorbidities, prognosis
@@ -270,45 +309,6 @@ implies automated eligibility/certification.
 exists.
 **Fail:** Diagnosis contains a Clinical Narrative or LCD output is framed
 as physician certification.
-
----
-
-# Screen 4. Pain & Symptom Burden
-
-**Purpose**
-- **[REPOSITORY-DISCOVERED]** Combine Pain Assessment and Symptom Impact
-  while preserving HOPE items and existing derivation behavior.
-
-**Always visible**
-- Pain screening, current burden, pain tool/mode, neuropathic pain, and
-  J2051 symptom-impact summary.
-
-**Conditionally visible**
-- PAINAD/FLACC/verbal detail according to current assessment mode;
-  advanced detail only when applicable.
-
-**AI content**
-- **[REPOSITORY-DISCOVERED]** Pain threshold findings/recommendations and
-  missing evidence from the Intelligence output.
-
-**Compliance content**
-- **[REPOSITORY-DISCOVERED]** J0900, J0915, and J2051 mappings and
-  validation remain visible.
-
-**Required actions / Completion criteria**
-- Complete hard-required pain fields and review all applicable symptom-
-  impact items.
-
-**Do not show**
-- Derived values as if independently clinician-entered; technical engine
-  details as primary workflow copy.
-
-**Do not touch**
-- Blank-only auto-derivation. It must never overwrite a manual entry.
-
-**Pass:** Manual values remain authoritative and HOPE gaps are actionable.
-**Fail:** Derived values overwrite clinical input or required mappings
-disappear.
 
 ---
 

@@ -47,6 +47,14 @@ code plan should be approved until this classification is reviewed.
 
 ## D. Follow-on implementation plan structure (not part of this PR)
 
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** The final canonical RNICA
+> screen order (navigation position, not necessarily build-increment
+> order) is: 1 Patient Story, 2 Evidence & Intake, 3 Pain & Symptom
+> Burden, 4 Diagnosis & LCD, 5 Functional Status, 6-13 unchanged. See
+> `RNICA_NAVIGATION_SPECIFICATION.md`. Increment numbers below describe
+> implementation sequencing and are not automatically the screen's
+> navigation position.
+
 The follow-on implementation plan, once approved, must be organized into
 independently verifiable increments:
 

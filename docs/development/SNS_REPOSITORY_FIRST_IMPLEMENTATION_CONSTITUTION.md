@@ -334,8 +334,8 @@ order is:
 
 1. Patient Story
 2. Evidence & Intake
-3. Diagnosis & LCD
-4. Pain & Symptom Burden
+3. Pain & Symptom Burden
+4. Diagnosis & LCD
 5. Functional Status
 6. Body Systems
 7. Caregiver & Support

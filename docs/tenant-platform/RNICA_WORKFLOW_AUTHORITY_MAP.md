@@ -12,15 +12,15 @@ CODE: BLOCKED
 SCHEMA: BLOCKED
 MIGRATIONS: BLOCKED
 
-> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** The screen sequence in this
-> document has been superseded. Screens 3-5 are now **3. Diagnosis & LCD,
-> 4. Pain & Symptom Burden, 5. Functional Status** (previously 3. Functional
-> Status, 4. Pain & Symptom Burden, 5. Diagnosis & LCD). This is a
-> deliberate product-authority decision, not an oversight: diagnosis now
-> provides context before symptom burden and functional interpretation are
-> assessed. All other screen positions (1-2, 6-13) are unchanged. See
-> `RNICA_NAVIGATION_SPECIFICATION.md` for the canonical order and
-> navigation-ownership model.
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22, final]** The screen sequence in
+> this document has been superseded. Screens 3-5 are now **3. Pain &
+> Symptom Burden, 4. Diagnosis & LCD, 5. Functional Status** (previously
+> 3. Functional Status, 4. Pain & Symptom Burden, 5. Diagnosis & LCD). This
+> is the final approved product-authority decision: identify pain/symptom
+> burden before establishing diagnosis, then interpret functional status
+> with both in context. All other screen positions (1-2, 6-13) are
+> unchanged. See `RNICA_NAVIGATION_SPECIFICATION.md` for the canonical
+> order and navigation-ownership model.
 
 This document does not reopen `RNICA_REDESIGN_SOURCE_OF_TRUTH.md` or
 `RNICA_SCREEN_BY_SCREEN_EVIDENCE_MATRIX.md`. It uses the same Authority
@@ -63,9 +63,9 @@ Admission
    ↓
 2. Evidence & Intake
    ↓
-3. Diagnosis & LCD
+3. Pain & Symptom Burden
    ↓
-4. Pain & Symptom Burden
+4. Diagnosis & LCD
    ↓
 5. Functional Status
    ↓

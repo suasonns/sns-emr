@@ -4,8 +4,8 @@
 **Purpose:** Define screen ownership, editability, sources, outputs, and
 prohibited behavior for each of the 13 approved RNICA workflow destinations.
 
-> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** Screen numbering 3-5 is
-> superseded: **3. Diagnosis & LCD, 4. Pain & Symptom Burden,
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22, final]** Screen numbering 3-5 is
+> superseded: **3. Pain & Symptom Burden, 4. Diagnosis & LCD,
 > 5. Functional Status** (previously 3. Functional Status, 4. Pain &
 > Symptom Burden, 5. Diagnosis & LCD). Ownership/editability/source content
 > for each screen is unchanged — only workflow position moved. See
@@ -63,7 +63,20 @@ which screen currently exists.
   screen exists; it is currently interleaved across legacy `demographics`/
   `vitals`/`referrals` modules.
 
-## 3. Diagnosis & LCD
+## 3. Pain & Symptom Burden
+- **Purpose:** Capture pain and symptom burden. **Owns:** legacy `pain`,
+  `symptomImpact` modules (`NumericPainScale`, `PAINADScale`, `FLACCScale`
+  components, `SYMPTOM_IMPACT_CHECKLIST` constant mapping to HOPE J2051 A-H).
+- **Consumes:** Medication/order display (`src/api/medications.js`) where
+  authorized; source ownership remains external.
+- **Produces:** HOPE pain/symptom items, findings, warnings, follow-up
+  needs (SFV status, `getSfvStatus`/`getHopeAdmissionStatus`,
+  `src/intake/hopeReportMapper.js`).
+- **AI:** Advisory follow-up suggestions only.
+- **Prohibited:** Silent medication/order changes; derived values
+  overwriting manual entries.
+
+## 4. Diagnosis & LCD
 - **Purpose:** Capture diagnoses, relatedness, comorbidities, LCD evidence,
   and LCD Supporting Narrative. **Owns:** legacy `diagnoses` module,
   including `ndsEligibility` sub-state.
@@ -78,19 +91,6 @@ which screen currently exists.
   presented per `RNICA_AI_GOVERNANCE.md` §5 language rules.
 - **Prohibited:** Final Clinical Narrative, physician certification,
   eligibility confirmation, AI prognosis.
-
-## 4. Pain & Symptom Burden
-- **Purpose:** Capture pain and symptom burden. **Owns:** legacy `pain`,
-  `symptomImpact` modules (`NumericPainScale`, `PAINADScale`, `FLACCScale`
-  components, `SYMPTOM_IMPACT_CHECKLIST` constant mapping to HOPE J2051 A-H).
-- **Consumes:** Medication/order display (`src/api/medications.js`) where
-  authorized; source ownership remains external.
-- **Produces:** HOPE pain/symptom items, findings, warnings, follow-up
-  needs (SFV status, `getSfvStatus`/`getHopeAdmissionStatus`,
-  `src/intake/hopeReportMapper.js`).
-- **AI:** Advisory follow-up suggestions only.
-- **Prohibited:** Silent medication/order changes; derived values
-  overwriting manual entries.
 
 ## 5. Functional Status
 - **Purpose:** Capture functional performance and diagnosis-relevant
