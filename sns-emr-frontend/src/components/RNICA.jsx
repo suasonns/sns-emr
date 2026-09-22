@@ -8295,6 +8295,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
       <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
         {resolvedCards.map((card, ci) => {
+        // [PRESENTATION-ONLY RELOCATION] A card may declare `dataSection` to
+        // render under a different screen/section than the one that owns its
+        // data (e.g. the ADL Assessment card visually relocated to Functional
+        // Status while its fields remain part of the `musculoskeletal`
+        // module). When set, field values/updates and POC controls resolve
+        // against that owning section instead of the ambient `sectionKey`, so
+        // storage, validation, LCD facts, and HOPE/POC ownership are
+        // unchanged -- see RNICA_SCREEN_AUTHORITY_MATRIX.md.
+        const cardDataSection = card.dataSection || sectionKey;
+        const cardData = card.dataSection ? (fullFormData?.[card.dataSection] || {}) : data;
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
@@ -8620,9 +8630,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
-              const value = getNestedValue(data, fieldForRender.path);
+              const value = getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
-                u(fieldForRender.path, v);
+                update(cardDataSection, fieldForRender.path, v);
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
                   // Auto-select the correct pain scale from the patient's
                   // communication status + age so only one tool is ever shown:
@@ -8684,10 +8694,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
             </div>
-            {POC_ENABLED_SECTIONS.has(sectionKey) && card.fields && (
+            {POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
               <PocSectionControls
                 assessmentId={assessmentId}
-                sectionKey={sectionKey}
+                sectionKey={cardDataSection}
                 cardTitle={card.title}
                 styles={styles}
                 COLORS={COLORS}
@@ -8937,7 +8947,7 @@ const SECTION_CONFIGS = {
 
   performanceStatus: {
     title: "Performance Status",
-    subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications",
+    subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications, and ADL assessment",
     cards: [
       {
         title: "Change Since Last Assessment",
@@ -8985,6 +8995,19 @@ const SECTION_CONFIGS = {
           { type: "textarea", label: "Functional Decline Notes", path: "functionalDeclineNotes", rows: 4 },
         ],
       },
+      // [PRESENTATION-ONLY RELOCATION] ADLs move into Functional Status'
+      // presentation ownership per the visual-polish directive. Fields,
+      // storage, validation, LCD facts, and POC ownership remain with
+      // `musculoskeletal` (Body Systems) via `dataSection` -- see
+      // RNICA_SCREEN_AUTHORITY_MATRIX.md.
+      { title: "ADL Assessment (0=Independent, 5=Dependent)", dataSection: "musculoskeletal", fields: [
+        { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
+        { type: "select", label: "Dressing", path: "adl.dressing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Toileting", path: "adl.toileting", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Transferring", path: "adl.transferring", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Eating", path: "adl.eating", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Grooming", path: "adl.grooming", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+      ]},
     ],
   },
 
@@ -9283,7 +9306,7 @@ const SECTION_CONFIGS = {
 
   musculoskeletal: {
     title: "Musculoskeletal",
-    subtitle: "Weakness, ROM, gait, mobility status, ADL assessment",
+    subtitle: "Weakness, ROM, gait, mobility status (ADL assessment presents under Functional Status)",
     cards: [
       { title: "Musculoskeletal Assessment", fields: [
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
@@ -9305,14 +9328,6 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Strength", path: "strength", options: ["Normal", "Decreased", "Absent"] },
         { type: "radio", label: "Balance", path: "balance", options: ["Normal", "Impaired"] },
         { type: "radio", label: "Pain with Movement", path: "painWithMovement", options: ["None", "Mild", "Moderate", "Severe"] },
-      ]},
-      { title: "ADL Assessment (0=Independent, 5=Dependent)", fields: [
-        { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
-        { type: "select", label: "Dressing", path: "adl.dressing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Toileting", path: "adl.toileting", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Transferring", path: "adl.transferring", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Eating", path: "adl.eating", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Grooming", path: "adl.grooming", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
       ]},
       { title: "Fall History & Notes", fields: [
         { type: "input", label: "Falls in Last 90 Days", path: "fallHistory.fallsLast90Days", inputType: "number" },

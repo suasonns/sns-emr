@@ -10,23 +10,29 @@ type ThemeContextValue = {
 
 const THEME_VARS: Record<ThemeMode, Record<string, string>> = {
   dark: {
-    bg: "#0a1821",
-    bgAlt: "#0d1f2a",
-    card: "#101f2d",
-    cardSoft: "#162b38",
-    border: "#2b4256",
-    teal: "#63e7d3",
-    white: "#edf6ff",
-    muted: "#c0d5e5",
-    dim: "#7f9bb1",
+    // [VISUAL POLISH -- 2026-09-22] Modernized dark palette: less neon/
+    // saturated teal, clearer surface-elevation steps (bg < bgAlt < card <
+    // cardSoft), lower-contrast borders, deeper card shadows. Presentation
+    // only -- no RNICA field, validation, or behavior is affected by these
+    // token values.
+    bg: "#0a1119",
+    bgAlt: "#0e1922",
+    card: "#131f2b",
+    cardSoft: "#1a2938",
+    border: "#1e2b38",
+    teal: "#4fb8ac",
+    white: "#e7edf3",
+    muted: "#a6bacb",
+    dim: "#71889b",
     green: "#4ec98d",
-    blue: "#7ab6ff",
+    blue: "#6fa2d6",
     purple: "#8e7ae6",
     orange: "#f7bb5c",
     red: "#f56b6b",
     yellow: "#f4d06a",
     pink: "#ee7cc1",
-    shadow: "rgba(2, 6, 23, 0.46)",
+    shadow: "rgba(2, 6, 23, 0.55)",
+    shadowStrong: "rgba(1, 4, 10, 0.7)",
   },
   light: {
     bg: "#f3f8f7",
@@ -46,6 +52,7 @@ const THEME_VARS: Record<ThemeMode, Record<string, string>> = {
     yellow: "#b7861b",
     pink: "#cf5eb7",
     shadow: "rgba(15, 23, 42, 0.08)",
+    shadowStrong: "rgba(15, 23, 42, 0.16)",
   },
 };
 

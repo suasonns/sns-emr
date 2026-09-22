@@ -339,6 +339,14 @@ as physician certification.
 - Complete PPS and KPS; complete any diagnosis-applicable scale; provide
   required justification where configured.
 
+**Presentation-only addition (visual-polish pass)**
+- **[PRESENTATION-ONLY]** The ADL Assessment card (Bathing, Dressing,
+  Toileting, Transferring, Eating, Grooming) now renders on this screen
+  via a `dataSection: "musculoskeletal"` card override. Field paths,
+  storage, validation, LCD facts, HOPE mapping, and POC ownership remain
+  with `musculoskeletal` (Screen 6, Body Systems) — see that screen's
+  entry below. This is a visual relocation only.
+
 **Do not show**
 - Disabled, placeholder, "N/A," or irrelevant scales.
 
@@ -367,6 +375,12 @@ disabled.
 - Detail cards, repeatable wounds, oxygen/ventilator details,
   catheter/feeding/ostomy details, and other dependent controls only when
   applicable.
+
+**Presentation note (visual-polish pass)**
+- **[PRESENTATION-ONLY]** The ADL Assessment card now visually renders
+  under Screen 5 (Functional Status). Data ownership, validation, LCD
+  facts, and POC controls for ADL fields remain part of
+  `musculoskeletal` here; nothing about storage or behavior changed.
 
 **AI content**
 - Show structured findings and Intelligence findings only for supported

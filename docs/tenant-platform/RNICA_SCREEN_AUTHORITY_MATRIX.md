@@ -100,6 +100,14 @@ which screen currently exists.
 - **Conditional:** FAST (dementia-related, server-enforced), NYHA
   (cardiac-related, server-enforced), ECOG (**no server enforcement branch
   found — confirmed open defect**).
+- **Presentation-only addition:** the ADL Assessment card (Bathing,
+  Dressing, Toileting, Transferring, Eating, Grooming) is rendered here via
+  a `dataSection: "musculoskeletal"` card override (`RNICA.jsx`
+  `renderGenericSection`). Its fields, storage path
+  (`formData.musculoskeletal.adl.*`), validation, LCD facts, HOPE mapping,
+  and POC controls remain owned by `musculoskeletal` (Body Systems, §6) —
+  only its visual location moved. Rail/validation attribution for ADL
+  continues to route to Body Systems.
 - **Produces:** Functional evidence, HOPE data
   (`rnica_hope_workflow_service.py`), validation state, LCD facts
   (`buildClientLcdFacts()`, `RNICA.jsx`, reads `performanceStatus.pps/kps/
@@ -113,6 +121,10 @@ which screen currently exists.
   Cardiovascular, Respiratory, Infection, Gastrointestinal, Nutrition,
   Endocrine, Genitourinary, Musculoskeletal, Skin/Wounds, plus Imminent
   Death and SFV modules.
+- **Presentation note:** the ADL Assessment card visually renders under
+  Functional Status (§5) as of the visual-polish pass, but its data,
+  validation, LCD facts, and POC ownership remain part of
+  `musculoskeletal` here — no field, path, or behavior changed.
 - **Produces:** Clinical findings; feeds Structured Findings and LCD facts
   (confirmed: nutrition/musculoskeletal/genitourinary/gastrointestinal/
   vitals/respiratory fields are read directly by `buildClientLcdFacts()`).

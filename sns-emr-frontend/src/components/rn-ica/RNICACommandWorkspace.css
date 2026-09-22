@@ -490,6 +490,7 @@
   border-color: var(--sns-border);
   color: var(--sns-white);
   background: var(--sns-card);
+  box-shadow: 0 1px 2px var(--sns-shadow);
 }
 
 .rnica-rail__index {
@@ -510,9 +511,35 @@
   color: var(--sns-bg);
 }
 
+.rnica-rail__index--done { background: color-mix(in srgb, var(--sns-teal) 70%, var(--sns-border)); color: var(--sns-bg); }
+.rnica-rail__index--attention { background: var(--sns-red); color: var(--sns-white); }
+.rnica-rail__index--caution { background: var(--sns-orange); color: var(--sns-bg); }
+.rnica-rail__index--partial { box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--sns-teal) 55%, transparent); }
+
+.rnica-rail__item--attention { color: var(--sns-red); }
+.rnica-rail__item--caution:not(.is-active) { color: var(--sns-orange); }
+
 .rnica-rail__label { flex: 1 1 auto; min-width: 0; }
 
 .rnica-rail__status { flex: 0 0 auto; }
+
+.rnica-rail__status-badge { display: inline-flex; align-items: center; gap: 0.3rem; }
+
+.rnica-rail__status-dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 999px;
+  font-size: 0.6rem;
+  line-height: 1;
+}
+.rnica-rail__status-dot--done { background: var(--sns-teal); color: var(--sns-bg); }
+.rnica-rail__status-dot--attention { background: var(--sns-red); color: var(--sns-white); }
+.rnica-rail__status-dot--caution { background: var(--sns-orange); color: var(--sns-bg); }
+.rnica-rail__status-dot--partial { background: color-mix(in srgb, var(--sns-teal) 40%, transparent); color: var(--sns-white); }
+.rnica-rail__status-dot--neutral { background: var(--sns-border); color: var(--sns-dim); }
 
 /* Mobile workflow sheet/drawer -- opened from the "Workflow" trigger in the
    screen bar. Only rendered when open (see RnicaWorkflowSheet). */

@@ -20,15 +20,40 @@ function screenStatus(screen, { completedSections, errorKeys, warningKeys, route
   const completed = screen.moduleKeys.filter((key) => completedSections.includes(key)).length;
   const hasErrors = errorKeys.some((key) => screen.moduleKeys.includes(routeForRequirement(key)?.key));
   const hasWarnings = warningKeys.some((key) => screen.moduleKeys.includes(routeForRequirement(key)?.key));
-  return { kind: "module", total, completed, hasErrors, hasWarnings };
+  let tone = "neutral";
+  if (hasErrors) tone = "attention";
+  else if (total > 0 && completed === total) tone = "done";
+  else if (hasWarnings) tone = "caution";
+  else if (completed > 0) tone = "partial";
+  return { kind: "module", total, completed, hasErrors, hasWarnings, tone };
 }
+
+const STATUS_ICON = {
+  done: "\u2713",
+  attention: "!",
+  caution: "\u2022",
+  partial: "\u2022",
+  neutral: "",
+};
+
+const STATUS_LABEL = {
+  done: "Complete",
+  attention: "Needs attention",
+  caution: "Review recommended",
+  partial: "In progress",
+  neutral: "Not started",
+};
 
 function RailStatusBadge({ status }) {
   if (status.kind === "crossCutting") return null;
-  if (status.hasErrors) return <Badge variant="red">{status.completed}/{status.total}</Badge>;
-  if (status.total > 0 && status.completed === status.total) return <Badge variant="teal">Done</Badge>;
-  if (status.hasWarnings) return <Badge variant="orange">{status.completed}/{status.total}</Badge>;
-  return <Badge variant="neutral">{status.completed}/{status.total}</Badge>;
+  const tone = status.tone;
+  const variant = tone === "attention" ? "red" : tone === "caution" ? "orange" : tone === "done" ? "teal" : "neutral";
+  return (
+    <Badge variant={variant} className="rnica-rail__status-badge">
+      <span className={`rnica-rail__status-dot rnica-rail__status-dot--${tone}`} aria-hidden="true">{STATUS_ICON[tone]}</span>
+      {status.completed}/{status.total}
+    </Badge>
+  );
 }
 
 export function RnicaWorkflowRailList({ activeScreenKey, onSelectScreen, statusContext, onItemSelected }) {
@@ -37,18 +62,20 @@ export function RnicaWorkflowRailList({ activeScreenKey, onSelectScreen, statusC
       {RNICA_THIRTEEN_SCREENS.map((screen, index) => {
         const isActive = activeScreenKey === screen.key;
         const status = screenStatus(screen, statusContext);
+        const statusLabel = status.kind === "module" ? STATUS_LABEL[status.tone] : null;
         return (
           <li key={screen.key}>
             <button
               type="button"
-              className={`rnica-rail__item${isActive ? " is-active" : ""}`}
+              className={`rnica-rail__item${isActive ? " is-active" : ""}${status.kind === "module" ? ` rnica-rail__item--${status.tone}` : ""}`}
               aria-current={isActive ? "step" : undefined}
+              aria-label={statusLabel ? `${screen.label}: ${statusLabel}, ${status.completed} of ${status.total} sections complete` : screen.label}
               onClick={() => {
                 onSelectScreen(screen);
                 onItemSelected?.();
               }}
             >
-              <span className="rnica-rail__index">{index + 1}</span>
+              <span className={`rnica-rail__index${status.kind === "module" ? ` rnica-rail__index--${status.tone}` : ""}`}>{index + 1}</span>
               <span className="rnica-rail__label">{screen.label}</span>
               <span className="rnica-rail__status"><RailStatusBadge status={status} /></span>
             </button>
