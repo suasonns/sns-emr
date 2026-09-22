@@ -11403,8 +11403,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
-              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
-              onInsertNarrative={handleInsertAiNarrative}
+              // Withheld until the initial "load existing assessment" fetch
+              // resolves (see the effect that sets assessmentLoaded above).
+              // Otherwise VisitRecorderCard's auto-insert-on-ready effect can
+              // race that fetch: it sees assessmentId still at its initial
+              // null and creates a brand-new duplicate DRAFT instead of
+              // updating the real assessment that was about to load a
+              // moment later. Passing undefined here (not a no-op wrapper)
+              // is what matters: the auto-insert effect's own
+              // `if (!onInsertNarrative) return` guard skips it entirely
+              // without marking the recording as attempted, so it fires for
+              // real once assessmentLoaded flips true and this prop is
+              // supplied.
+              onInsertSymptomSeverity={assessmentLoaded ? handleInsertAiSymptomSeverity : undefined}
+              onInsertNarrative={assessmentLoaded ? handleInsertAiNarrative : undefined}
             />
           )}
           alerts={(
@@ -11638,8 +11650,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
-              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
-              onInsertNarrative={handleInsertAiNarrative}
+              // See the matching comment on the other VisitRecorderCard
+              // usage above: withheld until assessmentLoaded to prevent a
+              // race that creates a duplicate DRAFT assessment.
+              onInsertSymptomSeverity={assessmentLoaded ? handleInsertAiSymptomSeverity : undefined}
+              onInsertNarrative={assessmentLoaded ? handleInsertAiNarrative : undefined}
             />
             {!isOngoing && sfvStatus.required && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
