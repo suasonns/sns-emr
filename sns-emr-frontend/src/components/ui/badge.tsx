@@ -7,7 +7,7 @@ import { cn } from "../../lib/utils";
 // theme tokens (--sns-*) so both light and dark reference screenshots are
 // reproducible from the same component.
 const badgeVariants = cva(
-  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap",
+  "inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide whitespace-nowrap border-solid",
   {
     variants: {
       variant: {

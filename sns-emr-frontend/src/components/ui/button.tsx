@@ -9,7 +9,7 @@ const buttonVariants = cva(
     variants: {
       variant: {
         default: "bg-rnica-teal text-rnica-bg hover:opacity-90",
-        outline: "border border-rnica-teal text-rnica-teal bg-[color-mix(in_srgb,var(--sns-teal)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--sns-teal)_18%,transparent)]",
+        outline: "border border-solid border-rnica-teal text-rnica-teal bg-[color-mix(in_srgb,var(--sns-teal)_10%,transparent)] hover:bg-[color-mix(in_srgb,var(--sns-teal)_18%,transparent)]",
         ghost: "text-rnica-muted hover:bg-rnica-bgAlt hover:text-rnica-text",
       },
       size: {

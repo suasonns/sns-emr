@@ -84,8 +84,9 @@ export default function PatientStoryShadcn({
     <div className="flex flex-col gap-5" aria-labelledby="patient-story-title">
       <p id="patient-story-title" className="sr-only">Patient Story</p>
 
-      {/* Patient identity + facts row */}
-      <Card>
+      {/* Patient identity + facts row -- keeps the RnicaPatientHeader gradient
+          + teal accent border from the original design system */}
+      <Card className="border-l-4 border-l-rnica-teal bg-[linear-gradient(135deg,var(--sns-cardSoft)_0%,var(--sns-card)_65%)]">
         <CardContent className="py-4 flex flex-col gap-4">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div className="flex items-center gap-2">
