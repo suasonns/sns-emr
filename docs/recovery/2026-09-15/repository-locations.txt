@@ -1,0 +1,95 @@
+﻿Repository Identity - 2026-09-15T09:48:17.9123220-07:00
+============================================
+show-toplevel: C:/Users/rdsua/.copilot/repos/copilot-worktrees/sns-emr/suasonns-fantastic-memory
+git-dir: C:/Users/rdsua/.copilot/repos/sns-emr/.git/worktrees/suasonns-fantastic-memory
+branch: suasonns-fantastic-memory
+HEAD: b552fcb0e90d8eca25beacb55c5b35d3d575d1ee
+status --short --branch:
+## suasonns-fantastic-memory
+
+worktree list --porcelain:
+worktree C:/Users/rdsua/.copilot/repos/sns-emr
+HEAD b552fcb0e90d8eca25beacb55c5b35d3d575d1ee
+branch refs/heads/main
+
+worktree C:/Users/rdsua/.copilot/repos/copilot-worktrees/sns-emr/suasonns-fantastic-memory
+HEAD b552fcb0e90d8eca25beacb55c5b35d3d575d1ee
+branch refs/heads/suasonns-fantastic-memory
+
+
+branch --all --verbose --no-abbrev:
++ main                                                                     b552fcb0e90d8eca25beacb55c5b35d3d575d1ee Merge pull request #89 from suasonns/feature/rnica-narrative-auto-insert
+* suasonns-fantastic-memory                                                b552fcb0e90d8eca25beacb55c5b35d3d575d1ee Merge pull request #89 from suasonns/feature/rnica-narrative-auto-insert
+  remotes/origin/HEAD                                                      -> origin/main
+  remotes/origin/backup/full-stabilization-2026-09-03                      068500d79fcaf536575de52cedd3184fb1b86cc1 Ontology stabilization: test-database isolation, canonical treatment identity, and neurologic reasoning fixes
+  remotes/origin/backup/pre-sfv-engine                                     025835c0248a2cbdd900afe26de325ef3abefb11 LOCKED: Form Engine + RN ICA + HOPE mapping complete. Ready for SFV engine implementation.
+  remotes/origin/copilot/continue-work-on-app                              b552fcb0e90d8eca25beacb55c5b35d3d575d1ee Merge pull request #89 from suasonns/feature/rnica-narrative-auto-insert
+  remotes/origin/feature/alert-inbox-v1                                    ca795027e37e62f372e3f9a99cd4c8660c65b7b6 AI Patient Summary: hospice diagnosis prioritization, redesigned 7-section narrative
+  remotes/origin/feature/als-clinical-evidence-blueprint-v1                e368ed1b27edb2c83cce9df87fb13a2cfd0c726f Add ALS Clinical Evidence Blueprint v1 (PR #55)
+  remotes/origin/feature/chf-disease-blueprint-v1                          5fb5d2e953e740f0b6028efb2a1d02aa60e669e3 Add CHF Clinical Evidence Blueprint v1 (PR #50)
+  remotes/origin/feature/dementia-clinical-evidence-blueprint-v1           66b5b9e42bd7a65fcc126a30a1680350e9735fc3 Add Dementia Clinical Evidence Blueprint v1 (PR #51)
+  remotes/origin/feature/functional-assessment-framework-v1                e71f21a631c7ed15508b846422a2d72cb161a06e Align content_review_status enum with approved provenance model
+  remotes/origin/feature/hiv-clinical-evidence-blueprint-v1                b2850713ca60da57e09fb0c62afba2ee32d4a06f Add HIV Clinical Evidence Blueprint v1 (PR #56)
+  remotes/origin/feature/liver-clinical-evidence-blueprint-v1              6f4eaf23a2ff54d7a24f4270cd3bc98f9175fe50 Add Liver Clinical Evidence Blueprint v1 (PR #54)
+  remotes/origin/feature/oncology-breast-cancer-identity-v1                d7521e321e0619d0d41774269779f82263526e69 ﻿Breast Cancer Production Identity Manifest v1 (PR #46)
+  remotes/origin/feature/oncology-colorectal-rectal-cancer-identity-v1     a046a6936d8e6ea7592587dc9e5ddbc075c6ef3a fix: scope Oncology Foundation acceptance tests to exact manifest identity
+  remotes/origin/feature/oncology-lung-cancer-identity-v1                  081e1b6cc94b43cd25d6e64057eb389924c0a063 Add Lung Cancer Production Identity Manifest v1 (PR #47)
+  remotes/origin/feature/ontology-ak-endocrine-diabetes                    a7ec4a683197a5ebfdb3b298e857d23449414a17 Add Endocrine System (Diabetes Mellitus and Related Disorders) ontology A-K population
+  remotes/origin/feature/ontology-ak-pulmonary-copd                        2e61c22b888cdbf7fcdcbe80f70de6fb39d7ff84 Represent Respiratory Therapy as supportive-treatment clinical knowledge
+  remotes/origin/feature/ontology-ak-renal-ckd-esrd                        9e93ccc37cbbdc0db2f3f233fe388a201d314969 Add Renal System CKD/ESRD ontology A-K population and tests
+  remotes/origin/feature/ontology-als-production-manifest-v1               b39231356e72e05e08123a16c75a60a3896e1d5c Add ALS Production Knowledge Manifest v1 (PR #43)
+  remotes/origin/feature/ontology-cardiovascular-production-manifest-v1    e96058757985d797a7d903c1d325c0120e883110 Add Cardiovascular Production Knowledge Manifest v1
+  remotes/origin/feature/ontology-dementia-production-hardening-v1         b329f7ae8039ce7e2dfb7357d438238ffacd53a1 Add Dementia Production Hardening v1 (PR #44)
+  remotes/origin/feature/ontology-hiv-production-manifest-v1               29592df05064b1c599f1ce5f2c895f8a3f93bcb5 Add HIV Production Knowledge Manifest v1 (PR #42)
+  remotes/origin/feature/ontology-liver-production-manifest-v1             e98436f699ef7940e9c43a0be2f8616137a83428 Add Liver Production Knowledge Manifest v1 (PR #41)
+  remotes/origin/feature/ontology-neurologic-clinical-reasoning-completion 0ff28cf49dc1f4bf5d25ee5c8604fc737bc56d9a Fix PR #36 defects: restore approved Painful Muscle Spasm concept, reconcile stale dev-DB applicability row
+  remotes/origin/feature/ontology-neurologic-production-manifest-v1        374820807206abda559608d5001281033fee0427 Unblock Neurologic Production Manifest v1: full 123/557/84 import
+  remotes/origin/feature/ontology-oncology-foundation-v1                   3be026ac0b209f8dd80c9ace05135257a7845a91 fix(oncology): correct PR #45 to source-faithful foundation structure
+  remotes/origin/feature/ontology-phase2-neurologic-coverage-repair        c4346a8d18b2a4cc8e6b4baeed495152a19de45d Neurologic Phase 2: atomic concept coverage repair
+  remotes/origin/feature/ontology-phase2-neurologic-expansion              5a54cb7443237ed6a436f4a9e379c4db125514bb Add Neurologic Phase 2 production-knowledge expansion
+  remotes/origin/feature/ontology-pulmonary-production-manifest-v1         5625a852f21025bff9478768f3db1c0e019d70c0 Add Pulmonary Production Knowledge Manifest v1
+  remotes/origin/feature/ontology-renal-production-manifest-v1             24ff1f15c020694646fed137b70ff44000f4da64 Correct Renal manifest to preserve ARF/CRF pathway separation and exact LCD thresholds
+  remotes/origin/feature/patient-contact-harvesting                        8d5376fb6ba3987a64383e1a905e9f67ff833c9c Add Patient Contact Harvesting from documents (WIP, moved from feature/production-hnp-clinical-runtime)
+  remotes/origin/feature/production-hnp-clinical-runtime                   832f72413b6a3046f1b8438bc4f68e59ff1fc517 ﻿fix(documents): authenticate View/Download requests via API client
+  remotes/origin/feature/provider-role-normalization-dme-workflow          36e905b06714cd54d497d3358e4fbe984c423855 Round 2: remove hardcoded mock patient identity in overview fallback
+  remotes/origin/feature/pulmonary-clinical-evidence-blueprint-v1          577bbd24b2c9c6430d6408ce6e03c12e4cfd684c Add Pulmonary Clinical Evidence Blueprint v1 (PR #52)
+  remotes/origin/feature/renal-clinical-evidence-blueprint-v1              a223b2f397c7e51d2a8019e06bdb819d127a82b9 Add Renal Clinical Evidence Blueprint v1 (PR #53)
+  remotes/origin/feature/rnica-narrative-auto-insert                       bc4f041d503a8d5c405f84784640b3397271805b test(rnica): cover VisitRecorderCard auto-insert narrative behavior
+  remotes/origin/feature/rnica-structured-findings                         dcf1884e98fbd83232f345300e02441e495d3384 Add StructuredFinding contract for AI-populated RNICA fields
+  remotes/origin/feature/rnica-structured-findings-apply                   f9583ef0230e5539fc6a5a44f2377f429bb05373 fix: never auto-apply boolean-presence findings over an RN-entered false
+  remotes/origin/feature/structured-findings-acceptance-analytics          5ae977653bec9345267ec9c8e0758b03a055675b Add Structured Findings Acceptance Analytics (PR #16)
+  remotes/origin/feature/structured-findings-bulk-analytics                57bf372d8bd058db899f550fd3473ed2f71ac3bb feat(rnica): Apply All Non-Conflicting for structured findings
+  remotes/origin/feature/structured-findings-bulk-review                   8b3f4278f8d8c8e6130b2d583183df44836ab4b3 Prevent concurrent bulk and per-signal actions on the same finding
+  remotes/origin/feature/structured-findings-rn-productivity-metrics       06cede88c99ee6f20127d15a775f813ce69923ea Add RN Productivity Metrics (PR #17)
+  remotes/origin/fix/cap-calculation-hipaa-banner-jsx                      8c5390c277b14a55291aa314df2a7b2d982f2b9f Fix invalid string-escaping in CapCalculationPage HIPAA banner JSX
+  remotes/origin/fix/document-download-auth                                2ebafb13114687aff593e8cf6e4b76473600f516 ﻿fix(documents): authenticate View/Download requests via API client
+  remotes/origin/fix/ecog-diagnosis-keyword-match                          dfa346a158ca917e5d2d5a10cf250757c1f72589 fix(rnica): free-text fallback for NYHA/FAST/ECOG scale gating
+  remotes/origin/fix/lint-field-test-critical                              ecc9d5b0066affa9162d031c00d681f36f8e66b3 fix: resolve field-test-critical ESLint errors (release lint triage)
+  remotes/origin/fix/rnica-apply-verified-writes                           4607de2d6d8587158793197560fa583ec63f6034 Add RN wound-review workflow, fix RNICA hardcoded banner, add agency Medical Director resolver
+  remotes/origin/integration/pr7-rn-ica-command-workspace                  3793289ad342d934a68d594d421765a0c7940d7b Merge PR #7 (RN ICA Command Workspace pilot) into rnica-facesheet-clean
+  remotes/origin/main                                                      b552fcb0e90d8eca25beacb55c5b35d3d575d1ee Merge pull request #89 from suasonns/feature/rnica-narrative-auto-insert
+  remotes/origin/offline-capture-sync-architecture                         63dee1b66eb64b4977362a966a954f94e12f88b9 Queue structured-finding review dispositions for offline replay
+  remotes/origin/ontology-ak-neuro-cardio-reproducibility                  d2398a65a17daa90c4d97e81daba18cce8e3dcae Merge pull request #32 from suasonns/feature/ontology-ak-pulmonary-copd
+  remotes/origin/phase-a-document-durability                               ce18cb9c3ef49c6d67fbd7101c46d30a3cb10d58 Phase A: durable document-processing pipeline (state machine, idempotency, recovery sweep)
+  remotes/origin/pr57-stroke-coma-ceb                                      5fd627550dcaa9ad792b1941942be539abc3dadc PR59: implement read-only patient-level runtime evidence synthesis
+  remotes/origin/rnica-coverage-expansion                                  797f5c08e9baa4ff0fa910aca8265720baf1a579 ﻿Fix 9 pre-existing test-infrastructure failures found after RNICA sprint
+  remotes/origin/rnica-facesheet-clean                                     a6bfff106960346d051e3097be8745118425c64d Merge pull request #10 from suasonns/fix/lint-field-test-critical
+  remotes/origin/rnica-section-1-completion                                efc521a2f37ec85b97d297206776ddeb1ba56502 Add HTTP-level tests for CHHA aide-visit endpoints; harden test DB cleanup
+  remotes/origin/safety/pre-clean-baseline                                 7b56b749571723a3e045405f3b706da86abc960b docs(engineering): add change ledger for zero-failure baseline stabilization pass
+  remotes/origin/suasonns-billing-audit-readiness-foundation               203f1c6c6f2ed66b65e41c69159ea9e667addccd docs(billing): record PR #75 approval per SNS governance model
+  remotes/origin/suasonns-billing-readiness-workflow                       7ed44d5925cac9ff2df5552f3d6c735a30b89d50 Fix CI schema-drift crash: register missing billing models in aggregator
+  remotes/origin/suasonns-fix-recovery-release-blockers                    345ae6f48a3617e884494cbd6b8e0e8e46bff019 Restore recovered clinical test coverage
+  remotes/origin/suasonns-frontend-authorization                           6d11e1fbe27cb1cef0c8770a6cfd97a1d93eca7e Add frontend authorization guards
+  remotes/origin/suasonns-harden-auth-development-logins                   bd8249e423d62d39f9b1e2c4fb0d3bbf1f6ed158 Harden authentication and development logins
+  remotes/origin/suasonns-recert-reasoning-v1-verify                       c7bfff98fdda5047b5a4d6054a96a64a0a48d1c4 Fix preflight CI: isolate TEST_DATABASE_URL from application DATABASE_URL
+  remotes/origin/suasonns-recording-storage-hardening                      27ce0573c71869f9d1828ac26f99ad5401bd360c Harden visit recording storage
+  remotes/origin/suasonns-rn-ica-command-workspace                         e82555645b1d82579e49c0e9e406314be90dc08d Move LCD narrative to end of Diagnoses page in pilot mode
+  remotes/origin/suasonns-rnica-integration-229                            ff000f893b75974af646fcdae771661b752745d1 fix: repair pre-existing patient_facesheet migration-chain gaps
+  remotes/origin/suasonns-structured-findings-backfill                     b4e39bb690801337a9e8dedcc8bbb8185e40fcb9 Expand structured-finding extraction coverage (PR 21)
+  remotes/origin/suasonns-super-robot                                      946d8030345e3c3adf09bf3d06ecbbf2d0eda9d9 Fix Apply-to-RNICA persistence: commit field writes before marking signals applied
+  remotes/origin/test-database-per-worktree-isolation                      176460c269a4168867c6c5184a6368b52f6981cc Fix cross-manifest ownership assumption in disease production-source-manifest tests
+  remotes/origin/test-pr7-merge-probe                                      be440e7e69111a21d81f402f4458861db6a23521 Merge PR #7 (RN ICA Command Workspace pilot) into rnica-facesheet-clean
+
+remote -v:
+origin	https://github.com/suasonns/sns-emr.git (fetch)
+origin	https://github.com/suasonns/sns-emr.git (push)

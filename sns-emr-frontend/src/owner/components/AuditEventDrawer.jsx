@@ -134,27 +134,46 @@ export default function AuditEventDrawer({ event, onClose, onSelectRelated }) {
     };
   }, [event?.entity_id, event?.log_id]);
 
-  if (!event) return null;
+  if (!event) {
+    return (
+      <div className="w-full h-full bg-sns-card border border-sns-border rounded-xl shadow-panel flex flex-col overflow-hidden">
+        <div className="px-5 py-4 border-b border-sns-border shrink-0">
+          <h3 className="text-base font-bold text-text-primary">Event Details</h3>
+        </div>
+        <div className="flex-1 flex flex-col items-center justify-center px-5 text-center">
+          <div className="text-3xl mb-3 opacity-40">🗂️</div>
+          <p className="text-sm font-semibold text-text-secondary">No event selected</p>
+          <p className="text-xs text-text-tertiary mt-1 max-w-[220px]">
+            Select a row from the table to inspect its full details, before/after state, and related events.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   const { pairs: beforeAfterPairs, rest: remainingMetadata } = splitMetadata(event.event_metadata);
   const hasRemainingMetadata = Object.keys(remainingMetadata).length > 0;
 
   return (
-    <div className="fixed inset-0 z-[1000] flex justify-end" onKeyDown={(e) => { if (e.key === 'Escape') onClose(); }}>
-      <div className="absolute inset-0 bg-black/50" onClick={onClose} />
-      <div className="relative w-full max-w-[440px] h-full bg-sns-card border-l border-sns-border shadow-panel flex flex-col overflow-hidden">
-        <div className="px-5 py-4 border-b border-sns-border shrink-0">
-          <div className="flex items-center justify-between">
-            <h3 className="text-base font-bold text-text-primary">Event Details</h3>
+    <div
+      className="w-full h-full bg-sns-card border border-sns-border rounded-xl shadow-panel flex flex-col overflow-hidden"
+      onKeyDown={(e) => { if (e.key === 'Escape') onClose?.(); }}
+    >
+      <div className="px-5 py-4 border-b border-sns-border shrink-0">
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-bold text-text-primary">Event Details</h3>
+          {onClose && (
             <button
               type="button"
               onClick={onClose}
               className="w-7 h-7 rounded-md flex items-center justify-center text-text-tertiary hover:text-text-primary hover:bg-sns-border-subtle transition-colors"
-              aria-label="Close"
+              aria-label="Clear selection"
+              title="Clear selection"
             >
               <IconClose />
             </button>
-          </div>
+          )}
+        </div>
           <button
             type="button"
             className="mt-1 text-[11px] font-mono text-text-tertiary hover:text-ai transition-colors"
@@ -310,6 +329,5 @@ export default function AuditEventDrawer({ event, onClose, onSelectRelated }) {
           )}
         </div>
       </div>
-    </div>
   );
 }

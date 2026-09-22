@@ -67,6 +67,7 @@ from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.admission_action_request import AdmissionActionRequest
 from app.models.plan_of_care import PlanOfCare
+from app.models.poc import POCProblem, POCGoal, POCIntervention
 from app.models.plan_of_care_version import PlanOfCareVersion
 from app.models.rnica_amendment import RnicaAmendment
 from app.models.msw_ica_assessment import MswIcaAssessment
@@ -227,9 +228,29 @@ from app.models.poc_physician_approval import (
     PocPhysicianApproval,
     PocPhysicianApprovalDocument,
     PocPhysicianApprovalAuditEvent,
-)
+)# ---------------------------------------------------------
 
 # ---------------------------------------------------------
+# ✅ SHARED SNS COMPLIANCE FRAMEWORK (CMS FY2027 / CA two-hour response --
+#    issues #142-#145). Extends existing ElectionAddendumRequest,
+#    RnicaAssessment (HOPE), and IDGReview rather than duplicating them.
+# ---------------------------------------------------------
+
+from app.models.compliance_obligation import ComplianceObligation, ComplianceAuditEvent
+from app.models.patient_response import (
+    PatientResponseEvent,
+    NurseResponseAssignment,
+    InterimPatientSupport,
+    ResponseIntervention,
+    PatientResponseAuditEvent,
+)
+from app.models.clinical_outcome import ClinicalOutcomeRecord
+from app.models.rnica_hope_submission_attempt import RnicaHopeSubmissionAttempt
+from app.models.record_version import RecordVersion
+from app.billing.models.election_addendum_request import (
+    ElectionAddendumDetermination,
+    ElectionAddendumAuditEvent,
+)# ---------------------------------------------------------
 # ✅ PHYSICIAN IDENTITY / ORDERS PHASE 1 / CTI / F2F / SIGNATURE AUTHORITY
 # ---------------------------------------------------------
 
