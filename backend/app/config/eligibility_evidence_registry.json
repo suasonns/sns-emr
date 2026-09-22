@@ -69,6 +69,17 @@
       ]
     },
 
+    "ecog_score": {
+      "label": "ECOG Performance Status",
+      "category": "disease_progression",
+      "harvest": true,
+      "required_when_visible": true,
+      "workflows": [
+        "ADMISSION",
+        "RECERTIFICATION"
+      ]
+    },
+
     "adl_dependency_count": {
       "label": "ADL Dependency Count",
       "category": "functional_status",

@@ -11376,6 +11376,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             assessmentStage: isOngoing ? (assessmentType === "recert" ? "Recertification" : "Update assessment") : "Initial admission",
             whyHospiceNarrative: formData.diagnoses.clinicalNarrative || "",
             recentHospitalization: formData.diagnoses.recentHospitalizations || "",
+            functionalDeclineNarrative: formData.performanceStatus?.functionalDeclineNotes || "",
             caregiver: {
               name: pcg.name || "",
               relationship: pcg.relationship || "",

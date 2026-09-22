@@ -142,6 +142,20 @@ CARDIAC_DIAGNOSIS_KEYWORDS = {
     "I42",
 }
 
+ONCOLOGY_DIAGNOSIS_KEYWORDS = {
+    "CANCER",
+    "MALIGNANCY",
+    "MALIGNANT",
+    "METASTATIC",
+    "METASTASIS",
+    "CARCINOMA",
+    "SARCOMA",
+    "LYMPHOMA",
+    "LEUKEMIA",
+    "MYELOMA",
+    "NEOPLASM",
+}
+
 ROS_SECTION_ALIASES = {
     "constitutional": "constitutional",
     "general": "constitutional",
@@ -444,11 +458,38 @@ RN_ICA_REQUIRED_FIELD_GROUPS = [
         ],
     },
     {
+        "label": "CPR Discussion Status",
+        "section": "Advance Care Planning",
+        "paths": [
+            "advancedCarePlanning.cprPreferenceAskedStatus",
+            "demographics.advancedCarePlanning.cprPreferenceAskedStatus",
+            "cpr_preference_asked_status",
+        ],
+    },
+    {
+        "label": "Life-Sustaining Treatment Discussion Status",
+        "section": "Advance Care Planning",
+        "paths": [
+            "advancedCarePlanning.lifeSustainingAskedStatus",
+            "demographics.advancedCarePlanning.lifeSustainingAskedStatus",
+            "life_sustaining_asked_status",
+        ],
+    },
+    {
         "label": "Life-Sustaining Treatment Preference",
         "section": "Advance Care Planning",
         "paths": [
             "advancedCarePlanning.lifeSustainingTreatmentPreference",
             "life_sustaining_treatment_preference",
+        ],
+    },
+    {
+        "label": "Hospitalization Discussion Status",
+        "section": "Advance Care Planning",
+        "paths": [
+            "advancedCarePlanning.hospitalizationAskedStatus",
+            "demographics.advancedCarePlanning.hospitalizationAskedStatus",
+            "hospitalization_asked_status",
         ],
     },
     {
@@ -1008,9 +1049,10 @@ def _validate_required_functional_assessments(
     Conditionally required when clinically relevant:
     - FAST when dementia-related diagnosis exists
     - NYHA when cardiac-related diagnosis exists
+    - ECOG when an oncology/metastatic/hematologic diagnosis exists
 
     Routine and PRN visits are not required to document
-    PPS, KPS, FAST, or NYHA.
+    PPS, KPS, FAST, NYHA, or ECOG.
     """
 
     discipline = _clean_upper(
@@ -1119,6 +1161,11 @@ def _validate_required_functional_assessments(
         for keyword in CARDIAC_DIAGNOSIS_KEYWORDS
     )
 
+    oncology_related = any(
+        keyword in diagnosis_text
+        for keyword in ONCOLOGY_DIAGNOSIS_KEYWORDS
+    )
+
     pps = (
         content.get("pps")
         or content.get("pps_score")
@@ -1203,6 +1250,25 @@ def _validate_required_functional_assessments(
         or _obj(assessment.get("scores")).get("nyha_class")
     )
 
+    ecog = (
+        content.get("ecog")
+        or content.get("ecog_score")
+        or assessment.get("ecog")
+        or assessment.get("ecog_score")
+        or _obj(content.get("functional_scores")).get("ecog")
+        or _obj(content.get("functional_scores")).get("ecog_score")
+        or _obj(assessment.get("functional_scores")).get("ecog")
+        or _obj(assessment.get("functional_scores")).get("ecog_score")
+        or _obj(content.get("functional_assessment")).get("ecog")
+        or _obj(content.get("functional_assessment")).get("ecog_score")
+        or _obj(assessment.get("functional_assessment")).get("ecog")
+        or _obj(assessment.get("functional_assessment")).get("ecog_score")
+        or _obj(content.get("scores")).get("ecog")
+        or _obj(content.get("scores")).get("ecog_score")
+        or _obj(assessment.get("scores")).get("ecog")
+        or _obj(assessment.get("scores")).get("ecog_score")
+    )
+
     required_scores: list[dict[str, str]] = [
         {
             "key": "pps",
@@ -1268,6 +1334,27 @@ def _validate_required_functional_assessments(
                 ),
                 "correction": (
                     "Document an NYHA classification before finalizing this assessment."
+                ),
+            }
+        )
+
+    if (
+        oncology_related
+        and is_required_when_visible(
+            "ecog_score"
+        )
+    ):
+        required_scores.append(
+            {
+                "key": "ecog",
+                "label": "ECOG",
+                "value": ecog,
+                "reason": (
+                    "ECOG is required because an oncology/metastatic/hematologic "
+                    "diagnosis is documented and disease progression is clinically relevant."
+                ),
+                "correction": (
+                    "Document an ECOG performance status before finalizing this assessment."
                 ),
             }
         )

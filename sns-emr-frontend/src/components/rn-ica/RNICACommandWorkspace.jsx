@@ -15,7 +15,6 @@ import {
   AutosaveFooter,
   ClinicalRiskRow,
   ContinueAction,
-  DocumentedValue,
   MissingInfoCard,
   PrimaryCard,
   RnicaNarrative,
@@ -101,6 +100,16 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
     ? "No primary caregiver identified"
     : [caregiver.name, caregiver.relationship].filter(Boolean).join(" \u2014 ");
 
+  const functionalDecline = patient.functionalDeclineNarrative;
+
+  const storySteps = [
+    { key: "why", label: "Why Hospice" },
+    { key: "hosp", label: "Recent Hospitalization" },
+    { key: "concerns", label: "Current Clinical Concerns" },
+    { key: "decline", label: "Functional Decline" },
+    { key: "caregiver", label: "Caregiver Overview" },
+  ];
+
   return (
     <div className="rnica-ds-patient-story" aria-labelledby="patient-story-title">
       <RnicaPageHeader
@@ -118,7 +127,11 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
       <TwoColumnGrid
         main={(
           <>
-            <PrimaryCard title="Why Hospice" subtitle="Clinical narrative, owned by Diagnoses & LCD">
+            <PrimaryCard
+              title="Why Hospice"
+              subtitle="Clinical narrative, owned by Diagnoses & LCD"
+              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "why") + 1}</span>}
+            >
               <RnicaNarrative
                 text={patient.whyHospiceNarrative}
                 source="Diagnosis & LCD"
@@ -126,7 +139,11 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
               />
             </PrimaryCard>
 
-            <PrimaryCard title="Recent Hospitalization" subtitle="Owned by Diagnoses & LCD">
+            <PrimaryCard
+              title="Recent Hospitalization"
+              subtitle="Owned by Diagnoses & LCD"
+              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "hosp") + 1}</span>}
+            >
               <RnicaNarrative
                 text={patient.recentHospitalization}
                 source="Diagnosis & LCD"
@@ -134,7 +151,11 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
               />
             </PrimaryCard>
 
-            <PrimaryCard title="Current Clinical Concerns" subtitle="Documented findings requiring review -- no derived risk scoring engine is applied">
+            <PrimaryCard
+              title="Current Clinical Concerns"
+              subtitle="Documented findings requiring review -- no derived risk scoring engine is applied"
+              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "concerns") + 1}</span>}
+            >
               {documentedRiskRows.length === 0 && (
                 <p className="rnica-ds-muted">No documented clinical concerns currently flagged across Safety, Pain, Psychosocial, or Caregiver screens.</p>
               )}
@@ -143,11 +164,27 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
               ))}
             </PrimaryCard>
 
-            <SecondaryCard title="Caregiver Overview">
+            <PrimaryCard
+              title="Functional Decline"
+              subtitle="Owned by Functional Status"
+              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "decline") + 1}</span>}
+            >
+              <RnicaNarrative
+                text={functionalDecline}
+                source="Functional Status"
+                onNavigateToSource={() => onNavigate("performanceStatus")}
+              />
+            </PrimaryCard>
+
+            <SecondaryCard
+              title="Caregiver Overview"
+              actions={<span className="rnica-ds-story-step">{storySteps.findIndex((s) => s.key === "caregiver") + 1}</span>}
+            >
               {notYetDocumented(caregiverSummary) ? (
-                <SourceLink onClick={() => onNavigate("caregiverAssessment")}>
-                  <DocumentedValue value={caregiverSummary} />
-                </SourceLink>
+                <div className="rnica-ds-narrative-empty">
+                  <span className="rnica-ds-undocumented">NOT YET DOCUMENTED</span>
+                  <SourceLink onClick={() => onNavigate("caregiverAssessment")}>Add in Caregiver & Support</SourceLink>
+                </div>
               ) : (
                 <>
                   <p>

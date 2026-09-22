@@ -11,41 +11,62 @@
 .rnica-ds-muted { color: var(--sns-muted); }
 
 /* Patient Story (Screen 1) reference layout wrapper */
-.rnica-ds-patient-story { display: flex; flex-direction: column; gap: 1rem; }
-.rnica-ds-patient-story__intro { color: var(--sns-muted); margin: 0; font-size: 0.92rem; }
+.rnica-ds-patient-story { display: flex; flex-direction: column; gap: 1.35rem; }
+.rnica-ds-patient-story__intro { color: var(--sns-muted); margin: 0; font-size: 0.92rem; max-width: 62ch; }
 
 /* Cards */
 .rnica-ds-card {
   background: var(--sns-card);
   border: 1px solid var(--sns-border);
   border-radius: 0.75rem;
-  padding: 1rem 1.1rem;
+  padding: 1.1rem 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.65rem;
   box-shadow: 0 1px 2px var(--sns-shadow);
 }
-.rnica-ds-card--secondary { background: var(--sns-cardSoft); }
+.rnica-ds-card--primary { border-left: 3px solid var(--sns-teal); padding-left: 1.1rem; }
+.rnica-ds-card--secondary { background: var(--sns-cardSoft); padding: 0.85rem 1rem; }
 .rnica-ds-card--ai {
   border-color: var(--sns-teal);
   background: var(--sns-cardSoft);
+  box-shadow: 0 0 0 1px var(--sns-teal), 0 4px 14px var(--sns-shadow);
 }
 .rnica-ds-card--warning { border-color: var(--sns-orange); }
 
 .rnica-ds-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
-.rnica-ds-card__title { margin: 0; font-size: 1rem; font-weight: 700; color: var(--sns-white); }
-.rnica-ds-card__title--secondary { font-size: 0.85rem; }
+.rnica-ds-card__title { margin: 0; font-size: 1.05rem; font-weight: 800; color: var(--sns-white); letter-spacing: -0.01em; }
+.rnica-ds-card__title--secondary { font-size: 0.85rem; font-weight: 700; }
 .rnica-ds-card__title--ai, .rnica-ds-card__title--warning { display: flex; align-items: center; gap: 0.4rem; }
-.rnica-ds-card__title--ai { color: var(--sns-teal); }
+.rnica-ds-card__title--ai { color: var(--sns-teal); font-size: 1rem; }
 .rnica-ds-card__title--warning { color: var(--sns-orange); }
 .rnica-ds-card__subtitle { margin: 0.15rem 0 0; font-size: 0.78rem; color: var(--sns-muted); }
 .rnica-ds-card__meta { font-size: 0.72rem; color: var(--sns-muted); white-space: nowrap; }
 .rnica-ds-card__body { display: flex; flex-direction: column; gap: 0.55rem; font-size: 0.85rem; color: var(--sns-white); }
-.rnica-ds-card__actions { display: flex; gap: 0.4rem; }
+.rnica-ds-card__actions { display: flex; gap: 0.4rem; align-items: center; }
+
+/* Numbered flow badge -- gives the main Patient Story column a clear
+   read order (Why Hospice -> Recent Hospitalization -> ... -> Caregiver)
+   instead of reading as an unordered pile of cards. */
+.rnica-ds-story-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  background: var(--sns-bgAlt);
+  border: 1px solid var(--sns-border);
+  color: var(--sns-muted);
+  font-size: 0.72rem;
+  font-weight: 800;
+  flex: none;
+}
 
 .rnica-ds-ai-dot {
-  display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  display: inline-block; width: 0.55rem; height: 0.55rem; border-radius: 50%;
   background: var(--sns-teal);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--sns-teal) 25%, transparent);
 }
 
 .rnica-ds-inset {
@@ -116,10 +137,119 @@
 .rnica-ds-state--error { background: var(--sns-cardSoft); color: var(--sns-red); border: 1px solid var(--sns-red); }
 
 /* Two-column layout (main content + intelligence/status rail) */
-.rnica-ds-two-col { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 1rem; align-items: start; }
-.rnica-ds-two-col__main, .rnica-ds-two-col__rail { display: flex; flex-direction: column; gap: 0.85rem; min-width: 0; }
+.rnica-ds-two-col { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 1.35rem; align-items: start; }
+.rnica-ds-two-col__main, .rnica-ds-two-col__rail { display: flex; flex-direction: column; gap: 1rem; min-width: 0; }
 
 @media (max-width: 900px) {
   .rnica-ds-two-col { grid-template-columns: 1fr; }
   .rnica-ds-two-col__rail { order: 2; }
+}
+
+/* ------------------------------------------------------------------ */
+/* Phase 1/2 additions: page header, persistent patient header, and    */
+/* metric/summary card variants. Still theme-token-only; no colors are */
+/* hardcoded here, and nothing below owns or persists clinical data.   */
+/* ------------------------------------------------------------------ */
+
+/* Breadcrumb + screen title, mirrors the approved Figma page header */
+.rnica-ds-page-header {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  margin-bottom: 0.25rem;
+}
+.rnica-ds-page-header__crumb {
+  font-size: 0.72rem;
+  color: var(--sns-muted);
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+.rnica-ds-page-header__crumb-current { color: var(--sns-teal); font-weight: 600; }
+.rnica-ds-page-header__title { margin: 0; font-size: 1.35rem; font-weight: 800; color: var(--sns-white); }
+.rnica-ds-page-header__actions { display: flex; gap: 0.5rem; align-items: center; }
+.rnica-ds-page-header__row { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+
+/* Persistent patient-context header -- MRN / diagnosis / admission / PPS */
+.rnica-ds-patient-header {
+  background: linear-gradient(135deg, var(--sns-cardSoft) 0%, var(--sns-card) 65%);
+  border: 1px solid var(--sns-border);
+  border-left: 4px solid var(--sns-teal);
+  border-radius: 0.85rem;
+  padding: 1.15rem 1.35rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  box-shadow: 0 2px 6px var(--sns-shadow);
+}
+.rnica-ds-patient-header__top { display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; }
+.rnica-ds-patient-header__name-row { display: flex; align-items: center; gap: 0.6rem; flex-wrap: wrap; }
+.rnica-ds-patient-header__name { margin: 0; font-size: 1.55rem; font-weight: 800; color: var(--sns-white); letter-spacing: -0.01em; }
+.rnica-ds-patient-header__age { font-size: 0.8rem; color: var(--sns-muted); background: var(--sns-bgAlt); border: 1px solid var(--sns-border); border-radius: 999px; padding: 0.1rem 0.55rem; }
+.rnica-ds-patient-header__facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+  gap: 0.7rem 1.5rem;
+  padding-top: 0.35rem;
+  border-top: 1px solid var(--sns-border);
+}
+.rnica-ds-patient-header__fact { display: flex; flex-direction: column; gap: 0.1rem; min-width: 0; }
+.rnica-ds-patient-header__fact-label { font-size: 0.65rem; letter-spacing: 0.04em; text-transform: uppercase; color: var(--sns-dim); }
+.rnica-ds-patient-header__fact-value { font-size: 0.9rem; font-weight: 700; color: var(--sns-white); overflow-wrap: anywhere; }
+.rnica-ds-patient-header__pps { display: flex; align-items: center; gap: 0.35rem; }
+.rnica-ds-patient-header__pps-dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; background: var(--sns-orange); }
+
+@media (max-width: 640px) {
+  .rnica-ds-patient-header__facts { grid-template-columns: repeat(2, 1fr); }
+  .rnica-ds-patient-header__top { flex-direction: column; align-items: flex-start; }
+}
+
+/* Metric / summary card variants (Functional Status PPS/KPS style tiles) */
+.rnica-ds-metric-card {
+  background: var(--sns-cardSoft);
+  border: 1px solid var(--sns-border);
+  border-radius: 0.65rem;
+  padding: 0.8rem 0.9rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+}
+.rnica-ds-metric-card__label { font-size: 0.78rem; color: var(--sns-muted); display: flex; align-items: center; gap: 0.35rem; }
+.rnica-ds-metric-card__value { font-size: 1.9rem; font-weight: 800; color: var(--sns-white); display: flex; align-items: baseline; gap: 0.5rem; }
+.rnica-ds-metric-card__bar { height: 0.35rem; border-radius: 999px; background: var(--sns-border); overflow: hidden; }
+.rnica-ds-metric-card__bar-fill { height: 100%; background: var(--sns-orange); border-radius: 999px; }
+.rnica-ds-metric-card__note { font-size: 0.78rem; color: var(--sns-muted); }
+
+.rnica-ds-summary-card {
+  background: var(--sns-card);
+  border: 1px solid var(--sns-border);
+  border-radius: 0.75rem;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.rnica-ds-summary-card__row { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; padding: 0.3rem 0; border-bottom: 1px solid var(--sns-border); }
+.rnica-ds-summary-card__row:last-child { border-bottom: none; }
+.rnica-ds-summary-card__row-label { color: var(--sns-muted); font-size: 0.8rem; }
+.rnica-ds-summary-card__row-value { color: var(--sns-white); font-size: 0.85rem; font-weight: 600; text-align: right; }
+
+/* Bounded long-narrative panel with expand/collapse (Patient Story "Why
+   Hospice" / narrative overflow handling per the redesign directive) */
+.rnica-ds-narrative { display: flex; flex-direction: column; gap: 0.4rem; }
+.rnica-ds-narrative__text { margin: 0; color: var(--sns-white); font-size: 0.88rem; line-height: 1.5; }
+.rnica-ds-narrative__text--clamped { display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.rnica-ds-narrative__toggle { align-self: flex-start; background: none; border: none; padding: 0; color: var(--sns-teal); text-decoration: underline; cursor: pointer; font-size: 0.8rem; }
+
+/* Empty-state placeholder for narrative sections with nothing documented yet --
+   a dashed box reads as "there is a slot here to fill", not a dead end. */
+.rnica-ds-narrative-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.35rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px dashed var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-bgAlt);
 }

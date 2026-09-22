@@ -40,10 +40,15 @@ export function PrimaryCard({ title, subtitle, actions, className = "", children
   );
 }
 
-export function SecondaryCard({ title, className = "", children, ...rest }) {
+export function SecondaryCard({ title, actions, className = "", children, ...rest }) {
   return (
     <section className={`rnica-ds-card rnica-ds-card--secondary ${className}`} {...rest}>
-      {title && <h4 className="rnica-ds-card__title rnica-ds-card__title--secondary">{title}</h4>}
+      {(title || actions) && (
+        <header className="rnica-ds-card__header">
+          {title && <h4 className="rnica-ds-card__title rnica-ds-card__title--secondary">{title}</h4>}
+          {actions && <div className="rnica-ds-card__actions">{actions}</div>}
+        </header>
+      )}
       <div className="rnica-ds-card__body">{children}</div>
     </section>
   );
@@ -173,6 +178,174 @@ export function TwoColumnGrid({ main, rail }) {
     <div className="rnica-ds-two-col">
       <div className="rnica-ds-two-col__main">{main}</div>
       <div className="rnica-ds-two-col__rail">{rail}</div>
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------------
+// Phase 1/2: page header + persistent patient-context header + metric/
+// summary card variants. These are the reusable primitives every one of
+// the 13 screens is expected to compose with -- not Patient-Story-only
+// markup. All values are read-only projections of data already owned by
+// another screen; nothing here edits or persists a clinical field.
+// ------------------------------------------------------------------------
+
+/** Breadcrumb + screen title, shared by every RNICA screen. */
+export function RnicaPageHeader({ crumbs = [], title, actions }) {
+  return (
+    <div className="rnica-ds-page-header">
+      {crumbs.length > 0 && (
+        <nav className="rnica-ds-page-header__crumb" aria-label="Breadcrumb">
+          {crumbs.map((crumb, index) => (
+            <React.Fragment key={crumb.key || crumb.label || index}>
+              {index > 0 && <span aria-hidden="true">&rsaquo;</span>}
+              <span className={index === crumbs.length - 1 ? "rnica-ds-page-header__crumb-current" : ""}>
+                {crumb.label}
+              </span>
+            </React.Fragment>
+          ))}
+        </nav>
+      )}
+      <div className="rnica-ds-page-header__row">
+        {title && <h1 className="rnica-ds-page-header__title">{title}</h1>}
+        {actions && <div className="rnica-ds-page-header__actions">{actions}</div>}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Persistent patient-context header (MRN / primary diagnosis / admission /
+ * attending physician / current PPS / assessment-stage badge). Every field
+ * is read-only and sourced from data already owned by another screen
+ * (demographics, diagnoses, functional status) -- see the `patient` object
+ * assembled in RNICA.jsx. Renders "NOT YET DOCUMENTED" for anything absent
+ * rather than fabricating a value.
+ */
+export function RnicaPatientHeader({ patient = {}, actions }) {
+  const {
+    name,
+    age,
+    sex,
+    mrn,
+    primaryDiagnosis,
+    admissionDate,
+    attendingPhysician,
+    currentPps,
+    assessmentStage,
+  } = patient;
+
+  return (
+    <header className="rnica-ds-patient-header" aria-label="Patient context">
+      <div className="rnica-ds-patient-header__top">
+        <div className="rnica-ds-patient-header__name-row">
+          <h2 className="rnica-ds-patient-header__name">
+            <DocumentedValue value={name} />
+          </h2>
+          {(age || sex) && (
+            <span className="rnica-ds-patient-header__age">
+              {[age ? `${age}` : null, sex ? sex[0]?.toUpperCase() : null].filter(Boolean).join("")}
+            </span>
+          )}
+          {!notYetDocumented(assessmentStage) && <StatusChip tone="warning">{assessmentStage}</StatusChip>}
+        </div>
+        {actions}
+      </div>
+      <div className="rnica-ds-patient-header__facts">
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">MRN Number</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={mrn} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Primary Diagnosis</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={primaryDiagnosis} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Hospice Admission</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={admissionDate} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Attending Physician</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={attendingPhysician} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Current PPS</span>
+          <span className="rnica-ds-patient-header__fact-value rnica-ds-patient-header__pps">
+            {notYetDocumented(currentPps) ? (
+              <DocumentedValue value={currentPps} />
+            ) : (
+              <>
+                <span className="rnica-ds-patient-header__pps-dot" aria-hidden="true" />
+                {currentPps}%
+              </>
+            )}
+          </span>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+/** Metric tile (e.g. PPS / KPS score cards on Functional Status). */
+export function RnicaMetricCard({ label, value, suffix, note, barPercent, className = "" }) {
+  return (
+    <div className={`rnica-ds-metric-card ${className}`}>
+      <span className="rnica-ds-metric-card__label">{label}</span>
+      <span className="rnica-ds-metric-card__value">
+        <DocumentedValue value={value} />
+        {!notYetDocumented(value) && suffix}
+      </span>
+      {typeof barPercent === "number" && (
+        <div className="rnica-ds-metric-card__bar">
+          <div className="rnica-ds-metric-card__bar-fill" style={{ width: `${Math.max(0, Math.min(100, barPercent))}%` }} />
+        </div>
+      )}
+      {note && <span className="rnica-ds-metric-card__note">{note}</span>}
+    </div>
+  );
+}
+
+/** Label/value summary row list (read-only recap panels). */
+export function RnicaSummaryCard({ title, rows = [], className = "" }) {
+  return (
+    <section className={`rnica-ds-summary-card ${className}`} aria-label={title}>
+      {title && <h4 className="rnica-ds-card__title rnica-ds-card__title--secondary">{title}</h4>}
+      {rows.map((row, index) => (
+        <div className="rnica-ds-summary-card__row" key={row.key || index}>
+          <span className="rnica-ds-summary-card__row-label">{row.label}</span>
+          <span className="rnica-ds-summary-card__row-value">
+            <DocumentedValue value={row.value} />
+          </span>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+/** Bounded long-narrative text with expand/collapse, per the redesign's
+ * long-narrative handling rule -- never an unrestricted wall of text. */
+export function RnicaNarrative({ text, source, onNavigateToSource }) {
+  const [expanded, setExpanded] = React.useState(false);
+  if (notYetDocumented(text)) {
+    return (
+      <div className="rnica-ds-narrative-empty">
+        <span className="rnica-ds-undocumented">{NOT_YET_DOCUMENTED}</span>
+        {source && (
+          <SourceLink onClick={onNavigateToSource}>Add in {source}</SourceLink>
+        )}
+      </div>
+    );
+  }
+  const isLong = text.length > 320;
+  return (
+    <div className="rnica-ds-narrative">
+      <p className={`rnica-ds-narrative__text ${isLong && !expanded ? "rnica-ds-narrative__text--clamped" : ""}`}>{text}</p>
+      {isLong && (
+        <button type="button" className="rnica-ds-narrative__toggle" onClick={() => setExpanded((current) => !current)}>
+          {expanded ? "Show less" : "Show full narrative"}
+        </button>
+      )}
+      {source && <SourceLink onClick={onNavigateToSource}>View source: {source}</SourceLink>}
     </div>
   );
 }
