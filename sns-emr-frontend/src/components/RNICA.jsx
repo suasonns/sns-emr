@@ -11345,18 +11345,41 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       regulator: isOngoing && route.regulator === "HOPE" ? undefined : route.regulator,
     }));
 
+    const patientAge = calculateAgeFromDob(facesheetData?.identity?.dob || formData.demographics.dob);
+    const pcg = formData.demographics.pcg || {};
+
     return (
       <AssessmentModeContext.Provider value={mode}>
         <RNICACommandWorkspace
           patient={{
             name: patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected"),
-            mrn: patientSummary?.patient?.mrn || "Not available",
+            mrn: patientSummary?.patient?.mrn || "",
             primaryDiagnosis: formData.diagnoses.primaryDiagnosis.description || patientSummary?.patient?.primary_diagnosis || "",
             secondaryDiagnoses,
             comorbidities: verifiedComorbidities,
             priorIssues: patientSummary
               ? `${patientSummary.incident_summary.total} incident(s), ${patientSummary.communication_summary.total} communication item(s)`
               : "Patient record summary loading",
+            // Additive Patient Story context (Phase B reference screen).
+            // Every value is read from a field already owned/edited by its
+            // authoritative RNICA screen (or the facesheet) -- nothing new
+            // is captured or persisted here.
+            age: patientAge,
+            sex: formData.demographics.gender || "",
+            admissionDate: facesheetData?.service_dates?.soc_date || "",
+            attendingPhysician: patientSummary?.patient?.attending_physician_name || "",
+            currentPps: formData.performanceStatus?.pps || "",
+            assessmentStage: isOngoing ? (assessmentType === "recert" ? "Recertification" : "Update assessment") : "Initial admission",
+            whyHospiceNarrative: formData.diagnoses.clinicalNarrative || "",
+            recentHospitalization: formData.diagnoses.recentHospitalizations || "",
+            caregiver: {
+              name: pcg.name || "",
+              relationship: pcg.relationship || "",
+              noPcg: pcg.noPcg === true,
+              willingToProvideCare: pcg.willingToProvideCare,
+              anxietyLevel: pcg.anxietyLevel || "",
+              concerns: pcg.pcgConcerns || "",
+            },
           }}
           routes={commandRoutes}
           formSections={Object.keys(formData)}

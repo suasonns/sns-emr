@@ -9,6 +9,21 @@ import {
 import {
   validateRnIcaClinicalNavigation,
 } from "./rnIcaClinicalNavigation";
+import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
+import {
+  AiAdvisoryCard,
+  AutosaveFooter,
+  ClinicalRiskRow,
+  ContinueAction,
+  DocumentedValue,
+  MissingInfoCard,
+  PrimaryCard,
+  SecondaryCard,
+  SourceLink,
+  StatusChip,
+  TwoColumnGrid,
+  notYetDocumented,
+} from "./design-system/RnicaDesignSystem";
 import "./RNICACommandWorkspace.css";
 
 const DENSITY_KEY = "sns-clinical-command-workspace-density";
@@ -32,6 +47,178 @@ function ScrollRegion({ name, className, children }) {
     }
   };
   return <div className={`clinical-command-region clinical-command-region--${name} ${className}`} onScroll={handleScroll}>{children}</div>;
+}
+
+// Screen 1 -- Patient Story. Read-only, source-linked orientation summary.
+// Per RNICA_REDESIGN_SOURCE_OF_TRUTH.md Screen 1: "Owns: Nothing" -- every
+// value here is read from data already owned/edited elsewhere (the `patient`
+// summary object, existing validation state, and the existing RNICA
+// Intelligence output). Nothing is entered or persisted from this panel;
+// every item links back to its authoritative screen. Missing source data
+// renders "NOT YET DOCUMENTED" rather than being fabricated -- see
+// design-system/RnicaDesignSystem.jsx `notYetDocumented()`.
+const PATIENT_STORY_RISK_DEFINITIONS = [
+  { moduleKey: "safety", label: "Fall Risk Factors", tone: "warning" },
+  { moduleKey: "pain", label: "Pain Control", tone: "warning" },
+  { moduleKey: "psychosocial", label: "Respiratory / Symptom Concerns", tone: "critical" },
+  { moduleKey: "caregiverAssessment", label: "Caregiver Overview", tone: "info" },
+];
+
+function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, routeForRequirement, saveStatus, saving, onNavigate }) {
+  const findings = intelligence?.findings || [];
+  const recommendations = intelligence?.recommendations || [];
+  const missingEvidence = intelligence?.missing_evidence || intelligence?.summary?.missing_evidence || [];
+  const missingCount = errorKeys.length + warningKeys.length;
+
+  const documentedRiskRows = useMemo(() => PATIENT_STORY_RISK_DEFINITIONS
+    .map((definition) => {
+      const flaggedErrors = errorKeys.filter((key) => routeForRequirement(key)?.key === definition.moduleKey);
+      const flaggedWarnings = warningKeys.filter((key) => routeForRequirement(key)?.key === definition.moduleKey);
+      const count = flaggedErrors.length + flaggedWarnings.length;
+      if (count === 0) return null;
+      return {
+        ...definition,
+        detail: `${count} documented item(s) require review on this screen.`,
+      };
+    })
+    .filter(Boolean), [errorKeys, warningKeys, routeForRequirement]);
+
+  const missingItems = [
+    ...missingEvidence.map((item, index) => ({
+      key: `evidence-${index}`,
+      label: typeof item === "string" ? item : item?.label || item?.text,
+    })),
+    ...(missingCount > 0
+      ? [{ key: "validation", label: `${missingCount} requirement(s) remain across the assessment`, route: "finalization" }]
+      : []),
+  ];
+
+  const caregiver = patient.caregiver || {};
+  const caregiverSummary = caregiver.noPcg
+    ? "No primary caregiver identified"
+    : [caregiver.name, caregiver.relationship].filter(Boolean).join(" \u2014 ");
+
+  return (
+    <div className="rnica-ds-patient-story" aria-labelledby="patient-story-title">
+      <p className="rnica-ds-patient-story__intro">
+        This is a read-only summary of information already documented elsewhere in RNICA. It does
+        not store data and is not a certification, eligibility, or prognosis determination.
+      </p>
+
+      <TwoColumnGrid
+        main={(
+          <>
+            <PrimaryCard title="Why Hospice" subtitle="Clinical narrative, owned by Diagnoses & LCD">
+              {notYetDocumented(patient.whyHospiceNarrative) ? (
+                <SourceLink onClick={() => onNavigate("diagnoses")}>
+                  <DocumentedValue value={patient.whyHospiceNarrative} />
+                </SourceLink>
+              ) : (
+                <p>{patient.whyHospiceNarrative}</p>
+              )}
+            </PrimaryCard>
+
+            <PrimaryCard title="Recent Hospitalization" subtitle="Owned by Diagnoses & LCD">
+              {notYetDocumented(patient.recentHospitalization) ? (
+                <SourceLink onClick={() => onNavigate("diagnoses")}>
+                  <DocumentedValue value={patient.recentHospitalization} />
+                </SourceLink>
+              ) : (
+                <p>{patient.recentHospitalization}</p>
+              )}
+            </PrimaryCard>
+
+            <PrimaryCard title="Current Clinical Concerns" subtitle="Documented findings requiring review -- no derived risk scoring engine is applied">
+              {documentedRiskRows.length === 0 && (
+                <p className="rnica-ds-muted">No documented clinical concerns currently flagged across Safety, Pain, Psychosocial, or Caregiver screens.</p>
+              )}
+              {documentedRiskRows.map((row) => (
+                <ClinicalRiskRow key={row.moduleKey} label={row.label} detail={row.detail} tone={row.tone} />
+              ))}
+            </PrimaryCard>
+
+            <SecondaryCard title="Caregiver Overview">
+              {notYetDocumented(caregiverSummary) ? (
+                <SourceLink onClick={() => onNavigate("caregiverAssessment")}>
+                  <DocumentedValue value={caregiverSummary} />
+                </SourceLink>
+              ) : (
+                <>
+                  <p>
+                    <SourceLink onClick={() => onNavigate("caregiverAssessment")}>{caregiverSummary}</SourceLink>
+                  </p>
+                  {caregiver.anxietyLevel && <p className="rnica-ds-muted">Anxiety level: {caregiver.anxietyLevel}</p>}
+                  {caregiver.willingToProvideCare === false && (
+                    <StatusChip tone="warning">Not willing to provide care</StatusChip>
+                  )}
+                </>
+              )}
+            </SecondaryCard>
+
+            <ContinueAction
+              label="Continue to Evidence & Intake"
+              sublabel="Review available intake docs next"
+              onClick={() => onNavigate("demographics")}
+            />
+          </>
+        )}
+        rail={(
+          <>
+            <AiAdvisoryCard>
+              {!intelligence && <p className="rnica-ds-muted">Save the assessment to generate the clinical signal summary.</p>}
+              {intelligence && findings.length === 0 && recommendations.length === 0 && (
+                <p className="rnica-ds-muted">No current findings or recommendations.</p>
+              )}
+              {findings.slice(0, 5).map((finding, index) => (
+                <SourceLink key={`story-finding-${index}`} onClick={() => onNavigate("finalization")}>
+                  {finding.title}{finding.details ? ` \u2014 ${finding.details}` : ""}
+                </SourceLink>
+              ))}
+              {recommendations.slice(0, 3).map((rec, index) => (
+                <p key={`story-rec-${index}`}>{typeof rec === "string" ? rec : rec?.text || rec?.title}</p>
+              ))}
+            </AiAdvisoryCard>
+
+            <MissingInfoCard items={missingItems} onNavigate={onNavigate} />
+          </>
+        )}
+      />
+
+      <AutosaveFooter active={saveStatus === "saved" || saving} lastSaved={saveStatus === "saved" ? "Just now" : undefined} version="RNICA v1.2" />
+    </div>
+  );
+}
+
+// Screen 2 -- Evidence & Intake. Per RNICA_REDESIGN_SOURCE_OF_TRUTH.md
+// Screen 2: "Conditionally visible: Missing-source alerts ... appear only
+// when applicable" and "Required actions: Review intake evidence and
+// resolve missing required intake/referral documentation." This reuses the
+// existing validation state already computed for the workspace -- it adds
+// no new field, rule, or data source -- and only surfaces items already
+// scoped to this screen's three legacy modules (demographics, vitals,
+// referrals), e.g. the existing `referrals.reviewed` requirement.
+function EvidenceIntakeAlertBanner({ errorKeys, warningKeys, routeForRequirement, onNavigate }) {
+  const screenModuleKeys = new Set(["demographics", "vitals", "referrals"]);
+  const scoped = [...errorKeys, ...warningKeys]
+    .map((key) => ({ key, route: routeForRequirement(key) }))
+    .filter(({ route }) => route && screenModuleKeys.has(route.key));
+  if (scoped.length === 0) return null;
+  return (
+    <section className="clinical-command-card rnica-command-card rnica-command-evidence-alert" aria-live="polite">
+      <div className="rnica-command-card__heading">
+        <h2>Missing intake evidence</h2>
+        <span>{scoped.length} item(s)</span>
+      </div>
+      <p>Resolve missing required intake/referral documentation for this screen.</p>
+      <ul className="rnica-command-evidence-alert__list">
+        {scoped.slice(0, 8).map(({ key, route }) => (
+          <li key={key}>
+            <button type="button" onClick={() => onNavigate(route.key)}>{route.label}: {key}</button>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 }
 
 function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCount }) {
@@ -98,10 +285,42 @@ export default function RNICACommandWorkspace({
   const [density, setDensity] = useState(storedDensity);
   const [searchStartedAt, setSearchStartedAt] = useState(0);
   const [showAllQuickAccess, setShowAllQuickAccess] = useState(false);
+  const [collapsedScreens, setCollapsedScreens] = useState({});
+  const [viewMode, setViewMode] = useState("screen");
   const filteredRoutes = useMemo(() => {
     const normalized = query.trim().toLowerCase();
     return normalized ? routes.filter((route) => route.label.toLowerCase().includes(normalized)) : routes;
   }, [query, routes]);
+  // 13-screen presentation grouping (Phase B). This groups the same,
+  // unchanged module routes under the approved 13-screen taxonomy -- it
+  // does not add, remove, or reorder any module's content, validation, or
+  // data. See rnicaThirteenScreenTaxonomy.js.
+  const screenGroups = useMemo(() => groupRoutesIntoScreens(filteredRoutes), [filteredRoutes]);
+  const activeScreen = useMemo(() => screenForModuleKey(activeSection), [activeSection]);
+  const activeScreenIndex = activeScreen
+    ? RNICA_THIRTEEN_SCREENS.findIndex((screen) => screen.key === activeScreen.key)
+    : -1;
+  const isScreenCollapsed = (screenKey) => {
+    if (screenKey in collapsedScreens) return collapsedScreens[screenKey];
+    return activeScreen?.key !== screenKey;
+  };
+  const toggleScreen = (screenKey) => {
+    setCollapsedScreens((prev) => ({ ...prev, [screenKey]: !isScreenCollapsed(screenKey) }));
+  };
+  const selectCrossCuttingScreen = (screen) => {
+    if (screen.key === "patientStory") {
+      setViewMode("patientStory");
+      emitRnIcaTelemetry({ name: "section_jump", section: "patientStory", source: "screen:patientStory" });
+      return;
+    }
+    setViewMode("screen");
+    onSelect(screen.landingModuleKey);
+    emitRnIcaTelemetry({ name: "section_jump", section: screen.landingModuleKey, source: `screen:${screen.key}` });
+    requestAnimationFrame(() => {
+      document.querySelector(`[data-rnica-rail-target="${screen.railTarget}"]`)
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  };
   const errorKeys = Object.keys(validation.errors);
   const warningKeys = Object.keys(validation.warnings);
   const routeForRequirement = (key) => [...routes]
@@ -124,6 +343,7 @@ export default function RNICACommandWorkspace({
   }, [completedSections.length, routes.length]);
 
   const select = (key, source = "navigator") => {
+    setViewMode("screen");
     onSelect(key);
     scrollDetailTop();
     emitRnIcaTelemetry({ name: "section_jump", section: key, source });
@@ -163,6 +383,7 @@ export default function RNICACommandWorkspace({
         <div className="rnica-command-patientbar__status">
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
           <span>{completedSections.length}/{routes.length} sections</span>
+          {activeScreenIndex >= 0 && <span>Screen {activeScreenIndex + 1} of {RNICA_THIRTEEN_SCREENS.length}</span>}
           <button type="button" onClick={exitPilot}>Use classic view</button>
         </div>
       </ClinicalCommandHeader>
@@ -191,75 +412,136 @@ export default function RNICACommandWorkspace({
           <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--mobile" onClick={() => select("finalization")}>
             Narrative &amp; final review
           </button>
-          <div className="rnica-command-matrix" aria-label="Assessment section status">
-            {filteredRoutes.map((route) => {
-              const complete = completedSections.includes(route.key);
-              const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
-              const changed = complete && !locked;
+          <div className="rnica-command-screens" aria-label="RN ICA 13-screen navigator">
+            {screenGroups.map((screen, screenIndex) => {
+              if (screen.crossCutting) {
+                return (
+                  <div className="rnica-command-screen-group rnica-command-screen-group--crosscutting" key={screen.key}>
+                    <button
+                      type="button"
+                      className={`rnica-command-screen-group__header ${(screen.key === "patientStory" ? viewMode === "patientStory" : activeScreen?.key === screen.key) ? "is-active" : ""}`}
+                      onClick={() => selectCrossCuttingScreen(screen)}
+                    >
+                      <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
+                      <span className="rnica-command-screen-group__label">{screen.label}</span>
+                    </button>
+                  </div>
+                );
+              }
+              if (screen.routes.length === 0) return null;
+              const collapsed = isScreenCollapsed(screen.key);
+              const screenComplete = screen.routes.filter((route) => completedSections.includes(route.key)).length;
               return (
-                <button type="button" key={route.key} className={activeSection === route.key ? "is-active" : ""} onClick={() => select(route.key)}>
-                  <span className="rnica-command-matrix__module">
-                    <span className="rnica-command-matrix__title">{route.label}</span>
-                    {route.regulator && <span className="rnica-command-matrix__regulator">{route.regulator}</span>}
-                  </span>
-                  <span className="rnica-command-matrix__signals">
-                    <span title="Completion">{complete ? "Done" : "Open"}</span>
-                    <span title="Risk">{missing ? "Risk" : "—"}</span>
-                    <span title="Changed">{changed ? "Changed" : "—"}</span>
-                    <span title="Missing requirements">{missing || "—"}</span>
-                  </span>
-                </button>
+                <div className="rnica-command-screen-group" key={screen.key}>
+                  <button
+                    type="button"
+                    className={`rnica-command-screen-group__header ${activeScreen?.key === screen.key ? "is-active" : ""}`}
+                    onClick={() => toggleScreen(screen.key)}
+                    aria-expanded={!collapsed}
+                  >
+                    <span className="rnica-command-screen-group__caret">{collapsed ? "▸" : "▾"}</span>
+                    <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
+                    <span className="rnica-command-screen-group__label">{screen.label}</span>
+                    <span className="rnica-command-screen-group__progress">{screenComplete}/{screen.routes.length}</span>
+                  </button>
+                  {!collapsed && (
+                    <div className="rnica-command-matrix" aria-label={`${screen.label} sections`}>
+                      {screen.routes.map((route) => {
+                        const complete = completedSections.includes(route.key);
+                        const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
+                        const changed = complete && !locked;
+                        return (
+                          <button type="button" key={route.key} className={activeSection === route.key ? "is-active" : ""} onClick={() => select(route.key)}>
+                            <span className="rnica-command-matrix__module">
+                              <span className="rnica-command-matrix__title">{route.label}</span>
+                              {route.regulator && <span className="rnica-command-matrix__regulator">{route.regulator}</span>}
+                            </span>
+                            <span className="rnica-command-matrix__signals">
+                              <span title="Completion">{complete ? "Done" : "Open"}</span>
+                              <span title="Risk">{missing ? "Risk" : "—"}</span>
+                              <span title="Changed">{changed ? "Changed" : "—"}</span>
+                              <span title="Missing requirements">{missing || "—"}</span>
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>
         </ScrollRegion>
 
         <ScrollRegion name="detail" className="rnica-command-detail">
-          {visitRecorder}
-          {alerts}
-          <section className="clinical-command-card rnica-command-sticky-note" aria-labelledby="quick-capture-title">
-            <div>
-              <span className="rnica-command-eyebrow">Bedside quick access</span>
-              <h2 id="quick-capture-title">Assessment modules</h2>
-              <p>Use the same ordered RN workflow as the navigator. Missing documentation is never treated as a negative finding.</p>
-            </div>
-            <div className="rnica-command-quick-grid" aria-label="Ordered assessment module shortcuts">
-              {(showAllQuickAccess ? routes : routes.slice(0, 16)).map((route, index) => (
-                <button type="button" key={route.key} onClick={() => select(route.key, "quick_capture")}>
-                  <span>{index + 1}</span> {route.label}
-                </button>
-              ))}
-            </div>
-            {routes.length > 16 && (
-              <button type="button" className="rnica-command-quick-toggle" onClick={() => setShowAllQuickAccess((current) => !current)}>
-                {showAllQuickAccess ? "Show first 16 modules" : `Show all ${routes.length} modules`}
-              </button>
-            )}
-            <div className="rnica-command-provenance" aria-label="Finding provenance">
-              <span>Observed / tapped</span><span>Spoken / extracted</span><span>Carried forward / verified</span>
-            </div>
-          </section>
-          <section className="clinical-command-card rnica-command-active" aria-live="polite">
-            {activeSection === "finalization" && (
-              <NarrativeFinalReviewPanel
-                completedSections={completedSections.length}
-                totalSections={routes.length}
-                missingCount={errorKeys.length + warningKeys.length}
-              />
-            )}
-            {renderWorkspaceSections()}
-          </section>
-          <nav className="rnica-command-stepnav" aria-label="Section navigation">
-            <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
-            <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
-          </nav>
+          {viewMode === "patientStory" ? (
+            <PatientStoryPanel
+              patient={patient}
+              intelligence={intelligence}
+              errorKeys={errorKeys}
+              warningKeys={warningKeys}
+              routeForRequirement={routeForRequirement}
+              saveStatus={saveStatus}
+              saving={saving}
+              onNavigate={(key) => select(key, "patient_story")}
+            />
+          ) : (
+            <>
+              {visitRecorder}
+              {alerts}
+              {activeScreen?.key === "evidenceIntake" && (
+                <EvidenceIntakeAlertBanner
+                  errorKeys={errorKeys}
+                  warningKeys={warningKeys}
+                  routeForRequirement={routeForRequirement}
+                  onNavigate={(key) => select(key, "evidence_intake_banner")}
+                />
+              )}
+              <section className="clinical-command-card rnica-command-sticky-note" aria-labelledby="quick-capture-title">
+                <div>
+                  <span className="rnica-command-eyebrow">Bedside quick access</span>
+                  <h2 id="quick-capture-title">Assessment modules</h2>
+                  <p>Use the same ordered RN workflow as the navigator. Missing documentation is never treated as a negative finding.</p>
+                </div>
+                <div className="rnica-command-quick-grid" aria-label="Ordered assessment module shortcuts">
+                  {(showAllQuickAccess ? routes : routes.slice(0, 16)).map((route, index) => (
+                    <button type="button" key={route.key} onClick={() => select(route.key, "quick_capture")}>
+                      <span>{index + 1}</span> {route.label}
+                    </button>
+                  ))}
+                </div>
+                {routes.length > 16 && (
+                  <button type="button" className="rnica-command-quick-toggle" onClick={() => setShowAllQuickAccess((current) => !current)}>
+                    {showAllQuickAccess ? "Show first 16 modules" : `Show all ${routes.length} modules`}
+                  </button>
+                )}
+                <div className="rnica-command-provenance" aria-label="Finding provenance">
+                  <span>Observed / tapped</span><span>Spoken / extracted</span><span>Carried forward / verified</span>
+                </div>
+              </section>
+              <section className="clinical-command-card rnica-command-active" aria-live="polite">
+                {activeSection === "finalization" && (
+                  <NarrativeFinalReviewPanel
+                    completedSections={completedSections.length}
+                    totalSections={routes.length}
+                    missingCount={errorKeys.length + warningKeys.length}
+                  />
+                )}
+                {renderWorkspaceSections()}
+              </section>
+              <nav className="rnica-command-stepnav" aria-label="Section navigation">
+                <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+                <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+              </nav>
+            </>
+          )}
         </ScrollRegion>
 
         <ScrollRegion name="rail" className="rnica-command-rail">
           <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--desktop" onClick={() => select("finalization")}>
             Narrative &amp; final review
           </button>
-          <section className="clinical-command-card rnica-command-card">
+          <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
             <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
             {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
             {errorKeys.slice(0, 5).map((key) => (
@@ -275,7 +557,7 @@ export default function RNICACommandWorkspace({
               </button>
             ))}
           </section>
-          <section className="clinical-command-card rnica-command-card">
+          <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
             <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>
             {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
             {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}

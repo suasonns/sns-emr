@@ -19,7 +19,11 @@ export const RNICA_ASSESSMENT_MODULES = [
   { key: "personalCare", label: "Personal Care", formSection: "personalCare" },
   { key: "teachingNeeds", label: "Teaching Needs", formSection: "teachingNeeds" },
   { key: "admissionsOrder", label: "Admissions Order", formSection: "admissionsOrder" },
-  { key: "ordersHub", label: "Hospice Orders Hub", formSection: "medications" },
+  // Hospice Orders Hub is not backed by a key in the assessment `formData`
+  // object -- it renders OrdersHubCard, which fetches/writes medication
+  // orders live via a dedicated API. "medications" is a label for HOPE/audit
+  // purposes only, so it is exempt from the formData-membership check below.
+  { key: "ordersHub", label: "Hospice Orders Hub", formSection: "medications", dataSource: "live" },
   { key: "referrals", label: "Referrals", formSection: "referrals" },
   { key: "finalization", label: "Finalization", formSection: "finalization", regulator: "HOPE", hope: ["F2000", "F2100", "F2200"] },
 ];
@@ -54,7 +58,7 @@ export function validateRnIcaClinicalNavigation(routes, availableFormSections = 
     if (ids.has(route.key)) errors.push(`Duplicate RNICA module key: ${route.key}`);
     ids.add(route.key);
     if (!route.formSection) errors.push(`RNICA module ${route.key} has no form section`);
-    if (availableSections.size > 0 && !availableSections.has(route.formSection)) {
+    if (availableSections.size > 0 && route.dataSource !== "live" && !availableSections.has(route.formSection)) {
       errors.push(`RNICA module ${route.key} targets missing form section ${route.formSection}`);
     }
     if (route.key !== expectedKeys[index]) {

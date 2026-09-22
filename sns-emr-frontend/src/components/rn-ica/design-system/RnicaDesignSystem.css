@@ -1,0 +1,125 @@
+/* Shared RNICA design-system primitives -- theme-aware via --sns-* tokens
+   only. No color in this file is hardcoded; every value maps to a token
+   already defined by src/theme/theme.tsx (ThemeModeProvider), so switching
+   Light/Dark mode re-colors every component automatically. */
+
+.rnica-ds-undocumented {
+  color: var(--sns-muted);
+  font-style: italic;
+}
+
+.rnica-ds-muted { color: var(--sns-muted); }
+
+/* Patient Story (Screen 1) reference layout wrapper */
+.rnica-ds-patient-story { display: flex; flex-direction: column; gap: 1rem; }
+.rnica-ds-patient-story__intro { color: var(--sns-muted); margin: 0; font-size: 0.92rem; }
+
+/* Cards */
+.rnica-ds-card {
+  background: var(--sns-card);
+  border: 1px solid var(--sns-border);
+  border-radius: 0.75rem;
+  padding: 1rem 1.1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  box-shadow: 0 1px 2px var(--sns-shadow);
+}
+.rnica-ds-card--secondary { background: var(--sns-cardSoft); }
+.rnica-ds-card--ai {
+  border-color: var(--sns-teal);
+  background: var(--sns-cardSoft);
+}
+.rnica-ds-card--warning { border-color: var(--sns-orange); }
+
+.rnica-ds-card__header { display: flex; align-items: flex-start; justify-content: space-between; gap: 0.75rem; }
+.rnica-ds-card__title { margin: 0; font-size: 1rem; font-weight: 700; color: var(--sns-white); }
+.rnica-ds-card__title--secondary { font-size: 0.85rem; }
+.rnica-ds-card__title--ai, .rnica-ds-card__title--warning { display: flex; align-items: center; gap: 0.4rem; }
+.rnica-ds-card__title--ai { color: var(--sns-teal); }
+.rnica-ds-card__title--warning { color: var(--sns-orange); }
+.rnica-ds-card__subtitle { margin: 0.15rem 0 0; font-size: 0.78rem; color: var(--sns-muted); }
+.rnica-ds-card__meta { font-size: 0.72rem; color: var(--sns-muted); white-space: nowrap; }
+.rnica-ds-card__body { display: flex; flex-direction: column; gap: 0.55rem; font-size: 0.85rem; color: var(--sns-white); }
+.rnica-ds-card__actions { display: flex; gap: 0.4rem; }
+
+.rnica-ds-ai-dot {
+  display: inline-block; width: 0.5rem; height: 0.5rem; border-radius: 50%;
+  background: var(--sns-teal);
+}
+
+.rnica-ds-inset {
+  background: var(--sns-bgAlt);
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  padding: 0.6rem 0.75rem;
+}
+
+/* Chips */
+.rnica-ds-chip {
+  display: inline-flex; align-items: center; gap: 0.3rem;
+  font-size: 0.68rem; font-weight: 700; letter-spacing: 0.02em;
+  padding: 0.15rem 0.5rem; border-radius: 999px; border: 1px solid transparent;
+  text-transform: uppercase;
+}
+.rnica-ds-chip--neutral { background: var(--sns-bgAlt); color: var(--sns-muted); border-color: var(--sns-border); }
+.rnica-ds-chip--success { background: var(--sns-cardSoft); color: var(--sns-green); border-color: var(--sns-green); }
+.rnica-ds-chip--warning { background: var(--sns-cardSoft); color: var(--sns-orange); border-color: var(--sns-orange); }
+.rnica-ds-chip--critical { background: var(--sns-cardSoft); color: var(--sns-red); border-color: var(--sns-red); }
+.rnica-ds-chip--info { background: var(--sns-cardSoft); color: var(--sns-blue); border-color: var(--sns-blue); }
+.rnica-ds-chip--ai { background: var(--sns-cardSoft); color: var(--sns-teal); border-color: var(--sns-teal); }
+
+/* Missing information */
+.rnica-ds-missing-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+
+/* Clinical risk rows */
+.rnica-ds-risk-row { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.4rem 0; border-bottom: 1px solid var(--sns-border); }
+.rnica-ds-risk-row:last-child { border-bottom: none; }
+.rnica-ds-risk-row__dot { width: 0.5rem; height: 0.5rem; border-radius: 50%; margin-top: 0.35rem; background: var(--sns-muted); flex: none; }
+.rnica-ds-risk-row--warning .rnica-ds-risk-row__dot { background: var(--sns-orange); }
+.rnica-ds-risk-row--critical .rnica-ds-risk-row__dot { background: var(--sns-red); }
+.rnica-ds-risk-row--info .rnica-ds-risk-row__dot { background: var(--sns-blue); }
+.rnica-ds-risk-row__detail { display: block; color: var(--sns-muted); font-size: 0.78rem; }
+
+/* Source link -- looks like inline text but navigates to the owning screen */
+.rnica-ds-source-link {
+  background: none; border: none; padding: 0; margin: 0; cursor: pointer;
+  color: var(--sns-teal); text-decoration: underline; font: inherit; text-align: left;
+}
+.rnica-ds-source-link:hover { color: var(--sns-white); }
+.rnica-ds-source-link:focus-visible { outline: 2px solid var(--sns-teal); outline-offset: 2px; }
+
+/* Continue action */
+.rnica-ds-continue {
+  display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+  width: 100%; padding: 0.75rem 1rem; border-radius: 0.6rem; border: none;
+  background: var(--sns-teal); color: var(--sns-bg); cursor: pointer; font: inherit;
+}
+.rnica-ds-continue:hover { filter: brightness(1.05); }
+.rnica-ds-continue:focus-visible { outline: 2px solid var(--sns-white); outline-offset: 2px; }
+.rnica-ds-continue__sublabel { display: block; font-size: 0.75rem; font-weight: 400; opacity: 0.85; }
+.rnica-ds-continue__arrow { font-size: 1.1rem; }
+
+/* Autosave footer */
+.rnica-ds-autosave-footer {
+  display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.1rem 0;
+  font-size: 0.75rem; color: var(--sns-muted); border-top: 1px solid var(--sns-border); margin-top: 0.25rem;
+  flex-wrap: wrap; justify-content: space-between;
+}
+.rnica-ds-autosave-dot { width: 0.45rem; height: 0.45rem; border-radius: 50%; background: var(--sns-muted); }
+.rnica-ds-autosave-dot.is-active { background: var(--sns-green); }
+.rnica-ds-autosave-footer__saved { margin-left: auto; }
+
+/* States */
+.rnica-ds-state { padding: 1rem; border-radius: 0.6rem; font-size: 0.85rem; text-align: center; }
+.rnica-ds-state--empty, .rnica-ds-state--loading { background: var(--sns-bgAlt); color: var(--sns-muted); }
+.rnica-ds-state--error { background: var(--sns-cardSoft); color: var(--sns-red); border: 1px solid var(--sns-red); }
+
+/* Two-column layout (main content + intelligence/status rail) */
+.rnica-ds-two-col { display: grid; grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr); gap: 1rem; align-items: start; }
+.rnica-ds-two-col__main, .rnica-ds-two-col__rail { display: flex; flex-direction: column; gap: 0.85rem; min-width: 0; }
+
+@media (max-width: 900px) {
+  .rnica-ds-two-col { grid-template-columns: 1fr; }
+  .rnica-ds-two-col__rail { order: 2; }
+}
