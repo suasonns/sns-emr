@@ -6172,9 +6172,9 @@ function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateFie
 }
 
 const SEVERITY_COLORS = {
-  CONTRAINDICATED: { bg: "#450a0a", border: COLORS.error, text: "#fecaca" },
-  MAJOR: { bg: "#450a0a", border: COLORS.error, text: "#fecaca" },
-  MODERATE: { bg: "#451a03", border: COLORS.warning, text: "#fde68a" },
+  CONTRAINDICATED: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
+  MAJOR: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
+  MODERATE: { bg: "#451a03", border: "#fbbf24", text: "#fde68a" },
   MINOR: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
   UNKNOWN: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
 };
