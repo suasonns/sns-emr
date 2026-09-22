@@ -49,7 +49,7 @@ function NarrativeOrEmpty({ text, source, onNavigateToSource }) {
       <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed border-rnica-border bg-rnica-bgAlt px-3.5 py-3">
         <span className="text-rnica-dim text-sm font-medium">NOT YET DOCUMENTED</span>
         {source && (
-          <button type="button" onClick={onNavigateToSource} className="text-xs font-semibold text-rnica-teal hover:underline">
+          <button type="button" onClick={onNavigateToSource} className="bg-transparent text-xs font-semibold text-rnica-teal hover:underline">
             Add in {source}
           </button>
         )}
@@ -60,7 +60,7 @@ function NarrativeOrEmpty({ text, source, onNavigateToSource }) {
     <div className="flex flex-col gap-2">
       <p className="text-sm leading-relaxed text-rnica-text">{text}</p>
       {source && (
-        <button type="button" onClick={onNavigateToSource} className="self-start text-xs font-semibold text-rnica-teal hover:underline">
+        <button type="button" onClick={onNavigateToSource} className="bg-transparent self-start text-xs font-semibold text-rnica-teal hover:underline">
           View source: {source}
         </button>
       )}
@@ -187,7 +187,7 @@ export default function PatientStoryShadcn({
           <Card className="border-rnica-teal shadow-[0_0_0_1px_var(--sns-teal)]">
             <CardHeader>
               <CardTitle className="text-rnica-teal"><Settings2 className="h-4 w-4" /> RNICA Intelligence</CardTitle>
-              <button type="button" className="flex items-center gap-1 text-xs font-semibold text-rnica-teal hover:underline">
+              <button type="button" className="bg-transparent flex items-center gap-1 text-xs font-semibold text-rnica-teal hover:underline">
                 <RefreshCw className="h-3 w-3" /> Refresh
               </button>
             </CardHeader>
@@ -201,7 +201,7 @@ export default function PatientStoryShadcn({
                   type="button"
                   key={`story-finding-${index}`}
                   onClick={() => onNavigate("finalization")}
-                  className="text-left text-sm text-rnica-text hover:text-rnica-teal"
+                  className="bg-transparent text-left text-sm text-rnica-text hover:text-rnica-teal"
                 >
                   <strong>{finding.title}</strong>{finding.details ? ` \u2014 ${finding.details}` : ""}
                 </button>
@@ -223,7 +223,7 @@ export default function PatientStoryShadcn({
                     type="button"
                     key={item.key}
                     onClick={() => onNavigate(item.route || "finalization")}
-                    className="flex items-start gap-2 text-left text-sm text-rnica-text hover:text-rnica-orange"
+                    className="bg-transparent flex items-start gap-2 text-left text-sm text-rnica-text hover:text-rnica-orange"
                   >
                     <span className="mt-1 inline-block h-1.5 w-1.5 shrink-0 rounded-full bg-rnica-orange" aria-hidden="true" />
                     {item.label}
@@ -241,13 +241,13 @@ export default function PatientStoryShadcn({
               {notYetDocumented(caregiverSummary) ? (
                 <div className="flex flex-col items-start gap-2 rounded-lg border border-dashed border-rnica-border bg-rnica-bgAlt px-3.5 py-3">
                   <span className="text-rnica-dim text-sm font-medium">NOT YET DOCUMENTED</span>
-                  <button type="button" onClick={() => onNavigate("caregiverAssessment")} className="text-xs font-semibold text-rnica-teal hover:underline">
+                  <button type="button" onClick={() => onNavigate("caregiverAssessment")} className="bg-transparent text-xs font-semibold text-rnica-teal hover:underline">
                     Add in Caregiver & Support
                   </button>
                 </div>
               ) : (
                 <div className="flex flex-col gap-1.5">
-                  <button type="button" onClick={() => onNavigate("caregiverAssessment")} className="self-start text-sm font-semibold text-rnica-teal hover:underline">
+                  <button type="button" onClick={() => onNavigate("caregiverAssessment")} className="bg-transparent self-start text-sm font-semibold text-rnica-teal hover:underline">
                     {caregiverSummary}
                   </button>
                   {caregiver.anxietyLevel && <p className="text-xs text-rnica-muted">Anxiety level: {caregiver.anxietyLevel}</p>}
