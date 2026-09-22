@@ -10542,6 +10542,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // opening/closing this never touches `formData` or `activeSection`.
   const [actionCenterOpen, setActionCenterOpen] = useState(false);
 
+  const userEditedRef = useRef(false);
   const { markPersisted, resetAutosaveTracking } = useAssessmentAutosave({
     formData,
     assessmentId,
@@ -10552,6 +10553,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     updateFn: api.updateRNICAAssessment,
     patientId: autosavePatientId,
     intervalMs: 30000,
+    userEditedRef,
   });
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
@@ -10598,6 +10600,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [routes, activeSection]);
 
   useEffect(() => {
+    userEditedRef.current = false;
     resetAutosaveTracking({ markCurrentAsPersisted: true });
   }, [existingAssessmentId, patientId, resetAutosaveTracking, resolvedPatientId]);
 
@@ -10931,6 +10934,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
   // Deep update helper
   const updateField = useCallback((section, path, value) => {
+    userEditedRef.current = true;
     setFormData((prev) => {
       const next = { ...prev };
       next[section] = setNestedValue(prev[section], path, value);

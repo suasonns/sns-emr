@@ -537,27 +537,31 @@ export default function RNICACommandWorkspace({
           <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--desktop" onClick={() => select("finalization")}>
             Narrative &amp; final review
           </button>
-          <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
-            <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
-            {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
-            {errorKeys.slice(0, 5).map((key) => (
-              <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
-                select(routeForRequirement(key)?.key || "finalization", "requirement");
-              }}>
-                <strong>Required</strong><span>{validation.errors[key]}</span>
-              </button>
-            ))}
-            {warningKeys.slice(0, 3).map((key) => (
-              <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
-                <strong>Review</strong><span>{validation.warnings[key]}</span>
-              </button>
-            ))}
-          </section>
-          <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
-            <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>
-            {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
-            {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}
-          </section>
+          {viewMode !== "patientStory" && (
+            <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
+              <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
+              {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
+              {errorKeys.slice(0, 5).map((key) => (
+                <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
+                  select(routeForRequirement(key)?.key || "finalization", "requirement");
+                }}>
+                  <strong>Required</strong><span>{validation.errors[key]}</span>
+                </button>
+              ))}
+              {warningKeys.slice(0, 3).map((key) => (
+                <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
+                  <strong>Review</strong><span>{validation.warnings[key]}</span>
+                </button>
+              ))}
+            </section>
+          )}
+          {viewMode !== "patientStory" && (
+            <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
+              <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>
+              {(intelligence?.findings || []).slice(0, 4).map((finding, index) => <div className="rnica-command-signal" key={`${finding.category}-${index}`}><strong>{finding.title}</strong><span>{finding.details}</span></div>)}
+              {!intelligence && <p>Save the assessment to refresh aggregate clinical signals.</p>}
+            </section>
+          )}
           <section className="clinical-command-card rnica-command-card rnica-command-save">
             <div><strong>Save &amp; sync</strong><span>{saveStatus === "saved" ? "Saved" : saving ? "Saving…" : "Autosave active"}</span></div>
             <button type="button" disabled={saving || locked} onClick={onSave}>{saving ? "Saving…" : "Save assessment"}</button>

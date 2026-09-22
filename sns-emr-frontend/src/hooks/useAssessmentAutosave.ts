@@ -16,6 +16,16 @@ type UseAssessmentAutosaveParams<T> = {
   updateFn: (assessmentId: string, formData: T) => Promise<unknown>;
   patientId?: string;
   intervalMs?: number;
+  // Ref that becomes true only once the clinician has actually edited a
+  // field (see RNICA.jsx's updateField). Without this guard, the
+  // background timer would create a brand-new blank assessment purely
+  // because auto-populated defaults (facesheet harvest, etc.) differ from
+  // the empty baseline snapshotted at mount -- producing a phantom DRAFT
+  // record any time this screen is opened and left idle, even with zero
+  // clinician input. Explicit "Save assessment" / lock actions are
+  // unaffected: they call saveFn/updateFn directly and never consult this
+  // flag.
+  userEditedRef?: { current: boolean };
 };
 
 type ResetAutosaveTrackingOptions<T> = {
@@ -43,6 +53,7 @@ export function useAssessmentAutosave<T>({
   updateFn,
   patientId,
   intervalMs = 30000,
+  userEditedRef,
 }: UseAssessmentAutosaveParams<T>) {
   const formDataRef = useRef(formData);
   const assessmentIdRef = useRef<AssessmentId>(assessmentId);
@@ -108,6 +119,15 @@ export function useAssessmentAutosave<T>({
         lastPersistedPayloadRef.current === serializedFormData
         && lastPersistedAssessmentIdRef.current === currentAssessmentId
       ) {
+        return;
+      }
+
+      // Never let the silent background timer create a brand-new
+      // assessment on its own -- only persist further changes once a real
+      // assessmentId already exists (from an explicit Save/Lock action, or
+      // a loaded existing record). Creation requires the clinician to have
+      // actually edited a field first.
+      if (!currentAssessmentId && !userEditedRef?.current) {
         return;
       }
 
