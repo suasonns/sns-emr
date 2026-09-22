@@ -441,6 +441,11 @@ export default function RNICACommandWorkspace({
     emitRnIcaTelemetry({ name: "section_jump", section: landing, source: `screen_tab:${screen.key}` });
   };
 
+  const evidenceIntakeGroup = useMemo(
+    () => screenGroups.find((group) => group.key === "evidenceIntake"),
+    [screenGroups],
+  );
+
   if (viewMode === "patientStory") {
     // Patient Story is a true standalone RNICA screen: no legacy Clinical
     // Command Workspace chrome renders behind it (no eyebrow/context bar,
@@ -472,6 +477,59 @@ export default function RNICACommandWorkspace({
           saving={saving}
           onNavigate={(key) => select(key, "patient_story")}
         />
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "evidenceIntake" && evidenceIntakeGroup) {
+    // Evidence & Intake is the second RNICA screen rebuilt into the
+    // standalone shell (no legacy chrome). It owns three existing legacy
+    // modules unchanged (demographics, vitals, referrals -- see
+    // rnicaThirteenScreenTaxonomy.js) and reuses their real form content
+    // via renderWorkspaceSections/select exactly as the legacy workspace
+    // did; only the surrounding composition changes.
+    return (
+      <RnicaScreenShell
+        patient={patient}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="evidenceIntake"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+      >
+        <nav className="rnica-screen__subnav" aria-label="Evidence & Intake modules">
+          {evidenceIntakeGroup.routes.map((route) => {
+            const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
+            return (
+              <button
+                type="button"
+                key={route.key}
+                className={activeSection === route.key ? "is-active" : ""}
+                onClick={() => select(route.key, "evidence_intake_subnav")}
+              >
+                {route.label}
+                {missing > 0 && <span className="rnica-screen__subnav-badge">{missing}</span>}
+              </button>
+            );
+          })}
+        </nav>
+        <EvidenceIntakeAlertBanner
+          errorKeys={errorKeys}
+          warningKeys={warningKeys}
+          routeForRequirement={routeForRequirement}
+          onNavigate={(key) => select(key, "evidence_intake_banner")}
+        />
+        {renderWorkspaceSections()}
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
       </RnicaScreenShell>
     );
   }
