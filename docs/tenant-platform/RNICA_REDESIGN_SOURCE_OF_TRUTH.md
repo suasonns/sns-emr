@@ -7,6 +7,13 @@
 **MIGRATIONS:** BLOCKED
 **CURRENT DEFECT REPAIR:** BLOCKED UNDER THIS DOCUMENT
 
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** Screen numbering 3-5 is
+> superseded: **3. Diagnosis & LCD, 4. Pain & Symptom Burden,
+> 5. Functional Status** (previously 3. Functional Status, 4. Pain &
+> Symptom Burden, 5. Diagnosis & LCD). Per-screen content below is
+> unchanged; only workflow position moved. See
+> `RNICA_NAVIGATION_SPECIFICATION.md`.
+
 Companion document: `RNICA_SCREEN_BY_SCREEN_EVIDENCE_MATRIX.md` (names the
 supporting discovery document(s) for every screen's underlying content).
 
@@ -222,43 +229,47 @@ implies automated eligibility/certification.
 
 ---
 
-# Screen 3. Functional Status
+# Screen 3. Diagnosis & LCD
 
 **Purpose**
-- **[DESIGN REQUIREMENT]** Document functional status and disease-
-  relevant performance scales without presenting irrelevant scales.
+- Document terminal diagnosis, related diagnoses/comorbidities, prognosis
+  evidence, and LCD support.
 
 **Always visible**
-- **[LOCKED PRODUCT DECISION]** PPS and KPS.
+- **[REPOSITORY-DISCOVERED]** Primary diagnosis, secondary diagnoses,
+  comorbidities, HOPE diagnosis category, terminal prognosis, LCD
+  supporting evidence, and LCD eligibility narrative.
 
 **Conditionally visible**
-- **[LOCKED PRODUCT DECISION]** FAST, ECOG, and NYHA only under their
-  authorized diagnosis conditions.
+- **[REPOSITORY-DISCOVERED]** Disease-specific LCD guidance after
+  diagnosis detection.
+- **[LOCKED PRODUCT DECISION]** Disease Trajectory, RN Addendum, and
+  Clinician Clarification require approved clinical definition before
+  being revived as live controls.
 
 **AI content**
-- **[DESIGN REQUIREMENT]** Show functional decline evidence and missing-
-  status prompts only when supported by current data or validation.
+- **[REPOSITORY-DISCOVERED]** LCD detect/config/evaluate chain and
+  diagnosis-related intelligence inputs.
 
 **Compliance content**
-- **[REPOSITORY-DISCOVERED]** PPS/KPS warning and HOPE M1190 association
-  remain wired.
-- **[REGULATORY / CLINICAL AUTHORITY]** Functional status is supporting
-  evidence, not an automatic eligibility result.
+- LCD evidence must support individualized documentation and must not be
+  presented as a conclusive automated eligibility decision.
 
 **Required actions / Completion criteria**
-- Complete PPS and KPS; complete any diagnosis-applicable scale; provide
-  required justification where configured.
+- Complete required diagnosis/HOPE fields and the LCD narrative; resolve
+  visible validation issues.
 
 **Do not show**
-- Disabled, placeholder, "N/A," or irrelevant scales.
+- **[LOCKED PRODUCT DECISION]** Any Clinical Narrative in Diagnosis.
 
 **Do not touch**
-- Field keys, score semantics, structured-finding mappings, and HOPE
-  mapping.
+- LCD narrative, diagnosis authority, field paths consumed by
+  HOPE/validation/POC/Intelligence.
 
-**Pass:** Only relevant scales render and values persist correctly.
-**Fail:** Irrelevant scales render or hidden scales are represented as
-disabled.
+**Pass:** Diagnosis and evidence are traceable; no duplicate narrative
+exists.
+**Fail:** Diagnosis contains a Clinical Narrative or LCD output is framed
+as physician certification.
 
 ---
 
@@ -301,47 +312,43 @@ disappear.
 
 ---
 
-# Screen 5. Diagnosis & LCD
+# Screen 5. Functional Status
 
 **Purpose**
-- Document terminal diagnosis, related diagnoses/comorbidities, prognosis
-  evidence, and LCD support.
+- **[DESIGN REQUIREMENT]** Document functional status and disease-
+  relevant performance scales without presenting irrelevant scales.
 
 **Always visible**
-- **[REPOSITORY-DISCOVERED]** Primary diagnosis, secondary diagnoses,
-  comorbidities, HOPE diagnosis category, terminal prognosis, LCD
-  supporting evidence, and LCD eligibility narrative.
+- **[LOCKED PRODUCT DECISION]** PPS and KPS.
 
 **Conditionally visible**
-- **[REPOSITORY-DISCOVERED]** Disease-specific LCD guidance after
-  diagnosis detection.
-- **[LOCKED PRODUCT DECISION]** Disease Trajectory, RN Addendum, and
-  Clinician Clarification require approved clinical definition before
-  being revived as live controls.
+- **[LOCKED PRODUCT DECISION]** FAST, ECOG, and NYHA only under their
+  authorized diagnosis conditions.
 
 **AI content**
-- **[REPOSITORY-DISCOVERED]** LCD detect/config/evaluate chain and
-  diagnosis-related intelligence inputs.
+- **[DESIGN REQUIREMENT]** Show functional decline evidence and missing-
+  status prompts only when supported by current data or validation.
 
 **Compliance content**
-- LCD evidence must support individualized documentation and must not be
-  presented as a conclusive automated eligibility decision.
+- **[REPOSITORY-DISCOVERED]** PPS/KPS warning and HOPE M1190 association
+  remain wired.
+- **[REGULATORY / CLINICAL AUTHORITY]** Functional status is supporting
+  evidence, not an automatic eligibility result.
 
 **Required actions / Completion criteria**
-- Complete required diagnosis/HOPE fields and the LCD narrative; resolve
-  visible validation issues.
+- Complete PPS and KPS; complete any diagnosis-applicable scale; provide
+  required justification where configured.
 
 **Do not show**
-- **[LOCKED PRODUCT DECISION]** Any Clinical Narrative in Diagnosis.
+- Disabled, placeholder, "N/A," or irrelevant scales.
 
 **Do not touch**
-- LCD narrative, diagnosis authority, field paths consumed by
-  HOPE/validation/POC/Intelligence.
+- Field keys, score semantics, structured-finding mappings, and HOPE
+  mapping.
 
-**Pass:** Diagnosis and evidence are traceable; no duplicate narrative
-exists.
-**Fail:** Diagnosis contains a Clinical Narrative or LCD output is framed
-as physician certification.
+**Pass:** Only relevant scales render and values persist correctly.
+**Fail:** Irrelevant scales render or hidden scales are represented as
+disabled.
 
 ---
 

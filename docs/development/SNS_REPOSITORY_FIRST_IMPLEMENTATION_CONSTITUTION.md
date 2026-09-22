@@ -327,6 +327,51 @@ Do not change existing clinical behavior to make a visual component easier to im
 
 Patient Story is an approved read-only aggregation layer and owns no clinical data.
 
+## 8a. RNICA Workflow Order
+
+**[PRODUCT-AUTHORITY DECISION — 2026-09-22]** The canonical RNICA workflow
+order is:
+
+1. Patient Story
+2. Evidence & Intake
+3. Diagnosis & LCD
+4. Pain & Symptom Burden
+5. Functional Status
+6. Body Systems
+7. Caregiver & Support
+8. Safety & Clinical Risk
+9. ACP & Goals of Care
+10. Orders & POC
+11. Compliance & Readiness
+12. AI Action Center
+13. Finalization
+
+This supersedes any prior numbering in `RNICA_WORKFLOW_AUTHORITY_MAP.md`,
+`RNICA_SCREEN_AUTHORITY_MATRIX.md`, and `RNICA_REDESIGN_SOURCE_OF_TRUTH.md`
+(all three have been updated to reflect it). The full rationale and
+navigation-ownership model live in
+`docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md` — treat that
+document as authoritative for workflow order and navigation questions.
+Non-linear navigation between screens remains permitted; this is the
+default/recommended sequence, not a server-enforced gate.
+
+## 8b. RNICA Workflow Navigation
+
+- **Patient Chart Navigation** (global chart areas: Facesheet, Care
+  Overview, Intake & Admission, Nursing Assessment, Visits, Orders,
+  Medications, Physician Orders) and **RNICA Workflow Navigation**
+  (navigation between the 13 RNICA screens) are separate concerns owned by
+  separate components. Never merge them into one navigation surface.
+- RNICA workflow navigation is owned by the RNICA workspace shell
+  (`RnicaScreenShell` in `RNICACommandWorkspace.jsx`), not by any global
+  chart-navigation component.
+- Desktop: RNICA workflow navigation is a dedicated rail with active-state
+  and progress indication — not a horizontal, scrolling tab bar.
+- Mobile: the rail collapses to a compact current-screen control that
+  opens a full list for navigation; no horizontal overflow.
+- See `docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md` for full
+  detail before implementing any navigation change.
+
 ## 9. shadcn/ui Policy
 
 shadcn/ui is an implementation toolkit, not the SNS design authority.

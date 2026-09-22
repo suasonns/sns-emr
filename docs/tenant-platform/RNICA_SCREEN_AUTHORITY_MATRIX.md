@@ -4,6 +4,13 @@
 **Purpose:** Define screen ownership, editability, sources, outputs, and
 prohibited behavior for each of the 13 approved RNICA workflow destinations.
 
+> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22]** Screen numbering 3-5 is
+> superseded: **3. Diagnosis & LCD, 4. Pain & Symptom Burden,
+> 5. Functional Status** (previously 3. Functional Status, 4. Pain &
+> Symptom Burden, 5. Diagnosis & LCD). Ownership/editability/source content
+> for each screen is unchanged — only workflow position moved. See
+> `RNICA_NAVIGATION_SPECIFICATION.md`.
+
 ## Global rule
 
 A screen may aggregate or present data owned elsewhere. Presentation does
@@ -56,35 +63,7 @@ which screen currently exists.
   screen exists; it is currently interleaved across legacy `demographics`/
   `vitals`/`referrals` modules.
 
-## 3. Functional Status
-- **Purpose:** Capture functional performance and diagnosis-relevant
-  scales. **Owns:** legacy `performanceStatus` module fields.
-- **Always visible:** PPS, KPS — enforced hard-required at Lock for
-  RN ICA/Update/Recert (`clinical_note_validation_engine.py:987-1112`).
-- **Conditional:** FAST (dementia-related, server-enforced), NYHA
-  (cardiac-related, server-enforced), ECOG (**no server enforcement branch
-  found — confirmed open defect**).
-- **Produces:** Functional evidence, HOPE data
-  (`rnica_hope_workflow_service.py`), validation state, LCD facts
-  (`buildClientLcdFacts()`, `RNICA.jsx`, reads `performanceStatus.pps/kps/
-  nyha/fast`).
-- **Prohibited:** Irrelevant scales, disabled placeholders, automatic
-  eligibility determination.
-
-## 4. Pain & Symptom Burden
-- **Purpose:** Capture pain and symptom burden. **Owns:** legacy `pain`,
-  `symptomImpact` modules (`NumericPainScale`, `PAINADScale`, `FLACCScale`
-  components, `SYMPTOM_IMPACT_CHECKLIST` constant mapping to HOPE J2051 A-H).
-- **Consumes:** Medication/order display (`src/api/medications.js`) where
-  authorized; source ownership remains external.
-- **Produces:** HOPE pain/symptom items, findings, warnings, follow-up
-  needs (SFV status, `getSfvStatus`/`getHopeAdmissionStatus`,
-  `src/intake/hopeReportMapper.js`).
-- **AI:** Advisory follow-up suggestions only.
-- **Prohibited:** Silent medication/order changes; derived values
-  overwriting manual entries.
-
-## 5. Diagnosis & LCD
+## 3. Diagnosis & LCD
 - **Purpose:** Capture diagnoses, relatedness, comorbidities, LCD evidence,
   and LCD Supporting Narrative. **Owns:** legacy `diagnoses` module,
   including `ndsEligibility` sub-state.
@@ -99,6 +78,34 @@ which screen currently exists.
   presented per `RNICA_AI_GOVERNANCE.md` §5 language rules.
 - **Prohibited:** Final Clinical Narrative, physician certification,
   eligibility confirmation, AI prognosis.
+
+## 4. Pain & Symptom Burden
+- **Purpose:** Capture pain and symptom burden. **Owns:** legacy `pain`,
+  `symptomImpact` modules (`NumericPainScale`, `PAINADScale`, `FLACCScale`
+  components, `SYMPTOM_IMPACT_CHECKLIST` constant mapping to HOPE J2051 A-H).
+- **Consumes:** Medication/order display (`src/api/medications.js`) where
+  authorized; source ownership remains external.
+- **Produces:** HOPE pain/symptom items, findings, warnings, follow-up
+  needs (SFV status, `getSfvStatus`/`getHopeAdmissionStatus`,
+  `src/intake/hopeReportMapper.js`).
+- **AI:** Advisory follow-up suggestions only.
+- **Prohibited:** Silent medication/order changes; derived values
+  overwriting manual entries.
+
+## 5. Functional Status
+- **Purpose:** Capture functional performance and diagnosis-relevant
+  scales. **Owns:** legacy `performanceStatus` module fields.
+- **Always visible:** PPS, KPS — enforced hard-required at Lock for
+  RN ICA/Update/Recert (`clinical_note_validation_engine.py:987-1112`).
+- **Conditional:** FAST (dementia-related, server-enforced), NYHA
+  (cardiac-related, server-enforced), ECOG (**no server enforcement branch
+  found — confirmed open defect**).
+- **Produces:** Functional evidence, HOPE data
+  (`rnica_hope_workflow_service.py`), validation state, LCD facts
+  (`buildClientLcdFacts()`, `RNICA.jsx`, reads `performanceStatus.pps/kps/
+  nyha/fast`).
+- **Prohibited:** Irrelevant scales, disabled placeholders, automatic
+  eligibility determination.
 
 ## 6. Body Systems
 - **Purpose:** Capture ten body-system assessments. **Owns:**
