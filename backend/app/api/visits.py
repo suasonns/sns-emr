@@ -4062,6 +4062,54 @@ def complete_sfv_requirement(
     )
 
 
+class SfvRequirementSummary(BaseModel):
+    sfvRequirementId: str
+    patientId: str
+    triggerVisitId: str
+    triggerDatetime: Optional[str] = None
+    completionVisitId: Optional[str] = None
+    status: str
+    dueAt: Optional[str] = None
+    completedAt: Optional[str] = None
+
+
+@router.get("/sfv-requirements", response_model=list[SfvRequirementSummary])
+def list_sfv_requirements(
+    patientId: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Read-only support for the SFV status displays (the read-only
+    RNICA status card and the qualifying follow-up visit's Symptom
+    Follow-Up section) -- navigation/status only, never a completion
+    path. Reuses the same tenant/patient-access authorization as every
+    other patient-scoped endpoint; does not require RN-scope capability
+    since this is read-only.
+    """
+    get_authorized_patient(db, patientId, current_user)
+
+    requirements = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .filter(SFVRequirement.patient_id == patientId)
+        .order_by(SFVRequirement.due_at.asc().nullslast())
+        .all()
+    )
+    return [
+        SfvRequirementSummary(
+            sfvRequirementId=str(r.id),
+            patientId=str(r.patient_id),
+            triggerVisitId=str(r.trigger_reference_id),
+            triggerDatetime=r.trigger_datetime.isoformat() if r.trigger_datetime else None,
+            completionVisitId=str(r.completed_visit_id) if r.completed_visit_id else None,
+            status=r.status,
+            dueAt=r.due_at.isoformat() if r.due_at else None,
+            completedAt=r.completed_at.isoformat() if r.completed_at else None,
+        )
+        for r in requirements
+    ]
+
+
 def _run_phase_b_finalize_hooks(
     *,
     db: Session,

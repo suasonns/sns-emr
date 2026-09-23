@@ -87,6 +87,30 @@ def _trigger_requirement(db_session, patient, trigger_visit_id, trigger_datetime
     return outcome
 
 
+def test_list_sfv_requirements_endpoint_returns_open_requirement(client, db_session, rn_headers):
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.get(
+        "/visits/sfv-requirements",
+        params={"patientId": str(patient.id)},
+        headers=rn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body) == 1
+    assert body[0]["sfvRequirementId"] == outcome.requirement_id
+    assert body[0]["status"] == "OPEN"
+    assert body[0]["triggerVisitId"] == str(trigger_visit.id)
+    assert body[0]["completionVisitId"] is None
+
+
 def test_complete_sfv_requirement_endpoint_happy_path(client, db_session, rn_headers):
     patient, admission = _make_patient_and_admission(db_session)
     now = datetime.now(timezone.utc)

@@ -32,6 +32,7 @@ import {
 } from "./rn-ica/rnIcaClinicalNavigation";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
+import { listSfvRequirements } from "../api/sfv";
 import {
   saveRnicaAssessmentOffline,
   updateRnicaAssessmentOffline,
@@ -7948,6 +7949,103 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
     </div>
   );
 }
+
+// P3-009/P3-017: read-only SFV Follow-Up status card for the TRIGGERING
+// RNICA encounter. This screen never offers a "Complete SFV" action --
+// completion can only happen from a separate, later qualifying visit
+// (see the Symptom Follow-Up Visit section on the Visit Notes screen).
+// This card exists so the triggering clinician can see whether a
+// follow-up is outstanding and jump to Visit Notes to create/open it.
+function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus, styles, COLORS }) {
+  const [requirements, setRequirements] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    listSfvRequirements(patientId)
+      .then((rows) => {
+        if (cancelled) return;
+        setRequirements(rows);
+        // HOPE J2052 export needs an accurate "in-person SFV completed?"
+        // value -- source it from the authoritative backend requirement
+        // status instead of a manual self-attested checkbox (P3-009).
+        // Best-effort: reflects the most recently completed requirement,
+        // if any (SFVRequirement lifecycle normally has one OPEN
+        // requirement per patient at a time).
+        const completedRows = rows.filter((r) => r.status === "COMPLETED" && r.completedAt);
+        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+        onSyncCompletionStatus?.(Boolean(latest), latest ? latest.completedAt.slice(0, 10) : "");
+      })
+      .catch((err) => { if (!cancelled) setError(err.message || "Unable to load SFV status."); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  if (!patientId) return null;
+
+  const cardStyle = {
+    border: `1px solid ${COLORS.mapControlBorder || "#334155"}`,
+    background: COLORS.mapControlBg || "rgba(15,23,42,0.4)",
+    borderRadius: 10,
+    padding: "12px 14px",
+    marginBottom: 14,
+    fontSize: 12.5,
+    color: COLORS.mapMuted || COLORS.gray,
+    lineHeight: 1.6,
+  };
+
+  if (error) {
+    return <div style={cardStyle}>SFV Follow-Up Required — status unavailable ({error})</div>;
+  }
+  if (requirements === null) {
+    return <div style={cardStyle}>Loading SFV follow-up status…</div>;
+  }
+  if (requirements.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={cardStyle}>
+      <strong style={{ color: COLORS.mapChipText || COLORS.text }}>SFV Follow-Up Required</strong>
+      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8 }}>
+        {requirements.map((r) => (
+          <div key={r.sfvRequirementId}>
+            <div>Status: <strong>{r.status}</strong>{r.dueAt ? ` · due ${new Date(r.dueAt).toLocaleDateString()}` : ""}</div>
+            {r.status === "COMPLETED" ? (
+              <div>Completed via a separate follow-up visit{r.completedAt ? ` on ${new Date(r.completedAt).toLocaleDateString()}` : ""}.</div>
+            ) : (
+              <div>
+                Symptom follow-up requires a separate clinical encounter. The follow-up
+                may be completed by the original nurse, another assigned nurse, or another
+                appropriately authorized clinician.
+              </div>
+            )}
+          </div>
+        ))}
+        {onNavigateToSection && (
+          <button
+            type="button"
+            onClick={() => onNavigateToSection("visit-notes")}
+            style={{
+              alignSelf: "flex-start",
+              background: "transparent",
+              border: `1px solid ${COLORS.mapControlBorder || "#334155"}`,
+              color: COLORS.mapChipText || COLORS.text,
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Create/Open Follow-Up Visit
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Card({ title, children, hopeCode, sfv, cms, id }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
@@ -8299,6 +8397,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   return (
     <>
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
+      {sectionKey === "sfv" && (
+        <SfvStatusCard patientId={patientId} onNavigateToSection={onNavigateToSection} onSyncCompletionStatus={(completed, completedAt) => {
+          u("inPersonSfvCompleted", completed);
+          u("sfvDate", completedAt || "");
+        }} styles={styles} COLORS={COLORS} />
+      )}
       <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
         {resolvedCards.map((card, ci) => {
         // [PRESENTATION-ONLY RELOCATION] A card may declare `dataSection` to
@@ -9401,15 +9505,13 @@ const SECTION_CONFIGS = {
       { title: "SFV Screening", hopeCode: "J2050", fields: [
         { type: "checkbox", label: "Symptom Impact Screening Completed", path: "symptomImpactScreeningCompleted" },
         { type: "input", label: "Screening Date", path: "symptomImpactScreeningDate", inputType: "date" },
-        // P3-009: SFV completion is enforced by the backend against a
-        // SEPARATE visit record (triggerVisitId != completionVisitId) and
-        // cannot be satisfied from this triggering visit. This field is
-        // reference/context only; checking it here has no effect on the
-        // authoritative SFVRequirement record and does not complete the
-        // SFV requirement. Do not remove this label without also wiring
-        // this control to the real backend completion path.
-        { type: "checkbox", label: "In-Person SFV Completed (reference only — this triggering visit cannot satisfy the SFV requirement; completion must occur on a separate visit)", path: "inPersonSfvCompleted" },
-        { type: "input", label: "SFV Date (reference only — not the authoritative completion record)", path: "sfvDate", inputType: "date" },
+        // P3-009/P3-017 continuation directive Section 4: this triggering
+        // RNICA screen no longer offers a local completion checkbox --
+        // SFV completion is authoritative only through a separate
+        // qualifying follow-up visit calling POST /visits/sfv-requirements/
+        // {id}/complete (see the Symptom Follow-Up Visit section on the
+        // Visit Notes screen). The read-only SfvStatusCard rendered above
+        // this section shows current follow-up status.
         { type: "input", label: "Reason SFV not completed", path: "reasonNotCompleted" },
       ]},
       { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [

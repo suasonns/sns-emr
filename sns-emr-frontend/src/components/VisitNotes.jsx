@@ -5,6 +5,11 @@ import { getCurrentUser } from "../api/session";
 import { getSupervisorySchedule } from "../api/supervisorySchedule";
 import { ContinuousCareLogSection } from "./RNICA";
 import {
+  listSfvRequirements,
+  completeSfvRequirement,
+  describeSfvError,
+} from "../api/sfv";
+import {
   VISIT_NOTE_FORM_TYPES,
   VISIT_NOTE_CARE_LEVELS,
   createVisitNote,
@@ -1007,6 +1012,107 @@ function VisitChecklistCard({ checklist, onChange, disabled, styles, COLORS }) {
   );
 }
 
+// P3-009/P3-017 continuation directive: the ONLY UI surface that may
+// offer "Complete SFV" is a SEPARATE qualifying follow-up visit (never
+// the triggering RNICA screen -- see RNICA.jsx's read-only
+// SfvStatusCard). This section lists OPEN SFV requirements for the
+// patient and lets an authorized clinician complete one from THIS
+// visit, once this visit itself is authenticated (signed/finalized).
+// The backend is the sole authority on eligibility -- this UI only
+// gates on documentation being complete (finalized) before offering
+// the action; the server still independently validates visit
+// separateness, ordering, tenant/patient match, and clinician
+// authorization and can reject the request even if this UI enabled it.
+export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, styles, COLORS }) {
+  const [requirements, setRequirements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [completingId, setCompletingId] = useState(null);
+  const [error, setError] = useState("");
+  const [message, setMessage] = useState("");
+
+  const reload = useCallback(() => {
+    if (!patientId) return;
+    setLoading(true);
+    listSfvRequirements(patientId)
+      .then((rows) => setRequirements(rows))
+      .catch((err) => setError(err.message || "Unable to load SFV status."))
+      .finally(() => setLoading(false));
+  }, [patientId]);
+
+  useEffect(() => { reload(); }, [reload]);
+
+  if (!patientId) return null;
+
+  const openRequirements = requirements.filter((r) => r.status === "OPEN" || r.status === "OVERDUE");
+  const completedHere = requirements.filter((r) => r.completionVisitId === visitId);
+
+  if (loading) {
+    return <Card title="Symptom Follow-Up Visit" styles={styles}><div style={{ fontSize: 12, color: COLORS.gray }}>Loading…</div></Card>;
+  }
+  if (openRequirements.length === 0 && completedHere.length === 0) {
+    // Nothing outstanding for this patient and nothing was completed on
+    // this specific visit -- do not show the section at all.
+    return null;
+  }
+
+  const handleComplete = (requirementId) => {
+    setCompletingId(requirementId);
+    setError("");
+    setMessage("");
+    completeSfvRequirement(requirementId, visitId)
+      .then((result) => {
+        setMessage(
+          result.status === "COMPLETED"
+            ? "Symptom Follow-Up Visit completed and recorded on this visit."
+            : `SFV status: ${result.status}`
+        );
+        reload();
+      })
+      .catch((err) => setError(describeSfvError(err.code) || err.message))
+      .finally(() => setCompletingId(null));
+  };
+
+  return (
+    <Card title="Symptom Follow-Up Visit" styles={styles}>
+      {error ? <div style={{ color: COLORS.error || "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div> : null}
+      {message ? <div style={{ color: COLORS.success || "#0d9488", fontSize: 12.5, marginBottom: 8 }}>{message}</div> : null}
+      {completedHere.map((r) => (
+        <div key={r.sfvRequirementId} style={{ fontSize: 12.5, color: COLORS.dark, marginBottom: 8 }}>
+          Symptom Follow-Up completed on this visit{r.completedAt ? ` (${new Date(r.completedAt).toLocaleString()})` : ""}.
+        </div>
+      ))}
+      {openRequirements.map((r) => (
+        <div key={r.sfvRequirementId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 12.5, color: COLORS.dark, marginBottom: 8 }}>
+          <span>
+            Symptom follow-up outstanding since the triggering RNICA assessment
+            {r.dueAt ? ` (due ${new Date(r.dueAt).toLocaleDateString()})` : ""}.
+            Document the symptom reassessment and interventions above, then sign and submit this
+            visit before completing the SFV.
+          </span>
+          <button
+            type="button"
+            disabled={!isFinalized || completingId === r.sfvRequirementId}
+            onClick={() => handleComplete(r.sfvRequirementId)}
+            title={!isFinalized ? "Sign and submit this visit note before completing the SFV." : undefined}
+            style={{
+              flexShrink: 0,
+              background: isFinalized ? (COLORS.accentTeal || "#0d9488") : "transparent",
+              color: isFinalized ? "#fff" : COLORS.gray,
+              border: `1px solid ${isFinalized ? (COLORS.accentTeal || "#0d9488") : COLORS.mapControlBorder || "#334155"}`,
+              borderRadius: 6,
+              padding: "6px 12px",
+              fontSize: 12,
+              cursor: isFinalized ? "pointer" : "not-allowed",
+            }}
+          >
+            {completingId === r.sfvRequirementId ? "Completing…" : "Complete SFV"}
+          </button>
+        </div>
+      ))}
+    </Card>
+  );
+}
+
 function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, styles, COLORS }) {
   const [content, setContent] = useState(DEFAULT_CONTENT);
   const [visitStatus, setVisitStatus] = useState(null);
@@ -1157,6 +1263,16 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
 
       <Section anchorId={anchor("since-last")}>
         <SinceLastComparableVisitCard comparisonState={comparisonState} onJump={scrollToSection} styles={styles} COLORS={COLORS} />
+      </Section>
+
+      <Section anchorId={anchor("symptom-follow-up")}>
+        <SymptomFollowUpVisitSection
+          patientId={patientId}
+          visitId={visitId}
+          isFinalized={isFinalized}
+          styles={styles}
+          COLORS={COLORS}
+        />
       </Section>
 
       {isCC ? (
