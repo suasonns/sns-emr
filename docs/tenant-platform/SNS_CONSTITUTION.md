@@ -1048,13 +1048,11 @@ independent RN/LPN/LVN discipline gate. **Backend enforcement already
 matches this decision; no backend behavior change was authorized or made.**
 Full evidence: `SFV_LIFECYCLE_TRACE_MATRIX.md` §5.
 
-**Known gap (not addressed by this directive):** the frontend's
-self-attested `sfv.inPersonSfvCompleted` checkbox on the triggering RN ICA
-form (`RNICA.jsx:9398`) never calls `complete_sfv_requirement_from_visit`,
-so the correct backend rule is not reachable from that control. Aligning
-the frontend is a separate, larger implementation task requiring its own
-authorization — tracked as an open item, not yet approved for
-implementation.
+**Gap closed (later pass):** the frontend's self-attested
+`sfv.inPersonSfvCompleted` checkbox on the triggering RN ICA form never
+called `complete_sfv_requirement_from_visit`. It has since been removed
+entirely; see the completion-endpoint and frontend-placement updates
+later in this section.
 
 **Tests:** `backend/tests/test_sfv_completion_visit_separation.py`
 (8 scenarios, passing) — see `RNICA_ACCEPTANCE_TEST_MATRIX.md` §2b for the
@@ -1098,25 +1096,49 @@ Because that hook only runs inside an already-tenant/patient-authorized
 visit-finalize request, cross-tenant and cross-patient SFV completion is
 already structurally prevented today — **verified, not a gap.**
 
-**Confirmed gap (architecture, not a simple parity bug):** there is no
-dedicated SFV completion API endpoint in the repository (grepped: no
-`sfv-requirement`/`/sfv/` route exists). The only completion path is the
-silent automatic hook `_maybe_complete_open_sfv_for_visit`, triggered as a
-side effect of finalizing any qualifying visit note. It has no idempotency
-key, no structured error codes, no lifecycle-version optimistic lock, and
-collapses lifecycle to a 4-value `status` column (`OPEN`, `COMPLETED`,
-`OVERDUE`, `CANCELLED` — `sfv_requirement.py:52-73`), not the richer
-trigger/due/visit-started/completed/export/submission state set required
-by product direction. Building a dedicated endpoint with idempotency,
-lifecycle-version locking, and structured errors is a schema/API change
-requiring its own explicit authorization before implementation — tracked
-as an open item, not yet approved.
+**Confirmed gap, now closed (this pass):** a dedicated SFV completion API
+endpoint now exists —
+`POST /visits/sfv-requirements/{sfvRequirementId}/complete`
+(`backend/app/api/visits.py`), authorized via
+`app.core.patient_access.can_complete_sfv` (tenant + patient access +
+RN-scope clinical documentation capability — not a bespoke
+`role == RN || role == LVN` check), with structured JSON error codes,
+row-level locking for concurrency (verified with a real two-thread race
+test, not merely asserted), and idempotent replay against an
+already-`COMPLETED` requirement. A companion read-only
+`GET /visits/sfv-requirements?patientId=...` backs the frontend status
+displays. No schema migration, no new lifecycle engine, and no new
+on-call/permissions/audit subsystem were built — the existing
+`SFVRequirement`/`Visit` models and `complete_sfv_requirement_from_visit`
+service function are reused as-is. See
+`docs/tenant-platform/SFV_FRONTEND_BACKEND_PARITY_MATRIX.md` for the
+updated per-scenario evidence.
 
-**Known gap (frontend):** the self-attested `sfv.inPersonSfvCompleted`
-checkbox on the triggering RN ICA form (`RNICA.jsx`) never calls the
-backend completion path at all — it is a local-only form field with no
-effect on the real `SFVRequirement` record. It has been relabeled (this
-pass) to state plainly that it does not satisfy the SFV requirement.
+**Known gap, now closed (this pass):** the self-attested
+`sfv.inPersonSfvCompleted` checkbox and `sfvDate` field on the triggering
+RN ICA form have been **removed** from `RNICA.jsx` (they never called the
+backend completion path). The triggering screen now shows a read-only
+`SfvStatusCard` (current follow-up status + a link to Visit Notes) and
+offers no completion action. The authoritative "Complete SFV" action now
+lives on the **separate qualifying follow-up visit** — a new
+`SymptomFollowUpVisitSection` on the Visit Notes screen
+(`sns-emr-frontend/src/components/VisitNotes.jsx`), gated on that visit
+being finalized (signed/submitted) before the completion action is
+offered, calling the new endpoint via the single client function
+`completeSfvRequirement` (`sns-emr-frontend/src/api/sfv.ts`).
+
+**Remaining open items (explicitly not built this pass, per product
+direction to avoid over-engineering):** a formal on-call
+scheduling/assignment subsystem (existing tenant/patient-access/capability
+checks are reused instead); a richer multi-state SFV lifecycle beyond the
+existing 4-value `status` column; a full browser-automated end-to-end
+test suite (only backend API-level and frontend component-level tests
+exist so far). A pre-existing, out-of-scope gap was also discovered and
+documented (not fixed): `app.core.capabilities.ROLE_CAPABILITIES` has no
+`LVN` entry, so `can_complete_sfv` falls back to an explicit
+normalized-role check for RN/LVN to match the service layer's existing
+discipline rule — fixing the capability roster itself would affect many
+other endpoints and is outside SFV remediation scope.
 
 ---
 

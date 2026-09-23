@@ -1,6 +1,6 @@
 # SFV Lifecycle Trace Matrix (Phase 2, independent re-trace)
 
-**Document Status:** AUDIT BASELINE / REMEDIATION REQUIRED — see `RNICA_PHASE3_REMEDIATION_REGISTER.md`. Note: §5 (SFV Completion Visit Rule) documents a defect that was already confirmed FIXED-BY-DESIGN (backend already enforced the rule; tests added and passing) — see register P3-009 for the remaining frontend/backend parity gap.
+**Document Status:** REMEDIATION COMPLETE (backend + frontend parity) — see `RNICA_PHASE3_REMEDIATION_REGISTER.md` P3-009/P3-017. §4/§5 originally documented a frontend-only conflation and a missing authoritative completion path; both have since been closed: the self-attested checkbox was removed from the triggering RN ICA form, a real `POST /visits/sfv-requirements/{id}/complete` endpoint now exists, and the only completion UI lives on a separate, later Visit Notes encounter. Remaining out-of-scope items (no formal on-call subsystem, no browser-automated E2E suite) are recorded in `SFV_FRONTEND_BACKEND_PARITY_MATRIX.md`.
 
 **Scope:** every Symptom Follow-up Visit (SFV) / HOPE Update Visit (HUV)
 trigger condition in `backend/app/services/hope_phase_b_engine.py`, traced to
@@ -72,6 +72,20 @@ reader of `SFVRequirement` in the frontend and no writer of
 | Trigger source restricted to the three HOPE timepoints | `:330-331` | N/A | VERIFIED_COMPLETE |
 | J2052/J2053 exported from `form_data` only, never from `SFVRequirement` | — | `hopeReportMapper.js:618-619` | PRESENT_NOT_HARVESTED |
 
+**Update (remediation pass):** row 3 ("frontend completed state") and the
+"same-form self-attested completion" conflation row are now **closed**.
+`sfv.inPersonSfvCompleted`/`sfvDate` are no longer editable anywhere in
+`RNICA.jsx` — the checkbox was removed. The new `SfvStatusCard` on the
+triggering RN ICA screen instead auto-syncs those two fields from the
+authoritative `SFVRequirement` status returned by
+`GET /visits/sfv-requirements`, so `hopeReportMapper.js` (row 4, J2052
+export) now reflects real backend completion state instead of manual
+self-attestation, and the "PRESENT_NOT_HARVESTED" row above is also
+closed: `form_data.sfv.*` is now populated *from* `SFVRequirement`, not
+independently of it. Rows 1–2 (independent trigger predicate and due-date
+derivation) remain open and are unrelated to this SFV-completion-endpoint
+remediation.
+
 ## 5. SFV Completion Visit Rule (product-authority directive)
 
 **Rule as stated by product authority:** the SFV completion event must
@@ -114,24 +128,35 @@ directive.
 | Different clinician, different visit | `RNICA Admission`, RN = Nurse A | `Skilled Nursing Visit`, LVN = Nurse B | PASS | same | VERIFIED_COMPLETE |
 | Same visit (trigger and completion collapsed) | one visit record, both events | — | FAIL | `:425-426` raises `ValueError` | VERIFIED_COMPLETE |
 
-**Frontend gap (unchanged from §4 above, not addressed by this
-directive):** the frontend's self-attested `sfv.inPersonSfvCompleted`
-checkbox (`RNICA.jsx:9398`) lives on the triggering RN ICA form itself and
-is never validated against `SFVRequirement`/`trigger_reference_id` at all
-— it does not go through `complete_sfv_requirement_from_visit`, so the
-backend's correct visit-identity rule is not actually reachable from that
-UI control. Aligning the frontend to call the real completion path (or to
-at minimum stop allowing self-attestation on the triggering form) is a
-distinct, larger implementation task, out of scope for this
-documentation-only pass, and requires its own authorization.
+**Frontend gap — closed (later pass, "RNICA SFV REMEDIATION
+CONTINUATION" + "SFV FRONTEND PLACEMENT DECISION" directives):** the
+self-attested `sfv.inPersonSfvCompleted` checkbox has been **removed**
+from `RNICA.jsx`. Completion is no longer offered on the triggering form
+at all. A new authoritative backend command,
+`POST /visits/sfv-requirements/{sfvRequirementId}/complete`
+(`backend/app/api/visits.py`), directly reuses
+`complete_sfv_requirement_from_visit` (no duplicated rule logic), so the
+backend's visit-identity rule is now reachable from a real, callable
+completion path. The frontend calls it exclusively through
+`completeSfvRequirement` (`sns-emr-frontend/src/api/sfv.ts`), and the only
+UI control that invokes it lives on a **separate, later visit** — the new
+`SymptomFollowUpVisitSection` on the Visit Notes screen
+(`sns-emr-frontend/src/components/VisitNotes.jsx`), gated on that visit
+being finalized. The triggering RN ICA screen now shows only a read-only
+`SfvStatusCard` (current status + navigation link), enforcing the
+separate-visit rule structurally at the UI-placement level as well as at
+the backend-validation level.
 
-**New tests this pass:**
-`backend/tests/test_sfv_completion_visit_separation.py` (8 scenarios per
-the directive) — written but **not executed**; see
-`RNICA_ACCEPTANCE_TEST_MATRIX.md` §2b for the environment-access blocker
-(no working `DATABASE_URL`/`TEST_DATABASE_URL` credential available in
-this session). The verdict above is based on independent static reading
-of `hope_phase_b_engine.py`, not on running these tests.
+**New tests, executed and passing:**
+`backend/tests/test_sfv_completion_visit_separation.py` (8 scenarios) and
+`backend/tests/test_sfv_completion_api.py` (9 scenarios, including the new
+completion endpoint, the read-only list endpoint, unauthorized-role
+rejection, authorized-LVN success, idempotent replay, and a real
+two-thread concurrency race) — all passing under
+`scripts/run_isolated_tests.py`. Frontend:
+`sns-emr-frontend/src/components/SymptomFollowUpVisitSection.test.jsx`
+(4 scenarios) plus the full existing 277-test frontend suite and
+production build, all passing.
 
 ---
 

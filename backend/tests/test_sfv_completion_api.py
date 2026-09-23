@@ -387,6 +387,9 @@ def test_complete_sfv_requirement_endpoint_concurrent_requests_single_winner(cli
     )
     assert requirement.status == "COMPLETED"
     assert str(requirement.completed_visit_id) == winning_completion_id
+
+
+def test_complete_sfv_requirement_endpoint_authorized_lvn_different_clinician(client, db_session, rn_headers):
     """An LVN completing a SEPARATE, different clinician's visit must be
     allowed -- clinician identity (which nurse) is not the determining
     factor; the caller's clinical capability and visit separateness are."""

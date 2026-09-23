@@ -91,11 +91,53 @@ test file or `complete_sfv_requirement_from_visit`.
 
 ---
 
+## 2c. SFV Completion Command (authoritative endpoint, "RNICA SFV REMEDIATION CONTINUATION" + "SFV FRONTEND PLACEMENT DECISION" directives)
+
+**Requirement:** a real, callable `POST /visits/sfv-requirements/{id}/complete`
+command backed by `can_complete_sfv` (generic capability authorization, not
+`role == RN || role == LVN`), with idempotent replay and safe concurrent
+resolution, plus a `GET /visits/sfv-requirements` read endpoint for the
+frontend. Completion is offered only from a separate, later, finalized
+visit (`sns-emr-frontend/src/components/VisitNotes.jsx`); the triggering
+RNICA screen is read-only.
+
+New file this pass: `backend/tests/test_sfv_completion_api.py` —
+**executed** via
+`python scripts\run_isolated_tests.py -- tests\test_sfv_completion_api.py -v`
+(env loaded from `backend/dev.env`) → **10 passed, exit code 0**.
+
+| Test ID | Requirement | Test | Level | Expected result | Status |
+|---|---|---|---|---|---|
+| **AT-SFV9** | Happy path completion | `test_complete_sfv_requirement_endpoint_happy_path` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** |
+| **AT-SFV10** | Same-visit rejection reachable from a real HTTP call | `test_complete_sfv_requirement_endpoint_rejects_same_visit` | integration (backend, HTTP) | `409 SAME_VISIT_NOT_ALLOWED` | **Pass** |
+| **AT-SFV11** | Requirement not found | `test_complete_sfv_requirement_endpoint_requirement_not_found` | integration (backend, HTTP) | `404` | **Pass** |
+| **AT-SFV12** | Completion visit not found | `test_complete_sfv_requirement_endpoint_completion_visit_not_found` | integration (backend, HTTP) | `404` | **Pass** |
+| **AT-SFV13** | Idempotent replay | `test_complete_sfv_requirement_endpoint_idempotent_replay` | integration (backend, HTTP) | Second call returns the same authoritative result, no error, no duplicate mutation | **Pass** |
+| **AT-SFV14** | Cross-tenant completion visit rejected | `test_complete_sfv_requirement_endpoint_cross_tenant_visit_rejected` | integration (backend, HTTP) | Rejected, no state change | **Pass** |
+| **AT-SFV15** | Unauthorized role rejected (VOLUNTEER) | `test_complete_sfv_requirement_endpoint_unauthorized_role_rejected` | integration (backend, HTTP) | `403`, no state mutation | **Pass** |
+| **AT-SFV16** | Authorized LVN, different clinician than trigger, completes | `test_complete_sfv_requirement_endpoint_authorized_lvn_different_clinician` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — was silently merged into the concurrency test's body during authoring (missing `def`, executed but mislabeled); split into its own named test this pass so it reports independently. |
+| **AT-SFV17** | Concurrent completion requests resolve to exactly one winner | `test_complete_sfv_requirement_endpoint_concurrent_requests_single_winner` | integration (backend, HTTP, real `ThreadPoolExecutor` race) | Both HTTP responses `200`, both agree on the same `completionVisitId`, DB shows exactly one `COMPLETED` state | **Pass** |
+| **AT-SFV18** | Read-only list endpoint returns open requirement | `test_list_sfv_requirements_endpoint_returns_open_requirement` | integration (backend, HTTP) | `200`, requirement summary present | **Pass** |
+
+Frontend companion, executed via `npx vitest run
+src/components/SymptomFollowUpVisitSection.test.jsx` → **4 passed**, and
+full suite `npm test -- --run` → **277 passed** (was 273 before this
+file was added), plus `npm run build` → exit 0.
+
+**Not yet executed / explicitly deferred, not fabricated:**
+completion-before-trigger timing edge cases beyond what
+`test_sfv_completion_visit_separation.py` already covers (AT-SFV7), and
+browser-automated end-to-end (Playwright/Cypress-style) tests — no such
+framework was found configured in this repository as of this pass; only
+backend HTTP-integration-level and frontend component-level tests exist.
+
+---
+
 ## 3. Status roll-up
 
 | Status | Count |
 |---|---|
-| Pass (executed) | 12 (AT-A3, AT-D3, AT-E3, AT-F1, AT-SFV1–AT-SFV8) |
+| Pass (executed) | 22 (AT-A3, AT-D3, AT-E3, AT-F1, AT-SFV1–AT-SFV18) |
 | Pass (static review only, explicitly labelled) | 1 (AT-A1) |
 | Fail (by static trace — no executable test exists yet) | 9 |
 | Not-yet-run | 6 |
