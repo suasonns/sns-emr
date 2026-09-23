@@ -1057,8 +1057,66 @@ authorization — tracked as an open item, not yet approved for
 implementation.
 
 **Tests:** `backend/tests/test_sfv_completion_visit_separation.py`
-(8 scenarios) written this pass; execution blocked in this session by
-missing database credentials (`RNICA_ACCEPTANCE_TEST_MATRIX.md` §2b).
+(8 scenarios, passing) — see `RNICA_ACCEPTANCE_TEST_MATRIX.md` §2b for the
+corrected exit-code evidence (initial "Blocked" status was a shell
+stderr-artifact, not a real failure).
+
+## SFV Separate-Visit and Clinician Rule (product authority, refined)
+
+An SFV completion must be documented in a separate visit record from the
+visit that generated the SFV requirement. The controlling invariant is:
+
+```
+triggerVisitId != completionVisitId
+```
+
+The completing clinician may be: the original nurse; another assigned
+nurse; an authorized on-call nurse; an RN; an LVN; or another
+appropriately authorized clinician when permitted by the agency's role,
+credential, scope, patient-access, and visit rules. The completing
+clinician does not need to match the clinician who performed the
+triggering RNICA assessment. Use **"appropriately authorized clinician"**
+as the general rule; RN, LVN, and on-call nursing are supported product
+examples, not an exhaustive or hardcoded list.
+
+The completing clinician must always be an active employee of the same
+tenant/agency as the patient — cross-tenant completion is never permitted.
+The original triggering visit and the completion visit retain independent
+authorship, authentication, timestamps, and audit history. Assignment does
+not equal completion. Visit start does not equal completion. Completion
+does not equal export. Export does not equal submission. Submission does
+not equal acceptance. The server is the authoritative enforcement layer;
+the frontend must present the same result and must not allow same-visit
+self-attestation.
+
+**Repository verification (this pass):** `get_authorized_patient`
+(`backend/app/core/patient_access.py:61`) already enforces tenant
+isolation (`Patient.tenant_id == caller.tenant_id`) and active-user status
+for every caller of the visit-finalize endpoints that lead to
+`_maybe_complete_open_sfv_for_visit` (`backend/app/api/visits.py:3868`).
+Because that hook only runs inside an already-tenant/patient-authorized
+visit-finalize request, cross-tenant and cross-patient SFV completion is
+already structurally prevented today — **verified, not a gap.**
+
+**Confirmed gap (architecture, not a simple parity bug):** there is no
+dedicated SFV completion API endpoint in the repository (grepped: no
+`sfv-requirement`/`/sfv/` route exists). The only completion path is the
+silent automatic hook `_maybe_complete_open_sfv_for_visit`, triggered as a
+side effect of finalizing any qualifying visit note. It has no idempotency
+key, no structured error codes, no lifecycle-version optimistic lock, and
+collapses lifecycle to a 4-value `status` column (`OPEN`, `COMPLETED`,
+`OVERDUE`, `CANCELLED` — `sfv_requirement.py:52-73`), not the richer
+trigger/due/visit-started/completed/export/submission state set required
+by product direction. Building a dedicated endpoint with idempotency,
+lifecycle-version locking, and structured errors is a schema/API change
+requiring its own explicit authorization before implementation — tracked
+as an open item, not yet approved.
+
+**Known gap (frontend):** the self-attested `sfv.inPersonSfvCompleted`
+checkbox on the triggering RN ICA form (`RNICA.jsx`) never calls the
+backend completion path at all — it is a local-only form field with no
+effect on the real `SFVRequirement` record. It has been relabeled (this
+pass) to state plainly that it does not satisfy the SFV requirement.
 
 ---
 
