@@ -3906,6 +3906,160 @@ def _maybe_complete_open_sfv_for_visit(
             request_id,
         )
         return None
+
+
+class SfvCompletionRequest(BaseModel):
+    completionVisitId: uuid.UUID
+
+
+class SfvCompletionAuthor(BaseModel):
+    userId: Optional[str] = None
+    displayName: Optional[str] = None
+
+
+class SfvCompletionResponse(BaseModel):
+    sfvRequirementId: str
+    patientId: str
+    triggerVisitId: str
+    completionVisitId: Optional[str] = None
+    status: str
+    completedAt: Optional[str] = None
+    completedBy: Optional[SfvCompletionAuthor] = None
+
+
+def _sfv_error(status_code: int, code: str, message: str, *, sfv_requirement_id=None, field=None):
+    error = {"code": code, "message": message}
+    if sfv_requirement_id is not None:
+        error["sfvRequirementId"] = str(sfv_requirement_id)
+    if field is not None:
+        error["field"] = field
+    return HTTPException(status_code=status_code, detail={"error": error})
+
+
+# Maps substrings of the ValueError messages raised by
+# `complete_sfv_requirement_from_visit` to the structured error codes
+# required by the SFV backend API contract (P3-017 / SFV implementation
+# directive Section 7). Matched in order; first match wins.
+_SFV_VALUEERROR_CODE_MAP = (
+    ("SFV requirement not found", "SFV_REQUIREMENT_NOT_FOUND"),
+    ("Completion visit not found", "COMPLETION_VISIT_NOT_FOUND"),
+    ("does not belong to this patient", "PATIENT_MISMATCH"),
+    ("does not belong to this tenant", "TENANT_MISMATCH"),
+    ("separate visit from the triggering", "SAME_VISIT_NOT_ALLOWED"),
+    ("before the triggering visit", "COMPLETION_BEFORE_TRIGGER"),
+    ("in-person visit", "VISIT_NOT_ELIGIBLE"),
+    ("RN or LPN/LVN", "CLINICIAN_NOT_AUTHORIZED"),
+)
+
+
+def _sfv_error_from_value_error(exc: ValueError, sfv_requirement_id) -> HTTPException:
+    message = str(exc)
+    for substring, code in _SFV_VALUEERROR_CODE_MAP:
+        if substring in message:
+            status_code = 404 if code.endswith("_NOT_FOUND") else 409
+            return _sfv_error(status_code, code, message, sfv_requirement_id=sfv_requirement_id)
+    return _sfv_error(409, "VISIT_NOT_ELIGIBLE", message, sfv_requirement_id=sfv_requirement_id)
+
+
+@router.post("/sfv-requirements/{sfv_requirement_id}/complete", response_model=SfvCompletionResponse)
+def complete_sfv_requirement(
+    sfv_requirement_id: uuid.UUID,
+    payload: SfvCompletionRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Authoritative interactive SFV completion command (P3-009/P3-017).
+
+    This is the ONLY frontend-callable path for SFV completion. It does
+    not replace the automatic `_maybe_complete_open_sfv_for_visit` hook
+    (which still runs on every visit finalize as a safety net); this
+    endpoint exists so an explicit "Complete SFV" action in the UI has a
+    single authoritative backend command to call and read a result from,
+    instead of relying on a local-only checkbox with no backend effect.
+
+    The browser supplies only `completionVisitId`. Every other decision
+    input (patient, tenant, clinician discipline, visit mode/datetime) is
+    derived server-side from the authenticated request context and the
+    persisted Visit/SFVRequirement rows -- never trusted from the request
+    body, per the SFV backend API contract.
+    """
+    # Row-lock the requirement for the duration of this request so two
+    # concurrent completion attempts against the same requirement cannot
+    # both observe "OPEN" and race (mirrors the existing protection in
+    # `_find_oldest_open_sfv_requirement_for_patient`).
+    requirement = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .with_for_update()
+        .filter(SFVRequirement.id == sfv_requirement_id)
+        .first()
+    )
+    if not requirement:
+        raise _sfv_error(404, "SFV_REQUIREMENT_NOT_FOUND", "SFV requirement not found")
+
+    # Tenant + patient-access authorization: reuses the same centralized
+    # access-control helper used by every other patient-scoped endpoint.
+    # Raises 404 (not 403) for cross-tenant/no-access callers so this
+    # endpoint cannot be used to probe for cross-tenant resource
+    # existence -- consistent with get_authorized_patient's own contract.
+    get_authorized_patient(db, requirement.patient_id, current_user)
+
+    completion_visit = (
+        db.query(Visit)
+        .execution_options(skip_tenant_filter=True)
+        .filter(Visit.id == payload.completionVisitId)
+        .first()
+    )
+    if not completion_visit:
+        raise _sfv_error(
+            404, "COMPLETION_VISIT_NOT_FOUND", "Completion visit not found",
+            sfv_requirement_id=sfv_requirement_id, field="completionVisitId",
+        )
+    if completion_visit.tenant_id != current_user.tenant_id:
+        raise _sfv_error(404, "TENANT_MISMATCH", "Completion visit not found")
+
+    try:
+        updated_requirement = complete_sfv_requirement_from_visit(
+            db=db,
+            sfv_requirement_id=requirement.id,
+            completing_visit_id=completion_visit.id,
+            completing_visit_datetime=completion_visit.visit_datetime,
+            discipline=completion_visit.visit_discipline,
+            visit_mode=getattr(completion_visit, "visit_mode", None),
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise _sfv_error_from_value_error(exc, sfv_requirement_id) from exc
+
+    db.commit()
+    db.refresh(updated_requirement)
+
+    completed_by = None
+    if updated_requirement.status == "COMPLETED":
+        completed_by = SfvCompletionAuthor(
+            userId=str(getattr(completion_visit, "finalized_by", None) or current_user.user_id),
+            displayName=_resolve_current_user_display_name(db, current_user),
+        )
+
+    return SfvCompletionResponse(
+        sfvRequirementId=str(updated_requirement.id),
+        patientId=str(updated_requirement.patient_id),
+        triggerVisitId=str(updated_requirement.trigger_reference_id),
+        completionVisitId=(
+            str(updated_requirement.completed_visit_id)
+            if updated_requirement.completed_visit_id
+            else None
+        ),
+        status=updated_requirement.status,
+        completedAt=(
+            updated_requirement.completed_at.isoformat()
+            if updated_requirement.completed_at
+            else None
+        ),
+        completedBy=completed_by,
+    )
+
+
 def _run_phase_b_finalize_hooks(
     *,
     db: Session,
