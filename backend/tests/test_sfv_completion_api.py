@@ -598,6 +598,322 @@ def test_complete_sfv_requirement_endpoint_physician_assistant_rejected(client, 
     assert requirement.status == "OPEN"
 
 
+def test_complete_sfv_requirement_endpoint_authorized_lpn(client, db_session):
+    """LPN is an alias for LVN (app.core.roles._ALIASES) and must be
+    directly authorized -- both spellings of the same credential
+    qualify."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="LVN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    lpn_headers = login_headers(client, user_id="lpn_test", role="LPN")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=lpn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+def _set_discipline(db_session, discipline):
+    """Set the shared TEST_USER_ID row's `discipline` field, the
+    repository's existing free-text nursing-discipline field (see
+    app/api/_compliance_common.py:101), used as the underlying-credential
+    source for CASE_MANAGER-role callers."""
+    from app.models.user import User
+
+    db_user = db_session.query(User).filter(User.id == TEST_USER_ID).first()
+    db_user.discipline = discipline
+    db_session.commit()
+
+
+def test_complete_sfv_requirement_endpoint_authorized_rn_case_manager(client, db_session):
+    """"Case Manager" is a job title, not a credential: a CASE_MANAGER-
+    role caller is authorized ONLY when their underlying discipline ALSO
+    qualifies. An RN Case Manager (role=CASE_MANAGER, discipline=RN) must
+    PASS."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+    _set_discipline(db_session, "RN")
+
+    cm_headers = login_headers(client, user_id="rn_case_manager_test", role="CASE_MANAGER")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=cm_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+def test_complete_sfv_requirement_endpoint_authorized_lvn_case_manager(client, db_session):
+    """An LVN Case Manager (role=CASE_MANAGER, discipline=LVN) must
+    PASS."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="LVN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+    _set_discipline(db_session, "LVN")
+
+    cm_headers = login_headers(client, user_id="lvn_case_manager_test", role="CASE_MANAGER")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=cm_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+def test_complete_sfv_requirement_endpoint_non_nursing_case_manager_rejected(client, db_session):
+    """A CASE_MANAGER-role caller whose underlying discipline is NOT a
+    qualifying nursing credential (e.g. a social-work case manager, or a
+    case manager with no discipline recorded at all) must be REJECTED --
+    the CASE_MANAGER role title alone is never sufficient."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+    _set_discipline(db_session, "SW")
+
+    cm_headers = login_headers(client, user_id="sw_case_manager_test", role="CASE_MANAGER")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=cm_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
+
+def test_complete_sfv_requirement_endpoint_on_call_rn_completes(client, db_session):
+    """An on-call RN is authorized under the SAME rule as any staff RN:
+    qualifying nursing credential + patient access + visit access +
+    documentation/authentication permission. No dedicated on-call
+    subsystem exists or is required (per directive) -- on-call status is
+    operational routing, not a separate authorization source. Modeled as
+    an ordinary RN-role caller completing a follow-up visit authored by
+    a different clinician."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    on_call_rn_headers = login_headers(client, user_id="oncall_rn_test", role="RN")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=on_call_rn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+def test_complete_sfv_requirement_endpoint_on_call_lvn_completes(client, db_session):
+    """An on-call LVN is authorized under the SAME rule as any staff
+    LVN/LPN -- on-call status is operational routing, never a distinct
+    authorization path."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="LVN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    on_call_lvn_headers = login_headers(client, user_id="oncall_lvn_test", role="LVN")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=on_call_lvn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+def test_complete_sfv_requirement_endpoint_chaplain_rejected(client, db_session):
+    """Chaplain is an explicitly EXCLUDED NON-NURSING ROLE per the
+    product rule, even with ordinary chart/patient access."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    chaplain_headers = login_headers(client, user_id="chaplain_test", role="CHAPLAIN")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=chaplain_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
+
+def test_complete_sfv_requirement_endpoint_volunteer_rejected(client, db_session):
+    """VOLUNTEER_COORDINATOR (this repository's closest existing role to
+    "Volunteer" -- no separate bare VOLUNTEER role exists in
+    app.core.auth.VALID_ROLES) is an explicitly EXCLUDED NON-NURSING
+    ROLE."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    volunteer_coordinator_headers = login_headers(
+        client, user_id="volunteer_coordinator_test", role="VOLUNTEER_COORDINATOR"
+    )
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=volunteer_coordinator_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
+
+def test_complete_sfv_requirement_endpoint_platform_user_rejected(client, db_session):
+    """A billing/finance platform-tier role (BILLING) has no clinical
+    role at all and must be rejected -- confirms "patient access alone
+    must never authorize SFV completion" holds even for non-clinical
+    business roles, not just clinical-but-non-nursing roles."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    billing_headers = login_headers(client, user_id="billing_test", role="BILLING")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=billing_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
 
 def test_complete_sfv_requirement_endpoint_social_worker_rejected(client, db_session):
     """Social Worker (SW) is an explicitly EXCLUDED NON-NURSING ROLE per

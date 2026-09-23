@@ -104,9 +104,10 @@ RNICA screen is read-only.
 New file this pass: `backend/tests/test_sfv_completion_api.py` —
 **executed** via
 `python scripts\run_isolated_tests.py -- tests\test_sfv_completion_api.py -v`
-(env loaded from `backend/dev.env`) → **14 passed, exit code 0** (grew
-from 10 to 14 after the 2026-09-23 "SFV AUTHORIZATION CORRECTION" added
-NP/Administrator/PA/Social-Worker authorization tests).
+(env loaded from `backend/dev.env`) → **23 passed, exit code 0** (grew
+from 10 → 14 after "SFV AUTHORIZATION CORRECTION", then 14 → 23 after
+"FINAL AUTHORIZATION CORRECTION" refined `CASE_MANAGER` handling and
+required the full PASS/FAIL role test matrix below, all 2026-09-23).
 
 | Test ID | Requirement | Test | Level | Expected result | Status |
 |---|---|---|---|---|---|
@@ -124,6 +125,15 @@ NP/Administrator/PA/Social-Worker authorization tests).
 | **AT-SFV20** | Administrator (holds shared RN-scope capability, but not a nursing credential) rejected | `test_complete_sfv_requirement_endpoint_administrator_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23; failed against the pre-correction `can_complete_sfv`, confirming the original implementation was over-broad (see P3-018). |
 | **AT-SFV21** | Physician Assistant (PA — non-nursing clinician, physician-identity linkage verified) rejected | `test_complete_sfv_requirement_endpoint_physician_assistant_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23; same finding as AT-SFV20. |
 | **AT-SFV22** | Social Worker (SW — non-nursing role with ordinary chart access) rejected | `test_complete_sfv_requirement_endpoint_social_worker_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23. |
+| **AT-SFV23** | Authorized LPN (alias of LVN) completes | `test_complete_sfv_requirement_endpoint_authorized_lpn` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — added 2026-09-23 (final review). |
+| **AT-SFV24** | RN Case Manager (role=CASE_MANAGER, discipline=RN) completes | `test_complete_sfv_requirement_endpoint_authorized_rn_case_manager` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — added 2026-09-23; proves CASE_MANAGER qualifies only when the underlying discipline also qualifies (see P3-019). |
+| **AT-SFV25** | LVN Case Manager (role=CASE_MANAGER, discipline=LVN) completes | `test_complete_sfv_requirement_endpoint_authorized_lvn_case_manager` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — added 2026-09-23. |
+| **AT-SFV26** | Non-nursing Case Manager (role=CASE_MANAGER, discipline=SW) rejected | `test_complete_sfv_requirement_endpoint_non_nursing_case_manager_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23; proves "Case Manager" is a job title, not itself a credential. |
+| **AT-SFV27** | On-call RN completes | `test_complete_sfv_requirement_endpoint_on_call_rn_completes` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — added 2026-09-23; on-call status is operational routing, not a distinct authorization path (no dedicated on-call subsystem exists or is required). |
+| **AT-SFV28** | On-call LVN completes | `test_complete_sfv_requirement_endpoint_on_call_lvn_completes` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — added 2026-09-23. |
+| **AT-SFV29** | Chaplain rejected | `test_complete_sfv_requirement_endpoint_chaplain_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23. |
+| **AT-SFV30** | Volunteer (VOLUNTEER_COORDINATOR, closest existing role) rejected | `test_complete_sfv_requirement_endpoint_volunteer_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23. |
+| **AT-SFV31** | Platform/billing user (BILLING) rejected | `test_complete_sfv_requirement_endpoint_platform_user_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23. |
 
 Frontend companion, executed via `npx vitest run
 src/components/SymptomFollowUpVisitSection.test.jsx` → **4 passed**, and
@@ -143,7 +153,7 @@ backend HTTP-integration-level and frontend component-level tests exist.
 
 | Status | Count |
 |---|---|
-| Pass (executed) | 26 (AT-A3, AT-D3, AT-E3, AT-F1, AT-SFV1–AT-SFV22) |
+| Pass (executed) | 35 (AT-A3, AT-D3, AT-E3, AT-F1, AT-SFV1–AT-SFV31) |
 | Pass (static review only, explicitly labelled) | 1 (AT-A1) |
 | Fail (by static trace — no executable test exists yet) | 9 |
 | Not-yet-run | 6 |

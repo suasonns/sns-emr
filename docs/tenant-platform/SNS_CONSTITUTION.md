@@ -1107,25 +1107,40 @@ endpoint now exists —
 `POST /visits/sfv-requirements/{sfvRequirementId}/complete`
 (`backend/app/api/visits.py`), authorized via
 `app.core.patient_access.can_complete_sfv`. **Corrected (2026-09-23, "SFV
-AUTHORIZATION CORRECTION"):** `can_complete_sfv` no longer reuses the
-RN-scope `PERFORM_RN_ASSESSMENT`/`FINALIZE_RN_DOCUMENTATION` capabilities
-(those are also granted to ADMINISTRATOR/DPCS/DPCS_ADMINISTRATOR and to
+AUTHORIZATION CORRECTION", refined the same day by "FINAL AUTHORIZATION
+CORRECTION"):** `can_complete_sfv` no longer reuses the RN-scope
+`PERFORM_RN_ASSESSMENT`/`FINALIZE_RN_DOCUMENTATION` capabilities (those
+are also granted to ADMINISTRATOR/DPCS/DPCS_ADMINISTRATOR and to
 physician-tier roles including PA, which are explicitly excluded from SFV
 completion). It instead checks the caller's normalized role directly
-against a dedicated qualifying-nursing-credential roster:
+against a dedicated qualifying-nursing-credential roster, with **"Case
+Manager" treated as a job title, not itself a credential**:
 
-- **AUTHORIZED SFV COMPLETER ROLES:** `RN`, `LVN` (alias `LPN`), `NP`
-  (Nurse Practitioner, functioning under RN licensure for this purpose),
-  `CASE_MANAGER` (documented in `app.core.capabilities` as an RN-scope,
-  assignment-scoped nursing role in this repository — an RN Case
-  Manager, not a social-work case manager).
+- **AUTHORIZED SFV COMPLETER ROLES (qualifying nursing credential):**
+  `RN` (staff/on-call/covering/per-diem — this repository has no distinct
+  on-call/covering/per-diem role string, so any RN-role account qualifies
+  regardless of shift status), `LVN` (alias `LPN`, same on-call/covering/
+  per-diem note), `NP` (Nurse Practitioner, functioning under RN
+  licensure for this purpose — NP remains part of the nursing-credential
+  group and is never routed into the physician exclusion category), and
+  `CASE_MANAGER` **only when the caller's underlying discipline (the
+  existing `User.discipline` free-text field) ALSO normalizes to RN,
+  LVN/LPN, or NP** — an RN Case Manager or LVN/LPN Case Manager qualifies;
+  a Social Worker Case Manager, or any CASE_MANAGER-role account with no
+  recorded nursing discipline, does NOT qualify. The bare `CASE_MANAGER`
+  role string is never sufficient on its own.
 - **EXCLUDED NON-NURSING ROLES:** `SW` (Social Worker), `CHAPLAIN`,
   `VOLUNTEER_COORDINATOR` (this repository's closest existing role to
   Bereavement Coordinator/Volunteer), `CHHA`, `ADMINISTRATOR`, `DPCS`,
   `DPCS_ADMINISTRATOR` (administrative users), `PA` (Physician
   Assistant), `MD`/`DO`/`MEDICAL_DIRECTOR`/`ATTENDING_PHYSICIAN`/
-  `HOSPICE_PHYSICIAN` (physicians), `CLINICAL_SUPERVISOR`, all
-  QA/compliance roles, and every billing/intake/scheduling/platform role.
+  `HOSPICE_PHYSICIAN` (physicians — excluded from HOPE SFV completion
+  **ownership** only; this does not limit a physician's ability to
+  participate in symptom management, orders, consultation, or clinical
+  direction, which remain separate clinical activities),
+  `CLINICAL_SUPERVISOR`, all QA/compliance roles, and every
+  billing/intake/scheduling/platform role (e.g. `CFO`, `CEO`,
+  `FINANCIAL_ADMIN`, `BILLING`).
 
 The endpoint also has structured JSON error codes, row-level locking for
 concurrency (verified with a real two-thread race test, not merely
