@@ -325,3 +325,92 @@ class TestSfvCompletionVisitSeparation:
         assert requirement.trigger_reference_id == trigger_visit.id
         assert requirement.completed_visit_id == completion_visit.id
         assert requirement.trigger_reference_id != requirement.completed_visit_id
+
+
+class TestSfvCompletionDefenseInDepth:
+    """P3-SFV-01: completion-before-trigger and cross-patient/cross-tenant
+    guards added directly to `complete_sfv_requirement_from_visit`
+    (SFV_FRONTEND_BACKEND_PARITY_MATRIX.md rows SFV-P11/SFV-P13/SFV-P14).
+    These guard the service function itself, independent of whatever the
+    current sole caller (`_maybe_complete_open_sfv_for_visit`) already
+    guarantees by construction, so the function stays safe if called from
+    a future dedicated completion API.
+    """
+
+    def test_completion_before_trigger_rejected(self, db_session, tenant, rn_user_id):
+        tenant_id = uuid.UUID(tenant.id)
+        patient, admission = _make_patient_and_admission(db_session, tenant_id)
+        now = datetime.now(timezone.utc)
+
+        trigger_visit = _make_visit(
+            db_session, tenant_id, patient, admission, rn_user_id,
+            visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+        )
+        # Completion visit dated BEFORE the trigger visit.
+        completion_visit = _make_visit(
+            db_session, tenant_id, patient, admission, rn_user_id,
+            visit_type="SKILLED_NURSING", visit_discipline="RN",
+            visit_datetime=now - timedelta(hours=6),
+        )
+
+        outcome = _trigger_requirement(db_session, tenant_id, patient, trigger_visit.id, now)
+
+        with pytest.raises(ValueError, match="before the triggering visit"):
+            complete_sfv_requirement_from_visit(
+                db=db_session,
+                sfv_requirement_id=outcome.requirement_id,
+                completing_visit_id=completion_visit.id,
+                completing_visit_datetime=completion_visit.visit_datetime,
+                discipline="RN",
+                visit_mode="IN_PERSON",
+            )
+
+    def test_cross_patient_completion_visit_rejected(self, db_session, tenant, rn_user_id):
+        tenant_id = uuid.UUID(tenant.id)
+        patient, admission = _make_patient_and_admission(db_session, tenant_id)
+        other_patient, other_admission = _make_patient_and_admission(db_session, tenant_id)
+        now = datetime.now(timezone.utc)
+
+        trigger_visit = _make_visit(
+            db_session, tenant_id, patient, admission, rn_user_id,
+            visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+        )
+        # Completion visit belongs to a DIFFERENT patient.
+        other_patient_visit = _make_visit(
+            db_session, tenant_id, other_patient, other_admission, rn_user_id,
+            visit_type="SKILLED_NURSING", visit_discipline="RN",
+            visit_datetime=now + timedelta(hours=6),
+        )
+
+        outcome = _trigger_requirement(db_session, tenant_id, patient, trigger_visit.id, now)
+
+        with pytest.raises(ValueError, match="does not belong to this patient"):
+            complete_sfv_requirement_from_visit(
+                db=db_session,
+                sfv_requirement_id=outcome.requirement_id,
+                completing_visit_id=other_patient_visit.id,
+                completing_visit_datetime=other_patient_visit.visit_datetime,
+                discipline="RN",
+                visit_mode="IN_PERSON",
+            )
+
+    def test_completion_visit_not_found_rejected(self, db_session, tenant, rn_user_id):
+        tenant_id = uuid.UUID(tenant.id)
+        patient, admission = _make_patient_and_admission(db_session, tenant_id)
+        now = datetime.now(timezone.utc)
+
+        trigger_visit = _make_visit(
+            db_session, tenant_id, patient, admission, rn_user_id,
+            visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+        )
+        outcome = _trigger_requirement(db_session, tenant_id, patient, trigger_visit.id, now)
+
+        with pytest.raises(ValueError, match="Completion visit not found"):
+            complete_sfv_requirement_from_visit(
+                db=db_session,
+                sfv_requirement_id=outcome.requirement_id,
+                completing_visit_id=uuid.uuid4(),
+                completing_visit_datetime=now + timedelta(hours=6),
+                discipline="RN",
+                visit_mode="IN_PERSON",
+            )

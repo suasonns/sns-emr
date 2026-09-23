@@ -16,6 +16,7 @@ from app.models.enums import (
 )
 from app.models.sfv_requirement import SFVRequirement
 from app.models.task import Task
+from app.models.visit import Visit
 
 logger = logging.getLogger(__name__)
 
@@ -424,6 +425,29 @@ def complete_sfv_requirement_from_visit(
 
     if str(completing_visit_id) == str(requirement.trigger_reference_id):
         raise ValueError("SFV must be a separate visit from the triggering INITIAL_RN_ICA/HUV")
+
+    # P3-SFV-01 (defense in depth): completion may not precede the trigger
+    # that generated it. This does not evaluate the (separately
+    # NOT_VERIFIED) upper timing-window rule -- only ordering.
+    if requirement.trigger_datetime is not None and completing_visit_datetime < requirement.trigger_datetime:
+        raise ValueError("SFV completion visit cannot occur before the triggering visit")
+
+    # P3-SFV-01 (defense in depth): the completing visit must belong to the
+    # same patient and tenant as the SFV requirement. Today the only
+    # caller (`_maybe_complete_open_sfv_for_visit`) already guarantees this
+    # by construction (it looks up the requirement via
+    # `visit.patient_id`, inside an already tenant/patient-authorized
+    # request -- see `get_authorized_patient`), so this should never fire
+    # in the current call path. It guards this function directly against
+    # future callers (e.g. a dedicated completion API) that might not
+    # re-derive the same guarantees.
+    completing_visit = db.query(Visit).filter(Visit.id == completing_visit_id).first()
+    if not completing_visit:
+        raise ValueError("Completion visit not found")
+    if completing_visit.patient_id != requirement.patient_id:
+        raise ValueError("Completion visit does not belong to this patient")
+    if completing_visit.tenant_id != requirement.tenant_id:
+        raise ValueError("Completion visit does not belong to this tenant")
 
     requirement.completed_visit_id = completing_visit_id
     requirement.completed_at = completing_visit_datetime
