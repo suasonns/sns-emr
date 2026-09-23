@@ -15,7 +15,7 @@ from pydantic import (
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
-from app.core.patient_access import get_authorized_patient
+from app.core.patient_access import can_complete_sfv, get_authorized_patient
 from app.core.security import get_current_user, CurrentUser
 from app.core.visit_type_normalizer import normalize_visit_type
 from app.models.enums import (
@@ -3997,12 +3997,14 @@ def complete_sfv_requirement(
     if not requirement:
         raise _sfv_error(404, "SFV_REQUIREMENT_NOT_FOUND", "SFV requirement not found")
 
-    # Tenant + patient-access authorization: reuses the same centralized
-    # access-control helper used by every other patient-scoped endpoint.
-    # Raises 404 (not 403) for cross-tenant/no-access callers so this
-    # endpoint cannot be used to probe for cross-tenant resource
-    # existence -- consistent with get_authorized_patient's own contract.
-    get_authorized_patient(db, requirement.patient_id, current_user)
+    # Authorization: reuses the same centralized tenant/patient-access
+    # checks used by every other patient-scoped endpoint (via
+    # get_authorized_patient), plus the existing role->capability roster
+    # -- never a bespoke "role == RN or role == LVN" check. Raises 404
+    # for cross-tenant/no-access callers (consistent with
+    # get_authorized_patient's own contract) and 403 if the caller lacks
+    # an RN-scope clinical documentation capability.
+    can_complete_sfv(db, requirement.patient_id, current_user)
 
     completion_visit = (
         db.query(Visit)

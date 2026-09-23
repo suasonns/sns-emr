@@ -274,3 +274,119 @@ def test_complete_sfv_requirement_endpoint_cross_tenant_visit_rejected(client, d
 
     assert resp.status_code == 404
     assert resp.json()["detail"]["error"]["code"] == "TENANT_MISMATCH"
+
+
+def test_complete_sfv_requirement_endpoint_unauthorized_role_rejected(client, db_session, volunteer_headers):
+    """A caller whose role has no RN-scope clinical documentation
+    capability (and is not RN/LVN) must be rejected -- authorization is
+    NOT merely `tenant matches`, it also requires clinical capability."""
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=volunteer_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
+
+def test_complete_sfv_requirement_endpoint_concurrent_requests_single_winner(client, db_session, rn_headers):
+    """Two concurrent completion requests against the SAME OPEN requirement,
+    each naming a DIFFERENT valid completion visit, must not both "win":
+    exactly one completion visit becomes authoritative and both HTTP
+    responses converge on that single result (verifies the with_for_update
+    row lock actually serializes concurrent completion, not merely that
+    the call exists)."""
+    import concurrent.futures
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit_a = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    completion_visit_b = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=7),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    def _post(completion_visit_id):
+        return client.post(
+            f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+            json={"completionVisitId": str(completion_visit_id)},
+            headers=rn_headers,
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as pool:
+        future_a = pool.submit(_post, completion_visit_a.id)
+        future_b = pool.submit(_post, completion_visit_b.id)
+        resp_a = future_a.result()
+        resp_b = future_b.result()
+
+    assert resp_a.status_code == 200, resp_a.text
+    assert resp_b.status_code == 200, resp_b.text
+
+    winning_completion_id = resp_a.json()["completionVisitId"]
+    assert resp_b.json()["completionVisitId"] == winning_completion_id
+    assert winning_completion_id in {str(completion_visit_a.id), str(completion_visit_b.id)}
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "COMPLETED"
+    assert str(requirement.completed_visit_id) == winning_completion_id
+    """An LVN completing a SEPARATE, different clinician's visit must be
+    allowed -- clinician identity (which nurse) is not the determining
+    factor; the caller's clinical capability and visit separateness are."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="LVN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    lvn_headers = login_headers(client, user_id="lvn_test", role="LVN")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=lvn_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"

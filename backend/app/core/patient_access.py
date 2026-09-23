@@ -157,3 +157,66 @@ def get_authorized_patient(db: Session, patient_id: uuid.UUID, user: CurrentUser
         return patient
 
     raise HTTPException(status_code=404, detail="Patient not found")
+
+
+# ---------------------------------------------------------------------
+# SFV completion authorization capability (P3-SFV continuation directive
+# section 9): canCompleteSfv(actor, completionVisit, sfvRequirement).
+#
+# This is deliberately NOT `role == "RN" or role == "LVN"`. It reuses the
+# same tenant-membership + patient-access + active-user checks every other
+# patient-scoped endpoint already relies on (get_authorized_patient), plus
+# the existing role->capability roster in app.core.capabilities, so a
+# clinician is authorized the same way they are authorized to perform or
+# finalize any other RN-scope documentation -- not via a bespoke SFV-only
+# rule.
+#
+# Known pre-existing gap (NOT introduced here, not fixed here -- fixing it
+# would change authorization for every RN-scope endpoint, well outside SFV
+# remediation scope): app.core.capabilities.ROLE_CAPABILITIES has no "LVN"
+# entry, so has_any_capability("LVN", ...) is always False today even
+# though LVN is a canonical clinical role and the SFV completion SERVICE
+# function (complete_sfv_requirement_from_visit) explicitly allows LVN/LPN
+# discipline visits. Until that capability-roster gap is fixed at the
+# platform level, this function also accepts the caller's normalized role
+# being RN or LVN directly, matching the service layer's existing
+# discipline rule. This fallback is documented, not silent.
+# ---------------------------------------------------------------------
+from app.core.capabilities import (  # noqa: E402
+    FINALIZE_RN_DOCUMENTATION,
+    PERFORM_RN_ASSESSMENT,
+    has_any_capability,
+)
+from app.core.roles import normalize_role  # noqa: E402
+
+_SFV_CAPABLE_ROLE_FALLBACK = {"RN", "LVN"}
+
+
+def can_complete_sfv(db: Session, patient_id: uuid.UUID, user: CurrentUser) -> Patient:
+    """Authorize `user` to complete an SFV requirement for `patient_id`.
+
+    Returns the authorized Patient (mirrors get_authorized_patient) or
+    raises HTTPException. Enforces, in order:
+
+      1. Tenant membership + intra-tenant patient access + active-user
+         status (via get_authorized_patient -- never bypassed).
+      2. The caller's role maps to an RN-scope clinical documentation
+         capability (PERFORM_RN_ASSESSMENT / FINALIZE_RN_DOCUMENTATION),
+         OR the caller's normalized role is RN/LVN directly (see the
+         documented capability-roster gap above).
+
+    Clinician identity (which specific RN/LVN) is intentionally NOT
+    checked here -- any appropriately authorized clinician (original
+    nurse, another assigned nurse, an authorized on-call nurse, etc.) may
+    complete the follow-up visit. Visit identity and tenant/patient
+    access control the result, not a specific clinician's identity.
+    """
+    patient = get_authorized_patient(db, patient_id, user)
+
+    role = getattr(user, "role", None)
+    if has_any_capability(role, (PERFORM_RN_ASSESSMENT, FINALIZE_RN_DOCUMENTATION)):
+        return patient
+    if normalize_role(role) in _SFV_CAPABLE_ROLE_FALLBACK:
+        return patient
+
+    raise HTTPException(status_code=403, detail="Not authorized to complete this SFV requirement")
