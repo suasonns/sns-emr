@@ -417,3 +417,221 @@ def test_complete_sfv_requirement_endpoint_authorized_lvn_different_clinician(cl
 
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == "COMPLETED"
+
+
+def test_complete_sfv_requirement_endpoint_authorized_np(client, db_session):
+    """A Nurse Practitioner (functioning under RN licensure for this
+    purpose) is an AUTHORIZED SFV COMPLETER ROLE per the product rule --
+    NP must not be excluded merely because the naive `role == "RN"` check
+    would miss it.
+
+    NP is also a provider-identity role gated by the platform's separate
+    Physician Identity Mapping requirement (see
+    app.core.patient_access.get_authorized_patient /
+    app.services.physician_identity_service): an NP account gets ZERO
+    patient visibility at all -- SFV-related or otherwise -- without a
+    verified, ACTIVE physician_id linkage and an explicit patient
+    assignment. That gate is independent of and unrelated to SFV
+    completion authorization; it is satisfied here so this test isolates
+    the SFV-specific `can_complete_sfv` role check."""
+    from app.models.physician import Physician
+    from app.models.patient_assignment import PatientAssignment
+    from app.models.user import User
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    physician = Physician(
+        tenant_id=uuid.UUID(_test_tenant_id()),
+        display_name="Test NP Provider",
+        status="active",
+        created_by=TEST_USER_ID,
+    )
+    db_session.add(physician)
+    db_session.flush()
+
+    db_user = db_session.query(User).filter(User.id == TEST_USER_ID).first()
+    db_user.physician_id = physician.id
+    db_user.physician_link_status = "ACTIVE"
+
+    db_session.add(
+        PatientAssignment(
+            tenant_id=uuid.UUID(_test_tenant_id()),
+            patient_id=patient.id,
+            user_id=TEST_USER_ID,
+            discipline="NP",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    np_headers = login_headers(client, user_id="np_test", role="NP")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=np_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["status"] == "COMPLETED"
+
+
+def test_complete_sfv_requirement_endpoint_administrator_rejected(client, db_session):
+    """ADMINISTRATOR holds the same RN-scope PERFORM_RN_ASSESSMENT /
+    FINALIZE_RN_DOCUMENTATION capabilities as RN (clinical-admin
+    convenience access, per app.core.capabilities), but is explicitly an
+    EXCLUDED NON-NURSING ROLE for SFV completion -- "Administrative user"
+    per the product rule. General RN-scope documentation capability must
+    NOT be sufficient here; only a qualifying nursing credential is."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    admin_headers = login_headers(client, user_id="admin_test", role="ADMINISTRATOR")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=admin_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
+
+def test_complete_sfv_requirement_endpoint_physician_assistant_rejected(client, db_session):
+    """PA (Physician Assistant) also holds RN-scope capabilities in
+    app.core.capabilities (a physician-tier role may always do at least
+    what an RN can), but is not a NURSING credential and must be rejected
+    -- "any authorized clinician" is explicitly not the rule; only RN,
+    LVN/LPN, NP, and CASE_MANAGER (RN Case Manager) qualify.
+
+    PA is also a provider-identity role gated by the platform's Physician
+    Identity Mapping requirement (see get_authorized_patient); physician
+    identity + an explicit assignment are set up here so this test
+    isolates the SFV-specific role rejection, not the unrelated identity
+    gate (which would otherwise also produce a rejection, just for a
+    different reason and a different status code)."""
+    from app.models.physician import Physician
+    from app.models.patient_assignment import PatientAssignment
+    from app.models.user import User
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    physician = Physician(
+        tenant_id=uuid.UUID(_test_tenant_id()),
+        display_name="Test PA Provider",
+        status="active",
+        created_by=TEST_USER_ID,
+    )
+    db_session.add(physician)
+    db_session.flush()
+
+    db_user = db_session.query(User).filter(User.id == TEST_USER_ID).first()
+    db_user.physician_id = physician.id
+    db_user.physician_link_status = "ACTIVE"
+
+    db_session.add(
+        PatientAssignment(
+            tenant_id=uuid.UUID(_test_tenant_id()),
+            patient_id=patient.id,
+            user_id=TEST_USER_ID,
+            discipline="PA",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    pa_headers = login_headers(client, user_id="pa_test", role="PA")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=pa_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+
+
+
+def test_complete_sfv_requirement_endpoint_social_worker_rejected(client, db_session):
+    """Social Worker (SW) is an explicitly EXCLUDED NON-NURSING ROLE per
+    the product rule, even though a social worker on the care team may
+    have ordinary chart/patient access. General chart access is
+    insufficient."""
+    from tests.conftest import login_headers
+
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    sw_headers = login_headers(client, user_id="sw_test", role="SW")
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=sw_headers,
+    )
+
+    assert resp.status_code == 403
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.status == "OPEN"
+

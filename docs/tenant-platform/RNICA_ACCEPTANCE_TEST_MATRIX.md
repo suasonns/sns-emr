@@ -104,7 +104,9 @@ RNICA screen is read-only.
 New file this pass: `backend/tests/test_sfv_completion_api.py` —
 **executed** via
 `python scripts\run_isolated_tests.py -- tests\test_sfv_completion_api.py -v`
-(env loaded from `backend/dev.env`) → **10 passed, exit code 0**.
+(env loaded from `backend/dev.env`) → **14 passed, exit code 0** (grew
+from 10 to 14 after the 2026-09-23 "SFV AUTHORIZATION CORRECTION" added
+NP/Administrator/PA/Social-Worker authorization tests).
 
 | Test ID | Requirement | Test | Level | Expected result | Status |
 |---|---|---|---|---|---|
@@ -118,6 +120,10 @@ New file this pass: `backend/tests/test_sfv_completion_api.py` —
 | **AT-SFV16** | Authorized LVN, different clinician than trigger, completes | `test_complete_sfv_requirement_endpoint_authorized_lvn_different_clinician` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — was silently merged into the concurrency test's body during authoring (missing `def`, executed but mislabeled); split into its own named test this pass so it reports independently. |
 | **AT-SFV17** | Concurrent completion requests resolve to exactly one winner | `test_complete_sfv_requirement_endpoint_concurrent_requests_single_winner` | integration (backend, HTTP, real `ThreadPoolExecutor` race) | Both HTTP responses `200`, both agree on the same `completionVisitId`, DB shows exactly one `COMPLETED` state | **Pass** |
 | **AT-SFV18** | Read-only list endpoint returns open requirement | `test_list_sfv_requirements_endpoint_returns_open_requirement` | integration (backend, HTTP) | `200`, requirement summary present | **Pass** |
+| **AT-SFV19** | Authorized NP (Nurse Practitioner, physician-identity linkage verified) completes | `test_complete_sfv_requirement_endpoint_authorized_np` | integration (backend, HTTP) | `200`, `status == "COMPLETED"` | **Pass** — added 2026-09-23; NP is an AUTHORIZED SFV COMPLETER ROLE per the corrected product rule. |
+| **AT-SFV20** | Administrator (holds shared RN-scope capability, but not a nursing credential) rejected | `test_complete_sfv_requirement_endpoint_administrator_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23; failed against the pre-correction `can_complete_sfv`, confirming the original implementation was over-broad (see P3-018). |
+| **AT-SFV21** | Physician Assistant (PA — non-nursing clinician, physician-identity linkage verified) rejected | `test_complete_sfv_requirement_endpoint_physician_assistant_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23; same finding as AT-SFV20. |
+| **AT-SFV22** | Social Worker (SW — non-nursing role with ordinary chart access) rejected | `test_complete_sfv_requirement_endpoint_social_worker_rejected` | integration (backend, HTTP) | `403`, requirement stays `OPEN` | **Pass** — added 2026-09-23. |
 
 Frontend companion, executed via `npx vitest run
 src/components/SymptomFollowUpVisitSection.test.jsx` → **4 passed**, and
@@ -137,7 +143,7 @@ backend HTTP-integration-level and frontend component-level tests exist.
 
 | Status | Count |
 |---|---|
-| Pass (executed) | 22 (AT-A3, AT-D3, AT-E3, AT-F1, AT-SFV1–AT-SFV18) |
+| Pass (executed) | 26 (AT-A3, AT-D3, AT-E3, AT-F1, AT-SFV1–AT-SFV22) |
 | Pass (static review only, explicitly labelled) | 1 (AT-A1) |
 | Fail (by static trace — no executable test exists yet) | 9 |
 | Not-yet-run | 6 |

@@ -1068,14 +1068,20 @@ visit that generated the SFV requirement. The controlling invariant is:
 triggerVisitId != completionVisitId
 ```
 
-The completing clinician may be: the original nurse; another assigned
-nurse; an authorized on-call nurse; an RN; an LVN; or another
-appropriately authorized clinician when permitted by the agency's role,
-credential, scope, patient-access, and visit rules. The completing
-clinician does not need to match the clinician who performed the
-triggering RNICA assessment. Use **"appropriately authorized clinician"**
-as the general rule; RN, LVN, and on-call nursing are supported product
-examples, not an exhaustive or hardcoded list.
+The completing clinician must hold a **qualifying nursing credential**:
+Staff RN, on-call/covering/per-diem RN (this repository has no distinct
+on-call/covering/per-diem role string — any RN-role account qualifies
+regardless of shift status), LVN/LPN (including on-call/covering/
+per-diem), or a Nurse Practitioner functioning under RN licensure for
+this purpose. The completing clinician does not need to match the
+clinician who performed the triggering RNICA assessment, and does not
+need to be the originally assigned nurse. **"Appropriately authorized
+clinician" does NOT mean any user with patient access, and does NOT mean
+any clinician role.** Social Worker, Chaplain, Bereavement/Volunteer
+Coordinator, administrative users (Administrator/DPCS/DPCS
+Administrator), and Physician Assistant/physician roles are explicitly
+**excluded** from SFV completion even when they otherwise have chart
+access to the patient — general chart access is insufficient.
 
 The completing clinician must always be an active employee of the same
 tenant/agency as the patient — cross-tenant completion is never permitted.
@@ -1100,12 +1106,31 @@ already structurally prevented today — **verified, not a gap.**
 endpoint now exists —
 `POST /visits/sfv-requirements/{sfvRequirementId}/complete`
 (`backend/app/api/visits.py`), authorized via
-`app.core.patient_access.can_complete_sfv` (tenant + patient access +
-RN-scope clinical documentation capability — not a bespoke
-`role == RN || role == LVN` check), with structured JSON error codes,
-row-level locking for concurrency (verified with a real two-thread race
-test, not merely asserted), and idempotent replay against an
-already-`COMPLETED` requirement. A companion read-only
+`app.core.patient_access.can_complete_sfv`. **Corrected (2026-09-23, "SFV
+AUTHORIZATION CORRECTION"):** `can_complete_sfv` no longer reuses the
+RN-scope `PERFORM_RN_ASSESSMENT`/`FINALIZE_RN_DOCUMENTATION` capabilities
+(those are also granted to ADMINISTRATOR/DPCS/DPCS_ADMINISTRATOR and to
+physician-tier roles including PA, which are explicitly excluded from SFV
+completion). It instead checks the caller's normalized role directly
+against a dedicated qualifying-nursing-credential roster:
+
+- **AUTHORIZED SFV COMPLETER ROLES:** `RN`, `LVN` (alias `LPN`), `NP`
+  (Nurse Practitioner, functioning under RN licensure for this purpose),
+  `CASE_MANAGER` (documented in `app.core.capabilities` as an RN-scope,
+  assignment-scoped nursing role in this repository — an RN Case
+  Manager, not a social-work case manager).
+- **EXCLUDED NON-NURSING ROLES:** `SW` (Social Worker), `CHAPLAIN`,
+  `VOLUNTEER_COORDINATOR` (this repository's closest existing role to
+  Bereavement Coordinator/Volunteer), `CHHA`, `ADMINISTRATOR`, `DPCS`,
+  `DPCS_ADMINISTRATOR` (administrative users), `PA` (Physician
+  Assistant), `MD`/`DO`/`MEDICAL_DIRECTOR`/`ATTENDING_PHYSICIAN`/
+  `HOSPICE_PHYSICIAN` (physicians), `CLINICAL_SUPERVISOR`, all
+  QA/compliance roles, and every billing/intake/scheduling/platform role.
+
+The endpoint also has structured JSON error codes, row-level locking for
+concurrency (verified with a real two-thread race test, not merely
+asserted), and idempotent replay against an already-`COMPLETED`
+requirement. A companion read-only
 `GET /visits/sfv-requirements?patientId=...` backs the frontend status
 displays. No schema migration, no new lifecycle engine, and no new
 on-call/permissions/audit subsystem were built — the existing
@@ -1113,6 +1138,17 @@ on-call/permissions/audit subsystem were built — the existing
 service function are reused as-is. See
 `docs/tenant-platform/SFV_FRONTEND_BACKEND_PARITY_MATRIX.md` for the
 updated per-scenario evidence.
+
+**Cross-cutting note (discovered, not an SFV defect):** `NP` and `PA` are
+also "provider identity" roles under the platform's separate Physician
+Identity Mapping gate (`app.services.physician_identity_service`) — an
+NP/PA account gets zero patient visibility at all, for any purpose, until
+its user record has a verified, `ACTIVE` `physician_id` linkage. This is
+an existing, independent safety gate unrelated to SFV completion
+authorization; it does not need to be duplicated by `can_complete_sfv`,
+but it does mean a real-world NP cannot complete an SFV (or do anything
+else patient-related) until that identity verification step has been
+completed by an administrator.
 
 **Known gap, now closed (this pass):** the self-attested
 `sfv.inPersonSfvCompleted` checkbox and `sfvDate` field on the triggering
