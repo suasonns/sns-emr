@@ -197,7 +197,7 @@ const PILOT_ROUTES = RNICA_ASSESSMENT_MODULES.map((module) => ({
   nav: module.label,
 }));
 
-const SIDEBAR_CONFIG = [
+export const SIDEBAR_CONFIG = [
   { key: "demographics",      label: "Patient Demographics",  icon: "👤", hope: ["A1110","A1005","A1010"], color: "green" },
   { key: "assessment",        label: "Assessment",           icon: "📁", hope: [],                         color: null },
   { key: "caregiverAssessment", label: "Caregiver Assessment", icon: "🧑‍⚕️", hope: [], color: null, parent: "demographics", scrollTarget: "pcg", cdphRequired: true },
@@ -206,7 +206,13 @@ const SIDEBAR_CONFIG = [
   { key: "pain",              label: "Pain Assessment",       icon: "⚡",    hope: ["J0900","J0915"],          color: "green", sfv: true },
   { key: "symptomImpact",     label: "Symptom Impact",        icon: "📊", hope: ["J2051"],                  color: "red" },
   { key: "diagnoses",         label: "Diagnoses",             icon: "🔬", hope: ["I0010","J0050"],          color: "green" },
-  { key: "performanceStatus", label: "Performance Status",    icon: "📈", hope: ["M1190"],                  color: "green" },
+  // P3-016 (RNICA_PHASE3_REMEDIATION_REGISTER.md): M1190 is a Skin item
+  // (form_registry.py HOPE_SKIN_ITEM_CODES; hopeReportMapper.js:625 emits
+  // it from skin.skinConditionsPresent). It does not belong to Performance
+  // Status — declaring it here made the Performance Status sidebar
+  // complete/incomplete indicator flip based on unrelated Skin data. Skin's
+  // own sidebar entry (bodySystems.js "skin" system) is the sole declarer.
+  { key: "performanceStatus", label: "Performance Status",    icon: "📈", hope: [],                         color: "green" },
   ...RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
   { key: "imminentDeath",     label: "Imminent Death",        icon: "⏳",    hope: ["J0050"],                  color: "green" },
   { key: "sfv",               label: "SFV",                   icon: "🔴", hope: ["J2050","J2052","J2053"],  color: "red" },
@@ -9395,8 +9401,15 @@ const SECTION_CONFIGS = {
       { title: "SFV Screening", hopeCode: "J2050", fields: [
         { type: "checkbox", label: "Symptom Impact Screening Completed", path: "symptomImpactScreeningCompleted" },
         { type: "input", label: "Screening Date", path: "symptomImpactScreeningDate", inputType: "date" },
-        { type: "checkbox", label: "In-Person SFV Completed", path: "inPersonSfvCompleted" },
-        { type: "input", label: "SFV Date", path: "sfvDate", inputType: "date" },
+        // P3-009: SFV completion is enforced by the backend against a
+        // SEPARATE visit record (triggerVisitId != completionVisitId) and
+        // cannot be satisfied from this triggering visit. This field is
+        // reference/context only; checking it here has no effect on the
+        // authoritative SFVRequirement record and does not complete the
+        // SFV requirement. Do not remove this label without also wiring
+        // this control to the real backend completion path.
+        { type: "checkbox", label: "In-Person SFV Completed (reference only — this triggering visit cannot satisfy the SFV requirement; completion must occur on a separate visit)", path: "inPersonSfvCompleted" },
+        { type: "input", label: "SFV Date (reference only — not the authoritative completion record)", path: "sfvDate", inputType: "date" },
         { type: "input", label: "Reason SFV not completed", path: "reasonNotCompleted" },
       ]},
       { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [
