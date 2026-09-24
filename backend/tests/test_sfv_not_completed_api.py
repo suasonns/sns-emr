@@ -19,6 +19,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 
 from app.models.admission import Admission
+from app.models.audit_log import AuditLog
 from app.models.patient import Patient
 from app.models.sfv_outcome_correction import SfvOutcomeCorrection
 from app.models.sfv_requirement import SFVRequirement
@@ -232,6 +233,44 @@ def test_record_sfv_not_completed_endpoint_on_call_unable_to_contact(client, db_
     assert resp.json()["reasonCode"] == "3"
 
 
+def test_record_sfv_not_completed_endpoint_on_call_lvn_none_of_the_above(client, db_session):
+    """Acceptance test (On-call LVN): On-call LVN attempts visit, reason
+    is CMS code 9 (None of the above). J2052A=No, J2052C=9, on-call LVN
+    recorded as owner. Locks in the full 4-code CMS response set
+    (1/2/3/9) end-to-end via the live endpoint, not just the mapper."""
+    on_call_headers = login_headers(client, user_id="on_call_lvn_test", role="LVN")
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="LVN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "9"},
+        headers=on_call_headers,
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["reasonCode"] == "9"
+
+    requirement = (
+        db_session.query(SFVRequirement)
+        .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
+        .first()
+    )
+    assert requirement.reason_code == "9"
+    assert str(requirement.reason_recorded_by) == body["reasonRecordedBy"]["userId"]
+
+
 def test_record_sfv_not_completed_endpoint_rejects_same_visit(client, db_session, rn_headers):
     patient, admission = _make_patient_and_admission(db_session)
     now = datetime.now(timezone.utc)
@@ -370,6 +409,94 @@ def test_correct_sfv_reason_code_preserves_prior_value(client, db_session, rn_he
     assert len(corrections) == 1
     assert corrections[0].prior_reason_code == "3"
     assert corrections[0].new_reason_code == "2"
+
+
+def test_record_sfv_not_completed_writes_audit_log_with_ownership_fields(client, db_session, rn_headers):
+    """Audit regression test: recording J2052C must write exactly one
+    audit_logs row that ties the outcome to the acting clinician
+    (user_id/role), the patient/requirement/attempt visit, and the
+    old->new value transition. This is the permanent, DB-verified
+    contract future changes must not silently break."""
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "1"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    audit_rows = [
+        row for row in db_session.query(AuditLog).filter(AuditLog.action == "SFV_NOT_COMPLETED_RECORDED").all()
+        if row.event_metadata and row.event_metadata.get("sfvRequirementId") == outcome.requirement_id
+    ]
+    assert len(audit_rows) == 1
+    row = audit_rows[0]
+    assert row.action == "SFV_NOT_COMPLETED_RECORDED"
+    assert str(row.user_id) == str(TEST_USER_ID)
+    assert row.role == "RN"
+    assert row.event_metadata["patientId"] == str(patient.id)
+    assert row.event_metadata["visitId"] == str(attempt_visit.id)
+    assert row.event_metadata["oldValue"] is None
+    assert row.event_metadata["newValue"] == "1"
+
+
+def test_correct_sfv_reason_code_preserves_both_audit_rows(client, db_session, rn_headers):
+    """Audit regression test: a correction must never overwrite the
+    original create-time audit row -- exactly two rows (create +
+    correct) must exist afterward, each with its own old/new values."""
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="RN",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    first = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "3"},
+        headers=rn_headers,
+    )
+    assert first.status_code == 200, first.text
+
+    correction = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/correct-reason",
+        json={"newReasonCode": "2", "correctionReason": "Clarified with family after initial contact attempt."},
+        headers=rn_headers,
+    )
+    assert correction.status_code == 200, correction.text
+
+    audit_rows = sorted(
+        (
+            row for row in db_session.query(AuditLog).all()
+            if row.event_metadata and row.event_metadata.get("sfvRequirementId") == outcome.requirement_id
+        ),
+        key=lambda row: row.created_at,
+    )
+    assert len(audit_rows) == 2
+    assert audit_rows[0].action == "SFV_NOT_COMPLETED_RECORDED"
+    assert audit_rows[0].event_metadata["oldValue"] is None
+    assert audit_rows[0].event_metadata["newValue"] == "3"
+    assert audit_rows[1].action == "SFV_REASON_CODE_CORRECTED"
+    assert audit_rows[1].event_metadata["oldValue"] == "3"
+    assert audit_rows[1].event_metadata["newValue"] == "2"
 
 
 def test_correct_sfv_reason_code_rejects_when_not_yet_recorded(client, db_session, rn_headers):

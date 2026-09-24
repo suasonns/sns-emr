@@ -410,7 +410,9 @@ const J2052_REASON_MAP = {
 // function still (a) never trusts an unsupported value, and (b) never
 // exports a reason when the SFV IS completed (J2052A = Yes).
 //
-// Ownership model (issue #146): J2052A/B/C/J2053 are all sourced from
+// Ownership model (issue #146): J2051 is owned by the triggering
+// RNICA/HUV clinician and only creates the requirement -- it never
+// owns J2052A/B/C or J2053. Those four are all sourced from
 // `sfvRequirement` -- the Visit Note -> Symptom Follow-up Visit
 // workflow -- and are owned by whichever clinician performed/attempted
 // the SFV. None of the four are ever read from the triggering

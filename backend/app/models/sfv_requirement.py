@@ -17,6 +17,42 @@ from app.models.tenant_mixin import TenantScopedMixin
 
 
 class SFVRequirement(TenantScopedMixin, BaseModel):
+    """SFV requirement + outcome record -- the single authoritative source
+    for HOPE J2051/J2052A/J2052B/J2052C and (via `symptom_impact` on the
+    completion visit) J2053. Ownership model, permanent reference for
+    future changes (do not move J2052C back onto RNICA/Admission/HUV):
+
+    J2051 (Symptom Impact -- creates this requirement)
+        Owner: the clinician who authored the triggering RNICA/HUV
+        assessment (`trigger_reference_id`). This requirement row does
+        NOT give that clinician ownership of any outcome field below --
+        the trigger source is read-only once recorded and is never
+        mutated by this model or its endpoints.
+
+    J2052A (Was the SFV completed in person?)
+        Owner: the SFV clinician (whoever performed or attempted the
+        visit). Derived from `status`/`completed_visit_id` vs.
+        `reason_recorded_visit_id`.
+
+    J2052B (Date SFV completed)
+        Owner: the SFV clinician. Sourced from `completed_at`.
+
+    J2052C (Reason SFV not completed -- CMS codes 1/2/3/9 only)
+        Owner: the SFV clinician who attempted the SFV (RN, LVN, LPN,
+        NP, On-Call RN, On-Call LVN). Never the RNICA/HUV author. Never
+        the Admission owner. Stored on `reason_code`/`reason_recorded_by`/
+        `reason_recorded_visit_id` on THIS row, and exported from this
+        row (`hopeReportMapper.js`), never from RNICA `form_data`. A
+        locked/signed Admission does not block recording this outcome
+        because it is a separate row entirely.
+
+    J2053 (Symptom impact after SFV)
+        Owner: the SFV completion clinician. Stored in the Visit Note
+        (`ClinicalNote.content.symptom_impact` on the completion visit),
+        not on this model directly -- unchanged by the J2052C fix
+        (issue #146).
+    """
+
     __tablename__ = "sfv_requirements"
 
     tenant_id = Column(

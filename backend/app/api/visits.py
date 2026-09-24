@@ -4058,12 +4058,15 @@ def complete_sfv_requirement(
     single authoritative backend command to call and read a result from,
     instead of relying on a local-only checkbox with no backend effect.
 
-    Ownership model (issue #146, applies uniformly to J2052A/B/C/J2053):
-    all four HOPE items are owned by the clinician who actually performs
-    the Symptom Follow-up Visit, sourced from this Visit Note -> SFV
-    completion workflow -- never from the triggering RNICA/HUV
-    assessment (see `record_sfv_not_completed` for the sibling
-    J2052A = No / J2052C branch).
+    Ownership model (issue #146, applies uniformly to J2051/J2052A/B/C/J2053):
+    J2051 is owned by the triggering RNICA/HUV clinician and only
+    creates this requirement -- it never owns any outcome field below.
+    J2052A/B/C and J2053 are all owned by the clinician who actually
+    performs the Symptom Follow-up Visit, sourced from this Visit Note
+    -> SFV workflow -- never from the triggering RNICA/HUV assessment
+    (see `record_sfv_not_completed` for the sibling J2052A = No /
+    J2052C branch). A locked/signed Admission never blocks recording
+    these outcomes, since they live on a separate `SFVRequirement` row.
 
     The browser supplies only `completionVisitId`. Every other decision
     input (patient, tenant, clinician discipline, visit mode/datetime) is
@@ -4168,17 +4171,17 @@ def record_sfv_not_completed(
     change is traceable (who/when/prior status).
 
     Ownership model (applies uniformly to J2052A/B/C/J2053): all four
-    HOPE items are owned by the clinician who performed (or attempted)
-    the Symptom Follow-up Visit, not by whoever authored the triggering
-    RNICA/HUV assessment. J2052C specifically lives in the Visit Note ->
-    Symptom Follow-up Visit workflow (this endpoint + `SFVRequirement`),
-    never in RNICA/Admission/HUV form data. The triggering RNICA/HUV
-    assessment (`SFVRequirement.trigger_reference_id`) is read-only here
-    and is never mutated or unlocked by this endpoint -- an already
-    signed/locked Admission does not block recording this outcome.
-    Runtime-verified (real Postgres + real HTTP, not inspection) for
-    RN/LVN/On-Call RN/On-Call LVN across all four CMS reason codes
-    (1/2/3/9), the locked-Admission case, and the correction workflow.
+    HOPE items are owned by the clinician who actually performed (or
+    attempted) the Symptom Follow-up Visit, sourced from this Visit
+    Note -> SFV workflow -- never from the triggering RNICA/Admission/
+    HUV assessment, which may be signed/locked by an entirely different
+    clinician (a locked Admission never blocks recording this outcome,
+    since it lives on a separate `SFVRequirement` row; see also J2051,
+    which creates the requirement but owns none of these outcome
+    fields). Runtime-verified (real Postgres + real HTTP, not
+    inspection) for RN/LVN/On-Call RN/On-Call LVN across all four CMS
+    reason codes (1/2/3/9), the locked-Admission case, and the
+    correction workflow.
     """
     requirement = (
         db.query(SFVRequirement)
