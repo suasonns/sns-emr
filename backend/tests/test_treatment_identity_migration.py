@@ -12,7 +12,6 @@ from scripts.test_db_identity import scoped_env_vars
 from tests.conftest import TEST_DATABASE_URL
 
 PRE_MIGRATION_REVISION = "c3f7a1e9b0d2"
-HEAD_REVISION = "5f54091b0080"
 
 
 def _alembic_cfg() -> Config:
@@ -143,17 +142,64 @@ def test_migration_remaps_treatment_references_and_preserves_survivor_metadata()
         engine.dispose()
 
 
+def _closest_common_ancestor(script: ScriptDirectory, revisions: tuple[str, ...]) -> str:
+    """Return the closest single revision that is an ancestor of every given
+    revision. Used to compute an unambiguous downgrade target when the
+    current alembic head is a merge revision with multiple down_revisions
+    (a plain relative "-1" downgrade is ambiguous in that case). "Closest"
+    means nearest to the merge point (fewest additional revisions to
+    downgrade), not the oldest shared ancestor -- picked as the common
+    ancestor with the largest own-ancestor set, since revision depth
+    increases monotonically along each linear branch."""
+    revision_map = script.revision_map
+    ancestor_sets = {
+        rev: {r.revision for r in revision_map._get_ancestor_nodes([revision_map.get_revision(rev)])}
+        for rev in revisions
+    }
+    common = set.intersection(*ancestor_sets.values())
+    assert common, f"No common ancestor found across branches {revisions}"
+    return max(
+        common,
+        key=lambda candidate: len(
+            {
+                r.revision
+                for r in revision_map._get_ancestor_nodes([revision_map.get_revision(candidate)])
+            }
+        ),
+    )
+
+
 def test_migration_downgrade_and_reupgrade_leave_current_equal_to_head():
+    # Head and its down-revision(s) are derived dynamically (never
+    # hardcoded) so this test never goes stale again when new migrations
+    # land on `main` -- see the historical "stale HEAD_REVISION test
+    # constant" defect documented in CHANGELOG.md. A relative "-1" downgrade
+    # is ambiguous once the current head is a merge revision (multiple
+    # down_revisions), so we resolve a single, unambiguous downgrade target
+    # instead: the head's own down_revision when linear, or the closest
+    # common ancestor of all merge branches otherwise.
     engine = create_engine(TEST_DATABASE_URL, future=True)
     cfg = _alembic_cfg()
+    script = ScriptDirectory.from_config(cfg)
+    heads_before = tuple(script.get_heads())
+    assert len(heads_before) == 1, f"Expected a single alembic head, found {heads_before}"
+    head_revision = heads_before[0]
+    down_revision = script.get_revision(head_revision).down_revision
+    if down_revision is None:
+        down_target = None
+    elif isinstance(down_revision, str):
+        down_target = down_revision
+    else:
+        down_target = _closest_common_ancestor(script, tuple(down_revision))
     try:
         with scoped_env_vars(MIGRATION_DATABASE_URL=TEST_DATABASE_URL, EXPECTED_DB=TEST_DATABASE_URL.rsplit("/", 1)[-1]):
-            command.downgrade(cfg, "-1")
+            if down_target:
+                command.downgrade(cfg, down_target)
             command.upgrade(cfg, "head")
         heads = set(ScriptDirectory.from_config(cfg).get_heads())
         with engine.begin() as conn:
             current = {row[0] for row in conn.execute(text("SELECT version_num FROM alembic_version"))}
-        assert current == heads == {HEAD_REVISION}
+        assert current == heads == {head_revision}
     finally:
         with scoped_env_vars(MIGRATION_DATABASE_URL=TEST_DATABASE_URL, EXPECTED_DB=TEST_DATABASE_URL.rsplit("/", 1)[-1]):
             command.upgrade(cfg, "head")
