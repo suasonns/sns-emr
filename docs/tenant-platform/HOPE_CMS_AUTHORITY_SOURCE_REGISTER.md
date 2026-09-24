@@ -160,7 +160,7 @@ captured directly from the v1.02 manual (p.73) reads:
 | Submission specifications | not retrieved | n/a | **NOT_VERIFIED** — no HOPE Data Submission Specifications document was retrieved or reviewed this pass |
 | Validation specifications | not retrieved | n/a | **NOT_VERIFIED** — no HOPE Validation Specifications document was retrieved or reviewed this pass |
 
-## Repository Gaps
+## Additional Item Verification (I0010, J2050 — not in change table)
 
 > A. Was an in-person SFV completed?
 > &nbsp;&nbsp;0. No — Skip to J2052C. Reason SFV Not Completed.
@@ -176,24 +176,6 @@ captured directly from the v1.02 manual (p.73) reads:
 
 - **I0010. Principal Diagnosis** (v1.02 manual, p.55, Timepoint: Admission only): "The principal diagnosis is defined as the condition established after reviewing all available information to be chiefly responsible for the patient's admission... This item should be completed based on the patient's principal diagnosis **at the time of admission to hospice**... Item completion must be based on what is indicated in the clinical record. Do not use sources external to the clinical record." Single-select coded response (e.g., 01=Cancer, 02=Dementia, 06/07=split cardiac codes, 99=None of the above).
 - **J2050. Symptom Impact Screening** (v1.02 manual, p.73–74, Timepoints: ADM, HUV1, HUV2): "A. Was a symptom impact screening completed? — Code 0, No... and Skip to Item M1190... Code 1, Yes, if the patient was screened for symptom impact. B. Date of symptom impact screening — Enter the date the symptom impact screening was performed." This is the **exact two-operand structure** (a completion Boolean, item A, and a completion date, item B) that the repository's OR-fallback finding concerns.
-
-## Item Authority Map
-
-| CMS Item | Manual Page | Timepoint(s) | v1.01→v1.02 changed? |
-|---|---|---|---|
-| I0010 | p.55 | ADM only | No |
-| J2050 | p.73–74 | ADM, HUV1, HUV2 | No |
-| J2051 | p.74 | ADM, HUV1, HUV2 | No |
-| J2052A | p.73 (change table row 6) | ADM, HUV1, HUV2 | Wording only |
-| J2052B | p.73 | ADM, HUV1, HUV2 | No |
-| J2052C | p.73 | ADM, HUV1, HUV2 | No (codes/skip unchanged) |
-| J2053 | p.75 (change table rows 3–5,7) | ADM, HUV1, HUV2 | Wording only |
-| Admission item set | full manual, ADM-tagged items | ADM | Per-item, mostly unchanged |
-| HUV1 item set | full manual, HUV1-tagged items | HUV1 | Per-item, mostly unchanged |
-| HUV2 item set | full manual, HUV2-tagged items | HUV2 | Per-item, mostly unchanged |
-| Discharge item set | full manual, DC-tagged items | Discharge | **NOT_VERIFIED** — Discharge-tagged item pages were not individually re-extracted in this pass; only I0010/J2050/J2052x/J2053 were directly read from the manual text |
-| Submission specifications | not retrieved | n/a | **NOT_VERIFIED** — no HOPE Data Submission Specifications document was retrieved or reviewed this pass |
-| Validation specifications | not retrieved | n/a | **NOT_VERIFIED** — no HOPE Validation Specifications document was retrieved or reviewed this pass |
 
 ## Repository Gaps
 
