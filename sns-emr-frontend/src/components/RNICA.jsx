@@ -8018,7 +8018,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
               <div>
                 Symptom follow-up requires a separate clinical encounter. The follow-up
                 may be completed by the original nurse, another assigned nurse, or another
-                appropriately authorized clinician.
+                appropriately authorized nursing clinician.
               </div>
             )}
           </div>

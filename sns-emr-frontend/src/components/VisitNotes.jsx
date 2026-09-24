@@ -1016,12 +1016,12 @@ function VisitChecklistCard({ checklist, onChange, disabled, styles, COLORS }) {
 // offer "Complete SFV" is a SEPARATE qualifying follow-up visit (never
 // the triggering RNICA screen -- see RNICA.jsx's read-only
 // SfvStatusCard). This section lists OPEN SFV requirements for the
-// patient and lets an authorized clinician complete one from THIS
+// patient and lets an authorized nursing clinician complete one from THIS
 // visit, once this visit itself is authenticated (signed/finalized).
 // The backend is the sole authority on eligibility -- this UI only
 // gates on documentation being complete (finalized) before offering
 // the action; the server still independently validates visit
-// separateness, ordering, tenant/patient match, and clinician
+// separateness, ordering, tenant/patient match, and nursing-credential
 // authorization and can reject the request even if this UI enabled it.
 export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, styles, COLORS }) {
   const [requirements, setRequirements] = useState([]);
