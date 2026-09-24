@@ -756,6 +756,61 @@ describe("mapRnIcaToHopeReport — J0915 Neuropathic Pain", () => {
   });
 });
 
+// P1A — J2052 read-path correction (docs/tenant-platform/
+// J2052_J2053_LINEAGE_AUDIT.md, P1_J2052_J2053_REMEDIATION_PLAN.md).
+// J2052 (SFV completion status/date) must be derived exclusively from the
+// caller-supplied, backend-authoritative `sfvRequirement` (an
+// SFVRequirement summary fetched via listSfvRequirements()) -- never from
+// the RNICA form's own self-attested `form_data.sfv.inPersonSfvCompleted`/
+// `sfv.sfvDate` fields, even if those fields are present and disagree.
+describe("mapRnIcaToHopeReport — J2052 read-path (P1A)", () => {
+  function formDataWithModerateSymptomTrigger(sfvOverrides = {}) {
+    return baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningDate: "2026-01-01", ...sfvOverrides },
+    });
+  }
+
+  it("completed SFV: exported J2052 reflects the SFVRequirement, not form_data", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z" };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[0].value).toBe("Yes");
+    expect(findItem(report, "J2052").entries[1].value).toBe("01/02/2026");
+  });
+
+  it("incomplete SFV: exported J2052 reflects the SFVRequirement (OPEN, not completed)", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "OPEN", completedAt: null };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[0].value).toBe("No");
+  });
+
+  it("UI state changed manually (form_data.sfv.inPersonSfvCompleted = true) does not make J2052 complete without a matching SFVRequirement", () => {
+    // Simulates a stale/manually-edited RNICA form_data value that
+    // disagrees with the backend -- the exporter must ignore it.
+    const formData = formDataWithModerateSymptomTrigger({ inPersonSfvCompleted: true, sfvDate: "2020-01-01" });
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement: null });
+    expect(findItem(report, "J2052").entries[0].value).toBe("No");
+    expect(findItem(report, "J2052").entries[1].value).toBe(PLACEHOLDER);
+  });
+
+  it("no sfvRequirement supplied at all (e.g. fetch not yet resolved): J2052 defaults to not-completed rather than trusting form_data", () => {
+    const formData = formDataWithModerateSymptomTrigger({ inPersonSfvCompleted: true, sfvDate: "2026-01-02" });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2052").entries[0].value).toBe("No");
+  });
+
+  it("page reload (same SFVRequirement snapshot passed again): J2052 is unchanged and deterministic", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z" };
+    const first = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    const second = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(responseDescription(second, "J2052")).toBe(responseDescription(first, "J2052"));
+    expect(findItem(second, "J2052").entries[1].value).toBe(findItem(first, "J2052").entries[1].value);
+  });
+});
+
 describe("getHopeAdmissionStatus — SECTION 7 HOPE Admission harvest/completion-status", () => {
   // Mirrors the subset of RNICA.jsx's SIDEBAR_CONFIG entries relevant here —
   // { key, label, hope: [...] } per section, exactly as getHopeAdmissionStatus

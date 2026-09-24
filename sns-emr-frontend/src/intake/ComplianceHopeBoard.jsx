@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { fetchHopeUpdateStatus, getRnicaAssessmentByPatient } from "../api/icaAssessments";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { getCurrentUser } from "../api/session";
+import { listSfvRequirements } from "../api/sfv";
 import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import { defaultPatient } from "./ConsentNotifications";
@@ -306,6 +307,11 @@ export default function ComplianceHopeBoard({
   const [declineVisibleSeries, setDeclineVisibleSeries] = useState(() => Object.fromEntries(DECLINE_STATUS_SERIES.map((series) => [series.key, true])));
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  // P1A (J2052 read-path correction, docs/tenant-platform/
+  // J2052_J2053_LINEAGE_AUDIT.md): fetch the authoritative SFVRequirement
+  // directly, mirroring RNICA.jsx's SfvStatusCard selection logic
+  // (most-recently-completed), instead of depending on RNICA's UI sync.
+  const [sfvRequirement, setSfvRequirement] = useState(null);
 
   const loadDeclineTrend = async (range = undefined) => {
     if (!patientId) return null;
@@ -324,6 +330,23 @@ export default function ComplianceHopeBoard({
       setDeclineLoading(false);
     }
   };
+
+  useEffect(() => {
+    if (!patientId) {
+      setSfvRequirement(null);
+      return undefined;
+    }
+    let cancelled = false;
+    listSfvRequirements(patientId)
+      .then((rows) => {
+        if (cancelled) return;
+        const completedRows = (rows || []).filter((r) => r.status === "COMPLETED" && r.completedAt);
+        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+        setSfvRequirement(latest || null);
+      })
+      .catch(() => { if (!cancelled) setSfvRequirement(null); });
+    return () => { cancelled = true; };
+  }, [patientId]);
 
   useEffect(() => {
     let mounted = true;
@@ -413,7 +436,7 @@ export default function ComplianceHopeBoard({
     fax: "(000) 000-0001",
   }), []);
   const formData = assessment?.formData || {};
-  const hopeReport = useMemo(() => mapRnIcaToHopeReport(formData, patient, agency), [formData, patient, agency]);
+  const hopeReport = useMemo(() => mapRnIcaToHopeReport(formData, patient, agency, { sfvRequirement }), [formData, patient, agency, sfvRequirement]);
   const selectedSection = SECTION_ITEMS.some((item) => item.key === activeSection) ? activeSection : COMPLIANCE_SECTION_KEY;
   const electionDate = patientSummary?.patient?.hospice_election_date || "";
   const huv1Window = hopeUpdateStatus?.huv1?.window
@@ -907,6 +930,7 @@ export default function ComplianceHopeBoard({
         timepoint={timepoint}
         assessmentMeta={matchedAssessment}
         onNavigateToSection={onNavigateToSection}
+        patientId={patientId}
       />
     );
   };
@@ -1016,6 +1040,7 @@ export default function ComplianceHopeBoard({
           timepoint="ADMISSION"
           assessmentMeta={assessment || {}}
           onNavigateToSection={onNavigateToSection}
+          patientId={patientId}
         />
       );
     }
@@ -1065,6 +1090,7 @@ export default function ComplianceHopeBoard({
             reasonLabel: reasonRest.join(" - "),
           }}
           onNavigateToSection={onNavigateToSection}
+          patientId={patientId}
         />
       );
     }

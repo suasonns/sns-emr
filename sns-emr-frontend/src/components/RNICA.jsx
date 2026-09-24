@@ -10165,6 +10165,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // (no time-saved estimate -- that would require an assumption, not a
   // persisted fact). Refetched alongside Acceptance Analytics above.
   const [rnProductivityMetrics, setRnProductivityMetrics] = useState(null);
+  // P1A (J2052 read-path correction, docs/tenant-platform/
+  // J2052_J2053_LINEAGE_AUDIT.md): the on-screen SFV status badge below
+  // must also read the authoritative SFVRequirement directly rather than
+  // the RNICA form's own self-attested `sfv.inPersonSfvCompleted`. This
+  // mirrors SfvStatusCard's own "most-recently-completed" selection
+  // logic (RNICA.jsx's SfvStatusCard component) so both surfaces agree;
+  // it is a separate, independent fetch from that card's, matching the
+  // existing pattern of other supplementary read-only cards on this page
+  // (e.g. DeclineTrackerCard, WeightLossAutoCalcCard) each fetching their
+  // own data independently.
+  const [latestSfvRequirement, setLatestSfvRequirement] = useState(null);
+
+  useEffect(() => {
+    if (!patientId) {
+      setLatestSfvRequirement(null);
+      return undefined;
+    }
+    let cancelled = false;
+    listSfvRequirements(patientId)
+      .then((rows) => {
+        if (cancelled) return;
+        const completedRows = (rows || []).filter((r) => r.status === "COMPLETED" && r.completedAt);
+        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+        setLatestSfvRequirement(latest || null);
+      })
+      .catch(() => { if (!cancelled) setLatestSfvRequirement(null); });
+    return () => { cancelled = true; };
+  }, [patientId]);
 
   useEffect(() => {
     setPendingStructuredSignals(intelligence?.structured_findings_signals || []);
@@ -11337,7 +11365,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const currentRoute = routes.find((r) => r.key === activeSection);
   const currentSectionData = formData[currentRoute?.formSection];
   const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
-  const sfvStatus = useMemo(() => getSfvStatus(formData), [formData]);
+  const sfvStatus = useMemo(() => getSfvStatus(formData, latestSfvRequirement), [formData, latestSfvRequirement]);
   // SECTION 7 — HOPE Admission harvest/completion-status. RN ICA's job here is
   // only to harvest the answers and show completion status / missing HOPE
   // sources (never to generate, export, or submit the HOPE Admission record

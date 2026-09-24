@@ -392,6 +392,7 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
           onBack={() => setView("assessment")}
           onNavigateToSection={onNavigateToSection}
           assessmentMeta={{ locked: false }}
+          patientId={patientId}
         />
       ) : (
         <div style={{ width: "100%", minWidth: 0, overflowX: "hidden" }}>

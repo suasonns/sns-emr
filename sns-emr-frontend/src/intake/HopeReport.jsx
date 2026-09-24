@@ -7,6 +7,7 @@ import {
   readyRnicaHopeWorkflow,
   unlockRnicaHopeWorkflow,
 } from "../api/icaAssessments";
+import { listSfvRequirements } from "../api/sfv";
 import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import { defaultPatient } from "./ConsentNotifications";
@@ -138,6 +139,7 @@ export default function HopeReport({
   assessmentMeta = {},
   discharge = null,
   onNavigateToSection,
+  patientId = "",
 }) {
   const { mode } = useThemeMode();
   const colors = getChartColors(mode);
@@ -149,6 +151,30 @@ export default function HopeReport({
   const [unlockReason, setUnlockReason] = useState("");
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
+  // P1A (J2052 read-path correction, docs/tenant-platform/
+  // J2052_J2053_LINEAGE_AUDIT.md): fetch the authoritative SFVRequirement
+  // directly here rather than depending on RNICA.jsx's SfvStatusCard
+  // having synced form_data.sfv.* back onto the assessment. Selection
+  // logic (most-recently-completed) mirrors SfvStatusCard's own logic so
+  // both surfaces agree.
+  const [sfvRequirement, setSfvRequirement] = useState(null);
+
+  useEffect(() => {
+    if (!patientId) {
+      setSfvRequirement(null);
+      return undefined;
+    }
+    let cancelled = false;
+    listSfvRequirements(patientId)
+      .then((rows) => {
+        if (cancelled) return;
+        const completedRows = (rows || []).filter((r) => r.status === "COMPLETED" && r.completedAt);
+        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+        setSfvRequirement(latest || null);
+      })
+      .catch(() => { if (!cancelled) setSfvRequirement(null); });
+    return () => { cancelled = true; };
+  }, [patientId]);
 
   useEffect(() => {
     setWorkflow(assessmentMeta?.hopeWorkflow || null);
@@ -163,8 +189,9 @@ export default function HopeReport({
       timepoint: normalizedTimepoint,
       assessmentMeta: { ...assessmentMeta, hopeWorkflow: workflow || assessmentMeta?.hopeWorkflow || null },
       discharge,
+      sfvRequirement,
     }),
-    [assessmentMeta, agency, mergedFormData, normalizedTimepoint, patient, workflow, discharge]
+    [assessmentMeta, agency, mergedFormData, normalizedTimepoint, patient, workflow, discharge, sfvRequirement]
   );
 
   const locked = Boolean(assessmentMeta?.locked);

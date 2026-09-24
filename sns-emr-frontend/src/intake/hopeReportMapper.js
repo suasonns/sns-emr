@@ -397,7 +397,18 @@ function isModerateOrSevere(value) {
   return text === "2" || text === "3" || text.includes("moderate") || text.includes("severe");
 }
 
-export function getSfvStatus(formData = {}) {
+// J2052 completion status/date is P1A-corrected (RNICA -> HOPE lineage
+// audit, docs/tenant-platform/J2052_J2053_LINEAGE_AUDIT.md): this must be
+// read directly from the authoritative backend `SFVRequirement` record,
+// never from the RNICA form's own self-attested `sfv.inPersonSfvCompleted`/
+// `sfv.sfvDate` fields. `sfvRequirement` is the caller-supplied, most-
+// recently-completed `SFVRequirement` summary for this patient (or null if
+// none is completed), fetched via `listSfvRequirements()` -- the same
+// source of truth the backend SFV completion endpoint itself writes to.
+// This function no longer falls back to the RNICA form's status fields
+// for J2052, by design: a missing/unfetched `sfvRequirement` means
+// "not completed", not "trust the frontend's self-attestation".
+export function getSfvStatus(formData = {}, sfvRequirement = null) {
   const symptomImpact = formData.symptomImpact || {};
   const sfv = formData.sfv || {};
   const screeningDate = sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate || "";
@@ -406,7 +417,8 @@ export function getSfvStatus(formData = {}) {
     .map(([, label]) => label);
   const required = triggeredSymptoms.length > 0;
   const dueDate = required ? addDays(screeningDate, 2) : "";
-  const completed = Boolean(sfv.inPersonSfvCompleted);
+  const completed = Boolean(sfvRequirement && sfvRequirement.status === "COMPLETED");
+  const completedAt = completed ? sfvRequirement.completedAt : "";
   const statusLabel = !required
     ? "No SFV trigger identified"
     : completed
@@ -420,6 +432,7 @@ export function getSfvStatus(formData = {}) {
   return {
     required,
     completed,
+    completedAt,
     screeningDate,
     dueDate,
     triggeredSymptoms,
@@ -525,7 +538,8 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
     items: legacyReviewItems,
   };
   const sobIndicated = Boolean(respiratory.sobSeverity && respiratory.sobSeverity !== "None");
-  const sfvStatus = getSfvStatus(formData);
+  const sfvRequirement = options.sfvRequirement || null;
+  const sfvStatus = getSfvStatus(formData, sfvRequirement);
   const opioidPresent = Boolean(medications.scheduledOpioid || medications.prnOpioid);
   const bowelRegimenCode = medications.bowelRegimen ? ["2", "Initiated / continued"] : opioidPresent ? ["0", "Not initiated / continued"] : ["1", "Not applicable - no opioid trigger"];
   const hasHeartFailure = activeDiagnosisFlag(diagnoses, /\b(chf|congestive heart failure|heart failure)\b/);
@@ -615,7 +629,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "J2040", label: "Treatment for Shortness of Breath", entries: [{ label: "A. Initiated?", value: boolCode(Boolean(respiratory.treatmentInitiated)).description }, { label: "B. Date", value: formatDate(respiratory.treatmentDate) }] },
           { code: "J2050", label: "Symptom Impact Screening", entries: [{ label: "A. Completed?", value: boolCode(Boolean(sfv.symptomImpactScreeningCompleted || symptomImpact.assessmentDate)).description }, { label: "B. Date", value: formatDate(sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate) }] },
           { code: "J2051", label: "Symptom Impact", entries: symptomEntries(symptomImpact) },
-          { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(Boolean(sfv.inPersonSfvCompleted)).description }, { label: "B. Date", value: formatDate(sfv.sfvDate) }, { label: "C. Reason not completed", value: valueText(sfv.reasonNotCompleted) }] },
+          { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(sfvStatus.completed).description }, { label: "B. Date", value: formatDate(sfvStatus.completedAt) }, { label: "C. Reason not completed", value: valueText(sfv.reasonNotCompleted) }] },
           { code: "J2053", label: "SFV Symptom Impact", entries: symptomEntries(sfv.symptomImpactAtSfv || {}) },
         ],
       },
