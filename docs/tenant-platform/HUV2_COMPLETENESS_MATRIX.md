@@ -68,7 +68,12 @@ Same caveat as `ADM_COMPLETENESS_MATRIX.md`/`HUV1_COMPLETENESS_MATRIX.md`:
 the 54-item denominator is an emitted-code count, not a CMS-authority-
 confirmed applicable-item count. Retained:
 
-- **CMS item-set version**: NOT_VERIFIED
+- **CMS item-set version**: **VERIFIED BY CMS** — HOPE Guidance Manual
+  v1.02, effective October 1, 2025 (`HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md`).
+  A CMS document is externally verified and was read directly for I0010
+  and Section J items relevant to HUV2, but the full HUV2 item set was
+  not individually re-derived page-by-page against v1.02 this pass —
+  that remains the scope of issue #151.
 - **Total applicable items**: NOT_VERIFIED (54 is emitted-code count)
 - **Verified items**: 3 (A0250, J2052 A/B, J2053)
 - **NOT_VERIFIED items**: 49

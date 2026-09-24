@@ -80,8 +80,22 @@ is stored in this repository (see `I0010_PRINCIPAL_DIAGNOSIS_
 PROVENANCE_TRACE.md`, Section A). Reporting a percentage against an
 unverified denominator overstates precision. Retained instead:
 
-- **CMS item-set version**: NOT_VERIFIED (no document in repository)
-- **Total applicable items**: NOT_VERIFIED (57 is emitted-code count, not CMS-confirmed applicable count)
+- **CMS item-set version**: **VERIFIED BY CMS** — HOPE Guidance Manual
+  v1.02, effective October 1, 2025 (see
+  `HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md`). A CMS source document is now
+  externally verified to exist and has been read directly for I0010 and
+  Section J items (see `I0010_PRINCIPAL_DIAGNOSIS_PROVENANCE_TRACE.md`,
+  `J2050_PROVENANCE_TRACE.md`), but the full Admission item set was
+  **not** individually re-derived page-by-page against v1.02 this pass —
+  only I0010, J2050, J2051, J2052A/B/C, and J2053 were directly read
+  from the manual. This is a narrower "CMS document exists and is
+  partially verified" state, not "no document in repository" (the
+  document is not stored in-repo by policy, but its content is no
+  longer unknown).
+- **Total applicable items**: still NOT_VERIFIED (57 is emitted-code
+  count, not a CMS-confirmed applicable count; a full item-by-item
+  reconciliation against the v1.02 Admission item set remains the scope
+  of issue #149, not completed here)
 - **Verified items**: 3 (A0250, J2052 A/B, J2053) — VERIFIED BY REPOSITORY TRACE + CMS citation independently confirmed earlier this engagement
 - **NOT_VERIFIED items**: 52 (per row table above)
 - **OPEN_QUESTION items**: 2 (I0000, J2050)

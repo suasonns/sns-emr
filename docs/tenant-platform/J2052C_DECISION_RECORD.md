@@ -5,11 +5,27 @@ reformats the completed investigation in `J2052C_SOURCE_DISCOVERY.md`
 into the requested decision-record template. No new research was
 performed; no schema, storage, API, or enum is designed or proposed here.
 
-## CMS Requirement
+## CMS Requirement — VERIFIED BY CMS (reverified against v1.02)
 
-J2052C — Reason SFV Not Completed. Required only when J2052A = No.
-Codes: 1 = Patient/caregiver declined visit, 2 = Patient unavailable,
-3 = Unable to contact patient/caregiver, 9 = None of the above.
+Source: *HOPE Guidance Manual v1.02*, Effective October 1, 2025, p.73
+(see `HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md` for full citation, URL, and
+checksum). Verified 2026-09-24.
+
+J2052C — Reason SFV Not Completed. Required only when J2052A = 0 (No);
+skips to M1190, Skin Conditions. Verbatim CMS codes:
+
+> 1. Patient and/or caregiver declined an in-person visit.
+> 2. Patient unavailable (e.g., in ED, hospital, travel outside of
+>    service area, expired).
+> 3. Attempts to contact patient and/or caregiver were unsuccessful.
+> 9. None of the above.
+
+**CMS v1.01→v1.02 change status**: The complete 7-row v1.01→v1.02
+change table (`HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md`) was read in full.
+J2052C's codes and skip target are **textually identical** in both
+versions — zero rows in the change table touch J2052C. This conclusion
+was reached by reading the change table end-to-end, not by assuming a
+J2053-only impact from a partial search result.
 
 ## Candidate Sources Evaluated
 
@@ -47,23 +63,56 @@ This is disclosed as a residual gap, not silently treated as closed.
 
 **AUTHORITATIVE SOURCE FOUND: NO** (re-affirmed, with an expanded and
 now-documented candidate set; not merely re-asserted from the prior
-pass).
+pass). This conclusion is retained because every listed candidate was
+individually traced to a repository path/symbol and individually fails
+at least one mandatory rule (AUTHORITATIVE and/or MATCHES-CMS), per the
+table above — it is not a blanket assertion.
 
-Every candidate fails the AUTHORITATIVE and/or MATCHES-CMS tests. The gap
-is structural, not a storage-location choice: no backend workflow today
-asks a clinician to record one of the four CMS reason codes at the point
-an SFV goes uncompleted. The only existing capture point is RNICA
-self-attestation free text, which is architecturally disallowed as an
-export source (same class of defect the SFV ownership fix eliminated
-for J2052A/B and J2053).
+Four separate questions, kept separate per instruction:
+
+- **A. What does CMS require?** — Answered above: **VERIFIED BY CMS**,
+  four fixed codes (1/2/3/9), skip to M1190.
+- **B. Where does SNS currently capture it?** — **VERIFIED BY REPOSITORY
+  TRACE**: nowhere in a form that reaches the backend. The only capture
+  point is RNICA free-text self-attestation (`RNICA.jsx` line ~9515),
+  which never reaches an API or database column.
+- **C. Can an existing SNS model be reused safely?** — **NOT_VERIFIED /
+  NO**, for every candidate examined (`SFVRequirement.status`,
+  `Refusal`, `CHHAVisitOutcome`, `ClinicalOutcomeRecord`,
+  `PatientResponseEvent`) — each fails on code-set mismatch, entity
+  scope, or workflow scope as detailed in the tables above.
+- **D. What new workflow, if any, should SNS adopt?** — **OPEN QUESTION
+  — REQUIRES ROMEL DECISION**. Not answered here; see Options below.
+
+**NEW STORAGE REQUIRED: REQUIRES ROMEL DECISION** — this record does not
+assert that new storage is definitively required. It asserts only that
+no existing SNS storage safely represents the CMS codes today (question
+C above). Whether the resolution is new storage, a reused/extended
+model, or a documented permanent gap is a product decision, not a
+repository-trace finding.
 
 ## OPEN QUESTION — REQUIRES ROMEL DECISION
 
-**Option A**: Build a dedicated "SFV not completed" capture workflow
-(new backend field/endpoint on `SFVRequirement` + UI), analogous to the
-J2053 capture-path work, for the not-completed branch.
+**Option A — Extend `SFVRequirement`.** Add a controlled
+not-completed-reason field (fixed-choice, values 1/2/3/9) directly on
+`SFVRequirement`, captured at the point staff record that an SFV could
+not occur, analogous to the J2053 capture-path work. Requires new schema
++ new UI entry point + new tests. Not designed or scoped further here.
 
-**Option B**: Leave J2052C unexported (always placeholder) until Option A
-is approved and built; document explicitly as a known HOPE export gap.
+**Option B — Reuse an existing visit-outcome/refusal model.** Only
+after proving semantic and audit compatibility (code-set mapping,
+entity-linkage to the specific `SFVRequirement`, and audit-trail
+parity) — none of `Refusal`, `CHHAVisitOutcome`,
+`ClinicalOutcomeRecord`, or `PatientResponseEvent` currently satisfy
+this per the candidate table above, so Option B as evaluated today would
+still require modification, not pure reuse.
 
-No option is selected or implemented in this record.
+**Option C — Create a new linked SFV-outcome record.** If neither
+Option A (extending the existing requirement row) nor Option B (reusing
+an existing model) can safely represent the CMS response set without
+conflating unrelated workflows, create a new, narrowly-scoped record
+type linked 1:1 to `SFVRequirement` solely for the not-completed outcome
+and its CMS reason code.
+
+No option is selected or implemented in this record. Issue #146 remains
+blocked pending this Romel decision.

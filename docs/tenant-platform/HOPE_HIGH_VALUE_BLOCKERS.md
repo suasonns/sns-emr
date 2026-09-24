@@ -149,12 +149,20 @@ cross-validation risk remains open (see
 **Blocking reason has changed**, per instruction:
 - ~~Ownership uncertainty~~ — **RESOLVED** (commit `c540e277`)
 - **Item completeness — OPEN** (this document's items)
-- **No CMS HOPE Item Set authority document exists anywhere in this
-  repository** (confirmed this pass) — every completeness figure in
-  `ADM/HUV1/HUV2/DC_COMPLETENESS_MATRIX.md` is now stated as
+- **Update (post-CMS-authority-research):** A CMS HOPE Item Set
+  authority document is now **VERIFIED BY CMS to exist and has been
+  directly read** — HOPE Guidance Manual v1.02, effective October 1,
+  2025, fetched and checksummed from `cms.gov` (see
+  `HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md`). It is not stored in this
+  repository (deliberate policy: citations/checksums only, no vendored
+  PDFs), and only I0010, J2050, J2051, and Section J (J2052A/B/C,
+  J2053) were individually read against it this pass — the full
+  ADM/HUV1/HUV2/DC applicable-item counts were **not** re-derived
+  page-by-page. Every completeness figure in
+  `ADM/HUV1/HUV2/DC_COMPLETENESS_MATRIX.md` therefore remains stated as
   `COMPLETENESS: NOT_VERIFIED` / `DENOMINATOR: NOT_VERIFIED` rather than
-  a raw percentage, since no CMS-version-anchored applicable-item count
-  can be constructed from repository evidence alone.
+  a raw percentage — the gap is now "per-item re-derivation not yet
+  done," not "no CMS document exists."
 
 HOPE generation is not yet safe to begin. Earliest safe start requires,
 at minimum: J2052C decision (Romel), the I0010 duplicate-authority policy

@@ -48,7 +48,13 @@ performed.
 Same caveat: the 21-item denominator is an emitted-code count, not a
 CMS-authority-confirmed applicable-item count. Retained:
 
-- **CMS item-set version**: NOT_VERIFIED
+- **CMS item-set version**: **VERIFIED BY CMS** — HOPE Guidance Manual
+  v1.02, effective October 1, 2025 (`HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md`).
+  A CMS document is externally verified to exist, but Discharge-specific
+  item pages were **not** individually read this pass (disclosed as a
+  gap in `HOPE_CMS_AUTHORITY_SOURCE_REGISTER.md`'s Item Authority Map) —
+  full Discharge item-set re-derivation against v1.02 remains the scope
+  of issue #152.
 - **Total applicable items**: NOT_VERIFIED (21 is emitted-code count)
 - **Verified items**: 1 (A0250)
 - **NOT_VERIFIED items**: 20
