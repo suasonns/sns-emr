@@ -1190,31 +1190,78 @@ normalization, or a role-migration script must re-verify the following
 before merge, and this list must not be shortened or collapsed into a
 single generic "role authorization" check:
 
-1. **NP remains included** as a qualifying nursing credential after any
-   role-model refactor — do not let a future `role == "RN"` shortcut
-   silently drop NP out of the nursing group.
-2. **LVN/LPN Case Manager remains included** — a `CASE_MANAGER`-role
+1. **NP remains authorized** as a qualifying nursing credential after
+   any role-model refactor — do not let a future `role == "RN"`
+   shortcut silently drop NP out of the nursing group.
+2. **LVN/LPN Case Manager remains authorized** — a `CASE_MANAGER`-role
    caller whose `User.discipline` normalizes to LVN/LPN must still pass.
-3. **Social Worker Case Manager (and any other non-nursing-discipline
-   `CASE_MANAGER`) remains excluded** — `CASE_MANAGER` alone, with no
-   qualifying nursing discipline recorded, must still fail.
-4. **No role-migration script may make the bare `CASE_MANAGER` role
-   string independently sufficient again** — the discipline check is
-   the load-bearing gate, not a cosmetic add-on; migrations that
-   normalize/rename roles must preserve the `User.discipline` field's
-   authorization role for this check, or update `can_complete_sfv`
-   in the same change.
+3. **RN Case Manager remains authorized** — a `CASE_MANAGER`-role
+   caller whose `User.discipline` normalizes to RN must still pass.
+4. **Social Worker remains rejected** — a non-nursing role never
+   qualifies regardless of patient/chart access.
+5. **Non-Nursing Case Manager remains rejected** — `CASE_MANAGER` with
+   no qualifying nursing discipline recorded (or a non-nursing
+   discipline such as Social Work) must still fail.
+6. **`CASE_MANAGER` alone never authorizes completion** — the bare role
+   string is never sufficient by itself; the underlying `User.discipline`
+   check is the load-bearing gate, not a cosmetic add-on. No
+   role-migration script may make it independently sufficient again;
+   migrations that normalize/rename roles must preserve the
+   `User.discipline` field's authorization role for this check, or
+   update `can_complete_sfv` in the same change.
+7. **On-call nursing workflow continues to work** — an on-call/covering/
+   per-diem RN, LVN/LPN, or NP may complete the SFV under ordinary
+   nursing authorization requirements; on-call status is operational
+   routing only, never a substitute authorization source, and must
+   never be required either (no assignment-to-triggering-nurse or
+   assignment-to-original-case requirement).
+8. **Separate-visit validation remains enforced** — `triggerVisitId !=
+   completionVisitId` must remain a hard backend check independent of
+   the credential check; a credential-model refactor must never weaken
+   or bypass this invariant.
 
-These four checks are covered today by
+These eight checks must be reviewed whenever: role refactoring occurs,
+discipline mapping changes, credential storage changes, authorization
+services change, user imports change, or identity systems change. They
+are covered today by
 `test_complete_sfv_requirement_endpoint_authorized_np`,
+`test_complete_sfv_requirement_endpoint_authorized_rn_case_manager`,
 `test_complete_sfv_requirement_endpoint_authorized_lvn_case_manager`,
+`test_complete_sfv_requirement_endpoint_social_worker_rejected`,
 `test_complete_sfv_requirement_endpoint_non_nursing_case_manager_rejected`,
-and the general `_SFV_QUALIFYING_NURSING_CREDENTIALS`/discipline-gate
-structure in `backend/app/core/patient_access.py` — reviewers should
-re-run `backend/tests/test_sfv_completion_api.py` (currently 23/23
-passing) as part of any PR that touches role/discipline normalization,
-and must not remove or collapse these tests into a single parameterized
-case without preserving independent pass/fail visibility per role.
+`test_complete_sfv_requirement_endpoint_on_call_rn_completes`,
+`test_complete_sfv_requirement_endpoint_on_call_lvn_completes`, and
+`backend/tests/test_sfv_completion_visit_separation.py` (separate-visit
+invariant), plus the general `_SFV_QUALIFYING_NURSING_CREDENTIALS`/
+discipline-gate structure in `backend/app/core/patient_access.py` —
+reviewers should re-run `backend/tests/test_sfv_completion_api.py`
+(currently 23/23 passing) and `test_sfv_completion_visit_separation.py`
+(8/8 passing) as part of any PR that touches role/discipline
+normalization, and must not remove or collapse these tests into a
+single parameterized case without preserving independent pass/fail
+visibility per role.
+
+**HOPE/SFV reminder (keep visible in the Constitution):**
+
+1. Separate visit is required: `triggerVisitId != completionVisitId`.
+2. Completion may be performed by an authorized nursing clinician.
+3. The original triggering nurse is not required to be the completer.
+4. A different nurse is allowed to complete the SFV.
+5. The same nurse is also allowed to complete the SFV (on a separate
+   visit).
+6. The same visit record is never allowed to satisfy both the trigger
+   and the completion.
+7. The backend remains the sole authoritative enforcement layer for
+   both the separate-visit and the credential rule.
+8. The frontend mirrors backend truth only — it never self-attests or
+   locally derives an SFV completion result.
+
+**Status: P3-009 authorization remediation — accepted and closed
+("FINAL P3-009 CLOSEOUT REVIEW", 2026-09-23).** Future SFV-adjacent
+effort should focus on remaining HOPE exporter, submission, validation,
+correction, and audit workstreams rather than reopening this
+authorization model, unless one of the eight post-close regression
+checks above is found to have regressed.
 
 **Remaining open items (explicitly not built this pass, per product
 direction to avoid over-engineering):** a formal on-call
