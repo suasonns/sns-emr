@@ -4210,9 +4210,11 @@ def record_sfv_not_completed(
         role=str(getattr(current_user, "role", "") or ""),
         tenant_id=str(current_user.tenant_id) if getattr(current_user, "tenant_id", None) else None,
         meta={
-            "reasonCode": updated_requirement.reason_code,
-            "attemptVisitId": str(attempt_visit.id),
             "patientId": str(updated_requirement.patient_id),
+            "sfvRequirementId": str(updated_requirement.id),
+            "visitId": str(attempt_visit.id),
+            "oldValue": None,
+            "newValue": updated_requirement.reason_code,
         },
     )
 
@@ -4288,8 +4290,15 @@ def correct_sfv_reason(
         role=str(getattr(current_user, "role", "") or ""),
         tenant_id=str(current_user.tenant_id) if getattr(current_user, "tenant_id", None) else None,
         meta={
-            "priorReasonCode": correction.prior_reason_code,
-            "newReasonCode": correction.new_reason_code,
+            "patientId": str(updated_requirement.patient_id),
+            "sfvRequirementId": str(updated_requirement.id),
+            "visitId": (
+                str(updated_requirement.reason_recorded_visit_id)
+                if updated_requirement.reason_recorded_visit_id
+                else None
+            ),
+            "oldValue": correction.prior_reason_code,
+            "newValue": correction.new_reason_code,
             "correctionReason": correction.correction_reason,
         },
     )
