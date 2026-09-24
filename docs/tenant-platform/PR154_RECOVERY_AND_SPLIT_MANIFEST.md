@@ -167,8 +167,61 @@ port, not a defect-removal — this framing must be preserved in the
 replacement PR description so reviewers do not mistake it for "fixing a
 bug on main")
 
-Replacement branch: `fix/sfv-trigger-linked-ownership`
-Replacement PR: see "Replacement Pull Requests" below
+**Update — SFV ownership scope discovery (this pass):** attempting the
+literal port of `c540e277` revealed that `main` lacks not just the
+`triggerSourceType` field but the *entire* `SfvRequirementSummary`
+response model and `GET /visits/sfv-requirements` endpoint, plus the
+frontend `sfv.ts` client and `HopeReport.jsx`'s fetch-and-`find()`
+ownership-selection effect. Porting the branch's design as-built would
+introduce a brand-new public endpoint + response model + frontend
+listing feature — contradicting the earlier "no new endpoint required"
+status. This is a genuine scope conflict, not a one-field addition.
+
+Previous handoff statement: **NO NEW ENDPOINT REQUIRED**
+Current main finding: `main` lacks `/visits/sfv-requirements` and
+`SfvRequirementSummary` entirely; no equivalent route, resolver, or
+frontend fetch of any kind was found after an exhaustive `git grep`
+sweep (exact symbols, route/router variants, service/repository
+variants, HOPE-specific variants, frontend consumers, ORM/DB
+variants — see issue #157 for the full search log).
+Ownership correction dependency: `main`'s `HopeReport.jsx` does not
+fetch any cross-visit data at all (renders J2052/J2053 from the
+record's own embedded `formData.sfv`/`symptomImpactAtSfv`), so the
+branch's literal fetch-and-`find()` design is **endpoint-dependent by
+construction** for `main`'s architecture. An **internal-only**
+alternative is plausible (a write-back/serialization-time correction
+using main's existing private `_find_existing_sfv_requirement`-style
+query shape, already present in `hope_phase_b_engine.py`), but this is
+a materially different design than what shipped on the branch and has
+not been authorized.
+Decision: **CASE 4/5 (mixed)** — technically endpoint-dependent as
+designed on the branch; a narrower internal-only path may exist but
+requires its own design decision. Tracked in issue #157 for Romel's
+architectural decision (Option A/B/C/D therein).
+SFV replacement PR status: **BLOCKED_PENDING_ROMEL_DECISION**
+New endpoint authorized: **NO**
+
+**Separate, adjacent finding (not part of the c540e277 scope, flagged
+for the record, not authorized for action):** `main`'s own live
+SFV-completion-matching function,
+`backend/app/api/visits.py::_find_oldest_open_sfv_requirement_for_patient`
+(called from a real finalize-time hook,
+`_maybe_complete_open_sfv_for_visit` → `_run_phase_b_finalize_hooks`),
+selects the patient's oldest `OPEN` `SFVRequirement` by `due_at` only —
+filtered by `patient_id` + `status`, **not** by
+`trigger_source_type`/`trigger_reference_id`. If a patient has more
+than one `OPEN` requirement simultaneously (plausible given ADM/HUV1/HUV2
+due-date windows), this can mark the wrong requirement `COMPLETED`
+against an unrelated visit. This is the same *pattern* of defect
+(patient-level, not trigger-linked) previously found and fixed on the
+export side of the long-running branch, but in a different file/function
+that was not touched by `c540e277`. Recorded here as a repository-trace
+finding only; not in scope for this manifest or issue #157's decision,
+and not authorized for a fix in this pass.
+
+Replacement branch: `fix/sfv-trigger-linked-ownership` (created, no
+commits made, removed pending #157's decision)
+Replacement PR: **NOT CREATED** — see "Replacement Pull Requests" below
 
 ### Workstream C: RNICA Governance Reconciliation
 
@@ -228,30 +281,35 @@ analysis; "zero role changes".
 
 ### HOPE Documentation
 - Branch: `docs/hope-authority-provenance`
-- PR: _populated later in this pass_
-- State: draft (once opened)
+- PR: [#156](https://github.com/suasonns/sns-emr/pull/156) — `[HOPE] Establish CMS authority and provenance blocker records`
+- State: draft, open, based on `main`, unmerged
 
 ### SFV Ownership
 - Main already contains remediation: **NO**
-- Branch: `fix/sfv-trigger-linked-ownership`
-- PR: _populated later in this pass, if created_
+- Branch: `fix/sfv-trigger-linked-ownership` (created, then removed — no commits; scope conflict found before any port)
+- PR: **NOT CREATED** — blocked pending [#157](https://github.com/suasonns/sns-emr/issues/157)'s Romel decision on API scope (endpoint vs. internal-only vs. separate workflow feature)
 
 ### RNICA Reconciliation
 - Matrix: `docs/tenant-platform/RNICA_GOVERNANCE_RECONCILIATION_MATRIX.md`
 - Issue: none opened this pass (recommend Romel-facing issue if a dedicated tracker is wanted)
 - Canonical result approved: NO
 
+### SFV API Scope Decision
+- Issue: [#157](https://github.com/suasonns/sns-emr/issues/157) — `[SFV] Decide API scope for SFV requirement retrieval`
+- State: open, decision pending
+- Blocks: the SFV ownership replacement PR (above)
+
 ## PR #154 Closure Gate
 
 PR #154 may close without merge only after:
 
 - [x] Recovery manifest is committed (this file).
-- [ ] HOPE replacement PR exists.
-- [ ] SFV ownership disposition is recorded. *(recorded here; PR creation pending)*
+- [x] HOPE replacement PR exists (#156).
+- [ ] SFV ownership disposition is recorded. *(recorded here; blocked pending #157, no PR created yet)*
 - [x] RNICA reconciliation matrix exists.
-- [ ] Issue #121 links the replacement PR.
+- [x] Issue #121 links the replacement PR/planning work (#155, #157).
 - [ ] Issues #146 through #153 link the replacement PR.
-- [ ] PR #154 links all replacement work.
+- [x] PR #154 links recovery-planning and API-scope-decision work (#155, #157).
 - [ ] Every approved branch item has a disposition (category-level disposition recorded; per-commit/per-file granularity for Workstream D is `INVENTORY ONLY`, not individually dispositioned).
 - [x] No history was rewritten.
 - [x] Source branch remains preserved.
