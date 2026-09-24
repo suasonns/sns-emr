@@ -109,6 +109,32 @@ No candidate reaches MEDIUM or HIGH. No existing table, JSON structure,
 workflow, or enum captures a CMS-coded (1/2/3/9) "why wasn't the SFV
 completed" value tied to a specific `SFVRequirement`.
 
+## Second-pass candidate analysis (source-of-truth question, not storage)
+
+Per the follow-up correction: the question is not "where should this be
+stored" but "does an authoritative, clinically appropriate source already
+exist." Re-evaluated on that basis:
+
+| Candidate | AUTHORITATIVE | CLINICALLY APPROPRIATE | MATCHES CMS RESPONSE SET | SUPPORTS ALL REQUIRED VALUE STATES | USED IN PRODUCTION WORKFLOW |
+|---|---|---|---|---|---|
+| RNICA `reasonNotCompleted` free text | NO — self-attestation on the *triggering* form, not the SFV encounter itself; already disqualified as a HOPE export source by the P1A directive | NO — captured at trigger time, before the SFV outcome is even known | NO — free `<input>`, no code restriction at all | NO — no code states exist, just prose | YES (this is the only field a user can currently type into) |
+| `SFVRequirement.status` (`OPEN`/`COMPLETED`/`OVERDUE`/`CANCELLED`) | NO — a workflow-lifecycle flag, not a clinical reason a person recorded | NO — no clinician ever asserts "declined" vs "unavailable" vs "unable to contact" through this field; it is system/schedule-derived | NO — 4 lifecycle states do not correspond 1:1 to the 4 CMS reason codes; no mapping exists in code | NO — cannot distinguish code 1 vs 2 vs 3 vs 9 | YES (status is actively used) but not for this purpose |
+| `Refusal` model | NO — scoped to `patient_id` + `discipline`, not to a specific `SFVRequirement` or visit | Plausibly, if extended — refusal *is* a clinically meaningful concept — but not proven for this use without a linkage | NO — `reason` is free `Text` | NO | NOT_VERIFIED — usage sites in production were not traced beyond the model file in this pass |
+| `CHHAVisitOutcome` | NO — CHHA (home health aide) discipline-specific outcome record, wrong discipline for an RN/LPN/LVN SFV | NO — wrong workflow entirely | NO — `reason_for_visit` is free `String(64)` | NO | YES, but for CHHA visits, not SFV |
+| SFV completion API (`complete_sfv_requirement*`) | N/A | N/A | N/A | N/A | The "not completed" branch does not exist as a workflow at all — confirmed by trace, not assumed |
+
+## Finding
+
+**NO AUTHORITATIVE SOURCE FOUND.**
+
+Every candidate fails at least the AUTHORITATIVE and MATCHES-CMS-
+RESPONSE-SET tests. This is not a storage-location problem to solve by
+picking among these candidates — none of them is a clinically appropriate,
+CMS-coded record of *why* a specific SFV was not completed. The gap is
+structural: no workflow in the repository today asks a clinician to
+record one of the four CMS reason codes at the point an SFV goes
+uncompleted.
+
 ## Conclusion
 
 J2052C remains **NOT_VERIFIED**. There is no authoritative repository
