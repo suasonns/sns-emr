@@ -462,68 +462,12 @@ See `RNICA_HOPE_SOURCE_VALIDATION_GAPS.md` for the full list. Highlights:
 
 ## Appendix A: Full Authority Classification Table
 
-| Topic | Classification | Rule |
-| --- | --- | --- |
-| RN Initial Assessment | `FEDERAL_CMS_REQUIRED` | Separate assessment completed by RN within federal Initial Assessment timeframe. Do not merge with Comprehensive Assessment. |
-| Initial Comprehensive Assessment | `FEDERAL_CMS_REQUIRED` | Separate interdisciplinary assessment completed within the federal Comprehensive Assessment timeframe. |
-| Comprehensive Assessment Updates | `FEDERAL_CMS_REQUIRED` | Updated as condition requires; tracked separately from Initial Comprehensive Assessment. |
-| California Initial Assessment | `CALIFORNIA_REQUIRED` | RN assessment within 48 hours of admission. |
-| California Comprehensive Assessment | `CALIFORNIA_REQUIRED` | IDT assessment within 5 days of admission. |
-| Plan of Care Development | `CALIFORNIA_REQUIRED` | Assessment evidence supports development of individualized Plan of Care. |
-| Referral Received Date | `SNS_INTERNAL_WORKFLOW` | Internal operational tracking field. |
-| Referral Expiration Rule | `SNS_INTERNAL_WORKFLOW` | Agency policy unless controlling authority explicitly requires otherwise. |
-| Hospice Election Date | `FEDERAL_CMS_REQUIRED` | Regulatory start point for federal assessment timing. |
-| Admission Effective Date | `REPOSITORY_CURRENT_STATE` | Must be mapped and preserved separately. |
-| Start of Care Date | `REPOSITORY_CURRENT_STATE` | Must remain independently traceable. |
-| RNICA | `SNS_INTERNAL_WORKFLOW` | SNS discipline contribution to comprehensive assessment package. |
-| MSW ICA | `SNS_INTERNAL_WORKFLOW` | SNS discipline contribution to comprehensive assessment package. |
-| SC ICA | `SNS_INTERNAL_WORKFLOW` | SNS discipline contribution to comprehensive assessment package. |
-| Comprehensive Assessment Package Completion | `SNS_INTERNAL_WORKFLOW` | Complete only when required discipline contributions are completed or exempted. |
-| Discipline Source | `SNS_INTERNAL_WORKFLOW` | Derived from authenticated user and verified credential. |
-| Discipline Mismatch Blocking | `SNS_INTERNAL_WORKFLOW` | Classification blocked until mismatch resolved. |
-| HUV1 Day 6-15 Window | `OFFICIAL_HOPE_REQUIRED` | Official HOPE Update Visit 1 timing. |
-| HUV2 Day 16-30 Window | `OFFICIAL_HOPE_REQUIRED` | Official HOPE Update Visit 2 timing. |
-| HUV1 Classification Prompt | `OFFICIAL_HOPE_REQUIRED` | May prompt; never auto-classify. |
-| HUV2 Classification Prompt | `OFFICIAL_HOPE_REQUIRED` | May prompt; never auto-classify. |
-| Day-14 CHHA Supervisory Fallback | `SNS_INTERNAL_WORKFLOW` | Internal review prompt for possible HUV1. |
-| Day-28 CHHA/LVN Supervisory Fallback | `SNS_INTERNAL_WORKFLOW` | Internal review prompt for possible HUV2. |
-| HOPE Admission | `OFFICIAL_HOPE_REQUIRED` | Separate HOPE timepoint. |
-| HUV1 | `OFFICIAL_HOPE_REQUIRED` | Separate HOPE timepoint. |
-| HUV2 | `OFFICIAL_HOPE_REQUIRED` | Separate HOPE timepoint. |
-| SFV | `OFFICIAL_HOPE_REQUIRED` | Separate symptom follow-up workflow. |
-| SFV Trigger Logic | `OFFICIAL_HOPE_REQUIRED` | Driven by qualifying symptoms identified during HOPE Admission or HUV. |
-| RN Initial Assessment = SFV | `PROHIBITED ASSUMPTION` | Must not be treated as equivalent. |
-| RNICA = Comprehensive Assessment | `PROHIBITED ASSUMPTION` | Must not be treated as equivalent. |
-| HOPE Submission Platform | `OFFICIAL_HOPE_REQUIRED` | iQIES. |
-| QIES References | `LEGACY_REFERENCE` | Historical only. |
-| Recertification Assessment | `FEDERAL_CMS_REQUIRED` | Supports physician recertification review; does not replace certification. |
-| Automated Eligibility Decision | `PROHIBITED` | RNICA must not determine eligibility automatically. |
-| Automated Physician Certification | `PROHIBITED` | RNICA must not create physician certification. |
-| Diagnosis Alone = Eligibility | `PROHIBITED` | Documentation must support prognosis and clinical picture, not diagnosis alone. |
-| HOPE/SFV Visibility Map | `SNS_INTERNAL_WORKFLOW` | Hidden until RNICA finalization. |
-| RNICA Finalization | `SNS_INTERNAL_WORKFLOW` | Preserves classifications, timestamps, actor, and source links. |
-| Post-Finalization Silent Overwrite | `PROHIBITED` | Must use correction, amendment, or re-finalization workflow. |
-| Audit Trail Preservation | `CALIFORNIA_REQUIRED` + `SNS_INTERNAL_WORKFLOW` | Preserve users, dates, evidence, classifications, and source records. |
-
-### Appendix A Controlling Sources
-
-- **`FEDERAL_CMS_REQUIRED`** — `42 CFR §418.54` (Initial and Comprehensive
-  Assessment requirements):
-  https://www.ecfr.gov/current/title-42/chapter-IV/subchapter-B/part-418/subpart-C/section-418.54
-- **`CALIFORNIA_REQUIRED`** — California `DPH-18-002E` (Hospice Agencies),
-  §74864 — assessment, Plan of Care, IDT, and documentation requirements.
-- **`OFFICIAL_HOPE_REQUIRED`** — HOPE Guidance Manual v1.02
-  (https://www.cms.gov/files/document/hope-guidance-manual-v1-02.pdf), CMS
-  HOPE overview (https://www.cms.gov/medicare/quality/hospice/hope), HOPE
-  v1.01-v1.02 item-set change table
-  (https://www.cms.gov/files/document/hope-v1-01-1-02-guidance-manual-item-set-change-table.pdf),
-  HOPE technical information
-  (https://www.cms.gov/medicare/quality/hospice-quality-reporting-program/hope-technical-information).
-- **`LCD_DOCUMENTATION_GUIDANCE`** — CMS LCD guidance and hospice
-  terminal-prognosis, non-disease-specific documentation guidance
-  materials referenced during this discovery pass; specific LCD number(s)
-  remain `PENDING_SOURCE_VALIDATION` for this document's scope (see
-  P2-001 for the dedicated LCD L33393 validation track).
+The full authority classification table, controlling sources, and source
+priority order have moved to a dedicated document:
+[`RNICA_AUTHORITY_MATRIX.md`](./RNICA_AUTHORITY_MATRIX.md). Refer to that
+document as the single source of truth for per-topic authority
+classification; this document's §3 legend and narrative sections remain
+authoritative for scope and rule explanation.
 
 ## Current Project Status
 

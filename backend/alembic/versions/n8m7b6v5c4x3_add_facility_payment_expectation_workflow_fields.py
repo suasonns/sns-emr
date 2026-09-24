@@ -163,4 +163,55 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    raise NotImplementedError("Forward-only migration.")
+    # Schema-only reversal: the upgrade()'s in-place UPDATE statements
+    # normalize legacy `source`/`due_date`/`due_date_source` values and do
+    # not retain the original pre-migration values, so exact data restore
+    # is not possible (this is a normal limitation of one-time backfill
+    # migrations, not a reason to block downgrade entirely). Restores the
+    # schema shape and original column defaults so the migration chain
+    # remains fully traversable.
+    op.drop_index(
+        "ix_facility_payment_expectation_tenant_patient_client_request",
+        table_name="facility_payment_expectations",
+    )
+    op.drop_constraint(
+        "ck_facility_payment_expectation_due_date_source_valid",
+        "facility_payment_expectations",
+        type_="check",
+    )
+    op.drop_constraint(
+        "ck_facility_payment_expectation_source_valid",
+        "facility_payment_expectations",
+        type_="check",
+    )
+    op.drop_constraint(
+        "ck_facility_payment_expectation_status_valid",
+        "facility_payment_expectations",
+        type_="check",
+    )
+
+    op.alter_column(
+        "facility_payment_expectations",
+        "source",
+        existing_type=sa.String(length=32),
+        server_default=sa.text("'MANUAL'"),
+    )
+    op.alter_column(
+        "facility_payment_expectations",
+        "status",
+        existing_type=sa.String(length=32),
+        server_default=sa.text("'ACTIVE'"),
+    )
+
+    op.drop_column("facility_payment_allocations", "flagged_reason")
+    op.drop_column("facility_payment_allocations", "flagged_for_review")
+
+    op.drop_column("facility_payment_expectations", "client_request_id")
+    op.drop_column("facility_payment_expectations", "row_version")
+    op.drop_column("facility_payment_expectations", "notes")
+    op.drop_column("facility_payment_expectations", "cancelled_by")
+    op.drop_column("facility_payment_expectations", "cancelled_at")
+    op.drop_column("facility_payment_expectations", "cancellation_reason")
+    op.drop_column("facility_payment_expectations", "contract_reference")
+    op.drop_column("facility_payment_expectations", "payment_term_verified")
+    op.drop_column("facility_payment_expectations", "due_date_source")

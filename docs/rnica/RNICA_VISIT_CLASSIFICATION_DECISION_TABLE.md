@@ -75,6 +75,36 @@ finalization.
 - Requires authorized correction or reassignment; attempted action is
   audit-logged.
 
+### 6.1 LVN Encounters a Severe/Qualifying HOPE Symptom (`SNS_INTERNAL_WORKFLOW`)
+
+If an LVN visit identifies a severe or otherwise qualifying HOPE symptom
+finding, the workflow must:
+
+- Display: "RN Assessment Review Required".
+- Create a compliance-review item.
+- Offer discipline-authorized next actions:
+  - Request RN Visit
+  - Request RN Assessment Review
+  - Document Existing RN Review
+- Preserve as immutable evidence:
+  - LVN finding
+  - Symptom source
+  - Service date/time
+  - Escalation decision
+  - Reviewing RN
+  - Review completion date/time
+- Must **not** automatically create an SFV.
+- Must **not** automatically classify the LVN visit as an SFV.
+- Must **not** automatically mark an SFV complete.
+- An RN must review the triggering symptom findings and determine whether:
+  - SFV requirements apply.
+  - Additional RN assessment is required.
+  - Existing RN documentation already satisfies the review requirement.
+
+This is an SNS operational escalation control, not a CMS HOPE or federal
+requirement; it exists to route a discipline-restricted finding to RN
+review without silently substituting LVN judgment for RN judgment.
+
 ## 7. Corrected-Date Recalculation
 
 - If admission or election date is corrected after classification, all

@@ -4,13 +4,6 @@
 **Purpose:** Define screen ownership, editability, sources, outputs, and
 prohibited behavior for each of the 13 approved RNICA workflow destinations.
 
-> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22, final]** Screen numbering 3-5 is
-> superseded: **3. Pain & Symptom Burden, 4. Diagnosis & LCD,
-> 5. Functional Status** (previously 3. Functional Status, 4. Pain &
-> Symptom Burden, 5. Diagnosis & LCD). Ownership/editability/source content
-> for each screen is unchanged — only workflow position moved. See
-> `RNICA_NAVIGATION_SPECIFICATION.md`.
-
 ## Global rule
 
 A screen may aggregate or present data owned elsewhere. Presentation does
@@ -63,7 +56,22 @@ which screen currently exists.
   screen exists; it is currently interleaved across legacy `demographics`/
   `vitals`/`referrals` modules.
 
-## 3. Pain & Symptom Burden
+## 3. Functional Status
+- **Purpose:** Capture functional performance and diagnosis-relevant
+  scales. **Owns:** legacy `performanceStatus` module fields.
+- **Always visible:** PPS, KPS — enforced hard-required at Lock for
+  RN ICA/Update/Recert (`clinical_note_validation_engine.py:987-1112`).
+- **Conditional:** FAST (dementia-related, server-enforced), NYHA
+  (cardiac-related, server-enforced), ECOG (**no server enforcement branch
+  found — confirmed open defect**).
+- **Produces:** Functional evidence, HOPE data
+  (`rnica_hope_workflow_service.py`), validation state, LCD facts
+  (`buildClientLcdFacts()`, `RNICA.jsx`, reads `performanceStatus.pps/kps/
+  nyha/fast`).
+- **Prohibited:** Irrelevant scales, disabled placeholders, automatic
+  eligibility determination.
+
+## 4. Pain & Symptom Burden
 - **Purpose:** Capture pain and symptom burden. **Owns:** legacy `pain`,
   `symptomImpact` modules (`NumericPainScale`, `PAINADScale`, `FLACCScale`
   components, `SYMPTOM_IMPACT_CHECKLIST` constant mapping to HOPE J2051 A-H).
@@ -76,7 +84,7 @@ which screen currently exists.
 - **Prohibited:** Silent medication/order changes; derived values
   overwriting manual entries.
 
-## 4. Diagnosis & LCD
+## 5. Diagnosis & LCD
 - **Purpose:** Capture diagnoses, relatedness, comorbidities, LCD evidence,
   and LCD Supporting Narrative. **Owns:** legacy `diagnoses` module,
   including `ndsEligibility` sub-state.
@@ -92,39 +100,12 @@ which screen currently exists.
 - **Prohibited:** Final Clinical Narrative, physician certification,
   eligibility confirmation, AI prognosis.
 
-## 5. Functional Status
-- **Purpose:** Capture functional performance and diagnosis-relevant
-  scales. **Owns:** legacy `performanceStatus` module fields.
-- **Always visible:** PPS, KPS — enforced hard-required at Lock for
-  RN ICA/Update/Recert (`clinical_note_validation_engine.py:987-1112`).
-- **Conditional:** FAST (dementia-related, server-enforced), NYHA
-  (cardiac-related, server-enforced), ECOG (**no server enforcement branch
-  found — confirmed open defect**).
-- **Presentation-only addition:** the ADL Assessment card (Bathing,
-  Dressing, Toileting, Transferring, Eating, Grooming) is rendered here via
-  a `dataSection: "musculoskeletal"` card override (`RNICA.jsx`
-  `renderGenericSection`). Its fields, storage path
-  (`formData.musculoskeletal.adl.*`), validation, LCD facts, HOPE mapping,
-  and POC controls remain owned by `musculoskeletal` (Body Systems, §6) —
-  only its visual location moved. Rail/validation attribution for ADL
-  continues to route to Body Systems.
-- **Produces:** Functional evidence, HOPE data
-  (`rnica_hope_workflow_service.py`), validation state, LCD facts
-  (`buildClientLcdFacts()`, `RNICA.jsx`, reads `performanceStatus.pps/kps/
-  nyha/fast`).
-- **Prohibited:** Irrelevant scales, disabled placeholders, automatic
-  eligibility determination.
-
 ## 6. Body Systems
 - **Purpose:** Capture ten body-system assessments. **Owns:**
   `RNICA_BODY_SYSTEM_MODULES` (`src/config/bodySystems.js`) — Neurological,
   Cardiovascular, Respiratory, Infection, Gastrointestinal, Nutrition,
   Endocrine, Genitourinary, Musculoskeletal, Skin/Wounds, plus Imminent
   Death and SFV modules.
-- **Presentation note:** the ADL Assessment card visually renders under
-  Functional Status (§5) as of the visual-polish pass, but its data,
-  validation, LCD facts, and POC ownership remain part of
-  `musculoskeletal` here — no field, path, or behavior changed.
 - **Produces:** Clinical findings; feeds Structured Findings and LCD facts
   (confirmed: nutrition/musculoskeletal/genitourinary/gastrointestinal/
   vitals/respiratory fields are read directly by `buildClientLcdFacts()`).

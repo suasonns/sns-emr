@@ -7,13 +7,6 @@
 **MIGRATIONS:** BLOCKED
 **CURRENT DEFECT REPAIR:** BLOCKED UNDER THIS DOCUMENT
 
-> **[PRODUCT-AUTHORITY UPDATE — 2026-09-22, final]** Screen numbering 3-5 is
-> superseded: **3. Pain & Symptom Burden, 4. Diagnosis & LCD,
-> 5. Functional Status** (previously 3. Functional Status, 4. Pain &
-> Symptom Burden, 5. Diagnosis & LCD). Per-screen content below is
-> unchanged; only workflow position moved. See
-> `RNICA_NAVIGATION_SPECIFICATION.md`.
-
 Companion document: `RNICA_SCREEN_BY_SCREEN_EVIDENCE_MATRIX.md` (names the
 supporting discovery document(s) for every screen's underlying content).
 
@@ -229,7 +222,47 @@ implies automated eligibility/certification.
 
 ---
 
-# Screen 3. Pain & Symptom Burden
+# Screen 3. Functional Status
+
+**Purpose**
+- **[DESIGN REQUIREMENT]** Document functional status and disease-
+  relevant performance scales without presenting irrelevant scales.
+
+**Always visible**
+- **[LOCKED PRODUCT DECISION]** PPS and KPS.
+
+**Conditionally visible**
+- **[LOCKED PRODUCT DECISION]** FAST, ECOG, and NYHA only under their
+  authorized diagnosis conditions.
+
+**AI content**
+- **[DESIGN REQUIREMENT]** Show functional decline evidence and missing-
+  status prompts only when supported by current data or validation.
+
+**Compliance content**
+- **[REPOSITORY-DISCOVERED]** PPS/KPS warning and HOPE M1190 association
+  remain wired.
+- **[REGULATORY / CLINICAL AUTHORITY]** Functional status is supporting
+  evidence, not an automatic eligibility result.
+
+**Required actions / Completion criteria**
+- Complete PPS and KPS; complete any diagnosis-applicable scale; provide
+  required justification where configured.
+
+**Do not show**
+- Disabled, placeholder, "N/A," or irrelevant scales.
+
+**Do not touch**
+- Field keys, score semantics, structured-finding mappings, and HOPE
+  mapping.
+
+**Pass:** Only relevant scales render and values persist correctly.
+**Fail:** Irrelevant scales render or hidden scales are represented as
+disabled.
+
+---
+
+# Screen 4. Pain & Symptom Burden
 
 **Purpose**
 - **[REPOSITORY-DISCOVERED]** Combine Pain Assessment and Symptom Impact
@@ -268,7 +301,7 @@ disappear.
 
 ---
 
-# Screen 4. Diagnosis & LCD
+# Screen 5. Diagnosis & LCD
 
 **Purpose**
 - Document terminal diagnosis, related diagnoses/comorbidities, prognosis
@@ -312,54 +345,6 @@ as physician certification.
 
 ---
 
-# Screen 5. Functional Status
-
-**Purpose**
-- **[DESIGN REQUIREMENT]** Document functional status and disease-
-  relevant performance scales without presenting irrelevant scales.
-
-**Always visible**
-- **[LOCKED PRODUCT DECISION]** PPS and KPS.
-
-**Conditionally visible**
-- **[LOCKED PRODUCT DECISION]** FAST, ECOG, and NYHA only under their
-  authorized diagnosis conditions.
-
-**AI content**
-- **[DESIGN REQUIREMENT]** Show functional decline evidence and missing-
-  status prompts only when supported by current data or validation.
-
-**Compliance content**
-- **[REPOSITORY-DISCOVERED]** PPS/KPS warning and HOPE M1190 association
-  remain wired.
-- **[REGULATORY / CLINICAL AUTHORITY]** Functional status is supporting
-  evidence, not an automatic eligibility result.
-
-**Required actions / Completion criteria**
-- Complete PPS and KPS; complete any diagnosis-applicable scale; provide
-  required justification where configured.
-
-**Presentation-only addition (visual-polish pass)**
-- **[PRESENTATION-ONLY]** The ADL Assessment card (Bathing, Dressing,
-  Toileting, Transferring, Eating, Grooming) now renders on this screen
-  via a `dataSection: "musculoskeletal"` card override. Field paths,
-  storage, validation, LCD facts, HOPE mapping, and POC ownership remain
-  with `musculoskeletal` (Screen 6, Body Systems) — see that screen's
-  entry below. This is a visual relocation only.
-
-**Do not show**
-- Disabled, placeholder, "N/A," or irrelevant scales.
-
-**Do not touch**
-- Field keys, score semantics, structured-finding mappings, and HOPE
-  mapping.
-
-**Pass:** Only relevant scales render and values persist correctly.
-**Fail:** Irrelevant scales render or hidden scales are represented as
-disabled.
-
----
-
 # Screen 6. Body Systems
 
 **Purpose**
@@ -375,12 +360,6 @@ disabled.
 - Detail cards, repeatable wounds, oxygen/ventilator details,
   catheter/feeding/ostomy details, and other dependent controls only when
   applicable.
-
-**Presentation note (visual-polish pass)**
-- **[PRESENTATION-ONLY]** The ADL Assessment card now visually renders
-  under Screen 5 (Functional Status). Data ownership, validation, LCD
-  facts, and POC controls for ADL fields remain part of
-  `musculoskeletal` here; nothing about storage or behavior changed.
 
 **AI content**
 - Show structured findings and Intelligence findings only for supported

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uuid
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, text
+from sqlalchemy import Boolean, Column, DateTime, ForeignKey, Index, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.sql import func
 
@@ -16,6 +16,16 @@ class Physician(Base):
         Index("ix_physicians_tenant_status", "tenant_id", "status"),
         Index("ix_physicians_tenant_display_name", "tenant_id", "display_name"),
         Index("ix_physicians_tenant_npi", "tenant_id", "npi"),
+        # Required by tenants.default_medical_director_physician_id's
+        # composite FK (see tenant.py), which references
+        # (physicians.tenant_id, physicians.id) -- Postgres requires a
+        # unique constraint/index on the referenced columns. This was
+        # already present in the database (every migration since its
+        # introduction created it), but was never declared on this model,
+        # so `alembic revision --autogenerate` treated it as drift to be
+        # dropped. Declaring it here instead of dropping it keeps the FK
+        # target valid and makes the model match the database.
+        UniqueConstraint("tenant_id", "id", name="uq_physicians_tenant_id_id"),
     )
 
     id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

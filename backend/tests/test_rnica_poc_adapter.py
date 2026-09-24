@@ -263,10 +263,29 @@ def test_lock_rnica_assessment_creates_no_poc_version_or_problem(client, db_sess
     assert record.status == "LOCKED"
 
     # No PlanOfCare, PlanOfCareVersion, or POCProblem was created as a
-    # side effect of locking.
+    # side effect of locking. Scoped to this test's own admission/tenant
+    # rather than the whole table, since the test suite shares one database
+    # and other tests legitimately create PlanOfCareVersion/POCProblem rows
+    # for their own admissions.
     assert db_session.query(PlanOfCare).filter_by(admission_id=admission.id).first() is None
-    assert db_session.query(PlanOfCareVersion).count() == 0
-    assert db_session.query(POCProblem).count() == 0
+    assert (
+        db_session.query(PlanOfCareVersion)
+        .join(PlanOfCare, PlanOfCareVersion.plan_of_care_id == PlanOfCare.id)
+        .filter(PlanOfCare.admission_id == admission.id)
+        .count()
+        == 0
+    )
+    assert (
+        db_session.query(POCProblem)
+        .join(
+            PlanOfCareVersion,
+            POCProblem.poc_version_id == PlanOfCareVersion.id,
+        )
+        .join(PlanOfCare, PlanOfCareVersion.plan_of_care_id == PlanOfCare.id)
+        .filter(PlanOfCare.admission_id == admission.id)
+        .count()
+        == 0
+    )
 
     # Locking a second time is likewise a no-op for POC.
     lock_resp_2 = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
