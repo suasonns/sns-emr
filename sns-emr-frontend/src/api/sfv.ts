@@ -42,6 +42,14 @@ export interface SfvRequirementSummary {
    * Used to enforce the J2053 export-readiness rule: a COMPLETED SFV
    * with no symptom impact documented is not export-ready. */
   symptomImpactDocumented?: boolean;
+  /** HOPE J2052C ownership fix (issue #146): the CMS-coded reason SFV
+   * was not completed (1=declined, 2=unavailable, 3=unable to contact,
+   * 9=none of the above), sourced from THIS requirement row -- never
+   * the triggering RN ICA/HUV assessment -- and attributed to whoever
+   * actually attempted the SFV. Null unless status === "NOT_COMPLETED". */
+  reasonCode?: string | null;
+  reasonRecordedAt?: string | null;
+  reasonRecordedVisitId?: string | null;
 }
 
 export interface SfvCompletionAuthor {
@@ -71,6 +79,8 @@ export type SfvErrorCode =
   | "COMPLETION_BEFORE_TRIGGER"
   | "VISIT_NOT_ELIGIBLE"
   | "CLINICIAN_NOT_AUTHORIZED"
+  | "REASON_CODE_INVALID"
+  | "INVALID_STATE_FOR_CORRECTION"
   | "UNKNOWN";
 
 export class SfvApiError extends Error {
@@ -103,6 +113,10 @@ export function describeSfvError(code: SfvErrorCode): string {
       return "This visit does not meet the requirements to complete the SFV (e.g. must be in-person, RN or LVN discipline).";
     case "SFV_REQUIREMENT_NOT_FOUND":
       return "This SFV requirement could not be found.";
+    case "REASON_CODE_INVALID":
+      return "Select a valid reason (Declined, Unavailable, Unable to Contact, or None of the Above).";
+    case "INVALID_STATE_FOR_CORRECTION":
+      return "Only a previously recorded \"not completed\" outcome can be corrected.";
     default:
       return "Unable to complete this SFV requirement.";
   }
@@ -145,5 +159,61 @@ export async function completeSfvRequirement(
     return response.data;
   } catch (error) {
     throw toSfvApiError(error, "Unable to complete this SFV requirement.");
+  }
+}
+
+/** HOPE J2052C ownership fix (issue #146). The ONE mutation path for
+ * recording the J2052A = No outcome. Attributes the CMS-coded reason to
+ * the attempt visit/clinician, never the triggering RN ICA/HUV
+ * assessment -- mirrors `completeSfvRequirement`'s contract. */
+export interface SfvNotCompletedResult {
+  sfvRequirementId: string;
+  patientId: string;
+  triggerVisitId: string;
+  status: SfvRequirementStatus;
+  reasonCode?: string | null;
+  reasonRecordedAt?: string | null;
+  reasonRecordedBy?: SfvCompletionAuthor | null;
+}
+
+export async function recordSfvNotCompleted(
+  sfvRequirementId: string,
+  attemptVisitId: string,
+  reasonCode: string
+): Promise<SfvNotCompletedResult> {
+  try {
+    const response = await api.post<SfvNotCompletedResult>(
+      `/visits/sfv-requirements/${sfvRequirementId}/not-completed`,
+      { attemptVisitId, reasonCode }
+    );
+    return response.data;
+  } catch (error) {
+    throw toSfvApiError(error, "Unable to record this SFV outcome.");
+  }
+}
+
+export interface SfvCorrectReasonResult {
+  sfvRequirementId: string;
+  priorReasonCode?: string | null;
+  newReasonCode: string;
+  correctedAt: string;
+}
+
+/** HOPE J2052C ownership fix (issue #146). Append-only correction to a
+ * previously recorded reason code -- the prior value is preserved
+ * server-side (SfvOutcomeCorrection), never overwritten silently. */
+export async function correctSfvReasonCode(
+  sfvRequirementId: string,
+  newReasonCode: string,
+  correctionReason: string
+): Promise<SfvCorrectReasonResult> {
+  try {
+    const response = await api.post<SfvCorrectReasonResult>(
+      `/visits/sfv-requirements/${sfvRequirementId}/correct-reason`,
+      { newReasonCode, correctionReason }
+    );
+    return response.data;
+  } catch (error) {
+    throw toSfvApiError(error, "Unable to correct this SFV outcome.");
   }
 }

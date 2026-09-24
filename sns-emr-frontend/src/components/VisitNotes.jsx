@@ -7,6 +7,7 @@ import { ContinuousCareLogSection } from "./RNICA";
 import {
   listSfvRequirements,
   completeSfvRequirement,
+  recordSfvNotCompleted,
   describeSfvError,
 } from "../api/sfv";
 import {
@@ -1017,6 +1018,17 @@ function VisitChecklistCard({ checklist, onChange, disabled, styles, COLORS }) {
   );
 }
 
+// HOPE J2052C ownership fix (issue #146): the verified CMS J2052C
+// response set (1/2/3/9 only) -- must match hopeReportMapper.js's
+// J2052_REASON_MAP exactly so the label text and the exported CMS
+// description always agree. No free text.
+const J2052C_REASON_OPTIONS = [
+  { value: "1", label: "1 — Patient and/or caregiver declined an in-person visit" },
+  { value: "2", label: "2 — Patient unavailable" },
+  { value: "3", label: "3 — Attempts to contact patient and/or caregiver were unsuccessful" },
+  { value: "9", label: "9 — None of the above" },
+];
+
 // P3-009/P3-017 continuation directive: the ONLY UI surface that may
 // offer "Complete SFV" is a SEPARATE qualifying follow-up visit (never
 // the triggering RNICA screen -- see RNICA.jsx's read-only
@@ -1034,6 +1046,12 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
   const [completingId, setCompletingId] = useState(null);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  // HOPE J2052C ownership fix (issue #146): which OPEN requirement's
+  // "reason not completed" picker is currently expanded, and the
+  // in-progress selected code, keyed by requirementId.
+  const [reasonPickerId, setReasonPickerId] = useState(null);
+  const [reasonCode, setReasonCode] = useState("");
+  const [recordingReasonId, setRecordingReasonId] = useState(null);
 
   const reload = useCallback(() => {
     if (!patientId) return;
@@ -1082,6 +1100,26 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
       .finally(() => setCompletingId(null));
   };
 
+  // HOPE J2052C ownership fix (issue #146): records the J2052A = No
+  // outcome, attributed to THIS visit/clinician -- the only place the
+  // answer is actually knowable (see docs/tenant-platform/
+  // J2052C_SOURCE_DISCOVERY.md).
+  const handleRecordNotCompleted = (requirementId) => {
+    if (!reasonCode) return;
+    setRecordingReasonId(requirementId);
+    setError("");
+    setMessage("");
+    recordSfvNotCompleted(requirementId, visitId, reasonCode)
+      .then(() => {
+        setMessage("Symptom Follow-Up Visit outcome (not completed) recorded on this visit.");
+        setReasonPickerId(null);
+        setReasonCode("");
+        reload();
+      })
+      .catch((err) => setError(describeSfvError(err.code) || err.message))
+      .finally(() => setRecordingReasonId(null));
+  };
+
   const handleSymptomImpactValueChange = (key, value) => {
     const next = { ...(symptomImpact || {}) };
     if (value) {
@@ -1102,31 +1140,88 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
         </div>
       ))}
       {openRequirements.map((r) => (
-        <div key={r.sfvRequirementId} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 12.5, color: COLORS.dark, marginBottom: 8 }}>
-          <span>
-            Symptom follow-up outstanding since the triggering RNICA assessment
-            {r.dueAt ? ` (due ${new Date(r.dueAt).toLocaleDateString()})` : ""}.
-            Document the symptom reassessment and interventions above, then sign and submit this
-            visit before completing the SFV.
-          </span>
-          <button
-            type="button"
-            disabled={!isFinalized || completingId === r.sfvRequirementId}
-            onClick={() => handleComplete(r.sfvRequirementId)}
-            title={!isFinalized ? "Sign and submit this visit note before completing the SFV." : undefined}
-            style={{
-              flexShrink: 0,
-              background: isFinalized ? (COLORS.accentTeal || "#0d9488") : "transparent",
-              color: isFinalized ? "#fff" : COLORS.gray,
-              border: `1px solid ${isFinalized ? (COLORS.accentTeal || "#0d9488") : COLORS.mapControlBorder || "#334155"}`,
-              borderRadius: 6,
-              padding: "6px 12px",
-              fontSize: 12,
-              cursor: isFinalized ? "pointer" : "not-allowed",
-            }}
-          >
-            {completingId === r.sfvRequirementId ? "Completing…" : "Complete SFV"}
-          </button>
+        <div key={r.sfvRequirementId} style={{ marginBottom: 8 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 12.5, color: COLORS.dark }}>
+            <span>
+              Symptom follow-up outstanding since the triggering RNICA assessment
+              {r.dueAt ? ` (due ${new Date(r.dueAt).toLocaleDateString()})` : ""}.
+              Document the symptom reassessment and interventions above, then sign and submit this
+              visit before completing the SFV.
+            </span>
+            <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
+              <button
+                type="button"
+                disabled={!isFinalized || completingId === r.sfvRequirementId}
+                onClick={() => handleComplete(r.sfvRequirementId)}
+                title={!isFinalized ? "Sign and submit this visit note before completing the SFV." : undefined}
+                style={{
+                  flexShrink: 0,
+                  background: isFinalized ? (COLORS.accentTeal || "#0d9488") : "transparent",
+                  color: isFinalized ? "#fff" : COLORS.gray,
+                  border: `1px solid ${isFinalized ? (COLORS.accentTeal || "#0d9488") : COLORS.mapControlBorder || "#334155"}`,
+                  borderRadius: 6,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  cursor: isFinalized ? "pointer" : "not-allowed",
+                }}
+              >
+                {completingId === r.sfvRequirementId ? "Completing…" : "Complete SFV"}
+              </button>
+              <button
+                type="button"
+                disabled={!isFinalized}
+                onClick={() => setReasonPickerId(reasonPickerId === r.sfvRequirementId ? null : r.sfvRequirementId)}
+                title={!isFinalized ? "Sign and submit this visit note before recording an SFV outcome." : undefined}
+                style={{
+                  flexShrink: 0,
+                  background: "transparent",
+                  color: isFinalized ? COLORS.dark : COLORS.gray,
+                  border: `1px solid ${COLORS.mapControlBorder || "#334155"}`,
+                  borderRadius: 6,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  cursor: isFinalized ? "pointer" : "not-allowed",
+                }}
+              >
+                Record Not Completed
+              </button>
+            </div>
+          </div>
+          {reasonPickerId === r.sfvRequirementId ? (
+            <div style={{ marginTop: 8, padding: 8, border: `1px solid ${COLORS.mapControlBorder || "#334155"}`, borderRadius: 6 }}>
+              <div style={{ fontSize: 12.5, fontWeight: 600, color: COLORS.dark, marginBottom: 6 }}>
+                HOPE J2052C -- Reason SFV Not Completed
+              </div>
+              {J2052C_REASON_OPTIONS.map((option) => (
+                <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: COLORS.dark, marginBottom: 4 }}>
+                  <input
+                    type="radio"
+                    name={`j2052c-${r.sfvRequirementId}`}
+                    checked={reasonCode === option.value}
+                    onChange={() => setReasonCode(option.value)}
+                  />
+                  {option.label}
+                </label>
+              ))}
+              <button
+                type="button"
+                disabled={!reasonCode || recordingReasonId === r.sfvRequirementId}
+                onClick={() => handleRecordNotCompleted(r.sfvRequirementId)}
+                style={{
+                  marginTop: 6,
+                  background: reasonCode ? (COLORS.accentTeal || "#0d9488") : "transparent",
+                  color: reasonCode ? "#fff" : COLORS.gray,
+                  border: `1px solid ${COLORS.accentTeal || "#0d9488"}`,
+                  borderRadius: 6,
+                  padding: "6px 12px",
+                  fontSize: 12,
+                  cursor: reasonCode ? "pointer" : "not-allowed",
+                }}
+              >
+                {recordingReasonId === r.sfvRequirementId ? "Saving…" : "Save Outcome"}
+              </button>
+            </div>
+          ) : null}
         </div>
       ))}
       {showSymptomImpactCapture ? (

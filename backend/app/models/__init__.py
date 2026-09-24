@@ -70,6 +70,7 @@ from app.models.plan_of_care import PlanOfCare
 from app.models.poc import POCProblem, POCGoal, POCIntervention
 from app.models.plan_of_care_version import PlanOfCareVersion
 from app.models.rnica_amendment import RnicaAmendment
+from app.models.sfv_outcome_correction import SfvOutcomeCorrection
 from app.models.msw_ica_assessment import MswIcaAssessment
 from app.models.scica_assessment import ScicaAssessment
 from app.models.communications_log import CommunicationsLog

@@ -1039,22 +1039,14 @@ function validateRNICA(formData, mode = "ica") {
       }
     });
 
-    // SFV ? J2052A/C: an SFV is required whenever any J2051 item is
-    // Moderate (2) or Severe (3). When J2052A = No (SFV not completed),
-    // J2052C must be one of the 4 CMS-coded values (1/2/3/9) -- free text
-    // or a blank value is never export-valid (see
-    // hopeReportMapper.js::j2052ReasonNotCompleted()).
-    const J2052C_VALID_CODES = ["1", "2", "3", "9"];
-    const sfvIsRequired = siFields.some((f) => {
-      const v = String(formData.symptomImpact[f] || "").trim();
-      return v === "2" || v === "3";
-    });
-    if (sfvIsRequired && !formData.sfv.inPersonSfvCompleted) {
-      const reason = String(formData.sfv.reasonNotCompleted || "").trim();
-      if (!J2052C_VALID_CODES.includes(reason)) {
-        errors["sfv.reasonNotCompleted"] = "HOPE J2052C: Reason SFV not completed is required (1/2/3/9) when the SFV was not completed";
-      }
-    }
+    // SFV -- J2052A/C: an SFV is required whenever any J2051 item is
+    // Moderate (2) or Severe (3). HOPE J2052C ownership fix (issue #146):
+    // the reason SFV was not completed is NOT knowable at the time this
+    // triggering RN ICA/HUV assessment is completed (the SFV attempt
+    // hasn't happened yet) and is captured/validated authoritatively on
+    // the SFV attempt visit instead (VisitNotes.jsx
+    // ::SymptomFollowUpVisitSection). This assessment must never block
+    // signing on a value the clinician cannot yet truthfully know.
 
     // Diagnoses ? I0010
     if (!formData.diagnoses.primaryDiagnosis.icd10) {
@@ -9552,7 +9544,17 @@ const SECTION_CONFIGS = {
         // NOT_VERIFIED. Conditional on J2052A (sfv.inPersonSfvCompleted):
         // hidden when the SFV was completed (see the fields.map guard
         // below), shown only when it was not.
-        { type: "radio", label: "Reason SFV Not Completed", path: "reasonNotCompleted", hopeCode: "J2052C", required: true, options: [
+        // HOPE J2052C ownership fix (issue #146): this field is now a
+        // legacy/manual fallback ONLY. Authoritative capture happens on
+        // the SFV attempt visit (VisitNotes.jsx::SymptomFollowUpVisitSection
+        // -> POST /visits/sfv-requirements/{id}/not-completed), attributed
+        // to the clinician who actually attempted the SFV. This value is
+        // no longer read by hopeReportMapper.js and is no longer required
+        // to sign this assessment -- the triggering RN ICA/HUV author may
+        // not be the same clinician who ever learns this answer. Still
+        // conditionally hidden when J2052A = Yes (see the fields.map guard
+        // below).
+        { type: "radio", label: "Reason SFV Not Completed (legacy -- see SFV attempt visit for the authoritative HOPE export value)", path: "reasonNotCompleted", options: [
           { value: "1", label: "1 — Patient and/or caregiver declined an in-person visit" },
           { value: "2", label: "2 — Patient unavailable" },
           { value: "3", label: "3 — Attempts to contact patient and/or caregiver were unsuccessful" },

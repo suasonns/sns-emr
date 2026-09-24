@@ -470,6 +470,148 @@ def complete_sfv_requirement_from_visit(
     return requirement
 
 
+# CMS-valid HOPE J2052C reason codes: 1=declined, 2=unavailable,
+# 3=unable to contact, 9=none of the above. No free text.
+SFV_REASON_CODES = {"1", "2", "3", "9"}
+
+
+def record_sfv_not_completed_from_visit(
+    *,
+    db: Session,
+    sfv_requirement_id,
+    attempt_visit_id,
+    attempt_visit_datetime: datetime,
+    discipline: str,
+    visit_mode: str,
+    reason_code: str,
+    recorded_by,
+):
+    """HOPE J2052C ownership fix (issue #146).
+
+    Sibling to `complete_sfv_requirement_from_visit`, for the negative
+    (J2052A = No) branch. Attributes the CMS-coded J2052C reason to the
+    clinician who actually attempted the SFV and the visit on which they
+    documented it -- NEVER the triggering RN ICA/HUV assessment, which
+    may be signed/locked and authored by a different clinician entirely
+    (Admission RN vs. Assigned/On-Call RN, LVN, etc.). Mirrors every
+    validation `complete_sfv_requirement_from_visit` already performs
+    (separate visit, ordering, patient/tenant match, discipline,
+    in-person mode) so the two outcomes are equally trustworthy.
+
+    NP is intentionally NOT yet included in the allowed discipline set
+    here -- tracked separately (see issue: "SFV completion authorization
+    rejects NP discipline"), not fixed as part of this change.
+    """
+    requirement = (
+        db.query(SFVRequirement)
+        .filter(SFVRequirement.id == sfv_requirement_id)
+        .first()
+    )
+    if not requirement:
+        raise ValueError("SFV requirement not found")
+
+    if requirement.status in ("COMPLETED", "NOT_COMPLETED"):
+        return requirement
+
+    if reason_code not in SFV_REASON_CODES:
+        raise ValueError("Reason code must be one of 1, 2, 3, 9")
+
+    normalized_mode = _normalize_visit_mode(visit_mode)
+    if normalized_mode != VISIT_MODE_IN_PERSON:
+        raise ValueError("SFV attempt must be documented on an in-person visit")
+
+    normalized_discipline = _normalize_discipline(discipline)
+    if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN}:
+        raise ValueError("SFV must be attempted by RN or LPN/LVN")
+
+    if str(attempt_visit_id) == str(requirement.trigger_reference_id):
+        raise ValueError("SFV must be a separate visit from the triggering INITIAL_RN_ICA/HUV")
+
+    if requirement.trigger_datetime is not None and attempt_visit_datetime < requirement.trigger_datetime:
+        raise ValueError("SFV attempt visit cannot occur before the triggering visit")
+
+    attempt_visit = db.query(Visit).filter(Visit.id == attempt_visit_id).first()
+    if not attempt_visit:
+        raise ValueError("Attempt visit not found")
+    if attempt_visit.patient_id != requirement.patient_id:
+        raise ValueError("Attempt visit does not belong to this patient")
+    if attempt_visit.tenant_id != requirement.tenant_id:
+        raise ValueError("Attempt visit does not belong to this tenant")
+
+    requirement.status = "NOT_COMPLETED"
+    requirement.reason_code = reason_code
+    requirement.reason_recorded_by = recorded_by
+    requirement.reason_recorded_at = attempt_visit_datetime
+    requirement.reason_recorded_visit_id = attempt_visit_id
+    requirement.updated_at = _utcnow()
+
+    if requirement.task_id:
+        task = db.query(Task).filter(Task.id == requirement.task_id).first()
+        if task:
+            task.status = _task_status_completed()
+            _set_if_present(
+                task,
+                completed_at=attempt_visit_datetime,
+                completion_reference_type="VISIT",
+                completion_reference_id=attempt_visit_id,
+                is_overdue=False,
+            )
+            task.updated_at = _utcnow()
+
+    return requirement
+
+
+def correct_sfv_not_completed_reason(
+    *,
+    db: Session,
+    sfv_requirement_id,
+    new_reason_code: str,
+    correction_reason: str,
+    corrected_by,
+):
+    """HOPE J2052C ownership fix (issue #146).
+
+    Append-only correction: writes a `SfvOutcomeCorrection` row
+    preserving the prior value BEFORE updating the live
+    `SFVRequirement.reason_code`, mirroring the SECTION 12
+    `RnicaAmendment` "never destroy" guarantee. Only valid once a
+    requirement already has a recorded reason (status NOT_COMPLETED).
+    """
+    from app.models.sfv_outcome_correction import SfvOutcomeCorrection
+
+    requirement = (
+        db.query(SFVRequirement)
+        .filter(SFVRequirement.id == sfv_requirement_id)
+        .first()
+    )
+    if not requirement:
+        raise ValueError("SFV requirement not found")
+    if requirement.status != "NOT_COMPLETED":
+        raise ValueError("Only a recorded NOT_COMPLETED outcome can be corrected")
+    if new_reason_code not in SFV_REASON_CODES:
+        raise ValueError("Reason code must be one of 1, 2, 3, 9")
+
+    now = _utcnow()
+    correction = SfvOutcomeCorrection(
+        tenant_id=requirement.tenant_id,
+        patient_id=requirement.patient_id,
+        sfv_requirement_id=requirement.id,
+        prior_reason_code=requirement.reason_code,
+        new_reason_code=new_reason_code,
+        correction_reason=correction_reason,
+        corrected_by=corrected_by,
+        corrected_at=now,
+    )
+    db.add(correction)
+
+    requirement.reason_code = new_reason_code
+    requirement.reason_recorded_by = corrected_by
+    requirement.reason_recorded_at = now
+    requirement.updated_at = now
+
+    return requirement, correction
+
+
 def process_initial_rn_ica_finalize(
     *,
     db: Session,

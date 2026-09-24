@@ -398,18 +398,17 @@ const J2052_REASON_MAP = {
   "9": ["9", "None of the above"],
 };
 
-// J2052C (Reason SFV Not Completed) has NO authoritative backend source
-// today -- SFVRequirement carries no reason-not-completed field
-// (verified: backend/app/models/sfv_requirement.py has no such column).
-// Per the CMS response set (1/2/3/9 only) this function (a) never trusts
-// an unsupported/free-text value, (b) never exports a reason when the
-// SFV IS completed (J2052A = Yes), and (c) treats any value outside the
-// verified code set as NOT_VERIFIED (placeholder) rather than passing it
-// through. This intentionally does not read `sfv.reasonNotCompleted`
-// (RNICA trigger-form self-attestation) as authoritative -- it remains
-// NOT_VERIFIED until a source-of-truth analysis (mirroring
-// J2053_SOURCE_OF_TRUTH_ANALYSIS.md) identifies and approves an
-// authoritative backend field for this item.
+// J2052C (Reason SFV Not Completed) ownership fix (issue #146): sourced
+// from THIS requirement's own `reasonCode` -- set only via
+// `record_sfv_not_completed_from_visit`/`correct_sfv_not_completed_reason`
+// on the backend, attributed to the clinician who actually attempted the
+// SFV -- never from `sfv.reasonNotCompleted` (RNICA trigger-form
+// self-attestation), which may be authored by a completely different
+// clinician (the Admission/HUV assessment author) and, per
+// docs/tenant-platform/J2052C_SOURCE_DISCOVERY.md, was never an
+// authoritative source. Per the CMS response set (1/2/3/9 only) this
+// function still (a) never trusts an unsupported value, and (b) never
+// exports a reason when the SFV IS completed (J2052A = Yes).
 function j2052ReasonNotCompleted(completed, rawReason) {
   if (completed) return { code: PLACEHOLDER, description: PLACEHOLDER };
   const normalized = rawReason == null ? "" : String(rawReason).trim();
@@ -688,7 +687,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "J2040", label: "Treatment for Shortness of Breath", entries: [{ label: "A. Initiated?", value: boolCode(Boolean(respiratory.treatmentInitiated)).description }, { label: "B. Date", value: formatDate(respiratory.treatmentDate) }] },
           { code: "J2050", label: "Symptom Impact Screening", entries: [{ label: "A. Completed?", value: boolCode(Boolean(sfv.symptomImpactScreeningCompleted || symptomImpact.assessmentDate)).description }, { label: "B. Date", value: formatDate(sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate) }] },
           { code: "J2051", label: "Symptom Impact", entries: symptomEntries(symptomImpact) },
-          { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(sfvStatus.completed).description }, { label: "B. Date", value: formatDate(sfvStatus.completedAt) }, { label: "C. Reason not completed", value: `${j2052ReasonNotCompleted(sfvStatus.completed, sfv.reasonNotCompleted).code} - ${j2052ReasonNotCompleted(sfvStatus.completed, sfv.reasonNotCompleted).description}` }] },
+          { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(sfvStatus.completed).description }, { label: "B. Date", value: formatDate(sfvStatus.completedAt) }, { label: "C. Reason not completed", value: `${j2052ReasonNotCompleted(sfvStatus.completed, sfvRequirement && sfvRequirement.reasonCode).code} - ${j2052ReasonNotCompleted(sfvStatus.completed, sfvRequirement && sfvRequirement.reasonCode).description}` }] },
           { code: "J2053", label: "SFV Symptom Impact", entries: symptomEntries((sfvRequirement && sfvRequirement.symptomImpact) || {}) },
         ],
       },

@@ -57,8 +57,27 @@ class SFVRequirement(TenantScopedMixin, BaseModel):
 
     notes = Column(Text, nullable=True)
 
+    # HOPE J2052C ownership fix (issue #146): the CMS-coded "reason SFV
+    # not completed" outcome, attributed to the clinician who actually
+    # attempted the SFV -- NOT the author of the triggering RN
+    # ICA/HUV assessment. Populated only when `status` transitions to
+    # NOT_COMPLETED via `record_sfv_not_completed_from_visit`. Mirrors
+    # `completed_visit_id`/`completed_at`'s existing pattern for the
+    # completed branch, so both outcomes are attributed the same way:
+    # to the real attempt/completion visit and its clinician, not the
+    # trigger source.
+    reason_code = Column(String(2), nullable=True)
+    reason_recorded_by = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True)
+    reason_recorded_at = Column(DateTime(timezone=True), nullable=True)
+    reason_recorded_visit_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("visits.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+
     patient = relationship("Patient")
     completed_visit = relationship("Visit", foreign_keys=[completed_visit_id])
+    reason_recorded_visit = relationship("Visit", foreign_keys=[reason_recorded_visit_id])
 
     __table_args__ = (
         CheckConstraint(
@@ -70,8 +89,12 @@ class SFVRequirement(TenantScopedMixin, BaseModel):
             name="ck_sfv_requirements_trigger_symptom_group",
         ),
         CheckConstraint(
-            "status IN ('OPEN', 'COMPLETED', 'OVERDUE', 'CANCELLED')",
+            "status IN ('OPEN', 'COMPLETED', 'OVERDUE', 'CANCELLED', 'NOT_COMPLETED')",
             name="ck_sfv_requirements_status",
+        ),
+        CheckConstraint(
+            "reason_code IS NULL OR reason_code IN ('1', '2', '3', '9')",
+            name="ck_sfv_requirements_reason_code",
         ),
         Index(
             "ix_sfv_requirements_open_due",

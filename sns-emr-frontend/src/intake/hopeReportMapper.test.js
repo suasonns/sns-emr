@@ -815,23 +815,23 @@ describe("mapRnIcaToHopeReport — J2052 read-path (P1A)", () => {
   // never export a reason when the SFV IS completed.
   it("J2052C: valid reason codes (1/2/3/9) are exported verbatim when the SFV is not completed", () => {
     ["1", "2", "3", "9"].forEach((code) => {
-      const formData = formDataWithModerateSymptomTrigger({ reasonNotCompleted: code });
-      const sfvRequirement = { status: "OPEN", completedAt: null };
+      const formData = formDataWithModerateSymptomTrigger();
+      const sfvRequirement = { status: "OPEN", completedAt: null, reasonCode: code };
       const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
       expect(findItem(report, "J2052").entries[2].value.startsWith(`${code} -`)).toBe(true);
     });
   });
 
   it("J2052C: an unsupported/free-text reason value is rejected (not passed through)", () => {
-    const formData = formDataWithModerateSymptomTrigger({ reasonNotCompleted: "patient moved away" });
-    const sfvRequirement = { status: "OPEN", completedAt: null };
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "OPEN", completedAt: null, reasonCode: "patient moved away" };
     const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
     expect(findItem(report, "J2052").entries[2].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
   });
 
-  it("J2052C: a completed SFV (J2052A = Yes) never exports a not-completed reason, even if one is present in form_data", () => {
-    const formData = formDataWithModerateSymptomTrigger({ reasonNotCompleted: "1" });
-    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z" };
+  it("J2052C: a completed SFV (J2052A = Yes) never exports a not-completed reason, even if one is present on the SFVRequirement", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", reasonCode: "1" };
     const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
     expect(findItem(report, "J2052").entries[2].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
   });
