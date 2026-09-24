@@ -1029,6 +1029,17 @@ const J2052C_REASON_OPTIONS = [
   { value: "9", label: "9 — None of the above" },
 ];
 
+// Issue #157 remediation: human-readable labels for each SFV trigger
+// timepoint, used to distinguish multiple simultaneously-OPEN
+// requirements for the same patient (never resolved by "oldest due" or
+// any other backend inference -- the clinician must be able to tell
+// them apart and pick explicitly).
+const SFV_TRIGGER_SOURCE_LABELS = {
+  INITIAL_RN_ICA: "Admission (Initial RN ICA)",
+  HUV1: "HUV1",
+  HUV2: "HUV2",
+};
+
 // P3-009/P3-017 continuation directive: the ONLY UI surface that may
 // offer "Complete SFV" is a SEPARATE qualifying follow-up visit (never
 // the triggering RNICA screen -- see RNICA.jsx's read-only
@@ -1134,6 +1145,27 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
     <Card title="Symptom Follow-Up Visit" styles={styles}>
       {error ? <div style={{ color: COLORS.error || "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div> : null}
       {message ? <div style={{ color: COLORS.success || "#0d9488", fontSize: 12.5, marginBottom: 8 }}>{message}</div> : null}
+      {openRequirements.length > 1 ? (
+        // Issue #157 remediation: when more than one SFV requirement is
+        // OPEN for this patient, the backend's automatic finalize hook
+        // will NOT guess which one this visit addresses (no oldest-due
+        // or other inference) -- it leaves all of them OPEN. The
+        // clinician must explicitly pick the exact requirement below.
+        <div
+          style={{
+            fontSize: 12.5,
+            color: COLORS.dark,
+            background: "rgba(245, 158, 11, 0.12)",
+            border: `1px solid ${COLORS.orange || "#f59e0b"}`,
+            borderRadius: 6,
+            padding: "8px 10px",
+            marginBottom: 10,
+          }}
+        >
+          Multiple Symptom Follow-Up Visit requirements are open. Select the requirement
+          addressed by this visit before finalizing the SFV outcome.
+        </div>
+      ) : null}
       {completedHere.map((r) => (
         <div key={r.sfvRequirementId} style={{ fontSize: 12.5, color: COLORS.dark, marginBottom: 8 }}>
           Symptom Follow-Up completed on this visit{r.completedAt ? ` (${new Date(r.completedAt).toLocaleString()})` : ""}.
@@ -1143,7 +1175,10 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
         <div key={r.sfvRequirementId} style={{ marginBottom: 8 }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, fontSize: 12.5, color: COLORS.dark }}>
             <span>
-              Symptom follow-up outstanding since the triggering RNICA assessment
+              <strong>{SFV_TRIGGER_SOURCE_LABELS[r.triggerSourceType] || r.triggerSourceType}</strong>
+              {r.triggerDatetime ? ` triggered ${new Date(r.triggerDatetime).toLocaleDateString()}` : ""}
+              {r.triggerSymptomGroup ? ` — ${r.triggerSymptomGroup} symptom impact` : ""}.
+              {" "}Symptom follow-up outstanding
               {r.dueAt ? ` (due ${new Date(r.dueAt).toLocaleDateString()})` : ""}.
               Document the symptom reassessment and interventions above, then sign and submit this
               visit before completing the SFV.

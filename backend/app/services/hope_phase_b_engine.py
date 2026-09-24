@@ -50,6 +50,21 @@ VISIT_MODE_IN_PERSON = "IN_PERSON"
 
 MODERATE_OR_SEVERE = {"MODERATE", "SEVERE"}
 
+# Automatic-safety-net-hook automation outcomes (issue #157). Recorded via
+# app.services.audit_events.audit_event on every finalize-hook evaluation
+# so an ambiguous/skipped decision is just as reproducible as a completed
+# one -- never a bare unrecorded no-op.
+SFV_OUTCOME_AUTO_COMPLETED_SINGLE_MATCH = "AUTO_COMPLETED_SINGLE_MATCH"
+SFV_OUTCOME_SKIPPED_NO_MATCH = "SKIPPED_NO_MATCH"
+SFV_OUTCOME_SKIPPED_MULTIPLE_MATCHES = "SKIPPED_MULTIPLE_MATCHES"
+SFV_OUTCOME_NOT_ELIGIBLE = "NOT_ELIGIBLE"
+SFV_OUTCOME_EXPLICITLY_COMPLETED = "EXPLICITLY_COMPLETED"
+SFV_OUTCOME_EXPLICITLY_NOT_COMPLETED = "EXPLICITLY_NOT_COMPLETED"
+# Issue #157 decision (final): one visit may never complete two
+# *different* SFVRequirement rows -- attempted either by the automatic
+# safety-net hook or by a replayed/re-targeted explicit completion call.
+SFV_OUTCOME_DUPLICATE_COMPLETION_REJECTED = "DUPLICATE_COMPLETION_REJECTED"
+
 
 @dataclass
 class TriggerOutcome:
@@ -405,6 +420,89 @@ def maybe_trigger_sfv_from_hope_timepoint(
     )
 
 
+def find_visit_already_linked_sfv_requirement(
+    *,
+    db: Session,
+    tenant_id,
+    completing_visit_id,
+):
+    """Issue #157 idempotency guard (REQUIRED IMPLEMENTATION TASKS #5).
+
+    A single visit must never end up as the `completed_visit_id` for two
+    *different* SFVRequirement rows -- that is the exact silent
+    misattribution mechanism the automatic safety-net hook could
+    previously trigger (auto-completing a second, unrelated requirement
+    after the clinician had already explicitly completed a different one
+    from the same visit). Returns the requirement already linked to this
+    visit, if any, so the caller can skip automatic completion entirely
+    rather than attach the same visit to a second requirement.
+    """
+    return (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .filter(
+            SFVRequirement.tenant_id == tenant_id,
+            SFVRequirement.completed_visit_id == completing_visit_id,
+        )
+        .first()
+    )
+
+
+def get_eligible_open_sfv_requirements_for_visit(
+    *,
+    db: Session,
+    tenant_id,
+    patient_id,
+    completing_visit_id,
+    completing_visit_datetime: datetime,
+    discipline: str,
+    visit_mode: str,
+) -> list:
+    """Dry-run (no mutation) computation of which OPEN `SFVRequirement`
+    rows this specific visit is legally eligible to complete -- mirrors
+    every check `complete_sfv_requirement_from_visit` enforces (in-person
+    mode, qualifying discipline, separate-visit-from-trigger, completion
+    not preceding trigger), without writing anything.
+
+    Used by the automatic safety-net hook (issue #157) to decide whether
+    auto-completion is safe (exactly one eligible candidate) or ambiguous
+    (more than one) -- it NEVER selects "oldest due" or any other
+    patient-level inference among multiple eligible candidates. Rows are
+    locked (`with_for_update`) for the duration of the caller's
+    transaction so two concurrent finalizes cannot both observe a
+    single-candidate result and race.
+    """
+    normalized_mode = _normalize_visit_mode(visit_mode)
+    if normalized_mode != VISIT_MODE_IN_PERSON:
+        return []
+
+    normalized_discipline = _normalize_discipline(discipline)
+    if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN, DISCIPLINE_NP}:
+        return []
+
+    open_requirements = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .with_for_update()
+        .filter(
+            SFVRequirement.tenant_id == tenant_id,
+            SFVRequirement.patient_id == patient_id,
+            SFVRequirement.status == "OPEN",
+        )
+        .order_by(SFVRequirement.due_at.asc())
+        .all()
+    )
+
+    eligible = []
+    for requirement in open_requirements:
+        if str(completing_visit_id) == str(requirement.trigger_reference_id):
+            continue
+        if requirement.trigger_datetime is not None and completing_visit_datetime < requirement.trigger_datetime:
+            continue
+        eligible.append(requirement)
+    return eligible
+
+
 def complete_sfv_requirement_from_visit(
     *,
     db: Session,
@@ -458,6 +556,24 @@ def complete_sfv_requirement_from_visit(
         raise ValueError("Completion visit does not belong to this patient")
     if completing_visit.tenant_id != requirement.tenant_id:
         raise ValueError("Completion visit does not belong to this tenant")
+
+    # Issue #157 (final decision): one visit may never complete two
+    # *different* SFVRequirement rows. Enforced here -- not just in the
+    # automatic hook's pre-check -- so the explicit completion endpoint is
+    # equally protected against attaching the same completion visit to a
+    # second, unrelated requirement.
+    duplicate = (
+        db.query(SFVRequirement)
+        .filter(
+            SFVRequirement.id != requirement.id,
+            SFVRequirement.completed_visit_id == completing_visit_id,
+        )
+        .first()
+    )
+    if duplicate is not None:
+        raise ValueError(
+            "Completion visit already used to complete a different SFV requirement"
+        )
 
     requirement.completed_visit_id = completing_visit_id
     requirement.completed_at = completing_visit_datetime

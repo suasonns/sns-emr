@@ -76,9 +76,18 @@ from app.services.visit_compliance_guards import (
 from app.services.hope_phase_b_engine import (
     complete_sfv_requirement_from_visit,
     correct_sfv_not_completed_reason,
+    find_visit_already_linked_sfv_requirement,
+    get_eligible_open_sfv_requirements_for_visit,
     process_huv_finalize,
     process_initial_rn_ica_finalize,
     record_sfv_not_completed_from_visit,
+    SFV_OUTCOME_AUTO_COMPLETED_SINGLE_MATCH,
+    SFV_OUTCOME_DUPLICATE_COMPLETION_REJECTED,
+    SFV_OUTCOME_EXPLICITLY_COMPLETED,
+    SFV_OUTCOME_EXPLICITLY_NOT_COMPLETED,
+    SFV_OUTCOME_NOT_ELIGIBLE,
+    SFV_OUTCOME_SKIPPED_MULTIPLE_MATCHES,
+    SFV_OUTCOME_SKIPPED_NO_MATCH,
     TASK_TYPE_HUV1,
     TASK_TYPE_HUV2,
     validate_huv_visit_completion,)
@@ -3880,21 +3889,6 @@ def _extract_primary_diagnosis_from_notes(
                     if value is not None and str(value).strip():
                         return str(value).strip()
     return None
-def _find_oldest_open_sfv_requirement_for_patient(
-    *,
-    db: Session,
-    patient_id: uuid.UUID,) -> Optional[SFVRequirement]:
-    return (
-        db.query(SFVRequirement)
-        .execution_options(skip_tenant_filter=True)
-        .with_for_update()
-        .filter(
-            SFVRequirement.patient_id == patient_id,
-            SFVRequirement.status == "OPEN",
-        )
-        .order_by(SFVRequirement.due_at.asc())
-        .first()
-    )
 def _get_completed_huv_task_type_for_visit(
     *,
     db: Session,
@@ -3915,22 +3909,134 @@ def _get_completed_huv_task_type_for_visit(
     if not completed:
         return None
     return completed.task_type.value if hasattr(completed.task_type, "value") else str(completed.task_type)
+def _audit_sfv_automation_outcome(
+    *,
+    db: Session,
+    visit: Visit,
+    outcome: str,
+    request_id: str,
+    eligible_requirement_ids: Optional[list] = None,
+    selected_requirement: Optional[SFVRequirement] = None,
+    note: Optional[str] = None,
+) -> None:
+    """Issue #157 AUDITABILITY requirement: every automatic-hook
+    evaluation (completed, skipped-no-match, skipped-ambiguous, or
+    not-eligible) is recorded, not just the completions -- so an
+    ambiguous/skipped decision is exactly as attributable/reproducible
+    as a completed one.
+    """
+    meta = {
+        "patientId": str(visit.patient_id),
+        "visitId": str(visit.id),
+        "outcome": outcome,
+        "eligibleRequirementCount": len(eligible_requirement_ids or []),
+        "eligibleRequirementIds": [str(rid) for rid in (eligible_requirement_ids or [])],
+        "requestId": request_id,
+    }
+    if selected_requirement is not None:
+        meta["selectedRequirementId"] = str(selected_requirement.id)
+        meta["triggerSourceType"] = selected_requirement.trigger_source_type
+        meta["triggerReferenceId"] = str(selected_requirement.trigger_reference_id)
+    if note:
+        meta["note"] = note
+    audit_event(
+        db=db,
+        action="SFV_AUTO_COMPLETION_EVALUATED",
+        entity_type="sfv_requirement",
+        entity_id=str(selected_requirement.id) if selected_requirement is not None else str(visit.id),
+        user_id=str(getattr(visit, "finalized_by", None) or ""),
+        tenant_id=str(visit.tenant_id) if getattr(visit, "tenant_id", None) else None,
+        meta=meta,
+    )
+
+
 def _maybe_complete_open_sfv_for_visit(
     *,
     db: Session,
     visit: Visit,
     request_id: str,) -> Optional[SFVRequirement]:
-    open_requirement = _find_oldest_open_sfv_requirement_for_patient(
+    """Automatic SFV "safety net" completion hook, run on every visit
+    finalize (issue #157 remediation).
+
+    Never guesses among multiple candidates. Behavior (see
+    docs authority / Issue #157 decision):
+      - 0 eligible OPEN requirements  -> no action (SKIPPED_NO_MATCH)
+      - 1 eligible OPEN requirement   -> auto-complete it
+                                         (AUTO_COMPLETED_SINGLE_MATCH)
+      - >1 eligible OPEN requirements -> no action, leave all OPEN
+                                         (SKIPPED_MULTIPLE_MATCHES); the
+                                         clinician must use the explicit,
+                                         trigger-linked SFV section to
+                                         pick the exact requirement.
+    A visit already linked (as completed_visit_id) to any requirement is
+    never attached to a second, different requirement by this hook
+    (idempotency guard -- prevents the same visit from silently
+    completing two unrelated SFVs).
+    """
+    already_linked = find_visit_already_linked_sfv_requirement(
         db=db,
-        patient_id=visit.patient_id,
+        tenant_id=visit.tenant_id,
+        completing_visit_id=visit.id,
     )
-    if not open_requirement:
+    if already_linked:
+        logger.info(
+            "PHASE_B_SFV_COMPLETE: DUPLICATE_COMPLETION_REJECTED visit_id=%s requirement_id=%s request_id=%s",
+            str(visit.id),
+            str(already_linked.id),
+            request_id,
+        )
+        _audit_sfv_automation_outcome(
+            db=db,
+            visit=visit,
+            outcome=SFV_OUTCOME_DUPLICATE_COMPLETION_REJECTED,
+            request_id=request_id,
+            selected_requirement=already_linked,
+        )
+        return None
+
+    eligible_requirements = get_eligible_open_sfv_requirements_for_visit(
+        db=db,
+        tenant_id=visit.tenant_id,
+        patient_id=visit.patient_id,
+        completing_visit_id=visit.id,
+        completing_visit_datetime=visit.visit_datetime,
+        discipline=visit.visit_discipline,
+        visit_mode=getattr(visit, "visit_mode", None),
+    )
+
+    if not eligible_requirements:
         logger.info(
             "PHASE_B_SFV_COMPLETE: NO_OPEN_REQUIREMENT visit_id=%s request_id=%s",
             str(visit.id),
             request_id,
         )
+        _audit_sfv_automation_outcome(
+            db=db,
+            visit=visit,
+            outcome=SFV_OUTCOME_SKIPPED_NO_MATCH,
+            request_id=request_id,
+        )
         return None
+
+    if len(eligible_requirements) > 1:
+        eligible_ids = [r.id for r in eligible_requirements]
+        logger.info(
+            "PHASE_B_SFV_COMPLETE: SKIPPED_MULTIPLE_MATCHES visit_id=%s requirement_ids=%s request_id=%s",
+            str(visit.id),
+            [str(rid) for rid in eligible_ids],
+            request_id,
+        )
+        _audit_sfv_automation_outcome(
+            db=db,
+            visit=visit,
+            outcome=SFV_OUTCOME_SKIPPED_MULTIPLE_MATCHES,
+            request_id=request_id,
+            eligible_requirement_ids=eligible_ids,
+            note="Multiple eligible OPEN SFV requirements; explicit clinician selection required.",
+        )
+        return None
+
+    open_requirement = eligible_requirements[0]
     try:
         completed_requirement = complete_sfv_requirement_from_visit(
             db=db,
@@ -3946,6 +4052,14 @@ def _maybe_complete_open_sfv_for_visit(
             str(visit.id),
             request_id,
         )
+        _audit_sfv_automation_outcome(
+            db=db,
+            visit=visit,
+            outcome=SFV_OUTCOME_AUTO_COMPLETED_SINGLE_MATCH,
+            request_id=request_id,
+            eligible_requirement_ids=[open_requirement.id],
+            selected_requirement=completed_requirement,
+        )
         return completed_requirement
     except ValueError as exc:
         logger.info(
@@ -3954,6 +4068,14 @@ def _maybe_complete_open_sfv_for_visit(
             str(open_requirement.id),
             str(exc),
             request_id,
+        )
+        _audit_sfv_automation_outcome(
+            db=db,
+            visit=visit,
+            outcome=SFV_OUTCOME_NOT_ELIGIBLE,
+            request_id=request_id,
+            eligible_requirement_ids=[open_requirement.id],
+            note=str(exc),
         )
         return None
 
@@ -4026,6 +4148,7 @@ _SFV_VALUEERROR_CODE_MAP = (
     ("does not belong to this tenant", "TENANT_MISMATCH"),
     ("separate visit from the triggering", "SAME_VISIT_NOT_ALLOWED"),
     ("before the triggering visit", "COMPLETION_BEFORE_TRIGGER"),
+    ("already used to complete a different SFV requirement", "COMPLETION_VISIT_ALREADY_LINKED"),
     ("in-person visit", "VISIT_NOT_ELIGIBLE"),
     ("RN or LPN/LVN", "CLINICIAN_NOT_AUTHORIZED"),
     ("Reason code must be one of", "REASON_CODE_INVALID"),
@@ -4111,6 +4234,7 @@ def complete_sfv_requirement(
     if completion_visit.tenant_id != current_user.tenant_id:
         raise _sfv_error(404, "TENANT_MISMATCH", "Completion visit not found")
 
+    requirement_patient_id = requirement.patient_id
     try:
         updated_requirement = complete_sfv_requirement_from_visit(
             db=db,
@@ -4122,7 +4246,42 @@ def complete_sfv_requirement(
         )
     except ValueError as exc:
         db.rollback()
+        if "already used to complete a different SFV requirement" in str(exc):
+            audit_event(
+                db=db,
+                action="SFV_COMPLETION_REJECTED",
+                entity_type="sfv_requirement",
+                entity_id=str(sfv_requirement_id),
+                user_id=str(getattr(current_user, "user_id", "") or ""),
+                role=str(getattr(current_user, "role", "") or ""),
+                tenant_id=str(current_user.tenant_id) if getattr(current_user, "tenant_id", None) else None,
+                meta={
+                    "patientId": str(requirement_patient_id),
+                    "sfvRequirementId": str(sfv_requirement_id),
+                    "visitId": str(completion_visit.id),
+                    "outcome": SFV_OUTCOME_DUPLICATE_COMPLETION_REJECTED,
+                },
+            )
+            db.commit()
         raise _sfv_error_from_value_error(exc, sfv_requirement_id) from exc
+
+    audit_event(
+        db=db,
+        action="SFV_COMPLETED",
+        entity_type="sfv_requirement",
+        entity_id=str(updated_requirement.id),
+        user_id=str(getattr(current_user, "user_id", "") or ""),
+        role=str(getattr(current_user, "role", "") or ""),
+        tenant_id=str(current_user.tenant_id) if getattr(current_user, "tenant_id", None) else None,
+        meta={
+            "patientId": str(updated_requirement.patient_id),
+            "sfvRequirementId": str(updated_requirement.id),
+            "visitId": str(completion_visit.id),
+            "outcome": SFV_OUTCOME_EXPLICITLY_COMPLETED,
+            "triggerSourceType": updated_requirement.trigger_source_type,
+            "triggerReferenceId": str(updated_requirement.trigger_reference_id),
+        },
+    )
 
     db.commit()
     db.refresh(updated_requirement)
@@ -4238,6 +4397,7 @@ def record_sfv_not_completed(
             "visitId": str(attempt_visit.id),
             "oldValue": None,
             "newValue": updated_requirement.reason_code,
+            "outcome": SFV_OUTCOME_EXPLICITLY_NOT_COMPLETED,
         },
     )
 
@@ -4349,6 +4509,10 @@ class SfvRequirementSummary(BaseModel):
     # patient's most-recently-completed requirement regardless of timepoint.
     triggerSourceType: str
     triggerDatetime: Optional[str] = None
+    # Issue #157 remediation FRONTEND task 2: distinguishing context so a
+    # clinician facing multiple simultaneously-OPEN requirements can tell
+    # them apart (never resolved by "oldest due" or any other inference).
+    triggerSymptomGroup: Optional[str] = None
     completionVisitId: Optional[str] = None
     status: str
     dueAt: Optional[str] = None
@@ -4456,6 +4620,7 @@ def list_sfv_requirements(
             triggerVisitId=str(r.trigger_reference_id),
             triggerSourceType=r.trigger_source_type,
             triggerDatetime=r.trigger_datetime.isoformat() if r.trigger_datetime else None,
+            triggerSymptomGroup=r.trigger_symptom_group,
             completionVisitId=str(r.completed_visit_id) if r.completed_visit_id else None,
             status=r.status,
             dueAt=r.due_at.isoformat() if r.due_at else None,
