@@ -78,6 +78,11 @@ def upgrade() -> None:
         sa.Column("corrected_at", sa.DateTime(timezone=True), nullable=False),
         sa.Column("created_at", sa.DateTime(timezone=True), nullable=False, server_default=sa.text("now()")),
         sa.Column("updated_at", sa.DateTime(timezone=True), nullable=True),
+        # BaseModel declares created_by on every model; omitting it here
+        # caused a real runtime INSERT failure (UndefinedColumn), caught
+        # by Postgres-backed test execution -- not visible via
+        # py_compile/import-only verification.
+        sa.Column("created_by", postgresql.UUID(as_uuid=True), sa.ForeignKey("users.id"), nullable=True),
     )
     op.create_index("ix_sfv_outcome_corrections_tenant_id", "sfv_outcome_corrections", ["tenant_id"])
     op.create_index("ix_sfv_outcome_corrections_patient_id", "sfv_outcome_corrections", ["patient_id"])
