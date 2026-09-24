@@ -1039,6 +1039,23 @@ function validateRNICA(formData, mode = "ica") {
       }
     });
 
+    // SFV ? J2052A/C: an SFV is required whenever any J2051 item is
+    // Moderate (2) or Severe (3). When J2052A = No (SFV not completed),
+    // J2052C must be one of the 4 CMS-coded values (1/2/3/9) -- free text
+    // or a blank value is never export-valid (see
+    // hopeReportMapper.js::j2052ReasonNotCompleted()).
+    const J2052C_VALID_CODES = ["1", "2", "3", "9"];
+    const sfvIsRequired = siFields.some((f) => {
+      const v = String(formData.symptomImpact[f] || "").trim();
+      return v === "2" || v === "3";
+    });
+    if (sfvIsRequired && !formData.sfv.inPersonSfvCompleted) {
+      const reason = String(formData.sfv.reasonNotCompleted || "").trim();
+      if (!J2052C_VALID_CODES.includes(reason)) {
+        errors["sfv.reasonNotCompleted"] = "HOPE J2052C: Reason SFV not completed is required (1/2/3/9) when the SFV was not completed";
+      }
+    }
+
     // Diagnoses ? I0010
     if (!formData.diagnoses.primaryDiagnosis.icd10) {
       errors["diagnoses.primaryDiagnosis"] = "HOPE I0010: Primary diagnosis ICD-10 required";
@@ -8435,6 +8452,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
 
+        // HOPE J2052A controls the J2053 branch too: symptom impact "at
+        // the SFV" is only applicable once an SFV was actually completed.
+        // When J2052A = No, hide the whole J2053 card (CMS mutual
+        // exclusivity: J2052B/J2053 only apply when J2052A = Yes).
+        if (sectionKey === "sfv" && card.title === "SFV Symptom Impact" && !cardData.inPersonSfvCompleted) {
+          return null;
+        }
+
         if (sectionKey === "performanceStatus" && card.title === "NYHA Classification (Heart Failure)" && !showNyha) {
           return null;
         }
@@ -8735,6 +8760,13 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 return null;
               }
               if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && field.path === "assessmentTool") {
+                return null;
+              }
+              // HOPE J2052A controls the J2052 branch: when the SFV was
+              // completed (inPersonSfvCompleted = true), J2052C (reason not
+              // completed) is not applicable and must be hidden -- CMS
+              // defines these as mutually exclusive. Shown otherwise.
+              if (sectionKey === "sfv" && field.path === "reasonNotCompleted" && cardData.inPersonSfvCompleted) {
                 return null;
               }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
@@ -9512,7 +9544,20 @@ const SECTION_CONFIGS = {
         // {id}/complete (see the Symptom Follow-Up Visit section on the
         // Visit Notes screen). The read-only SfvStatusCard rendered above
         // this section shows current follow-up status.
-        { type: "input", label: "Reason SFV not completed", path: "reasonNotCompleted" },
+        //
+        // HOPE J2052C (Reason SFV Not Completed): CMS defines exactly one
+        // coded response set (1/2/3/9). This must be a coded selection, not
+        // free text -- hopeReportMapper.js::j2052ReasonNotCompleted() only
+        // ever exports one of these four codes and treats anything else as
+        // NOT_VERIFIED. Conditional on J2052A (sfv.inPersonSfvCompleted):
+        // hidden when the SFV was completed (see the fields.map guard
+        // below), shown only when it was not.
+        { type: "radio", label: "Reason SFV Not Completed", path: "reasonNotCompleted", hopeCode: "J2052C", required: true, options: [
+          { value: "1", label: "1 — Patient and/or caregiver declined an in-person visit" },
+          { value: "2", label: "2 — Patient unavailable" },
+          { value: "3", label: "3 — Attempts to contact patient and/or caregiver were unsuccessful" },
+          { value: "9", label: "9 — None of the above" },
+        ] },
       ]},
       { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [
         { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
