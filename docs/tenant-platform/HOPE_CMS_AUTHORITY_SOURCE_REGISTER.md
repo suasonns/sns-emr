@@ -202,3 +202,5 @@ This repository does not currently store any PDF documents anywhere under `docs/
 - item-level page citations and verbatim short excerpts (fair-use-scale quotations only, not full-manual reproduction)
 
 This is a documentation-only decision; it does not require a Romel decision to reverse but should be revisited if the team decides authoritative source PDFs must be vendored into the repository for offline/air-gapped audit purposes.
+
+**Update (explicit override, this pass):** at the user's explicit direction, one reference PDF was vendored into the repository as an exception to the above default: `docs/reference/cms/hope-v1.01_admission.pdf` (HOPE v1.01 Admission item set, an older version than the v1.02 authority used throughout this register; kept for historical/change-table comparison reference only — **not** the controlling authority). SHA-256: `821eac5acb41a03b7b85a94b0c0b1e6a6df1af173832cf609c39738953da9417`. This does not change which version is authoritative (v1.02 remains controlling per "CMS Artifact Version Inventory" above) and does not itself authorize any production, schema, or clinical-behavior change.
