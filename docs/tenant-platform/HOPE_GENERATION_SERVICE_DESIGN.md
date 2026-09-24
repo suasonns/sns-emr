@@ -29,37 +29,73 @@ only — no code is written or scheduled by this document.
   first. Server-side generation removes that accidental safety net and
   makes the direct-`SFVRequirement`-read fix mandatory, not optional.
 
+## CORRECTED HOPE source model (2026-09-23 architecture correction)
+
+**HOPE is not independently fillable.** HOPE records are derived from
+the authoritative data captured for the applicable **official HOPE
+timepoint**:
+
+- **Facesheet + RNICA Initial Comprehensive Assessment** → HOPE Admission (ADM)
+- **the dedicated HUV1 assessment/visit** → HUV1
+- **the dedicated HUV2 assessment/visit** → HUV2
+- **the separate, linked SFV completion visit** → J2052/J2053, only when
+  triggered by a qualifying moderate/severe J2051 finding on the HOPE
+  Admission, HUV1, or HUV2
+- **the authoritative discharge workflow** → HOPE Discharge (DC)
+
+Routine follow-up visits, certifications, and recertifications are
+**not** HOPE sources unless a verified item-level mapping explicitly
+establishes that relationship. The previous version of this document's
+"Target architecture" diagram and "Input assembly" bullet below
+inaccurately described "Follow-Up Visits" and "Certification" as
+generic HOPE input sources; both are corrected below.
+
 ## Target architecture
 
 ```
 Facesheet ──┐
-            ├─▶ HopeGenerationService ──▶ HOPE Projection (persisted)
-RNICA ──────┤                                   │
-            │                                   ▼
-Follow-Up   │                             HopeValidationService
-Visits ─────┤                                   │
-            │                                   ▼
-Certification┘                              HOPE Export
+            ├─▶ HOPE Admission (ADM)  ──┐
+RNICA ADM ──┘                           │
+                                        │
+HUV1 assessment/visit ─▶ HUV1 record ──┤
+HUV2 assessment/visit ─▶ HUV2 record ──┼─▶ HopeGenerationService ──▶ HOPE Projection (persisted)
+                                        │            │
+Linked SFV completion visit,           │            ▼
+only when triggered by ADM/HUV1/HUV2 ──┘      HopeValidationService
+   (J2052/J2053 — completed_visit_id)                │
+                                                      ▼
+Discharge workflow ──▶ HOPE Discharge (DC) ──▶  HOPE Export
 ```
 
 `HopeGenerationService` is the **single** place that reads clinical
-source data (Facesheet, RNICA, `SFVRequirement`/completion visits,
-certification records) and produces a HOPE projection. It replaces
-`hopeReportMapper.js` as the source of truth for field derivation;
-`hopeReportMapper.js`'s logic should be **ported**, not duplicated —
-the field-mapping rules already encoded there (J2051 symptom-impact
-evaluation, J2052/J2053 derivation, HUV1/HUV2 mapping, etc.) are the
-correct starting point for the service's transformation rules, per
-`RNICA_HOPE_FIELD_MAP.md`.
+source data for the applicable HOPE timepoint (Facesheet + RNICA
+Admission assessment for ADM, the dedicated HUV1/HUV2 assessment/visit
+for those timepoints, the linked `SFVRequirement.completed_visit_id`
+ClinicalNote for J2052/J2053, and the authoritative discharge workflow
+for DC) and produces a HOPE projection. **Certification and
+recertification records are not consulted as a HOPE source or fallback
+by this service.** It replaces `hopeReportMapper.js` as the source of
+truth for field derivation; `hopeReportMapper.js`'s logic should be
+**ported**, not duplicated — the field-mapping rules already encoded
+there (J2051 symptom-impact evaluation, J2052/J2053 derivation,
+HUV1/HUV2 mapping, etc.) are the correct starting point for the
+service's transformation rules, per `RNICA_HOPE_FIELD_MAP.md`.
 
 ## Responsibilities
 
-1. **Input assembly.** Given a patient + assessment context (admission
-   RNICA assessment id, and the current `SFVRequirement` cycle if
-   applicable), gather all source records needed: Facesheet
-   demographics, the RNICA assessment's `form_data`, the relevant
-   `SFVRequirement` (status/completed_at/symptom_impact once added per
-   the P1 plan), and certification records.
+1. **Input assembly.** Given a patient + the applicable HOPE timepoint
+   (ADM/HUV1/HUV2/DC, plus the linked `SFVRequirement` cycle when
+   J2051 triggered an SFV), gather only the authoritative source
+   records for that timepoint: Facesheet demographics + the RNICA
+   admission assessment's `form_data` for ADM; the dedicated HUV1/HUV2
+   assessment/visit's own `form_data` for HUV1/HUV2 (never a generic
+   routine follow-up visit, never each other's data); the
+   `SFVRequirement` linked by `completed_visit_id` and that visit's own
+   `ClinicalNote.content.symptom_impact` for J2052/J2053 (no
+   latest-visit shortcut, no cross-assignment across a patient's other
+   `SFVRequirement`s); and the authoritative discharge workflow's data
+   for DC. Certification/recertification records are never read as a
+   HOPE source or fallback.
 2. **Transformation.** Apply the same field-by-field derivation rules
    currently in `hopeReportMapper.js`, ported to a backend service
    function/module. No new derivation logic is invented here — this is
@@ -85,8 +121,9 @@ A new table, tentatively `hope_projections`:
 | `id` | UUID PK | |
 | `patient_id` | FK | |
 | `tenant_id` | FK | matches existing tenant-scoping pattern used elsewhere in the schema |
-| `source_rnica_assessment_id` | FK | the RNICA assessment this projection was derived from |
-| `source_sfv_requirement_id` | FK, nullable | the SFV cycle this projection incorporates, if applicable |
+| `source_rnica_assessment_id` | FK | the RNICA assessment (ADM, HUV1, or HUV2) this projection was derived from |
+| `hope_timepoint` | enum: `ADM`, `HUV1`, `HUV2`, `DC` | the official HOPE timepoint this projection represents; determines which source records are authoritative (see "CORRECTED HOPE source model" above) |
+| `source_sfv_requirement_id` | FK, nullable | the exact `SFVRequirement` this projection's J2052/J2053 values are linked to via `completed_visit_id`, if the timepoint's J2051 findings triggered an SFV. Never a "most recent SFV for this patient" lookup. |
 | `version` | integer | incremented on regeneration |
 | `generated_at` | timestamp | |
 | `generated_by` | FK to user | |
@@ -133,3 +170,16 @@ fix (read `SFVRequirement` directly, not `form_data.sfv.*`) is in place
 sync problem into a new persisted record. J2053's schema gap must also
 be resolved (or explicitly deferred with a documented placeholder) before
 this service can produce a complete HOPE projection.
+
+**Status update (2026-09-23):** J2052 (read-path, commit `b4da769`) and
+J2053 (capture/export path, commit `0f177a3`) are both complete and
+lineage-verified (`J2052_LINEAGE_VERIFICATION.md`,
+`J2053_SOURCE_OF_TRUTH_ANALYSIS.md`) — both now read exclusively from
+the exact `SFVRequirement`/`completed_visit_id`-linked `ClinicalNote`,
+with no generic-visit, trigger-form, or certification fallback. This
+removes the Priority 1 blocker for ADM/HUV1/HUV2-triggered SFV data.
+**HUV1, HUV2, and Discharge provenance are not yet field-level mapped**
+and remain `NOT_VERIFIED` — `HopeGenerationService` implementation must
+not begin until that mapping is complete for every timepoint, not just
+SFV.
+

@@ -391,6 +391,37 @@ function symptomEntries(source = {}) {
   });
 }
 
+const J2052_REASON_MAP = {
+  "1": ["1", "Patient and/or caregiver declined an in-person visit"],
+  "2": ["2", "Patient unavailable"],
+  "3": ["3", "Attempts to contact patient and/or caregiver were unsuccessful"],
+  "9": ["9", "None of the above"],
+};
+
+// J2052C (Reason SFV Not Completed) has NO authoritative backend source
+// today -- SFVRequirement carries no reason-not-completed field
+// (verified: backend/app/models/sfv_requirement.py has no such column).
+// Per the CMS response set (1/2/3/9 only) this function (a) never trusts
+// an unsupported/free-text value, (b) never exports a reason when the
+// SFV IS completed (J2052A = Yes), and (c) treats any value outside the
+// verified code set as NOT_VERIFIED (placeholder) rather than passing it
+// through. This intentionally does not read `sfv.reasonNotCompleted`
+// (RNICA trigger-form self-attestation) as authoritative -- it remains
+// NOT_VERIFIED until a source-of-truth analysis (mirroring
+// J2053_SOURCE_OF_TRUTH_ANALYSIS.md) identifies and approves an
+// authoritative backend field for this item.
+function j2052ReasonNotCompleted(completed, rawReason) {
+  if (completed) return { code: PLACEHOLDER, description: PLACEHOLDER };
+  const normalized = rawReason == null ? "" : String(rawReason).trim();
+  const match = J2052_REASON_MAP[normalized];
+  // Unlike the generic lookup() helper (which echoes back an unmapped raw
+  // value for display purposes elsewhere in this file), an unsupported
+  // J2052C value must never be passed through -- only the verified CMS
+  // code set (1/2/3/9) may be exported; anything else is NOT_VERIFIED.
+  if (!match) return { code: PLACEHOLDER, description: PLACEHOLDER };
+  return { code: match[0], description: match[1] };
+}
+
 function isModerateOrSevere(value) {
   if (value === 2 || value === 3) return true;
   const text = String(value || "").trim().toLowerCase();
@@ -657,7 +688,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "J2040", label: "Treatment for Shortness of Breath", entries: [{ label: "A. Initiated?", value: boolCode(Boolean(respiratory.treatmentInitiated)).description }, { label: "B. Date", value: formatDate(respiratory.treatmentDate) }] },
           { code: "J2050", label: "Symptom Impact Screening", entries: [{ label: "A. Completed?", value: boolCode(Boolean(sfv.symptomImpactScreeningCompleted || symptomImpact.assessmentDate)).description }, { label: "B. Date", value: formatDate(sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate) }] },
           { code: "J2051", label: "Symptom Impact", entries: symptomEntries(symptomImpact) },
-          { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(sfvStatus.completed).description }, { label: "B. Date", value: formatDate(sfvStatus.completedAt) }, { label: "C. Reason not completed", value: valueText(sfv.reasonNotCompleted) }] },
+          { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(sfvStatus.completed).description }, { label: "B. Date", value: formatDate(sfvStatus.completedAt) }, { label: "C. Reason not completed", value: `${j2052ReasonNotCompleted(sfvStatus.completed, sfv.reasonNotCompleted).code} - ${j2052ReasonNotCompleted(sfvStatus.completed, sfv.reasonNotCompleted).description}` }] },
           { code: "J2053", label: "SFV Symptom Impact", entries: symptomEntries((sfvRequirement && sfvRequirement.symptomImpact) || {}) },
         ],
       },

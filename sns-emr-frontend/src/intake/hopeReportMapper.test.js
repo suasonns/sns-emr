@@ -809,6 +809,84 @@ describe("mapRnIcaToHopeReport — J2052 read-path (P1A)", () => {
     expect(responseDescription(second, "J2052")).toBe(responseDescription(first, "J2052"));
     expect(findItem(second, "J2052").entries[1].value).toBe(findItem(first, "J2052").entries[1].value);
   });
+
+  // HOPE SOURCE MODEL CORRECTION (2026-09-23): J2052C (Reason SFV Not
+  // Completed) must use only the verified CMS code set (1/2/3/9) and must
+  // never export a reason when the SFV IS completed.
+  it("J2052C: valid reason codes (1/2/3/9) are exported verbatim when the SFV is not completed", () => {
+    ["1", "2", "3", "9"].forEach((code) => {
+      const formData = formDataWithModerateSymptomTrigger({ reasonNotCompleted: code });
+      const sfvRequirement = { status: "OPEN", completedAt: null };
+      const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+      expect(findItem(report, "J2052").entries[2].value.startsWith(`${code} -`)).toBe(true);
+    });
+  });
+
+  it("J2052C: an unsupported/free-text reason value is rejected (not passed through)", () => {
+    const formData = formDataWithModerateSymptomTrigger({ reasonNotCompleted: "patient moved away" });
+    const sfvRequirement = { status: "OPEN", completedAt: null };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[2].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+  });
+
+  it("J2052C: a completed SFV (J2052A = Yes) never exports a not-completed reason, even if one is present in form_data", () => {
+    const formData = formDataWithModerateSymptomTrigger({ reasonNotCompleted: "1" });
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z" };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[2].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+  });
+
+  it("J2052B: an SFV that is not completed (J2052A = No) never exports a completion date", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "OPEN", completedAt: null };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[1].value).toBe(PLACEHOLDER);
+  });
+});
+
+// HOPE SOURCE MODEL CORRECTION (2026-09-23): J2053 must support the full
+// verified CMS response set 0/1/2/3/9 -- not a 0-3-only model -- and must
+// never silently convert a missing/unsupported value into 0.
+describe("mapRnIcaToHopeReport — J2053 verified CMS response set (0/1/2/3/9)", () => {
+  function formDataWithModerateSymptomTrigger(sfvOverrides = {}) {
+    return baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningDate: "2026-01-01", ...sfvOverrides },
+    });
+  }
+
+  it("code 9 (Not applicable) is a distinct, supported J2053 value -- not converted to 0", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { nausea: "9" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2053").entries[3].value).toBe("9 - Not applicable");
+    expect(findItem(report, "J2053").entries[3].value).not.toBe("0 - Not at all");
+  });
+
+  it("every one of the 8 J2053 symptoms independently supports codes 0/1/2/3/9", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const values = { pain: "0", shortnessOfBreath: "1", anxiety: "2", nausea: "3", vomiting: "9", diarrhea: "0", constipation: "1", agitation: "2" };
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: values };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    const entries = findItem(report, "J2053").entries;
+    expect(entries[0].value).toBe("0 - Not at all");
+    expect(entries[1].value).toBe("1 - Slight");
+    expect(entries[2].value).toBe("2 - Moderate");
+    expect(entries[3].value).toBe("3 - Severe");
+    expect(entries[4].value).toBe("9 - Not applicable");
+    expect(entries[5].value).toBe("0 - Not at all");
+    expect(entries[6].value).toBe("1 - Slight");
+    expect(entries[7].value).toBe("2 - Moderate");
+  });
+
+  it("a missing symptom-impact value is exported as the placeholder, never coerced to 0", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { pain: "2" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    // shortnessOfBreath was never documented -- must be the placeholder, not "0 - Not at all".
+    expect(findItem(report, "J2053").entries[1].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+    expect(findItem(report, "J2053").entries[1].value).not.toBe("0 - Not at all");
+  });
 });
 
 // Phase 3 — J2053 capture/export path (Option A, docs/tenant-platform/

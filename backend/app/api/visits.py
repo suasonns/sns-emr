@@ -4135,10 +4135,20 @@ _SYMPTOM_IMPACT_KEYS = (
 )
 def _extract_symptom_impact_from_content(content: Any) -> Optional[Dict[str, str]]:
     """Reads the J2053 symptom-impact object from a ClinicalNote.content
-    JSON blob -- the SAME symptom_impact/symptomImpact key/vocabulary
-    already read by _extract_j2051_impacts_from_notes for trigger-visit
-    J2051 detection, just applied to the completion visit's own note
-    instead. Never creates or reads a second storage location."""
+    JSON blob -- the SAME symptom_impact/symptomImpact JSON KEY that
+    _extract_j2051_impacts_from_notes also reads on the *triggering*
+    visit's notes, but NOT the same value vocabulary: that function
+    ranks word-based severities (MILD/MODERATE/SEVERE) via
+    _severity_rank() for J2051 trigger-detection purposes, while this
+    function requires the verified CMS J2053 response set -- the
+    numeric-string codes "0"/"1"/"2"/"3"/"9" (matching
+    VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES, hopeReportMapper.js's
+    IMPACT_MAP, and CMS HOPE Guidance Manual v1.02 J2053: 0=Not at all,
+    1=Slight, 2=Moderate, 3=Severe, 9=Not applicable). Any value outside
+    that verified set (arbitrary text, legacy word-based severities,
+    etc.) is dropped rather than passed through, so an unsupported value
+    can never be silently exported as if it were a verified J2053 code.
+    Never creates or reads a second storage location."""
     if not isinstance(content, dict):
         return None
     raw = content.get("symptom_impact") or content.get("symptomImpact")
@@ -4147,7 +4157,7 @@ def _extract_symptom_impact_from_content(content: Any) -> Optional[Dict[str, str
     result = {
         key: str(raw[key]).strip()
         for key in _SYMPTOM_IMPACT_KEYS
-        if raw.get(key) not in (None, "")
+        if str(raw.get(key)).strip() in VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES
     }
     return result or None
 @router.get("/sfv-requirements", response_model=list[SfvRequirementSummary])
