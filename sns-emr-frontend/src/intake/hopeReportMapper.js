@@ -408,6 +408,15 @@ function isModerateOrSevere(value) {
 // This function no longer falls back to the RNICA form's status fields
 // for J2052, by design: a missing/unfetched `sfvRequirement` means
 // "not completed", not "trust the frontend's self-attestation".
+//
+// J2053 (P1B / Phase 3, docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md,
+// Option A) is likewise read exclusively from `sfvRequirement.symptomImpact`
+// -- the completion visit's OWN ClinicalNote.content.symptom_impact,
+// surfaced by the backend's `/visits/sfv-requirements` endpoint -- never
+// from the RNICA trigger form's `sfv.symptomImpactAtSfv` self-attestation.
+// `symptomImpactDocumented`/`exportReady` implement the export-readiness
+// validation rule: a COMPLETED SFV with no symptom impact documented on
+// its completion visit is not export-ready for J2053.
 export function getSfvStatus(formData = {}, sfvRequirement = null) {
   const symptomImpact = formData.symptomImpact || {};
   const sfv = formData.sfv || {};
@@ -419,6 +428,10 @@ export function getSfvStatus(formData = {}, sfvRequirement = null) {
   const dueDate = required ? addDays(screeningDate, 2) : "";
   const completed = Boolean(sfvRequirement && sfvRequirement.status === "COMPLETED");
   const completedAt = completed ? sfvRequirement.completedAt : "";
+  const symptomImpactDocumented = Boolean(
+    sfvRequirement && sfvRequirement.symptomImpact && Object.keys(sfvRequirement.symptomImpact).length > 0
+  );
+  const exportReady = !completed || symptomImpactDocumented;
   const statusLabel = !required
     ? "No SFV trigger identified"
     : completed
@@ -427,7 +440,9 @@ export function getSfvStatus(formData = {}, sfvRequirement = null) {
   const note = !required
     ? "No J2051 item is currently Moderate or Severe."
     : completed
-      ? "J2052A is complete; J2053 follow-up symptom impact may be documented by an RN or LPN/LVN."
+      ? symptomImpactDocumented
+        ? "J2052A is complete; J2053 follow-up symptom impact was documented on the completion visit."
+        : "J2052A is complete, but J2053 follow-up symptom impact has not yet been documented on the completion visit -- export is blocked until it is."
       : `Any Moderate or Severe J2051 symptom requires an in-person SFV within 2 calendar days${screeningDate ? ` of ${formatDate(screeningDate)}` : ""}.`;
   return {
     required,
@@ -438,8 +453,21 @@ export function getSfvStatus(formData = {}, sfvRequirement = null) {
     triggeredSymptoms,
     statusLabel,
     note,
+    symptomImpactDocumented,
+    exportReady,
   };
 }
+
+// Standalone export-readiness check (Phase 4/J2053 validation), usable
+// wherever only the sfvRequirement snapshot is available (no formData).
+// A COMPLETED SFV requirement must have symptom impact documented on its
+// own completion visit before it may be treated as HOPE-export-ready for
+// J2053 -- legacy RNICA-trigger-only values are never sufficient.
+export function isSfvExportReady(sfvRequirement) {
+  if (!sfvRequirement || sfvRequirement.status !== "COMPLETED") return true;
+  return Boolean(sfvRequirement.symptomImpact && Object.keys(sfvRequirement.symptomImpact).length > 0);
+}
+
 
 function activeDiagnosisFlag(diagnoses = {}, matcher) {
   return diagnosisEntries(diagnoses).some((entry) => matcher.test(entry.toLowerCase()));
@@ -630,7 +658,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "J2050", label: "Symptom Impact Screening", entries: [{ label: "A. Completed?", value: boolCode(Boolean(sfv.symptomImpactScreeningCompleted || symptomImpact.assessmentDate)).description }, { label: "B. Date", value: formatDate(sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate) }] },
           { code: "J2051", label: "Symptom Impact", entries: symptomEntries(symptomImpact) },
           { code: "J2052", label: "Symptom Follow-up Visit (SFV)", entries: [{ label: "A. In-person SFV completed?", value: boolCode(sfvStatus.completed).description }, { label: "B. Date", value: formatDate(sfvStatus.completedAt) }, { label: "C. Reason not completed", value: valueText(sfv.reasonNotCompleted) }] },
-          { code: "J2053", label: "SFV Symptom Impact", entries: symptomEntries(sfv.symptomImpactAtSfv || {}) },
+          { code: "J2053", label: "SFV Symptom Impact", entries: symptomEntries((sfvRequirement && sfvRequirement.symptomImpact) || {}) },
         ],
       },
       {

@@ -26,6 +26,16 @@ export interface SfvRequirementSummary {
   status: SfvRequirementStatus;
   dueAt?: string | null;
   completedAt?: string | null;
+  /** HOPE J2053 -- the completion visit's own ClinicalNote.content
+   * .symptom_impact, keyed by the shared 8-symptom vocabulary (see
+   * VisitNoteSymptomImpact in api/visitNotes.ts). Null/undefined when
+   * the requirement has no completion visit yet, or that visit's note
+   * has not documented symptom impact. */
+  symptomImpact?: Record<string, string> | null;
+  /** True if at least one symptomImpact key has a documented value.
+   * Used to enforce the J2053 export-readiness rule: a COMPLETED SFV
+   * with no symptom impact documented is not export-ready. */
+  symptomImpactDocumented?: boolean;
 }
 
 export interface SfvCompletionAuthor {

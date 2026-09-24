@@ -12,6 +12,8 @@ import {
 import {
   VISIT_NOTE_FORM_TYPES,
   VISIT_NOTE_CARE_LEVELS,
+  VISIT_NOTE_SYMPTOM_IMPACT_KEYS,
+  VISIT_NOTE_SYMPTOM_IMPACT_VALUE_OPTIONS,
   createVisitNote,
   getVisitNote,
   updateVisitNote,
@@ -55,6 +57,9 @@ const DEFAULT_CONTENT = {
   duration: "",
   entered_by: "",
   staff_assigned: "",
+  // HOPE J2053 symptom impact, captured on the SFV completion visit
+  // (see SymptomFollowUpVisitSection / J2053_SOURCE_OF_TRUTH_ANALYSIS.md).
+  symptom_impact: null,
   pain: { controlled: "", pain_level: null, other_observation: "" },
   vitals: {
     temperature: "",
@@ -1023,7 +1028,7 @@ function VisitChecklistCard({ checklist, onChange, disabled, styles, COLORS }) {
 // the action; the server still independently validates visit
 // separateness, ordering, tenant/patient match, and nursing-credential
 // authorization and can reject the request even if this UI enabled it.
-export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, styles, COLORS }) {
+export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, styles, COLORS, symptomImpact, onSymptomImpactChange }) {
   const [requirements, setRequirements] = useState([]);
   const [loading, setLoading] = useState(true);
   const [completingId, setCompletingId] = useState(null);
@@ -1045,6 +1050,11 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
 
   const openRequirements = requirements.filter((r) => r.status === "OPEN" || r.status === "OVERDUE");
   const completedHere = requirements.filter((r) => r.completionVisitId === visitId);
+  // HOPE J2053 capture must be offered whenever this visit either has an
+  // outstanding SFV to complete, or already completed one here (so values
+  // can still be documented/corrected before the note is finalized) --
+  // docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md, Option A.
+  const showSymptomImpactCapture = openRequirements.length > 0 || completedHere.length > 0;
 
   if (loading) {
     return <Card title="Symptom Follow-Up Visit" styles={styles}><div style={{ fontSize: 12, color: COLORS.gray }}>Loading…</div></Card>;
@@ -1070,6 +1080,16 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
       })
       .catch((err) => setError(describeSfvError(err.code) || err.message))
       .finally(() => setCompletingId(null));
+  };
+
+  const handleSymptomImpactValueChange = (key, value) => {
+    const next = { ...(symptomImpact || {}) };
+    if (value) {
+      next[key] = value;
+    } else {
+      delete next[key];
+    }
+    onSymptomImpactChange?.(next);
   };
 
   return (
@@ -1109,9 +1129,35 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
           </button>
         </div>
       ))}
+      {showSymptomImpactCapture ? (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${COLORS.mapControlBorder || "#334155"}` }}>
+          <div style={{ fontSize: 12.5, fontWeight: 600, color: COLORS.dark, marginBottom: 6 }}>
+            HOPE J2053 -- Symptom Impact at Follow-Up Visit
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8 }}>
+            {VISIT_NOTE_SYMPTOM_IMPACT_KEYS.map(([key, label]) => (
+              <label key={key} style={{ display: "flex", flexDirection: "column", gap: 2, fontSize: 12, color: COLORS.dark }}>
+                {label}
+                <select
+                  value={(symptomImpact || {})[key] || ""}
+                  disabled={isFinalized}
+                  onChange={(event) => handleSymptomImpactValueChange(key, event.target.value)}
+                  style={{ padding: "4px 6px", fontSize: 12, borderRadius: 4, border: `1px solid ${COLORS.mapControlBorder || "#334155"}` }}
+                >
+                  <option value="">— Not documented —</option>
+                  {VISIT_NOTE_SYMPTOM_IMPACT_VALUE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+              </label>
+            ))}
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }
+
 
 function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, styles, COLORS }) {
   const [content, setContent] = useState(DEFAULT_CONTENT);
@@ -1272,6 +1318,8 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
           isFinalized={isFinalized}
           styles={styles}
           COLORS={COLORS}
+          symptomImpact={content.symptom_impact}
+          onSymptomImpactChange={(next) => setContent((current) => ({ ...current, symptom_impact: next }))}
         />
       </Section>
 

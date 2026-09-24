@@ -2697,6 +2697,41 @@ class VisitNoteSupervisorySubformRequest(BaseModel):
 class VisitNoteSupervisoryReviewRequest(BaseModel):
     hha: Optional[VisitNoteSupervisorySubformRequest] = None
     lvn_lpn: Optional[VisitNoteSupervisorySubformRequest] = None
+# HOPE J2053 symptom-impact fields, captured on the SFV completion visit
+# itself (docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md,
+# Option A -- reuse ClinicalNote.content.symptom_impact, no new column).
+# Same 8-key / 0-3 (+9 = N/A) vocabulary already used by
+# app.services.evidence.structured_findings's symptomImpact concept
+# cross-writes and by hopeReportMapper.js's IMPACT_MAP/IMPACT_KEYS on the
+# frontend -- do not invent a second vocabulary here.
+VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES = {"0", "1", "2", "3", "9"}
+class VisitNoteSymptomImpactRequest(BaseModel):
+    pain: Optional[str] = None
+    shortnessOfBreath: Optional[str] = None
+    anxiety: Optional[str] = None
+    nausea: Optional[str] = None
+    vomiting: Optional[str] = None
+    diarrhea: Optional[str] = None
+    constipation: Optional[str] = None
+    agitation: Optional[str] = None
+    @field_validator(
+        "pain",
+        "shortnessOfBreath",
+        "anxiety",
+        "nausea",
+        "vomiting",
+        "diarrhea",
+        "constipation",
+        "agitation",
+    )
+    @classmethod
+    def _validate_symptom_impact_value(cls, value: Optional[str]):
+        if value is None or value == "":
+            return None
+        normalized = str(value).strip()
+        if normalized not in VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES:
+            raise ValueError(f"Unsupported symptom impact value: {value}")
+        return normalized
 class VisitNoteContentRequest(BaseModel):
     """
     Full content payload for the RN/LVN Visit Notes module. The Visit
@@ -2729,6 +2764,11 @@ class VisitNoteContentRequest(BaseModel):
     supervisory_review: Optional[VisitNoteSupervisoryReviewRequest] = None
     care_provided: Optional[VisitNoteCareProvidedRequest] = None
     visit_checklist: Optional[VisitNoteChecklistRequest] = None
+    # HOPE J2053 symptom impact captured on the completion (SFV) visit --
+    # not cleared when a non-full-body form_type collapses the rest of
+    # the clinical body (see is_full_body handling in update_visit_note):
+    # SFV completion is not restricted to ASSESS/ROUTINE_VISIT form types.
+    symptom_impact: Optional[VisitNoteSymptomImpactRequest] = None
     # ---- Death Visit only ----
     death_disposal_notes: Optional[str] = None
     death_disposal: Optional[VisitNoteDeathDisposalRequest] = None
@@ -4071,8 +4111,45 @@ class SfvRequirementSummary(BaseModel):
     status: str
     dueAt: Optional[str] = None
     completedAt: Optional[str] = None
-
-
+    # HOPE J2053 (docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md,
+    # Option A): the completion visit's OWN ClinicalNote.content.symptom_impact
+    # -- never a second, duplicated store on SFVRequirement itself. Populated
+    # only when this requirement has a completed_visit_id whose primary
+    # ClinicalNote carries a symptom_impact/symptomImpact key.
+    symptomImpact: Optional[Dict[str, str]] = None
+    # True if at least one of the 8 symptom-impact keys has a documented
+    # (non-null/non-empty) value on the completion visit's note. Used by
+    # the frontend to enforce the export-readiness rule: a COMPLETED SFV
+    # with no symptom impact documented must not be treated as HOPE
+    # export-ready for J2053.
+    symptomImpactDocumented: bool = False
+_SYMPTOM_IMPACT_KEYS = (
+    "pain",
+    "shortnessOfBreath",
+    "anxiety",
+    "nausea",
+    "vomiting",
+    "diarrhea",
+    "constipation",
+    "agitation",
+)
+def _extract_symptom_impact_from_content(content: Any) -> Optional[Dict[str, str]]:
+    """Reads the J2053 symptom-impact object from a ClinicalNote.content
+    JSON blob -- the SAME symptom_impact/symptomImpact key/vocabulary
+    already read by _extract_j2051_impacts_from_notes for trigger-visit
+    J2051 detection, just applied to the completion visit's own note
+    instead. Never creates or reads a second storage location."""
+    if not isinstance(content, dict):
+        return None
+    raw = content.get("symptom_impact") or content.get("symptomImpact")
+    if not isinstance(raw, dict):
+        return None
+    result = {
+        key: str(raw[key]).strip()
+        for key in _SYMPTOM_IMPACT_KEYS
+        if raw.get(key) not in (None, "")
+    }
+    return result or None
 @router.get("/sfv-requirements", response_model=list[SfvRequirementSummary])
 def list_sfv_requirements(
     patientId: uuid.UUID,
@@ -4095,6 +4172,24 @@ def list_sfv_requirements(
         .order_by(SFVRequirement.due_at.asc().nullslast())
         .all()
     )
+    completion_visit_ids = [
+        r.completed_visit_id for r in requirements if r.completed_visit_id
+    ]
+    symptom_impact_by_visit_id: Dict[uuid.UUID, Dict[str, str]] = {}
+    if completion_visit_ids:
+        completion_notes = (
+            db.query(ClinicalNote)
+            .execution_options(skip_tenant_filter=True)
+            .filter(
+                ClinicalNote.visit_id.in_(completion_visit_ids),
+                ClinicalNote.is_primary_form.is_(True),
+            )
+            .all()
+        )
+        for note in completion_notes:
+            extracted = _extract_symptom_impact_from_content(note.content)
+            if extracted:
+                symptom_impact_by_visit_id[note.visit_id] = extracted
     return [
         SfvRequirementSummary(
             sfvRequirementId=str(r.id),
@@ -4105,9 +4200,12 @@ def list_sfv_requirements(
             status=r.status,
             dueAt=r.due_at.isoformat() if r.due_at else None,
             completedAt=r.completed_at.isoformat() if r.completed_at else None,
+            symptomImpact=symptom_impact_by_visit_id.get(r.completed_visit_id),
+            symptomImpactDocumented=bool(symptom_impact_by_visit_id.get(r.completed_visit_id)),
         )
         for r in requirements
     ]
+
 
 
 def _run_phase_b_finalize_hooks(

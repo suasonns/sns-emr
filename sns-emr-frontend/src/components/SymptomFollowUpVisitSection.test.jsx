@@ -89,4 +89,52 @@ describe("SymptomFollowUpVisitSection", () => {
     expect(await screen.findByText("error:SAME_VISIT_NOT_ALLOWED")).toBeTruthy();
     expect(screen.queryByText(/completed and recorded/i)).toBeNull();
   });
+
+  // Phase 3 -- J2053 manual symptom-impact capture (Option A,
+  // docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md). The completion
+  // visit itself must expose manual capture controls for the same 8-field
+  // vocabulary used by hopeReportMapper.js's IMPACT_MAP/IMPACT_KEYS.
+  it("renders J2053 symptom-impact capture controls when an SFV is open on this visit", async () => {
+    mocks.listSfvRequirements.mockResolvedValue([OPEN_REQUIREMENT]);
+    render(
+      <SymptomFollowUpVisitSection patientId="patient-1" visitId="visit-2" isFinalized={false} styles={STYLES} COLORS={COLORS} symptomImpact={{}} onSymptomImpactChange={() => {}} />
+    );
+    expect(await screen.findByText(/HOPE J2053/i)).toBeTruthy();
+    expect(screen.getByText("Pain")).toBeTruthy();
+    expect(screen.getByText("Shortness of Breath")).toBeTruthy();
+    expect(screen.getByText("Agitation")).toBeTruthy();
+  });
+
+  it("renders J2053 symptom-impact capture controls when the SFV was already completed on this visit", async () => {
+    mocks.listSfvRequirements.mockResolvedValue([
+      { sfvRequirementId: "req-1", patientId: "patient-1", triggerVisitId: "trigger-visit-1", status: "COMPLETED", completionVisitId: "visit-2", completedAt: "2026-01-11T00:00:00Z" },
+    ]);
+    render(
+      <SymptomFollowUpVisitSection patientId="patient-1" visitId="visit-2" isFinalized symptomImpact={{ pain: "2" }} onSymptomImpactChange={() => {}} styles={STYLES} COLORS={COLORS} />
+    );
+    expect(await screen.findByText(/HOPE J2053/i)).toBeTruthy();
+  });
+
+  it("calls onSymptomImpactChange with the updated symptom-impact map when a value is selected", async () => {
+    mocks.listSfvRequirements.mockResolvedValue([OPEN_REQUIREMENT]);
+    const onSymptomImpactChange = vi.fn();
+    render(
+      <SymptomFollowUpVisitSection patientId="patient-1" visitId="visit-2" isFinalized={false} styles={STYLES} COLORS={COLORS} symptomImpact={{}} onSymptomImpactChange={onSymptomImpactChange} />
+    );
+    await screen.findByText(/HOPE J2053/i);
+    const painSelect = screen.getByLabelText("Pain");
+    fireEvent.change(painSelect, { target: { value: "2" } });
+    expect(onSymptomImpactChange).toHaveBeenCalledWith({ pain: "2" });
+  });
+
+  it("disables symptom-impact capture controls once the visit is finalized", async () => {
+    mocks.listSfvRequirements.mockResolvedValue([
+      { sfvRequirementId: "req-1", patientId: "patient-1", triggerVisitId: "trigger-visit-1", status: "COMPLETED", completionVisitId: "visit-2", completedAt: "2026-01-11T00:00:00Z" },
+    ]);
+    render(
+      <SymptomFollowUpVisitSection patientId="patient-1" visitId="visit-2" isFinalized symptomImpact={{ pain: "2" }} onSymptomImpactChange={() => {}} styles={STYLES} COLORS={COLORS} />
+    );
+    const painSelect = await screen.findByLabelText("Pain");
+    expect(painSelect.disabled).toBe(true);
+  });
 });

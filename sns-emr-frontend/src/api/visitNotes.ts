@@ -147,6 +147,42 @@ export type VisitNoteBodySystem = {
   adl_total_score?: number | null;
 };
 
+/** HOPE J2053 symptom-impact fields captured on the SFV completion
+ * visit itself (docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md,
+ * Option A). Persisted as ClinicalNote.content.symptom_impact -- NOT a
+ * new SFVRequirement column -- using the same 8-key / "0"-"3" (+"9" =
+ * Not Applicable) vocabulary as hopeReportMapper.js's IMPACT_MAP /
+ * IMPACT_KEYS and the backend's symptomImpact concept cross-writes. */
+export type VisitNoteSymptomImpact = {
+  pain?: string | null;
+  shortnessOfBreath?: string | null;
+  anxiety?: string | null;
+  nausea?: string | null;
+  vomiting?: string | null;
+  diarrhea?: string | null;
+  constipation?: string | null;
+  agitation?: string | null;
+};
+
+export const VISIT_NOTE_SYMPTOM_IMPACT_KEYS: Array<[keyof VisitNoteSymptomImpact, string]> = [
+  ["pain", "Pain"],
+  ["shortnessOfBreath", "Shortness of Breath"],
+  ["anxiety", "Anxiety"],
+  ["nausea", "Nausea"],
+  ["vomiting", "Vomiting"],
+  ["diarrhea", "Diarrhea"],
+  ["constipation", "Constipation"],
+  ["agitation", "Agitation"],
+];
+
+export const VISIT_NOTE_SYMPTOM_IMPACT_VALUE_OPTIONS = [
+  { value: "0", label: "0 - Not at all" },
+  { value: "1", label: "1 - Slight" },
+  { value: "2", label: "2 - Moderate" },
+  { value: "3", label: "3 - Severe" },
+  { value: "9", label: "9 - Not applicable" },
+];
+
 export const VISIT_NOTE_BODY_SYSTEMS = [
   { key: "neuro_mental_sensory", label: "Neuro/Mental/Sensory" },
   { key: "cardiovascular", label: "Cardiovascular" },
@@ -320,6 +356,9 @@ export type VisitNoteContent = {
   supervisory_review?: VisitNoteSupervisoryReview | null;
   care_provided?: VisitNoteCareProvided | null;
   visit_checklist?: VisitNoteChecklist | null;
+  /** HOPE J2053 -- see VisitNoteSymptomImpact above. Captured on the SFV
+   * completion visit regardless of form_type/full-body status. */
+  symptom_impact?: VisitNoteSymptomImpact | null;
 
   death_disposal_notes?: string | null;
   death_disposal?: VisitNoteDeathDisposal | null;
