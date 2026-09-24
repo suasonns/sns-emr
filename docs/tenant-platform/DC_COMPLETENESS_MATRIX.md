@@ -43,11 +43,24 @@ performed.
 | OPEN_QUESTION | 0 |
 | **Total** | **21** |
 
-**Completeness: 1/21 fully VERIFIED (5%).** Discharge does not export
-J2052/J2053, so it received no benefit from the SFV ownership fix and
-carries no open questions from that workstream (I0000/J2050 are also not
-emitted at Discharge — confirmed via `DC_PROVENANCE_TRACE.md`'s
-21-item scope). The single highest-value item to check next is A2115:
-capture-time validation is real and enforced, but the CMS-code accuracy
-of the `GRANULAR_DISCHARGE_REASONS` registry itself was not
-independently cross-checked against CMS text this pass.
+**COMPLETENESS: NOT_VERIFIED. DENOMINATOR: NOT_VERIFIED.**
+
+Same caveat: the 21-item denominator is an emitted-code count, not a
+CMS-authority-confirmed applicable-item count. Retained:
+
+- **CMS item-set version**: NOT_VERIFIED
+- **Total applicable items**: NOT_VERIFIED (21 is emitted-code count)
+- **Verified items**: 1 (A0250)
+- **NOT_VERIFIED items**: 20
+- **OPEN_QUESTION items**: 0
+- **Blocked/Excluded items**: 0
+- **Reproducible counting command**: none exists (hand-compiled)
+
+Discharge does not export J2052/J2053, so it received no benefit from
+the SFV ownership fix and carries no open questions from that
+workstream (I0000/J2050 are also not emitted at Discharge — confirmed
+via `DC_PROVENANCE_TRACE.md`'s 21-item scope). The single highest-value
+item to check next is A2115: capture-time validation is real and
+enforced, but the CMS-code accuracy of the `GRANULAR_DISCHARGE_REASONS`
+registry itself was not independently cross-checked against CMS text
+this pass.

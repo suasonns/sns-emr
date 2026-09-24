@@ -21,9 +21,33 @@ Codes: 1 = Patient/caregiver declined visit, 2 = Patient unavailable,
 | `CHHAVisitOutcome` | Home Health Aide visit outcome/logistics record, one row per `visit_id` | `backend/app/models/chha_visit_outcome.py` (`reason_for_visit`, `exception_narrative`) | NO — free `String(64)`, no fixed code list | NO — wrong discipline/workflow scope (CHHA aide, not RN/LPN SFV) |
 | SFV completion API | `POST /visits/sfv-requirements/{id}/complete` only handles the "SFV was completed" case | `api/visits.py::complete_sfv_requirement`, `hope_phase_b_engine.py::complete_sfv_requirement_from_visit` | N/A | N/A — no "not completed" branch exists in the backend at all; confirmed by trace, not assumed |
 
+## Additional Candidates Re-Checked (post-commit verification pass)
+
+Per instruction to exhaust scheduling, missed-visit, contact-attempt,
+decline, unavailable, cancellation, void, task-closure, audit-event, and
+historical/deprecated candidates before retaining "NO AUTHORITATIVE
+SOURCE FOUND," the following were additionally searched this pass
+(commit `e3806cb` and prior). None qualifies — none is scoped to a
+specific `SFVRequirement`, and none distinguishes CMS codes 1/2/3/9:
+
+| Candidate | Repository Evidence | Why it does not qualify |
+|---|---|---|
+| `ClinicalOutcomeRecord` / `ClinicalOutcomeAuditEvent` | `backend/app/models/clinical_outcome.py` — California two-hour response tracking (issue #143), FKs to `source_visit_id`/`source_task_id`, not `sfv_requirement_id` | Different workflow entirely (response-time compliance, not SFV completion reason); no code set matching 1/2/3/9 |
+| `PatientResponseEvent` / `NurseResponseAssignment` / `PatientResponseAuditEvent` | `backend/app/models/patient_response.py` — same California two-hour chain | No relationship to `SFVRequirement` or HOPE triggers at all |
+| Broad grep for `contact_attempt`, `unable_to_contact`, `patient_declined`, `patient_unavailable`, `cancellation_reason`, `missed_visit`, `no_show`, `task_closure`, `audit_event`, `void_reason` (case-insensitive, `backend/app`) | 42 files matched; manually reviewed the visit/outcome-adjacent ones (above); remainder are generic audit-logging infrastructure (`app/core/audit_events.py`, billing audit routers, document/bereavement notification services) unrelated to SFV | Confirmed unrelated by direct file review, not assumed from a keyword match alone |
+| `sfv_engine.py::create_sfv_requirement_if_needed` (legacy/dead code, confirmed unused this session) | Re-searched for `reason`/`declin`/`cancel`/`void`/`not_completed` — **no matches** | Confirms this dead function also carries no reason-code field, closing off the last "historical implementation" candidate |
+
+**Not exhaustively re-verified this pass**: scheduling/task-management
+modules outside the `sfv`/`visit`/`clinical_outcome`/`patient_response`
+model files (e.g., a generic `tasks` table exists per FK references in
+`clinical_outcome.py`, but its own model file was not opened this pass).
+This is disclosed as a residual gap, not silently treated as closed.
+
 ## Finding
 
-**AUTHORITATIVE SOURCE FOUND: NO.**
+**AUTHORITATIVE SOURCE FOUND: NO** (re-affirmed, with an expanded and
+now-documented candidate set; not merely re-asserted from the prior
+pass).
 
 Every candidate fails the AUTHORITATIVE and/or MATCHES-CMS tests. The gap
 is structural, not a storage-location choice: no backend workflow today

@@ -15,6 +15,20 @@ Rule in effect: SNS Review Rule. `STATUS` values are restricted to
 `VERIFIED`, `NOT_VERIFIED`, `OPEN_QUESTION` and cited to their source
 document — no new claims are made in this file.
 
+**Post-commit verification correction (2026-09-23, re-verified against
+commit `e3806cb`):** J2052C, I0000, and J2050 below were re-traced with
+an expanded candidate search and are now cross-linked to
+`J2052C_DECISION_RECORD.md`, `I0010_PRINCIPAL_DIAGNOSIS_PROVENANCE_
+TRACE.md`, and `J2050_PROVENANCE_TRACE.md` (the canonical, more detailed
+traces) rather than restating their conclusions here. A duplicate
+editable primary-diagnosis authority (`Patient.primary_diagnosis` vs.
+RNICA's `diagnoses.primaryDiagnosis`) is surfaced below — this is not a
+new defect: it is already documented in the pre-existing
+`RNICA_HOPE_SFV_FIELD_PLACEMENT_MAP.md:1363` as an accepted by-design
+separation, though whether that guidance is sufficient against
+cross-validation risk remains open (see
+`I0010_PRINCIPAL_DIAGNOSIS_PROVENANCE_TRACE.md` Section B.4).
+
 ---
 
 ## 1. J2052C — Reason SFV Not Completed
@@ -23,27 +37,27 @@ document — no new claims are made in this file.
 |---|---|
 | CMS Requirement | Required only when J2052A = No. Codes: 1 = declined, 2 = unavailable, 3 = unable to contact, 9 = none of the above |
 | Current SNS Source | None authoritative. Only candidate is `RNICA.jsx` `sfv.reasonNotCompleted` — free text, self-attestation at trigger time, not CMS-coded |
-| Verification Status | **NOT_VERIFIED** — no authoritative source exists (`J2052C_SOURCE_DISCOVERY.md`) |
+| Verification Status | **NOT_VERIFIED** — no authoritative source exists after an expanded candidate search (see `J2052C_DECISION_RECORD.md`, which supersedes `J2052C_SOURCE_DISCOVERY.md` as the canonical trace) |
 | Risk | Field would export as placeholder/blank or an unvalidated free-text value if wired without a fix; low risk of silent wrong-code export since no code mapping exists to misfire, but the item cannot be completed today |
-| Fix Required | Structural — no backend field/endpoint captures "why an SFV was not completed" at all today. Requires new capture workflow (Option A in `J2052C_SOURCE_DISCOVERY.md`), or an explicit decision to leave it unexported (Option B) |
+| Fix Required | Structural — no backend field/endpoint captures "why an SFV was not completed" at all today. Requires new capture workflow (Option A), or an explicit decision to leave it unexported (Option B) |
 | Blocked By | Romel decision (Option A vs. B) — already escalated, unresolved |
 | Priority | P1 |
 | Estimate Size | **Medium** (Option A: new field/endpoint + UI) or **Small** (Option B: document as permanent placeholder) |
 
 ---
 
-## 2. I0000 — Diagnosis List Summary
+## 2. I0000 / I0010 — Diagnosis Items
 
 | | |
 |---|---|
-| CMS Requirement | Not confirmed as a real, distinct CMS item code — not seen cited elsewhere in this engagement's CMS references |
-| Current SNS Source | `RnicaAssessment.form_data` → `diagnosisEntries(diagnoses)` (list join, internal summary row) |
-| Verification Status | **OPEN_QUESTION** — whether `I0000` is a genuine CMS item or an internal-only summary was never resolved (`HOPE_ITEM_PROVENANCE_MATRIX.md`) |
-| Risk | If exported under a real CMS item code without CMS confirmation, mis-tagged data could be submitted; if it's internal-only, no clinical risk but wastes an export slot |
-| Fix Required | CMS-authority lookup only — confirm whether `I0000` exists in the CMS HOPE item set; if not, remove/rename the export row (no code change beyond a decision) |
-| Blocked By | CMS authority confirmation (no repository ambiguity — this is a documentation/reference lookup, not a code trace) |
-| Priority | P3 |
-| Estimate Size | **Small** |
+| CMS Requirement | I0010 (Principal Diagnosis) is registry-confirmed as a declared HOPE code (`form_registry.py`); I0000 ("Comorbidities and Co-existing Conditions") is not in that registry and its CMS legitimacy is unconfirmed |
+| Current SNS Source | I0010: `RnicaAssessment.form_data.diagnoses.primaryDiagnosis`. I0000: `diagnosisList(diagnoses)` (corrected function citation — see `I0010_PRINCIPAL_DIAGNOSIS_PROVENANCE_TRACE.md`) |
+| Verification Status | I0000: **OPEN_QUESTION** (corroborated by pre-existing `ITEM_CODE_CONFLICT_MATRIX.md` Conflict 5). I0010: **NOT_VERIFIED** (CMS accuracy) + newly found **DUPLICATE_EDITABLE_AUTHORITY** vs. `Patient.primary_diagnosis` (Facesheet) |
+| Risk | I0000: mis-tagged data if exported under a non-real CMS code. I0010: the Facesheet's `primary_diagnosis` and RNICA's `diagnoses.primaryDiagnosis` can diverge with no reconciliation — only the RNICA value reaches the HOPE export |
+| Fix Required | I0000: CMS-authority lookup only. I0010: policy decision on single source of truth between Facesheet and RNICA diagnosis fields (no reconciliation implemented) |
+| Blocked By | CMS authority confirmation (I0000); Clinical Operations/Romel decision on diagnosis ownership (I0010) |
+| Priority | P3 (I0000) / P2 (I0010 duplicate-authority question, newly surfaced) |
+| Estimate Size | **Small** (I0000) / **Small–Medium** (I0010 policy decision + possible cross-validation) |
 
 ---
 
@@ -53,9 +67,9 @@ document — no new claims are made in this file.
 |---|---|
 | CMS Requirement | Boolean: was symptom-impact screening completed (and on what date) |
 | Current SNS Source | `RnicaAssessment.form_data` → `sfv.symptomImpactScreeningCompleted`/`.Date` OR `symptomImpact.assessmentDate` — reads RNICA **self-attestation**, not `SFVRequirement` |
-| Verification Status | **OPEN_QUESTION** — same self-attestation shape the P1A/P1B directives required removing for J2052/J2053, but J2050 itself was never in scope and was never fixed (`HOPE_ITEM_PROVENANCE_MATRIX.md`) |
-| Risk | Same category of risk J2052/J2053 had pre-fix: the screening-completed flag could reflect the RNICA form's self-report rather than the actual completed SFV/ClinicalNote record. Cross-timepoint leakage risk not yet ruled out for this specific field |
-| Fix Required | Trace whether `SFVRequirement`/`ClinicalNote` already carries an equivalent "screening completed" signal; if so, apply the same trigger-scoped ownership pattern used for J2052/J2053. If not, this is a smaller decision (documentation) than J2052C since no CMS code-set validation is involved (boolean + date only) |
+| Verification Status | **OPEN_QUESTION** — expanded trace completed post-commit; corrected finding: J2050 does **not** carry the cross-timepoint SFVRequirement-leak defect (it never reads `SFVRequirement`), but does carry an unvalidated OR-fallback and an unverified within-record staleness question (see `J2050_PROVENANCE_TRACE.md`, which supersedes the summary previously here) |
+| Risk | Not a cross-timepoint SFV leak (ruled out this pass — J2050 reads only the exported record's own `RnicaAssessment.form_data`, same isolation mechanism confirmed for the mapper generally). Residual risk: no CMS-authority confirmation of the response set, and an unvalidated OR between two independently-settable fields |
+| Fix Required | CMS-authority confirmation of the response set; decide whether the OR-fallback between `sfv.symptomImpactScreeningCompleted` and `symptomImpact.assessmentDate` needs validation/reconciliation |
 | Blocked By | Nothing external — this is a self-contained repository trace + possible reuse of the J2052/J2053 fix pattern |
 | Priority | P1 |
 | Estimate Size | **Small–Medium** |
@@ -124,21 +138,29 @@ document — no new claims are made in this file.
 
 ## Top 5 Blockers (priority order)
 
-1. **J2052C** — no authoritative source exists at all; structural gap; requires Romel decision before any fix
-2. **J2050** — still reads RNICA self-attestation, same defect class as pre-fix J2052/J2053; self-contained fix, no external blocker
-3. **I0000** — CMS-authority confirmation only; fastest to close
-4. **A2115 (Discharge)** — validated capture exists, but CMS-code crosswalk accuracy unconfirmed; highest-value single item in the completeness backlog
-5. **ADM/HUV1/HUV2/DC bulk item-level CMS re-derivation** — large, non-blocking-individually, but is the largest remaining share of NOT_VERIFIED rows
+1. **J2052C** — no authoritative source exists after expanded candidate search; structural gap; requires Romel decision before any fix (see `J2052C_DECISION_RECORD.md`)
+2. **I0010 duplicate editable authority** — `Patient.primary_diagnosis` (Facesheet) and RNICA's `diagnoses.primaryDiagnosis` are independently editable with no cross-validation; only RNICA's value reaches HOPE export. Not newly discovered — already documented in pre-existing `RNICA_HOPE_SFV_FIELD_PLACEMENT_MAP.md:1363` as an accepted by-design separation, but that guidance's sufficiency against cross-validation risk is unre-affirmed (see `I0010_PRINCIPAL_DIAGNOSIS_PROVENANCE_TRACE.md`)
+3. **J2050** — ruled out for cross-timepoint leakage this pass, but carries an unvalidated OR-fallback and CMS-authority gap; self-contained fix, no external blocker (see `J2050_PROVENANCE_TRACE.md`)
+4. **I0000** — CMS-authority confirmation only; fastest to close
+5. **A2115 (Discharge)** — validated capture exists, but CMS-code crosswalk accuracy unconfirmed; highest-value single item in the completeness backlog
 
 ## HOPE Generation Readiness
 
 **Blocking reason has changed**, per instruction:
 - ~~Ownership uncertainty~~ — **RESOLVED** (commit `c540e277`)
-- **Item completeness — OPEN** (this document's 7 items)
+- **Item completeness — OPEN** (this document's items)
+- **No CMS HOPE Item Set authority document exists anywhere in this
+  repository** (confirmed this pass) — every completeness figure in
+  `ADM/HUV1/HUV2/DC_COMPLETENESS_MATRIX.md` is now stated as
+  `COMPLETENESS: NOT_VERIFIED` / `DENOMINATOR: NOT_VERIFIED` rather than
+  a raw percentage, since no CMS-version-anchored applicable-item count
+  can be constructed from repository evidence alone.
 
 HOPE generation is not yet safe to begin. Earliest safe start requires,
-at minimum: J2052C decision (Romel) and J2050 fix, since both are P1 and
-touch fields already inside the exported item set today. ADM/HUV1/HUV2/DC
-bulk completeness (P2) does not need to fully complete before a first
-generation attempt, provided its NOT_VERIFIED status is explicitly
-disclosed as a known limitation rather than silently treated as verified.
+at minimum: J2052C decision (Romel), the I0010 duplicate-authority policy
+decision, and J2050's OR-fallback/CMS-response-set confirmation, since
+all three are P1/P2 and touch fields already inside the exported item
+set today. ADM/HUV1/HUV2/DC bulk completeness does not need to fully
+complete before a first generation attempt, provided its NOT_VERIFIED
+status is explicitly disclosed as a known limitation rather than
+silently treated as verified.

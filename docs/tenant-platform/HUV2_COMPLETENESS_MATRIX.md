@@ -62,7 +62,16 @@ performed.
 | OPEN_QUESTION | 2 (I0000, J2050) |
 | **Total** | **54** |
 
-**Completeness: 3/54 fully VERIFIED (6%).** Same category of gap as ADM/
-HUV1 — CMS-text-level re-derivation backlog, not a proven defect, except
-for J2052C, I0000, J2050, and the N05xx medication-source gap (all
-previously identified, unchanged by this reformatting).
+**COMPLETENESS: NOT_VERIFIED. DENOMINATOR: NOT_VERIFIED.**
+
+Same caveat as `ADM_COMPLETENESS_MATRIX.md`/`HUV1_COMPLETENESS_MATRIX.md`:
+the 54-item denominator is an emitted-code count, not a CMS-authority-
+confirmed applicable-item count. Retained:
+
+- **CMS item-set version**: NOT_VERIFIED
+- **Total applicable items**: NOT_VERIFIED (54 is emitted-code count)
+- **Verified items**: 3 (A0250, J2052 A/B, J2053)
+- **NOT_VERIFIED items**: 49
+- **OPEN_QUESTION items**: 2 (I0000, J2050)
+- **Blocked/Excluded items**: 0
+- **Reproducible counting command**: none exists (hand-compiled)
