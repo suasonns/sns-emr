@@ -1178,6 +1178,44 @@ being finalized (signed/submitted) before the completion action is
 offered, calling the new endpoint via the single client function
 `completeSfvRequirement` (`sns-emr-frontend/src/api/sfv.ts`).
 
+**Closure and post-close regression guidance ("FINAL SFV CLOSURE
+REVIEW", 2026-09-23):** P3-009 (and its P3-018/P3-019 refinements) is
+closed. The governing rule is credential-based, never title-based: a
+clinician may complete an SFV only when patient access, tenant access,
+visit access, documentation permission, authentication/signature
+permission, a qualifying nursing credential, a separate qualifying SFV
+encounter, and the required SFV content are ALL present. Any future
+change that touches `can_complete_sfv`, `User.role`/`User.discipline`
+normalization, or a role-migration script must re-verify the following
+before merge, and this list must not be shortened or collapsed into a
+single generic "role authorization" check:
+
+1. **NP remains included** as a qualifying nursing credential after any
+   role-model refactor — do not let a future `role == "RN"` shortcut
+   silently drop NP out of the nursing group.
+2. **LVN/LPN Case Manager remains included** — a `CASE_MANAGER`-role
+   caller whose `User.discipline` normalizes to LVN/LPN must still pass.
+3. **Social Worker Case Manager (and any other non-nursing-discipline
+   `CASE_MANAGER`) remains excluded** — `CASE_MANAGER` alone, with no
+   qualifying nursing discipline recorded, must still fail.
+4. **No role-migration script may make the bare `CASE_MANAGER` role
+   string independently sufficient again** — the discipline check is
+   the load-bearing gate, not a cosmetic add-on; migrations that
+   normalize/rename roles must preserve the `User.discipline` field's
+   authorization role for this check, or update `can_complete_sfv`
+   in the same change.
+
+These four checks are covered today by
+`test_complete_sfv_requirement_endpoint_authorized_np`,
+`test_complete_sfv_requirement_endpoint_authorized_lvn_case_manager`,
+`test_complete_sfv_requirement_endpoint_non_nursing_case_manager_rejected`,
+and the general `_SFV_QUALIFYING_NURSING_CREDENTIALS`/discipline-gate
+structure in `backend/app/core/patient_access.py` — reviewers should
+re-run `backend/tests/test_sfv_completion_api.py` (currently 23/23
+passing) as part of any PR that touches role/discipline normalization,
+and must not remove or collapse these tests into a single parameterized
+case without preserving independent pass/fail visibility per role.
+
 **Remaining open items (explicitly not built this pass, per product
 direction to avoid over-engineering):** a formal on-call
 scheduling/assignment subsystem (existing tenant/patient-access/capability
