@@ -229,9 +229,23 @@ export default function AuditLogs() {
   const rangeEnd = Math.min(offset + PAGE_SIZE, totalCount);
   const hasActiveFilters = Boolean(search || category || tenantId || rangeIdx !== 0);
 
+  // Keep the Event Details workspace populated by default (mirrors the
+  // persistent detail panel pattern used elsewhere in the Owner Platform,
+  // e.g. Tenant Management's "Selected Tenant" panel) instead of only
+  // appearing after a click.
+  useEffect(() => {
+    if (!loading && logs.length > 0 && !logs.some((l) => l.log_id === selectedEvent?.log_id)) {
+      setSelectedEvent(logs[0]);
+    }
+    if (!loading && logs.length === 0 && selectedEvent) {
+      setSelectedEvent(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, logs]);
+
   return (
-    <div className="max-w-[1400px] mx-auto">
-      <div className="flex items-start justify-between gap-4 mb-5">
+    <div className="flex flex-col gap-6">
+      <div className="flex items-start justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text-primary tracking-tight">Audit Logs</h1>
           <p className="text-sm text-text-secondary mt-1">
@@ -259,197 +273,206 @@ export default function AuditLogs() {
       </div>
 
       {error && (
-        <div className="mb-4 px-3 py-2.5 rounded-lg bg-status-critical/10 border border-status-critical/20 text-status-critical text-xs">
+        <div className="px-3 py-2.5 rounded-lg bg-status-critical/10 border border-status-critical/20 text-status-critical text-xs">
           {error}
         </div>
       )}
 
-      <SummaryChips counts={categoryCounts} activeCategory={category} onToggle={(v) => { setCategory(v); setOffset(0); }} />
+      {/* Command-center layout: investigation table on the left, a
+          permanent Event Details workspace on the right -- matching the
+          persistent detail-panel pattern used elsewhere in the Owner
+          Platform (e.g. Tenant Management's "Selected Tenant" panel)
+          instead of an on-click-only overlay. */}
+      <div className="flex items-start gap-6">
+        <div className="flex-1 min-w-0 flex flex-col gap-4">
+          <SummaryChips counts={categoryCounts} activeCategory={category} onToggle={(v) => { setCategory(v); setOffset(0); }} />
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap items-center gap-2 mb-4 px-4 py-3 rounded-xl border border-sns-border bg-sns-card">
-        <div className="relative flex-1 min-w-[220px] max-w-[340px]">
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">🔍</span>
-          <input
-            type="text"
-            value={searchInput}
-            onChange={(e) => setSearchInput(e.target.value)}
-            placeholder="Search events, users, actions, IPs..."
-            className="w-full h-9 pl-9 pr-3 rounded-lg border border-sns-border bg-sns-elevated text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-ai/50 transition-colors"
-          />
-        </div>
-        <FilterDropdown
-          label="Category"
-          value={category || ''}
-          onChange={(v) => { setCategory(v || null); setOffset(0); }}
-          options={[{ value: '', label: 'All' }, ...CATEGORY_META.map((c) => ({ value: c.key, label: c.label }))]}
-        />
-        <FilterDropdown
-          label="Tenant"
-          value={tenantId}
-          onChange={(v) => { setTenantId(v); setOffset(0); }}
-          options={[{ value: '', label: 'All' }, ...tenants.map((t) => ({ value: t.tenant_id, label: t.display_name }))]}
-        />
-        <FilterDropdown
-          label="Date Range"
-          value={rangeIdx}
-          onChange={(v) => { setRangeIdx(Number(v)); setOffset(0); }}
-          options={DATE_RANGE_OPTIONS.map((r, i) => ({ value: i, label: r.label }))}
-        />
-        {hasActiveFilters && (
-          <button
-            type="button"
-            onClick={handleClearFilters}
-            className="text-xs font-semibold text-ai hover:underline ml-1"
-          >
-            Clear Filters
-          </button>
-        )}
-      </div>
-
-      {/* Table -- semantic <table> with fixed column widths via <colgroup>.
-          (A CSS-grid div layout with arbitrary grid-cols-[...] classes was
-          tried first but produced unreliable column tracks; a real table
-          is the stable, standards-based layout the browser guarantees.) */}
-      <div className="rounded-xl border border-sns-border bg-sns-card overflow-hidden overflow-x-auto">
-        <table className="w-full border-collapse table-fixed text-text-primary">
-          <colgroup>
-            <col style={{ width: '150px' }} />
-            <col style={{ width: '160px' }} />
-            <col />
-            <col style={{ width: '200px' }} />
-            <col style={{ width: '110px' }} />
-            <col style={{ width: '90px' }} />
-            <col style={{ width: '32px' }} />
-          </colgroup>
-          <thead>
-            <tr className="bg-sns-elevated border-b border-sns-border">
-              {['Timestamp', 'Actor', 'Action', 'Target', 'Category', 'Risk', ''].map((h) => (
-                <th
-                  key={h}
-                  scope="col"
-                  className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary font-mono text-left px-4 py-2.5"
-                >
-                  {h}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {loading && logs.length === 0 ? (
-              Array.from({ length: 8 }).map((_, i) => (
-                <tr key={i} className="bg-sns-card">
-                  <td colSpan={7} className="px-4 py-1.5">
-                    <div className="h-8 rounded-md bg-sns-elevated animate-pulse" style={{ animationDelay: `${i * 50}ms` }} />
-                  </td>
-                </tr>
-              ))
-            ) : logs.length === 0 ? (
-              <tr className="bg-sns-card">
-                <td colSpan={7} className="text-center py-16 px-6">
-                  <div className="flex flex-col items-center">
-                    <div className="text-4xl mb-3 opacity-50">🔍</div>
-                    <h3 className="text-base font-bold text-text-primary mb-1">No audit events found</h3>
-                    <p className="text-xs text-text-secondary max-w-xs mb-4">
-                      Try adjusting your filters or date range to find audit events.
-                    </p>
-                    {hasActiveFilters && (
-                      <button
-                        type="button"
-                        onClick={handleClearFilters}
-                        className="px-4 py-2 rounded-lg bg-ai text-ai-on text-xs font-bold hover:opacity-90 transition-opacity"
-                      >
-                        Clear Filters
-                      </button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ) : (
-              logs.map((l) => {
-                const selected = selectedEvent?.log_id === l.log_id;
-                return (
-                  <tr
-                    key={l.log_id}
-                    tabIndex={0}
-                    role="button"
-                    aria-selected={selected}
-                    onClick={() => setSelectedEvent(l)}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        setSelectedEvent(l);
-                      }
-                    }}
-                    className={`cursor-pointer border-b border-sns-border-subtle transition-colors focus:outline-none ${
-                      selected
-                        ? 'bg-ai/10 border-l-[3px] border-l-ai'
-                        : 'bg-sns-card hover:bg-sns-border-subtle/40'
-                    }`}
-                  >
-                    <td className="px-4 py-2.5 text-[11px] font-mono text-text-tertiary whitespace-nowrap">
-                      {formatTimestamp(l.created_at)}
-                    </td>
-                    <td className="px-4 py-2.5 text-[12px] font-semibold text-text-primary truncate max-w-0">
-                      {l.user_display}
-                    </td>
-                    <td className="px-4 py-2.5 text-[11px] font-mono text-text-primary truncate max-w-0" title={l.action}>
-                      {labelize(l.action)}
-                    </td>
-                    <td
-                      className="px-4 py-2.5 text-[12px] text-text-secondary truncate max-w-0"
-                      title={l.description || ''}
-                    >
-                      {l.description || `${l.entity_type || ''} ${l.entity_id || ''}`.trim() || '—'}
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <CategoryBadge category={l.category} />
-                    </td>
-                    <td className="px-4 py-2.5">
-                      <SeverityBadge severity={l.severity} />
-                    </td>
-                    <td className="px-4 py-2.5 text-text-tertiary">›</td>
-                  </tr>
-                );
-              })
+          {/* Toolbar */}
+          <div className="flex flex-wrap items-center gap-2 px-4 py-3 rounded-xl border border-sns-border bg-sns-card">
+            <div className="relative flex-1 min-w-[220px] max-w-[340px]">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-text-tertiary text-sm">🔍</span>
+              <input
+                type="text"
+                value={searchInput}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder="Search events, users, actions, IPs..."
+                className="w-full h-9 pl-9 pr-3 rounded-lg border border-sns-border bg-sns-elevated text-[12px] text-text-primary placeholder:text-text-tertiary focus:outline-none focus:border-ai/50 transition-colors"
+              />
+            </div>
+            <FilterDropdown
+              label="Category"
+              value={category || ''}
+              onChange={(v) => { setCategory(v || null); setOffset(0); }}
+              options={[{ value: '', label: 'All' }, ...CATEGORY_META.map((c) => ({ value: c.key, label: c.label }))]}
+            />
+            <FilterDropdown
+              label="Tenant"
+              value={tenantId}
+              onChange={(v) => { setTenantId(v); setOffset(0); }}
+              options={[{ value: '', label: 'All' }, ...tenants.map((t) => ({ value: t.tenant_id, label: t.display_name }))]}
+            />
+            <FilterDropdown
+              label="Date Range"
+              value={rangeIdx}
+              onChange={(v) => { setRangeIdx(Number(v)); setOffset(0); }}
+              options={DATE_RANGE_OPTIONS.map((r, i) => ({ value: i, label: r.label }))}
+            />
+            {hasActiveFilters && (
+              <button
+                type="button"
+                onClick={handleClearFilters}
+                className="text-xs font-semibold text-ai hover:underline ml-1"
+              >
+                Clear Filters
+              </button>
             )}
-          </tbody>
-        </table>
+          </div>
 
-        <div className="flex items-center justify-between px-4 py-3 border-t border-sns-border">
-          <span className="text-xs text-text-tertiary">
-            {totalCount === 0
-              ? 'Showing 0 of 0 platform logs'
-              : `Showing ${rangeStart}-${rangeEnd} of ${totalCount.toLocaleString()} platform logs`}
-          </span>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
-              disabled={offset === 0 || loading}
-              className="px-3 py-1.5 rounded-lg border border-sns-border text-text-secondary text-[11px] font-semibold disabled:opacity-40 hover:border-ai/40 transition-colors"
-            >
-              Previous
-            </button>
-            <button
-              type="button"
-              onClick={() => setOffset(offset + PAGE_SIZE)}
-              disabled={rangeEnd >= totalCount || loading}
-              className="px-3 py-1.5 rounded-lg bg-ai text-ai-on text-[11px] font-bold disabled:opacity-40 transition-opacity"
-            >
-              Next
-            </button>
+          {/* Table -- semantic <table> with fixed column widths via <colgroup>.
+              (A CSS-grid div layout with arbitrary grid-cols-[...] classes was
+              tried first but produced unreliable column tracks; a real table
+              is the stable, standards-based layout the browser guarantees.) */}
+          <div className="rounded-xl border border-sns-border bg-sns-card overflow-hidden overflow-x-auto">
+            <table className="w-full border-collapse table-fixed text-text-primary">
+              <colgroup>
+                <col style={{ width: '150px' }} />
+                <col style={{ width: '160px' }} />
+                <col />
+                <col style={{ width: '200px' }} />
+                <col style={{ width: '110px' }} />
+                <col style={{ width: '90px' }} />
+                <col style={{ width: '32px' }} />
+              </colgroup>
+              <thead>
+                <tr className="bg-sns-elevated border-b border-sns-border">
+                  {['Timestamp', 'Actor', 'Action', 'Target', 'Category', 'Risk', ''].map((h) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className="text-[10px] font-bold uppercase tracking-wider text-text-tertiary font-mono text-left px-4 py-2.5"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {loading && logs.length === 0 ? (
+                  Array.from({ length: 8 }).map((_, i) => (
+                    <tr key={i} className="bg-sns-card">
+                      <td colSpan={7} className="px-4 py-1.5">
+                        <div className="h-8 rounded-md bg-sns-elevated animate-pulse" style={{ animationDelay: `${i * 50}ms` }} />
+                      </td>
+                    </tr>
+                  ))
+                ) : logs.length === 0 ? (
+                  <tr className="bg-sns-card">
+                    <td colSpan={7} className="text-center py-16 px-6">
+                      <div className="flex flex-col items-center">
+                        <div className="text-4xl mb-3 opacity-50">🔍</div>
+                        <h3 className="text-base font-bold text-text-primary mb-1">No audit events found</h3>
+                        <p className="text-xs text-text-secondary max-w-xs mb-4">
+                          Try adjusting your filters or date range to find audit events.
+                        </p>
+                        {hasActiveFilters && (
+                          <button
+                            type="button"
+                            onClick={handleClearFilters}
+                            className="px-4 py-2 rounded-lg bg-ai text-ai-on text-xs font-bold hover:opacity-90 transition-opacity"
+                          >
+                            Clear Filters
+                          </button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  logs.map((l) => {
+                    const selected = selectedEvent?.log_id === l.log_id;
+                    return (
+                      <tr
+                        key={l.log_id}
+                        tabIndex={0}
+                        role="button"
+                        aria-selected={selected}
+                        onClick={() => setSelectedEvent(l)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' || e.key === ' ') {
+                            e.preventDefault();
+                            setSelectedEvent(l);
+                          }
+                        }}
+                        className={`cursor-pointer border-b border-sns-border-subtle transition-colors focus:outline-none ${
+                          selected
+                            ? 'bg-ai/10 border-l-[3px] border-l-ai'
+                            : 'bg-sns-card hover:bg-sns-border-subtle/40'
+                        }`}
+                      >
+                        <td className="px-4 py-2.5 text-[11px] font-mono text-text-tertiary whitespace-nowrap">
+                          {formatTimestamp(l.created_at)}
+                        </td>
+                        <td className="px-4 py-2.5 text-[12px] font-semibold text-text-primary truncate max-w-0">
+                          {l.user_display}
+                        </td>
+                        <td className="px-4 py-2.5 text-[11px] font-mono text-text-primary truncate max-w-0" title={l.action}>
+                          {labelize(l.action)}
+                        </td>
+                        <td
+                          className="px-4 py-2.5 text-[12px] text-text-secondary truncate max-w-0"
+                          title={l.description || ''}
+                        >
+                          {l.description || `${l.entity_type || ''} ${l.entity_id || ''}`.trim() || '—'}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <CategoryBadge category={l.category} />
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <SeverityBadge severity={l.severity} />
+                        </td>
+                        <td className="px-4 py-2.5 text-text-tertiary">›</td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+
+            <div className="flex items-center justify-between px-4 py-3 border-t border-sns-border">
+              <span className="text-xs text-text-tertiary">
+                {totalCount === 0
+                  ? 'Showing 0 of 0 platform logs'
+                  : `Showing ${rangeStart}-${rangeEnd} of ${totalCount.toLocaleString()} platform logs`}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setOffset(Math.max(0, offset - PAGE_SIZE))}
+                  disabled={offset === 0 || loading}
+                  className="px-3 py-1.5 rounded-lg border border-sns-border text-text-secondary text-[11px] font-semibold disabled:opacity-40 hover:border-ai/40 transition-colors"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setOffset(offset + PAGE_SIZE)}
+                  disabled={rangeEnd >= totalCount || loading}
+                  className="px-3 py-1.5 rounded-lg bg-ai text-ai-on text-[11px] font-bold disabled:opacity-40 transition-opacity"
+                >
+                  Next
+                </button>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
 
-      {selectedEvent && (
-        <AuditEventDrawer
-          event={selectedEvent}
-          onClose={() => setSelectedEvent(null)}
-          onSelectRelated={(evt) => setSelectedEvent(evt)}
-        />
-      )}
+        <div className="w-[420px] shrink-0 sticky top-6 h-[calc(100vh-140px)]">
+          <AuditEventDrawer
+            event={selectedEvent}
+            onClose={() => setSelectedEvent(null)}
+            onSelectRelated={(evt) => setSelectedEvent(evt)}
+          />
+        </div>
+      </div>
     </div>
   );
 }

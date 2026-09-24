@@ -1,0 +1,61 @@
+Candidate Changed-File List
+============================
+Evidence sources:
+  1. Live worktree (still on disk, git status via preserved admin metadata):
+     C:\dev\SNS EMR\copilot-worktrees\sns-emr\suasonns-psychic-adventure
+  2. Session event log confirming the same session/work:
+     profile-copy\session-state\c84ba1cc-9d7e-43f0-a9ed-f9eea3e3cd80\events.jsonl
+
+All 46 files below are backed by exact, complete file content (not fragments/inference).
+
+Modified (tracked, vs commit 6f3c8ac4c2e60047721d934eaf9c77c22f18148d):
+  backend/app/api/owner_admin.py
+  backend/app/core/auth.py
+  backend/app/core/protected_tenants.py
+  backend/app/core/role_guards.py
+  backend/app/core/roles.py
+  backend/app/models/__init__.py
+  backend/app/models/user.py
+  backend/app/services/admin_bootstrap_service.py
+  backend/tests/test_treatment_identity_migration.py
+  sns-emr-frontend/public/brand/sns-logo-dark.svg
+  sns-emr-frontend/public/brand/sns-logo-icon.svg
+  sns-emr-frontend/public/brand/sns-logo-light.svg
+  sns-emr-frontend/src/App.tsx
+  sns-emr-frontend/src/api/ownerAdmin.ts
+  sns-emr-frontend/src/components/BrandLogo.tsx
+  sns-emr-frontend/src/owner/OwnerDashboard.jsx
+  sns-emr-frontend/src/owner/pages/AuditLogs.jsx
+  sns-emr-frontend/src/owner/pages/UserManagement.jsx
+  sns-emr-frontend/src/owner/shell/OwnerShell.jsx
+  sns-emr-frontend/src/utils/authorization.ts
+
+Untracked / new:
+  .github/copilot-instructions.md
+  backend/alembic/versions/um2a1c2c3o5u6_add_account_type_to_users.py
+  backend/alembic/versions/um2b1c2c3o5u7_add_identity_fields_to_users.py
+  backend/alembic/versions/um2c1c2c3o5u8_add_platform_to_users.py
+  backend/alembic/versions/um2d1c2c3o5u9_add_staff_status_and_permission_grants.py
+  backend/alembic/versions/um2s1a2f3f4b5_add_department_notes_updated_by_to_users.py
+  backend/app/core/account_types.py
+  backend/app/core/departments.py
+  backend/app/core/job_titles.py
+  backend/app/core/platforms.py
+  backend/app/models/staff_permission_grant.py
+  backend/tests/test_owner_audit_logs.py
+  backend/tests/test_owner_platform_rbac_matrix.py
+  backend/tests/test_owner_platform_staff_delegation.py
+  backend/tests/test_owner_platform_staff_lifecycle.py
+  backend/tests/test_owner_platform_staff_profile.py
+  docs/PLATFORM_ARCHITECTURE_ROADMAP.md
+  docs/SNS_STAFF_ACCESS_CHECKPOINT.md
+  sns-emr-frontend/public/brand/sns-logo-icon-dark-tile.svg
+  sns-emr-frontend/public/brand/sns-logo-icon-dark.svg
+  sns-emr-frontend/src/owner/accessLevels.js
+  sns-emr-frontend/src/owner/auditCategories.js
+  sns-emr-frontend/src/owner/components/AddStaffModal.jsx
+  sns-emr-frontend/src/owner/components/AuditEventDrawer.jsx
+  sns-emr-frontend/src/owner/components/StaffProfileDrawer.jsx
+  sns-emr-frontend/src/pages/SetPasswordPage.tsx
+
+Unrecoverable items: none. Nothing was found missing — the entire working tree was intact on disk.

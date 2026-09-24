@@ -82,7 +82,12 @@ def get_audit_dashboard_patients(
     limit: int = Query(50, ge=1, le=500),
     offset: int = Query(0, ge=0),
     db: Session = Depends(get_db),
-    user: CurrentUser = Depends(require_roles(["ADMIN", "DPCS", "QA"])),
+    # AC-002 remediation: the bare QA role label is not an issued role
+    # (see app.core.roles QA_ROLES / _ALIASES) -- no real QA_MANAGER/
+    # QA_REVIEWER/COMPLIANCE_OFFICER account could pass this gate. Use the
+    # canonical issued QA role set already imported above for
+    # CENSUS_VIEW_ROLES.
+    user: CurrentUser = Depends(require_roles(["ADMIN", "DPCS", *sorted(QA_ROLES)])),
 ):
 
     resolved_tenant_id = _resolve_tenant_id(request, db, tenant_id, user)

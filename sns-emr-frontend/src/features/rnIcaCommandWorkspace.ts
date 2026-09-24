@@ -24,7 +24,11 @@ export function getRnIcaCommandWorkspaceEnabled(): boolean {
     return stored === "enabled";
   }
 
-  return deploymentSetting === "true";
+  // Default ON: the command workspace is now the real RNICA experience,
+  // not an opt-in pilot. Only an explicit "Use classic view" click
+  // (setRnIcaCommandWorkspaceEnabled(false)) or VITE_RNICA_COMMAND_WORKSPACE=false
+  // turns it off.
+  return deploymentSetting !== "false";
 }
 
 export function setRnIcaCommandWorkspaceEnabled(enabled: boolean): void {

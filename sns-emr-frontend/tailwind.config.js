@@ -11,6 +11,51 @@ module.exports = {
   theme: {
     extend: {
       colors: {
+        // Direct mapping to the real global --sns-* theme tokens applied by
+        // applyThemeMode() in src/theme/theme.tsx (same tokens the RNICA
+        // design system / shadcn primitives below both read). Named "rnica"
+        // to avoid colliding with the pre-existing "sns" namespace above,
+        // which is scoped to the separate owner-dashboard palette.
+        rnica: {
+          bg: 'var(--sns-bg)',
+          bgAlt: 'var(--sns-bgAlt)',
+          card: 'var(--sns-card)',
+          cardSoft: 'var(--sns-cardSoft)',
+          border: 'var(--sns-border)',
+          borderStrong: 'var(--sns-borderStrong)',
+          borderSelected: 'var(--sns-borderSelected)',
+          borderWarning: 'var(--sns-borderWarning)',
+          borderCritical: 'var(--sns-borderCritical)',
+          borderAI: 'var(--sns-borderAI)',
+          teal: 'var(--sns-teal)',
+          tealHover: 'var(--sns-tealHover)',
+          tealPressed: 'var(--sns-tealPressed)',
+          tealSoftBg: 'var(--sns-tealSoftBg)',
+          tealSoftBorder: 'var(--sns-tealSoftBorder)',
+          cyan: 'var(--sns-cyan)',
+          text: 'var(--sns-white)',
+          textStrong: 'var(--sns-textStrong)',
+          textInverse: 'var(--sns-textInverse)',
+          textDisabled: 'var(--sns-textDisabled)',
+          muted: 'var(--sns-muted)',
+          dim: 'var(--sns-dim)',
+          green: 'var(--sns-green)',
+          blue: 'var(--sns-blue)',
+          purple: 'var(--sns-purple)',
+          orange: 'var(--sns-orange)',
+          red: 'var(--sns-red)',
+          yellow: 'var(--sns-yellow)',
+          pink: 'var(--sns-pink)',
+          successBg: 'var(--sns-successBg)',
+          infoBg: 'var(--sns-infoBg)',
+          warningBg: 'var(--sns-warningBg)',
+          criticalBg: 'var(--sns-criticalBg)',
+          aiBg: 'var(--sns-aiBg)',
+          inputBg: 'var(--sns-inputBg)',
+          hoverSurface: 'var(--sns-hoverSurface)',
+          selectedSurface: 'var(--sns-selectedSurface)',
+          focusRing: 'var(--sns-focusRing)',
+        },
         // All values below resolve through CSS custom properties defined in
         // src/owner/shell/tailwind.css, which switch between the dark and
         // light Figma palettes based on the existing `data-theme` attribute

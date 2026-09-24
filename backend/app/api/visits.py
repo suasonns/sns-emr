@@ -15,7 +15,7 @@ from pydantic import (
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
-from app.core.patient_access import get_authorized_patient
+from app.core.patient_access import can_complete_sfv, get_authorized_patient
 from app.core.security import get_current_user, CurrentUser
 from app.core.visit_type_normalizer import normalize_visit_type
 from app.models.enums import (
@@ -75,11 +75,14 @@ from app.services.visit_compliance_guards import (
     enforce_commlog_for_visit_status_change,)
 from app.services.hope_phase_b_engine import (
     complete_sfv_requirement_from_visit,
+    correct_sfv_not_completed_reason,
     process_huv_finalize,
     process_initial_rn_ica_finalize,
+    record_sfv_not_completed_from_visit,
     TASK_TYPE_HUV1,
     TASK_TYPE_HUV2,
     validate_huv_visit_completion,)
+from app.services.audit_events import audit_event
 from app.services import rnica_hope_workflow_service
 from app.services.clinical_reasoning_engine import ClinicalReasoningEngine
 from app.services.reasoning_result_to_recommendation_service import (
@@ -138,6 +141,13 @@ def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
         "admissionId": str(record.admission_id) if record.admission_id else None,
+        # SFV ownership remediation (docs/tenant-platform/
+        # P0_SFV_OWNERSHIP_REMEDIATION.md): the Visit that finalized this
+        # assessment. Lets the frontend resolve the SFVRequirement that
+        # was actually triggered BY this specific record (trigger_source_type
+        # + trigger_reference_id == this visitId), instead of a
+        # patient-wide "most recently completed" lookup.
+        "visitId": str(record.visit_id) if record.visit_id else None,
         "hopeWorkflow": workflow,
     }
     if include_form_data:
@@ -2697,6 +2707,41 @@ class VisitNoteSupervisorySubformRequest(BaseModel):
 class VisitNoteSupervisoryReviewRequest(BaseModel):
     hha: Optional[VisitNoteSupervisorySubformRequest] = None
     lvn_lpn: Optional[VisitNoteSupervisorySubformRequest] = None
+# HOPE J2053 symptom-impact fields, captured on the SFV completion visit
+# itself (docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md,
+# Option A -- reuse ClinicalNote.content.symptom_impact, no new column).
+# Same 8-key / 0-3 (+9 = N/A) vocabulary already used by
+# app.services.evidence.structured_findings's symptomImpact concept
+# cross-writes and by hopeReportMapper.js's IMPACT_MAP/IMPACT_KEYS on the
+# frontend -- do not invent a second vocabulary here.
+VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES = {"0", "1", "2", "3", "9"}
+class VisitNoteSymptomImpactRequest(BaseModel):
+    pain: Optional[str] = None
+    shortnessOfBreath: Optional[str] = None
+    anxiety: Optional[str] = None
+    nausea: Optional[str] = None
+    vomiting: Optional[str] = None
+    diarrhea: Optional[str] = None
+    constipation: Optional[str] = None
+    agitation: Optional[str] = None
+    @field_validator(
+        "pain",
+        "shortnessOfBreath",
+        "anxiety",
+        "nausea",
+        "vomiting",
+        "diarrhea",
+        "constipation",
+        "agitation",
+    )
+    @classmethod
+    def _validate_symptom_impact_value(cls, value: Optional[str]):
+        if value is None or value == "":
+            return None
+        normalized = str(value).strip()
+        if normalized not in VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES:
+            raise ValueError(f"Unsupported symptom impact value: {value}")
+        return normalized
 class VisitNoteContentRequest(BaseModel):
     """
     Full content payload for the RN/LVN Visit Notes module. The Visit
@@ -2729,6 +2774,11 @@ class VisitNoteContentRequest(BaseModel):
     supervisory_review: Optional[VisitNoteSupervisoryReviewRequest] = None
     care_provided: Optional[VisitNoteCareProvidedRequest] = None
     visit_checklist: Optional[VisitNoteChecklistRequest] = None
+    # HOPE J2053 symptom impact captured on the completion (SFV) visit --
+    # not cleared when a non-full-body form_type collapses the rest of
+    # the clinical body (see is_full_body handling in update_visit_note):
+    # SFV completion is not restricted to ASSESS/ROUTINE_VISIT form types.
+    symptom_impact: Optional[VisitNoteSymptomImpactRequest] = None
     # ---- Death Visit only ----
     death_disposal_notes: Optional[str] = None
     death_disposal: Optional[VisitNoteDeathDisposalRequest] = None
@@ -3906,6 +3956,521 @@ def _maybe_complete_open_sfv_for_visit(
             request_id,
         )
         return None
+
+
+class SfvCompletionRequest(BaseModel):
+    completionVisitId: uuid.UUID
+
+
+class SfvCompletionAuthor(BaseModel):
+    userId: Optional[str] = None
+    displayName: Optional[str] = None
+
+
+class SfvCompletionResponse(BaseModel):
+    sfvRequirementId: str
+    patientId: str
+    triggerVisitId: str
+    completionVisitId: Optional[str] = None
+    status: str
+    completedAt: Optional[str] = None
+    completedBy: Optional[SfvCompletionAuthor] = None
+
+
+# HOPE J2052C ownership fix (issue #146).
+class SfvNotCompletedRequest(BaseModel):
+    attemptVisitId: uuid.UUID
+    reasonCode: str
+
+
+class SfvNotCompletedResponse(BaseModel):
+    sfvRequirementId: str
+    patientId: str
+    triggerVisitId: str
+    status: str
+    reasonCode: Optional[str] = None
+    reasonRecordedAt: Optional[str] = None
+    reasonRecordedBy: Optional[SfvCompletionAuthor] = None
+
+
+class SfvCorrectReasonRequest(BaseModel):
+    newReasonCode: str
+    correctionReason: str = Field(..., min_length=1)
+
+
+class SfvCorrectReasonResponse(BaseModel):
+    sfvRequirementId: str
+    priorReasonCode: Optional[str] = None
+    newReasonCode: str
+    correctedAt: str
+
+
+def _sfv_error(status_code: int, code: str, message: str, *, sfv_requirement_id=None, field=None):
+    error = {"code": code, "message": message}
+    if sfv_requirement_id is not None:
+        error["sfvRequirementId"] = str(sfv_requirement_id)
+    if field is not None:
+        error["field"] = field
+    return HTTPException(status_code=status_code, detail={"error": error})
+
+
+# Maps substrings of the ValueError messages raised by
+# `complete_sfv_requirement_from_visit` to the structured error codes
+# required by the SFV backend API contract (P3-017 / SFV implementation
+# directive Section 7). Matched in order; first match wins.
+_SFV_VALUEERROR_CODE_MAP = (
+    ("SFV requirement not found", "SFV_REQUIREMENT_NOT_FOUND"),
+    ("Completion visit not found", "COMPLETION_VISIT_NOT_FOUND"),
+    ("Attempt visit not found", "COMPLETION_VISIT_NOT_FOUND"),
+    ("does not belong to this patient", "PATIENT_MISMATCH"),
+    ("does not belong to this tenant", "TENANT_MISMATCH"),
+    ("separate visit from the triggering", "SAME_VISIT_NOT_ALLOWED"),
+    ("before the triggering visit", "COMPLETION_BEFORE_TRIGGER"),
+    ("in-person visit", "VISIT_NOT_ELIGIBLE"),
+    ("RN or LPN/LVN", "CLINICIAN_NOT_AUTHORIZED"),
+    ("Reason code must be one of", "REASON_CODE_INVALID"),
+    ("Only a recorded NOT_COMPLETED outcome can be corrected", "INVALID_STATE_FOR_CORRECTION"),
+)
+
+
+def _sfv_error_from_value_error(exc: ValueError, sfv_requirement_id) -> HTTPException:
+    message = str(exc)
+    for substring, code in _SFV_VALUEERROR_CODE_MAP:
+        if substring in message:
+            status_code = 404 if code.endswith("_NOT_FOUND") else 409
+            return _sfv_error(status_code, code, message, sfv_requirement_id=sfv_requirement_id)
+    return _sfv_error(409, "VISIT_NOT_ELIGIBLE", message, sfv_requirement_id=sfv_requirement_id)
+
+
+@router.post("/sfv-requirements/{sfv_requirement_id}/complete", response_model=SfvCompletionResponse)
+def complete_sfv_requirement(
+    sfv_requirement_id: uuid.UUID,
+    payload: SfvCompletionRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Authoritative interactive SFV completion command (P3-009/P3-017).
+
+    This is the ONLY frontend-callable path for SFV completion. It does
+    not replace the automatic `_maybe_complete_open_sfv_for_visit` hook
+    (which still runs on every visit finalize as a safety net); this
+    endpoint exists so an explicit "Complete SFV" action in the UI has a
+    single authoritative backend command to call and read a result from,
+    instead of relying on a local-only checkbox with no backend effect.
+
+    Ownership model (issue #146, applies uniformly to J2051/J2052A/B/C/J2053):
+    J2051 is owned by the triggering RNICA/HUV clinician and only
+    creates this requirement -- it never owns any outcome field below.
+    J2052A/B/C and J2053 are all owned by the clinician who actually
+    performs the Symptom Follow-up Visit, sourced from this Visit Note
+    -> SFV workflow -- never from the triggering RNICA/HUV assessment
+    (see `record_sfv_not_completed` for the sibling J2052A = No /
+    J2052C branch). A locked/signed Admission never blocks recording
+    these outcomes, since they live on a separate `SFVRequirement` row.
+
+    The browser supplies only `completionVisitId`. Every other decision
+    input (patient, tenant, clinician discipline, visit mode/datetime) is
+    derived server-side from the authenticated request context and the
+    persisted Visit/SFVRequirement rows -- never trusted from the request
+    body, per the SFV backend API contract.
+    """
+    # Row-lock the requirement for the duration of this request so two
+    # concurrent completion attempts against the same requirement cannot
+    # both observe "OPEN" and race (mirrors the existing protection in
+    # `_find_oldest_open_sfv_requirement_for_patient`).
+    requirement = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .with_for_update()
+        .filter(SFVRequirement.id == sfv_requirement_id)
+        .first()
+    )
+    if not requirement:
+        raise _sfv_error(404, "SFV_REQUIREMENT_NOT_FOUND", "SFV requirement not found")
+
+    # Authorization: reuses the same centralized tenant/patient-access
+    # checks used by every other patient-scoped endpoint (via
+    # get_authorized_patient), plus the existing role->capability roster
+    # -- never a bespoke "role == RN or role == LVN" check. Raises 404
+    # for cross-tenant/no-access callers (consistent with
+    # get_authorized_patient's own contract) and 403 if the caller lacks
+    # an RN-scope clinical documentation capability.
+    can_complete_sfv(db, requirement.patient_id, current_user)
+
+    completion_visit = (
+        db.query(Visit)
+        .execution_options(skip_tenant_filter=True)
+        .filter(Visit.id == payload.completionVisitId)
+        .first()
+    )
+    if not completion_visit:
+        raise _sfv_error(
+            404, "COMPLETION_VISIT_NOT_FOUND", "Completion visit not found",
+            sfv_requirement_id=sfv_requirement_id, field="completionVisitId",
+        )
+    if completion_visit.tenant_id != current_user.tenant_id:
+        raise _sfv_error(404, "TENANT_MISMATCH", "Completion visit not found")
+
+    try:
+        updated_requirement = complete_sfv_requirement_from_visit(
+            db=db,
+            sfv_requirement_id=requirement.id,
+            completing_visit_id=completion_visit.id,
+            completing_visit_datetime=completion_visit.visit_datetime,
+            discipline=completion_visit.visit_discipline,
+            visit_mode=getattr(completion_visit, "visit_mode", None),
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise _sfv_error_from_value_error(exc, sfv_requirement_id) from exc
+
+    db.commit()
+    db.refresh(updated_requirement)
+
+    completed_by = None
+    if updated_requirement.status == "COMPLETED":
+        completed_by = SfvCompletionAuthor(
+            userId=str(getattr(completion_visit, "finalized_by", None) or current_user.user_id),
+            displayName=_resolve_current_user_display_name(db, current_user),
+        )
+
+    return SfvCompletionResponse(
+        sfvRequirementId=str(updated_requirement.id),
+        patientId=str(updated_requirement.patient_id),
+        triggerVisitId=str(updated_requirement.trigger_reference_id),
+        completionVisitId=(
+            str(updated_requirement.completed_visit_id)
+            if updated_requirement.completed_visit_id
+            else None
+        ),
+        status=updated_requirement.status,
+        completedAt=(
+            updated_requirement.completed_at.isoformat()
+            if updated_requirement.completed_at
+            else None
+        ),
+        completedBy=completed_by,
+    )
+
+
+@router.post("/sfv-requirements/{sfv_requirement_id}/not-completed", response_model=SfvNotCompletedResponse)
+def record_sfv_not_completed(
+    sfv_requirement_id: uuid.UUID,
+    payload: SfvNotCompletedRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """HOPE J2052C ownership fix (issue #146).
+
+    Sibling to `complete_sfv_requirement` for the J2052A = No branch.
+    Records the CMS-coded "reason SFV not completed" (J2052C) against
+    the SFV requirement itself, attributed to the clinician who actually
+    attempted the SFV and the attempt visit -- never the triggering RN
+    ICA/HUV assessment, which may be signed/locked by an entirely
+    different clinician. Writes one audit_log entry so the outcome
+    change is traceable (who/when/prior status).
+
+    Ownership model (applies uniformly to J2052A/B/C/J2053): all four
+    HOPE items are owned by the clinician who actually performed (or
+    attempted) the Symptom Follow-up Visit, sourced from this Visit
+    Note -> SFV workflow -- never from the triggering RNICA/Admission/
+    HUV assessment, which may be signed/locked by an entirely different
+    clinician (a locked Admission never blocks recording this outcome,
+    since it lives on a separate `SFVRequirement` row; see also J2051,
+    which creates the requirement but owns none of these outcome
+    fields). Runtime-verified (real Postgres + real HTTP, not
+    inspection) for RN/LVN/On-Call RN/On-Call LVN across all four CMS
+    reason codes (1/2/3/9), the locked-Admission case, and the
+    correction workflow.
+    """
+    requirement = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .with_for_update()
+        .filter(SFVRequirement.id == sfv_requirement_id)
+        .first()
+    )
+    if not requirement:
+        raise _sfv_error(404, "SFV_REQUIREMENT_NOT_FOUND", "SFV requirement not found")
+
+    can_complete_sfv(db, requirement.patient_id, current_user)
+
+    attempt_visit = (
+        db.query(Visit)
+        .execution_options(skip_tenant_filter=True)
+        .filter(Visit.id == payload.attemptVisitId)
+        .first()
+    )
+    if not attempt_visit:
+        raise _sfv_error(
+            404, "COMPLETION_VISIT_NOT_FOUND", "Attempt visit not found",
+            sfv_requirement_id=sfv_requirement_id, field="attemptVisitId",
+        )
+    if attempt_visit.tenant_id != current_user.tenant_id:
+        raise _sfv_error(404, "TENANT_MISMATCH", "Attempt visit not found")
+
+    try:
+        updated_requirement = record_sfv_not_completed_from_visit(
+            db=db,
+            sfv_requirement_id=requirement.id,
+            attempt_visit_id=attempt_visit.id,
+            attempt_visit_datetime=attempt_visit.visit_datetime,
+            discipline=attempt_visit.visit_discipline,
+            visit_mode=getattr(attempt_visit, "visit_mode", None),
+            reason_code=payload.reasonCode,
+            recorded_by=getattr(current_user, "user_id", None),
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise _sfv_error_from_value_error(exc, sfv_requirement_id) from exc
+
+    audit_event(
+        db=db,
+        action="SFV_NOT_COMPLETED_RECORDED",
+        entity_type="sfv_requirement",
+        entity_id=str(updated_requirement.id),
+        user_id=str(getattr(current_user, "user_id", "") or ""),
+        role=str(getattr(current_user, "role", "") or ""),
+        tenant_id=str(current_user.tenant_id) if getattr(current_user, "tenant_id", None) else None,
+        meta={
+            "patientId": str(updated_requirement.patient_id),
+            "sfvRequirementId": str(updated_requirement.id),
+            "visitId": str(attempt_visit.id),
+            "oldValue": None,
+            "newValue": updated_requirement.reason_code,
+        },
+    )
+
+    db.commit()
+    db.refresh(updated_requirement)
+
+    reason_recorded_by = None
+    if updated_requirement.reason_recorded_by:
+        reason_recorded_by = SfvCompletionAuthor(
+            userId=str(updated_requirement.reason_recorded_by),
+            displayName=_resolve_current_user_display_name(db, current_user),
+        )
+
+    return SfvNotCompletedResponse(
+        sfvRequirementId=str(updated_requirement.id),
+        patientId=str(updated_requirement.patient_id),
+        triggerVisitId=str(updated_requirement.trigger_reference_id),
+        status=updated_requirement.status,
+        reasonCode=updated_requirement.reason_code,
+        reasonRecordedAt=(
+            updated_requirement.reason_recorded_at.isoformat()
+            if updated_requirement.reason_recorded_at
+            else None
+        ),
+        reasonRecordedBy=reason_recorded_by,
+    )
+
+
+@router.post("/sfv-requirements/{sfv_requirement_id}/correct-reason", response_model=SfvCorrectReasonResponse)
+def correct_sfv_reason(
+    sfv_requirement_id: uuid.UUID,
+    payload: SfvCorrectReasonRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """HOPE J2052C ownership fix (issue #146).
+
+    Append-only correction for a previously-recorded J2052C reason code.
+    Reuses the SECTION 12 `RnicaAmendment` "never destroy" pattern
+    (see `SfvOutcomeCorrection`): the prior value is always preserved in
+    a new row before the live value is updated.
+    """
+    requirement = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .with_for_update()
+        .filter(SFVRequirement.id == sfv_requirement_id)
+        .first()
+    )
+    if not requirement:
+        raise _sfv_error(404, "SFV_REQUIREMENT_NOT_FOUND", "SFV requirement not found")
+
+    can_complete_sfv(db, requirement.patient_id, current_user)
+
+    try:
+        updated_requirement, correction = correct_sfv_not_completed_reason(
+            db=db,
+            sfv_requirement_id=requirement.id,
+            new_reason_code=payload.newReasonCode,
+            correction_reason=payload.correctionReason,
+            corrected_by=getattr(current_user, "user_id", None),
+        )
+    except ValueError as exc:
+        db.rollback()
+        raise _sfv_error_from_value_error(exc, sfv_requirement_id) from exc
+
+    audit_event(
+        db=db,
+        action="SFV_REASON_CODE_CORRECTED",
+        entity_type="sfv_requirement",
+        entity_id=str(updated_requirement.id),
+        user_id=str(getattr(current_user, "user_id", "") or ""),
+        role=str(getattr(current_user, "role", "") or ""),
+        tenant_id=str(current_user.tenant_id) if getattr(current_user, "tenant_id", None) else None,
+        meta={
+            "patientId": str(updated_requirement.patient_id),
+            "sfvRequirementId": str(updated_requirement.id),
+            "visitId": (
+                str(updated_requirement.reason_recorded_visit_id)
+                if updated_requirement.reason_recorded_visit_id
+                else None
+            ),
+            "oldValue": correction.prior_reason_code,
+            "newValue": correction.new_reason_code,
+            "correctionReason": correction.correction_reason,
+        },
+    )
+
+    db.commit()
+    db.refresh(correction)
+
+    return SfvCorrectReasonResponse(
+        sfvRequirementId=str(updated_requirement.id),
+        priorReasonCode=correction.prior_reason_code,
+        newReasonCode=correction.new_reason_code,
+        correctedAt=correction.corrected_at.isoformat(),
+    )
+
+
+class SfvRequirementSummary(BaseModel):
+    sfvRequirementId: str
+    patientId: str
+    triggerVisitId: str
+    # SFV ownership remediation (docs/tenant-platform/
+    # P0_SFV_OWNERSHIP_REMEDIATION.md): the timepoint this requirement was
+    # actually triggered from ("INITIAL_RN_ICA" | "HUV1" | "HUV2"). Paired
+    # with triggerVisitId, this lets a caller resolve the ONE requirement
+    # that belongs to a specific HOPE record, instead of picking the
+    # patient's most-recently-completed requirement regardless of timepoint.
+    triggerSourceType: str
+    triggerDatetime: Optional[str] = None
+    completionVisitId: Optional[str] = None
+    status: str
+    dueAt: Optional[str] = None
+    completedAt: Optional[str] = None
+    # HOPE J2053 (docs/tenant-platform/J2053_SOURCE_OF_TRUTH_ANALYSIS.md,
+    # Option A): the completion visit's OWN ClinicalNote.content.symptom_impact
+    # -- never a second, duplicated store on SFVRequirement itself. Populated
+    # only when this requirement has a completed_visit_id whose primary
+    # ClinicalNote carries a symptom_impact/symptomImpact key.
+    symptomImpact: Optional[Dict[str, str]] = None
+    # True if at least one of the 8 symptom-impact keys has a documented
+    # (non-null/non-empty) value on the completion visit's note. Used by
+    # the frontend to enforce the export-readiness rule: a COMPLETED SFV
+    # with no symptom impact documented must not be treated as HOPE
+    # export-ready for J2053.
+    symptomImpactDocumented: bool = False
+    # HOPE J2052C ownership fix (issue #146): the CMS-coded reason SFV
+    # was not completed, sourced from THIS SFVRequirement row (never the
+    # triggering RN ICA/HUV assessment), attributed to whoever actually
+    # attempted the SFV. Null unless status == NOT_COMPLETED.
+    reasonCode: Optional[str] = None
+    reasonRecordedAt: Optional[str] = None
+    reasonRecordedVisitId: Optional[str] = None
+_SYMPTOM_IMPACT_KEYS = (
+    "pain",
+    "shortnessOfBreath",
+    "anxiety",
+    "nausea",
+    "vomiting",
+    "diarrhea",
+    "constipation",
+    "agitation",
+)
+def _extract_symptom_impact_from_content(content: Any) -> Optional[Dict[str, str]]:
+    """Reads the J2053 symptom-impact object from a ClinicalNote.content
+    JSON blob -- the SAME symptom_impact/symptomImpact JSON KEY that
+    _extract_j2051_impacts_from_notes also reads on the *triggering*
+    visit's notes, but NOT the same value vocabulary: that function
+    ranks word-based severities (MILD/MODERATE/SEVERE) via
+    _severity_rank() for J2051 trigger-detection purposes, while this
+    function requires the verified CMS J2053 response set -- the
+    numeric-string codes "0"/"1"/"2"/"3"/"9" (matching
+    VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES, hopeReportMapper.js's
+    IMPACT_MAP, and CMS HOPE Guidance Manual v1.02 J2053: 0=Not at all,
+    1=Slight, 2=Moderate, 3=Severe, 9=Not applicable). Any value outside
+    that verified set (arbitrary text, legacy word-based severities,
+    etc.) is dropped rather than passed through, so an unsupported value
+    can never be silently exported as if it were a verified J2053 code.
+    Never creates or reads a second storage location."""
+    if not isinstance(content, dict):
+        return None
+    raw = content.get("symptom_impact") or content.get("symptomImpact")
+    if not isinstance(raw, dict):
+        return None
+    result = {
+        key: str(raw[key]).strip()
+        for key in _SYMPTOM_IMPACT_KEYS
+        if str(raw.get(key)).strip() in VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES
+    }
+    return result or None
+@router.get("/sfv-requirements", response_model=list[SfvRequirementSummary])
+def list_sfv_requirements(
+    patientId: uuid.UUID,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Read-only support for the SFV status displays (the read-only
+    RNICA status card and the qualifying follow-up visit's Symptom
+    Follow-Up section) -- navigation/status only, never a completion
+    path. Reuses the same tenant/patient-access authorization as every
+    other patient-scoped endpoint; does not require RN-scope capability
+    since this is read-only.
+    """
+    get_authorized_patient(db, patientId, current_user)
+
+    requirements = (
+        db.query(SFVRequirement)
+        .execution_options(skip_tenant_filter=True)
+        .filter(SFVRequirement.patient_id == patientId)
+        .order_by(SFVRequirement.due_at.asc().nullslast())
+        .all()
+    )
+    completion_visit_ids = [
+        r.completed_visit_id for r in requirements if r.completed_visit_id
+    ]
+    symptom_impact_by_visit_id: Dict[uuid.UUID, Dict[str, str]] = {}
+    if completion_visit_ids:
+        completion_notes = (
+            db.query(ClinicalNote)
+            .execution_options(skip_tenant_filter=True)
+            .filter(
+                ClinicalNote.visit_id.in_(completion_visit_ids),
+                ClinicalNote.is_primary_form.is_(True),
+            )
+            .all()
+        )
+        for note in completion_notes:
+            extracted = _extract_symptom_impact_from_content(note.content)
+            if extracted:
+                symptom_impact_by_visit_id[note.visit_id] = extracted
+    return [
+        SfvRequirementSummary(
+            sfvRequirementId=str(r.id),
+            patientId=str(r.patient_id),
+            triggerVisitId=str(r.trigger_reference_id),
+            triggerSourceType=r.trigger_source_type,
+            triggerDatetime=r.trigger_datetime.isoformat() if r.trigger_datetime else None,
+            completionVisitId=str(r.completed_visit_id) if r.completed_visit_id else None,
+            status=r.status,
+            dueAt=r.due_at.isoformat() if r.due_at else None,
+            completedAt=r.completed_at.isoformat() if r.completed_at else None,
+            symptomImpact=symptom_impact_by_visit_id.get(r.completed_visit_id),
+            symptomImpactDocumented=bool(symptom_impact_by_visit_id.get(r.completed_visit_id)),
+            reasonCode=r.reason_code,
+            reasonRecordedAt=r.reason_recorded_at.isoformat() if r.reason_recorded_at else None,
+            reasonRecordedVisitId=str(r.reason_recorded_visit_id) if r.reason_recorded_visit_id else None,
+        )
+        for r in requirements
+    ]
+
+
+
 def _run_phase_b_finalize_hooks(
     *,
     db: Session,

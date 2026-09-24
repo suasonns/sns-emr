@@ -32,6 +32,7 @@ import {
 } from "./rn-ica/rnIcaClinicalNavigation";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
+import { listSfvRequirements } from "../api/sfv";
 import {
   saveRnicaAssessmentOffline,
   updateRnicaAssessmentOffline,
@@ -197,7 +198,7 @@ const PILOT_ROUTES = RNICA_ASSESSMENT_MODULES.map((module) => ({
   nav: module.label,
 }));
 
-const SIDEBAR_CONFIG = [
+export const SIDEBAR_CONFIG = [
   { key: "demographics",      label: "Patient Demographics",  icon: "👤", hope: ["A1110","A1005","A1010"], color: "green" },
   { key: "assessment",        label: "Assessment",           icon: "📁", hope: [],                         color: null },
   { key: "caregiverAssessment", label: "Caregiver Assessment", icon: "🧑‍⚕️", hope: [], color: null, parent: "demographics", scrollTarget: "pcg", cdphRequired: true },
@@ -206,7 +207,13 @@ const SIDEBAR_CONFIG = [
   { key: "pain",              label: "Pain Assessment",       icon: "⚡",    hope: ["J0900","J0915"],          color: "green", sfv: true },
   { key: "symptomImpact",     label: "Symptom Impact",        icon: "📊", hope: ["J2051"],                  color: "red" },
   { key: "diagnoses",         label: "Diagnoses",             icon: "🔬", hope: ["I0010","J0050"],          color: "green" },
-  { key: "performanceStatus", label: "Performance Status",    icon: "📈", hope: ["M1190"],                  color: "green" },
+  // P3-016 (RNICA_PHASE3_REMEDIATION_REGISTER.md): M1190 is a Skin item
+  // (form_registry.py HOPE_SKIN_ITEM_CODES; hopeReportMapper.js:625 emits
+  // it from skin.skinConditionsPresent). It does not belong to Performance
+  // Status — declaring it here made the Performance Status sidebar
+  // complete/incomplete indicator flip based on unrelated Skin data. Skin's
+  // own sidebar entry (bodySystems.js "skin" system) is the sole declarer.
+  { key: "performanceStatus", label: "Performance Status",    icon: "📈", hope: [],                         color: "green" },
   ...RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
   { key: "imminentDeath",     label: "Imminent Death",        icon: "⏳",    hope: ["J0050"],                  color: "green" },
   { key: "sfv",               label: "SFV",                   icon: "🔴", hope: ["J2050","J2052","J2053"],  color: "red" },
@@ -1031,6 +1038,15 @@ function validateRNICA(formData, mode = "ica") {
         warnings[`symptomImpact.${f}`] = `HOPE J2051${String.fromCharCode(65 + i)}: ${f} score required`;
       }
     });
+
+    // SFV -- J2052A/C: an SFV is required whenever any J2051 item is
+    // Moderate (2) or Severe (3). HOPE J2052C ownership fix (issue #146):
+    // the reason SFV was not completed is NOT knowable at the time this
+    // triggering RN ICA/HUV assessment is completed (the SFV attempt
+    // hasn't happened yet) and is captured/validated authoritatively on
+    // the SFV attempt visit instead (VisitNotes.jsx
+    // ::SymptomFollowUpVisitSection). This assessment must never block
+    // signing on a value the clinician cannot yet truthfully know.
 
     // Diagnoses ? I0010
     if (!formData.diagnoses.primaryDiagnosis.icd10) {
@@ -3181,7 +3197,7 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
         )}
       </div>
 
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginTop: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 8 }}>{error}</div>}
 
       {showAdd && (
         <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 8 }}>
@@ -3837,7 +3853,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
 
   return (
     <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
 
       <Card title="CHHA Plan of Care" cms="Home Health Aide">
         <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginBottom: 8 }}>
@@ -3845,7 +3861,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             Assigned Home Aide: <strong style={{ color: COLORS.dark }}>{assignedAide || "Not yet assigned"}</strong>
           </div>
           {chhaPoc.completed && (
-            <div style={{ fontSize: 12.5, color: "#22c55e", fontWeight: 700 }}>
+            <div style={{ fontSize: 12.5, color: COLORS.success, fontWeight: 700 }}>
               ✓ Completed{chhaPoc.completedDate ? ` — ${chhaPoc.completedDate}` : ""}{chhaPoc.completedBy ? ` by ${chhaPoc.completedBy}` : ""}
             </div>
           )}
@@ -3864,7 +3880,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             {visibleCategories.map((c) => (
               <span key={c.key} style={{
                 fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
-                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.12)", color: COLORS.error, border: "1px solid rgba(239,68,68,0.3)",
               }}>
                 {c.riskLabel}
               </span>
@@ -3875,7 +3891,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
             {customAlerts.map((a) => <li key={a.key}>{a.text}</li>)}
           </ul>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.error, marginTop: 8 }}>
             Notify {chhaReportToLabel(chhaPoc.reportToRole)} immediately if observed.
           </div>
         </Card>
@@ -3917,7 +3933,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
         </div>
         {["2-person assist required", "Mechanical lift required — no manual lift"].includes(chhaPoc.minimumAssistLevel)
           && !(chhaPoc.tasks || []).some((t) => t.task === "Transfer") && (
-          <div style={{ fontSize: 11.5, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg, borderRadius: 6, padding: "8px 10px", marginBottom: 10 }}>
             ⚠️ Check "Transfer" in Ordered Tasks below and select {chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "Mechanical lift" : "2-person assist"} —
             a caregiver must never be relied on to manually move this patient at a lower assist level than ordered.
           </div>
@@ -4020,7 +4036,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
             const anyMissing = missingInstructions || opt.items.some((i) => missingItemDetail(i.code)) || transferRequiredMissing;
             return (
               <div key={opt.value} style={{
-                borderRadius: 8, border: `1px solid ${anyMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
+                borderRadius: 8, border: `1px solid ${anyMissing ? COLORS.warning : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
               }}>
                 <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: COLORS.dark, cursor: "pointer" }}>
                   <input type="checkbox" checked={checked} onChange={(e) => toggleTask(opt.value, e.target.checked)} />
@@ -4046,7 +4062,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                               onChange={(e) => toggleTaskItem(opt.value, itemDef.code, e.target.checked)}
                             />
                             {itemDef.label}
-                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: "#dc2626" }}>— not safe at this patient's assist level</span>}
+                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: COLORS.error }}>— not safe at this patient's assist level</span>}
                           </label>
                           {itemChecked && itemDef.detail && (
                             <div style={{ marginLeft: 24, marginTop: 4, maxWidth: 420 }}>
@@ -4055,14 +4071,14 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                                 value={selected.detail}
                                 onChange={(v) => updateTaskItemDetail(opt.value, itemDef.code, v)}
                               />
-                              {needsDetail && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                              {needsDetail && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                             </div>
                           )}
                         </div>
                       );
                     })}
                     {transferRequiredMissing && (
-                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: "#dc2626", background: "#fee2e2", borderRadius: 6, padding: "6px 8px" }}>
+                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg, borderRadius: 6, padding: "6px 8px" }}>
                         ⚠️ Required: this patient's Minimum Safe Assist Level is "{chhaPoc.minimumAssistLevel}" — check{" "}
                         {transferRequiredCode === "MECHANICAL_LIFT" ? "Mechanical lift" : "2-person assist"} above before finishing this plan.
                       </div>
@@ -4078,7 +4094,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                           placeholder="e.g., Shower with chair, standby assist only, water lukewarm"
                         />
                         {missingInstructions && (
-                          <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>
+                          <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>
                         )}
                       </div>
                     </div>
@@ -4103,7 +4119,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
       {/* ── Completion — required before RN ICA can lock if an aide is assigned ── */}
       <Card title="Completion">
         {tasksMissingInstructions > 0 && (
-          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: COLORS.warning }}>
             {tasksMissingInstructions} required field{tasksMissingInstructions > 1 ? "s are" : " is"} still blank in the
             Ordered Tasks above (a specify-box or Instructions). Complete those before marking this plan complete.
           </div>
@@ -4126,7 +4142,7 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
           </div>
         )}
         {saving && <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 6 }}>Saving…</div>}
-        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: COLORS.success, marginTop: 6 }}>{saveMessage}</div>}
       </Card>
     </div>
   );
@@ -4311,7 +4327,7 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
 
   return (
     <Card title="Continuous Care Log" cms="Required hourly documentation while patient is on Continuous Care">
-      {error && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12.5, marginBottom: 8 }}>{error}</div>}
       {loading ? (
         <div style={{ fontSize: 12, color: COLORS.gray }}>Loading continuous care log…</div>
       ) : (
@@ -4373,7 +4389,7 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
                       <button
                         type="button"
                         onClick={() => handleRemoveEntry(entry.id)}
-                        style={{ border: "none", background: "transparent", color: "#ef4444", cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
+                        style={{ border: "none", background: "transparent", color: COLORS.error, cursor: "pointer", fontSize: 11.5, textDecoration: "underline" }}
                       >
                         Remove
                       </button>
@@ -4394,7 +4410,7 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
                     )}
                     {entry.symptoms && <div>Symptoms: {entry.symptoms}</div>}
                     {entry.care_provided && <div>Care provided: {entry.care_provided}</div>}
-                    {entry.issue_identified && <div style={{ color: "#b91c1c" }}>Issue: {entry.issue_narrative || "(no detail provided)"}</div>}
+                    {entry.issue_identified && <div style={{ color: COLORS.error }}>Issue: {entry.issue_narrative || "(no detail provided)"}</div>}
                     {entry.poc_update_narrative && <div>POC update: {entry.poc_update_narrative}</div>}
                     {entry.narrative && <div>Narrative: {entry.narrative}</div>}
                   </div>
@@ -4844,7 +4860,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
 
   return (
     <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
-      {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
 
       <Card title="CHHA Visit Note" cms="Home Health Aide">
         {visits.length === 0 ? (
@@ -4874,7 +4890,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         </button>
         {showCreateVisit && (
           <div style={{ ...styles.infoBox, marginTop: 8, maxWidth: 480 }}>
-            {createVisitError && <div style={{ color: "#ef4444", fontSize: 12.5, marginBottom: 8 }}>{createVisitError}</div>}
+            {createVisitError && <div style={{ color: COLORS.error, fontSize: 12.5, marginBottom: 8 }}>{createVisitError}</div>}
             <div style={styles.fieldsGrid}>
               <FormSelect
                 label="Staff Assigned"
@@ -4993,7 +5009,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
             {derivedCategories.map((c) => (
               <span key={c.key} style={{
                 fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
-                background: "rgba(239,68,68,0.12)", color: "#b91c1c", border: "1px solid rgba(239,68,68,0.3)",
+                background: "rgba(239,68,68,0.12)", color: COLORS.error, border: "1px solid rgba(239,68,68,0.3)",
               }}>
                 {c.riskLabel}
               </span>
@@ -5003,7 +5019,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
           <ul style={{ margin: 0, paddingLeft: 18, fontSize: 12.5, color: COLORS.dark, lineHeight: 1.7 }}>
             {todayWatchFor.map((item) => <li key={item}>{item}</li>)}
           </ul>
-          <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c", marginTop: 8 }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.error, marginTop: 8 }}>
             Notify {chhaReportToLabel(reportToRole)} immediately if observed.
           </div>
         </Card>
@@ -5030,7 +5046,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               });
               return (
                 <div key={cat.category} style={{
-                  borderRadius: 8, border: `1px solid ${anyCategoryMissing ? "#f59e0b" : COLORS.border}`, background: COLORS.bg, padding: "10px 12px",
+                  borderRadius: 8, border: `1px solid ${anyCategoryMissing ? COLORS.warning : COLORS.border}`, background: COLORS.bg, padding: "10px 12px",
                 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.gray, textTransform: "uppercase", letterSpacing: 0.3 }}>{cat.categoryLabel}</div>
                   {(cat.dependence || cat.frequency) && (
@@ -5087,7 +5103,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                                   </label>
                                 ))}
                               </div>
-                              {needsChecklist && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Check at least one.</div>}
+                              {needsChecklist && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Check at least one.</div>}
                               {checklist.some((c) => ASSIST_NAME_TRIGGER_CODES.includes(c)) && (
                                 <div style={{ marginTop: 6 }}>
                                   <FormInput
@@ -5097,7 +5113,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                                     placeholder="e.g., Second HA, Maria R."
                                     disabled={visitLocked}
                                   />
-                                  {needsAssistedBy && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                                  {needsAssistedBy && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                                 </div>
                               )}
                             </div>
@@ -5122,7 +5138,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
                                 placeholder={result.state === "completed" ? "" : "e.g., Patient asked to skip bathing today, said they were too tired"}
                                 disabled={visitLocked}
                               />
-                              {needsFreeNote && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+                              {needsFreeNote && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                             </div>
                           )}
                         </div>
@@ -5140,21 +5156,21 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       <Card title="Skin">
         <FormCheckboxGroup values={note.skin} onChange={(v) => setNote((p) => ({ ...p, skin: v }))} options={CHHA_SKIN_OPTIONS} label="Observed" />
         {skinAbnormal && (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, color: COLORS.error, fontWeight: 700 }}>🚨 RN Notification Required</div>
         )}
       </Card>
 
       <Card title="Respiration">
         <FormCheckboxGroup values={note.respiration} onChange={(v) => setNote((p) => ({ ...p, respiration: v }))} options={CHHA_RESPIRATION_OPTIONS} label="Observed" />
         {respirationAbnormal && (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, color: COLORS.error, fontWeight: 700 }}>🚨 RN Notification Required</div>
         )}
       </Card>
 
       <Card title="Nutrition / Swallowing">
         <FormCheckboxGroup values={note.nutrition} onChange={(v) => setNote((p) => ({ ...p, nutrition: v }))} options={CHHA_NUTRITION_OPTIONS} label="Observed" />
         {nutritionAbnormal && (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", color: "#b91c1c", fontWeight: 700 }}>🚨 RN Notification Required</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, color: COLORS.error, fontWeight: 700 }}>🚨 RN Notification Required</div>
         )}
       </Card>
 
@@ -5235,8 +5251,8 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
 
       <Card title="RN Notification">
         {rnNotificationRequired ? (
-          <div style={{ ...styles.infoBox, borderColor: "#ef4444", marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, color: "#b91c1c", marginBottom: 4 }}>🚨 RN Notification Required — call {chhaReportToLabel(reportToRole)} now.</div>
+          <div style={{ ...styles.infoBox, borderColor: COLORS.error, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: COLORS.error, marginBottom: 4 }}>🚨 RN Notification Required — call {chhaReportToLabel(reportToRole)} now.</div>
             <ul style={{ margin: 0, paddingLeft: 18 }}>
               {rnNotificationReasons.map((r) => <li key={r}>{r}</li>)}
             </ul>
@@ -5258,14 +5274,14 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               onChange={(v) => setNote((p) => ({ ...p, rnNotifiedName: v }))}
               disabled={visitLocked}
             />
-            {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: "#f59e0b", marginTop: 2 }}>Required.</div>}
+            {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
           </div>
         )}
       </Card>
 
       <Card title="Submit">
         {missingTaskNotes > 0 && (
-          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: "#f59e0b" }}>
+          <div style={{ ...styles.infoBox, marginBottom: 8, borderColor: COLORS.warning }}>
             {missingTaskNotes} task{missingTaskNotes > 1 ? "s" : ""} above still {missingTaskNotes > 1 ? "need" : "needs"} a description of what happened.
           </div>
         )}
@@ -5277,7 +5293,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         >
           {saving ? "Saving…" : "Save Visit Note"}
         </button>
-        {!saving && saveMessage && <div style={{ fontSize: 11, color: "#22c55e", marginTop: 6 }}>{saveMessage}</div>}
+        {!saving && saveMessage && <div style={{ fontSize: 11, color: COLORS.success, marginTop: 6 }}>{saveMessage}</div>}
       </Card>
     </div>
   );
@@ -5503,7 +5519,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
       </div>
 
       {loading && <div style={{ fontSize: 12, color: COLORS.gray }}>Loading Plan of Care…</div>}
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 12, marginBottom: 8 }}>{error}</div>}
       {!loading && problems && problems.length === 0 && (
         <div style={styles.infoBox}>No Plan of Care problems have been recorded yet.</div>
       )}
@@ -5629,7 +5645,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                     {saving ? "Linking…" : "Link Evidence"}
                   </button>
                 </div>
-                {linkError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{linkError}</div>}
+                {linkError && <div style={{ color: COLORS.error, fontSize: 11.5, marginTop: 6 }}>{linkError}</div>}
               </div>
             )}
 
@@ -5666,7 +5682,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
                     {saving ? "Merging…" : "Merge Selected"}
                   </button>
                 </div>
-                {mergeError && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 6 }}>{mergeError}</div>}
+                {mergeError && <div style={{ color: COLORS.error, fontSize: 11.5, marginTop: 6 }}>{mergeError}</div>}
               </div>
             )}
 
@@ -5726,7 +5742,7 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
               <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, fontSize: 11.5 }}>
                 <div style={{ fontWeight: 700, marginBottom: 6 }}>Problem History (read-only)</div>
                 {historyLoading && <div style={{ color: COLORS.gray }}>Loading history…</div>}
-                {historyError && <div style={{ color: COLORS.error || "#ef4444" }}>{historyError}</div>}
+                {historyError && <div style={{ color: COLORS.error }}>{historyError}</div>}
                 {!historyLoading && !historyError && historyData && (
                   <div>
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 6, marginBottom: 8 }}>
@@ -5928,7 +5944,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
 
   const statusColor = (status) => {
     if (status === "APPROVED") return COLORS.success || "#16a34a";
-    if (status === "DENIED") return COLORS.error || "#ef4444";
+    if (status === "DENIED") return COLORS.error;
     return COLORS.gray;
   };
 
@@ -6028,7 +6044,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
       {message && <div style={{ color: COLORS.gray, fontSize: 11.5, marginTop: 6 }}>{message}</div>}
 
       {loading && <div style={{ fontSize: 11.5, color: COLORS.gray, marginTop: 8 }}>Loading amendment history…</div>}
-      {error && <div style={{ color: COLORS.error || "#ef4444", fontSize: 11.5, marginTop: 8 }}>{error}</div>}
+      {error && <div style={{ color: COLORS.error, fontSize: 11.5, marginTop: 8 }}>{error}</div>}
 
       {!loading && amendments.length > 0 && (
         <div style={{ marginTop: 10 }}>
@@ -6054,7 +6070,7 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
                 </div>
               )}
               {a.status === "DENIED" && a.decisionReason && (
-                <div style={{ color: COLORS.error || "#ef4444", marginTop: 2 }}>Denied: {a.decisionReason}</div>
+                <div style={{ color: COLORS.error, marginTop: 2 }}>Denied: {a.decisionReason}</div>
               )}
               {a.status === "APPROVED" && a.decisionReason && (
                 <div style={{ color: COLORS.gray, marginTop: 2 }}>Note: {a.decisionReason}</div>
@@ -6070,8 +6086,8 @@ function AmendmentPanel({ assessmentId, styles, COLORS }) {
                   </button>
                   <button type="button" disabled={decidingId === a.id} onClick={() => handleDeny(a.id)} style={{
                     fontSize: 11, fontWeight: 700, padding: "3px 7px", borderRadius: 5,
-                    border: `1px solid ${COLORS.error || "#ef4444"}`, background: "transparent",
-                    color: COLORS.error || "#ef4444", cursor: decidingId === a.id ? "wait" : "pointer",
+                    border: `1px solid ${COLORS.error}`, background: "transparent",
+                    color: COLORS.error, cursor: decidingId === a.id ? "wait" : "pointer",
                   }}>
                     Deny
                   </button>
@@ -6172,9 +6188,9 @@ function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateFie
 }
 
 const SEVERITY_COLORS = {
-  CONTRAINDICATED: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
-  MAJOR: { bg: "#450a0a", border: "#ef4444", text: "#fecaca" },
-  MODERATE: { bg: "#451a03", border: "#f59e0b", text: "#fde68a" },
+  CONTRAINDICATED: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
+  MAJOR: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
+  MODERATE: { bg: "#451a03", border: "#fbbf24", text: "#fde68a" },
   MINOR: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
   UNKNOWN: { bg: "#1e293b", border: "#64748b", text: "#cbd5e1" },
 };
@@ -6281,7 +6297,7 @@ export function AllergiesCard({ patientId, styles, COLORS }) {
           + Add Allergy
         </button>
       </div>
-      {allergyError && <div style={{ color: "#ef4444", fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+      {allergyError && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
     </div>
   );
 }
@@ -6516,7 +6532,7 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
         </div>
       )}
 
-      {submitError && <div style={{ color: "#ef4444", fontSize: 12.5, margin: "6px 0" }}>{submitError}</div>}
+      {submitError && <div style={{ color: COLORS.error, fontSize: 12.5, margin: "6px 0" }}>{submitError}</div>}
 
       <button type="button" onClick={handleAddMedication} disabled={submitting} style={{ ...styles.btnPrimary, marginTop: 8 }}>
         {submitting ? "Adding…" : "+ Add Medication"}
@@ -6526,7 +6542,7 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
       <div style={{ marginTop: 20 }}>
         <div style={{ ...styles.label, marginBottom: 8 }}>Medication List</div>
         {loading && <div style={{ fontSize: 12.5, color: COLORS.gray }}>Loading…</div>}
-        {error && <div style={{ color: "#ef4444", fontSize: 12.5 }}>{error}</div>}
+        {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
         {!loading && meds.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray }}>No medications recorded yet.</div>}
         {meds.length > 0 && (
           <table style={styles.table}>
@@ -6553,11 +6569,11 @@ export function MedicationOrdersCard({ patientId, styles, COLORS }) {
                   <td style={styles.td}>{m.status}{m.flags?.length ? ` (${m.flags.join(", ")})` : ""}</td>
                   <td style={styles.td}>
                     {m.order_status === "APPROVED" || m.order_status === "EXECUTED" ? (
-                      <span style={{ color: "#22c55e", fontWeight: 600 }}>
+                      <span style={{ color: COLORS.success, fontWeight: 600 }}>
                         ✓ Signed{m.signed_by_name ? ` — ${m.signed_by_name}` : ""}
                       </span>
                     ) : m.order_status ? (
-                      <span style={{ color: "#f59e0b", fontWeight: 600 }}>⏳ Awaiting MD Signature</span>
+                      <span style={{ color: COLORS.warning, fontWeight: 600 }}>⏳ Awaiting MD Signature</span>
                     ) : (
                       <span style={{ color: COLORS.gray }}>No signed order on file</span>
                     )}
@@ -7942,6 +7958,103 @@ function BodyMapPain({ selectedRegions = [], onToggleRegion, onClearAll, view = 
     </div>
   );
 }
+
+// P3-009/P3-017: read-only SFV Follow-Up status card for the TRIGGERING
+// RNICA encounter. This screen never offers a "Complete SFV" action --
+// completion can only happen from a separate, later qualifying visit
+// (see the Symptom Follow-Up Visit section on the Visit Notes screen).
+// This card exists so the triggering clinician can see whether a
+// follow-up is outstanding and jump to Visit Notes to create/open it.
+function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus, styles, COLORS }) {
+  const [requirements, setRequirements] = useState(null);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    if (!patientId) return;
+    let cancelled = false;
+    listSfvRequirements(patientId)
+      .then((rows) => {
+        if (cancelled) return;
+        setRequirements(rows);
+        // HOPE J2052 export needs an accurate "in-person SFV completed?"
+        // value -- source it from the authoritative backend requirement
+        // status instead of a manual self-attested checkbox (P3-009).
+        // Best-effort: reflects the most recently completed requirement,
+        // if any (SFVRequirement lifecycle normally has one OPEN
+        // requirement per patient at a time).
+        const completedRows = rows.filter((r) => r.status === "COMPLETED" && r.completedAt);
+        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+        onSyncCompletionStatus?.(Boolean(latest), latest ? latest.completedAt.slice(0, 10) : "");
+      })
+      .catch((err) => { if (!cancelled) setError(err.message || "Unable to load SFV status."); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  if (!patientId) return null;
+
+  const cardStyle = {
+    border: `1px solid ${COLORS.mapControlBorder || "#334155"}`,
+    background: COLORS.mapControlBg || "rgba(15,23,42,0.4)",
+    borderRadius: 10,
+    padding: "12px 14px",
+    marginBottom: 14,
+    fontSize: 12.5,
+    color: COLORS.mapMuted || COLORS.gray,
+    lineHeight: 1.6,
+  };
+
+  if (error) {
+    return <div style={cardStyle}>SFV Follow-Up Required — status unavailable ({error})</div>;
+  }
+  if (requirements === null) {
+    return <div style={cardStyle}>Loading SFV follow-up status…</div>;
+  }
+  if (requirements.length === 0) {
+    return null;
+  }
+
+  return (
+    <div style={cardStyle}>
+      <strong style={{ color: COLORS.mapChipText || COLORS.text }}>SFV Follow-Up Required</strong>
+      <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 8 }}>
+        {requirements.map((r) => (
+          <div key={r.sfvRequirementId}>
+            <div>Status: <strong>{r.status}</strong>{r.dueAt ? ` · due ${new Date(r.dueAt).toLocaleDateString()}` : ""}</div>
+            {r.status === "COMPLETED" ? (
+              <div>Completed via a separate follow-up visit{r.completedAt ? ` on ${new Date(r.completedAt).toLocaleDateString()}` : ""}.</div>
+            ) : (
+              <div>
+                Symptom follow-up requires a separate clinical encounter. The follow-up
+                may be completed by the original nurse, another assigned nurse, or another
+                appropriately authorized nursing clinician.
+              </div>
+            )}
+          </div>
+        ))}
+        {onNavigateToSection && (
+          <button
+            type="button"
+            onClick={() => onNavigateToSection("visit-notes")}
+            style={{
+              alignSelf: "flex-start",
+              background: "transparent",
+              border: `1px solid ${COLORS.mapControlBorder || "#334155"}`,
+              color: COLORS.mapChipText || COLORS.text,
+              borderRadius: 6,
+              padding: "4px 10px",
+              fontSize: 12,
+              cursor: "pointer",
+            }}
+          >
+            Create/Open Follow-Up Visit
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function Card({ title, children, hopeCode, sfv, cms, id }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
@@ -8293,8 +8406,24 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   return (
     <>
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
+      {sectionKey === "sfv" && (
+        <SfvStatusCard patientId={patientId} onNavigateToSection={onNavigateToSection} onSyncCompletionStatus={(completed, completedAt) => {
+          u("inPersonSfvCompleted", completed);
+          u("sfvDate", completedAt || "");
+        }} styles={styles} COLORS={COLORS} />
+      )}
       <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
         {resolvedCards.map((card, ci) => {
+        // [PRESENTATION-ONLY RELOCATION] A card may declare `dataSection` to
+        // render under a different screen/section than the one that owns its
+        // data (e.g. the ADL Assessment card visually relocated to Functional
+        // Status while its fields remain part of the `musculoskeletal`
+        // module). When set, field values/updates and POC controls resolve
+        // against that owning section instead of the ambient `sectionKey`, so
+        // storage, validation, LCD facts, and HOPE/POC ownership are
+        // unchanged -- see RNICA_SCREEN_AUTHORITY_MATRIX.md.
+        const cardDataSection = card.dataSection || sectionKey;
+        const cardData = card.dataSection ? (fullFormData?.[card.dataSection] || {}) : data;
         const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
@@ -8312,6 +8441,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
         if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
+          return null;
+        }
+
+        // HOPE J2052A controls the J2053 branch too: symptom impact "at
+        // the SFV" is only applicable once an SFV was actually completed.
+        // When J2052A = No, hide the whole J2053 card (CMS mutual
+        // exclusivity: J2052B/J2053 only apply when J2052A = Yes).
+        if (sectionKey === "sfv" && card.title === "SFV Symptom Impact" && !cardData.inPersonSfvCompleted) {
           return null;
         }
 
@@ -8505,9 +8642,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   </button>
                   {assignedAide.trim() && (
                     chhaPocCompleted ? (
-                      <span style={{ fontSize: 11.5, color: "#22c55e", fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
+                      <span style={{ fontSize: 11.5, color: COLORS.success, fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
                     ) : (
-                      <span style={{ fontSize: 11.5, color: "#f59e0b", fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
+                      <span style={{ fontSize: 11.5, color: COLORS.warning, fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
                     )
                   )}
                 </div>
@@ -8617,12 +8754,19 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && field.path === "assessmentTool") {
                 return null;
               }
+              // HOPE J2052A controls the J2052 branch: when the SFV was
+              // completed (inPersonSfvCompleted = true), J2052C (reason not
+              // completed) is not applicable and must be hidden -- CMS
+              // defines these as mutually exclusive. Shown otherwise.
+              if (sectionKey === "sfv" && field.path === "reasonNotCompleted" && cardData.inPersonSfvCompleted) {
+                return null;
+              }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
-              const value = getNestedValue(data, fieldForRender.path);
+              const value = getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
-                u(fieldForRender.path, v);
+                update(cardDataSection, fieldForRender.path, v);
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
                   // Auto-select the correct pain scale from the patient's
                   // communication status + age so only one tool is ever shown:
@@ -8684,10 +8828,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
             </div>
-            {POC_ENABLED_SECTIONS.has(sectionKey) && card.fields && (
+            {POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
               <PocSectionControls
                 assessmentId={assessmentId}
-                sectionKey={sectionKey}
+                sectionKey={cardDataSection}
                 cardTitle={card.title}
                 styles={styles}
                 COLORS={COLORS}
@@ -8937,7 +9081,7 @@ const SECTION_CONFIGS = {
 
   performanceStatus: {
     title: "Performance Status",
-    subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications",
+    subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications, and ADL assessment",
     cards: [
       {
         title: "Change Since Last Assessment",
@@ -8985,6 +9129,19 @@ const SECTION_CONFIGS = {
           { type: "textarea", label: "Functional Decline Notes", path: "functionalDeclineNotes", rows: 4 },
         ],
       },
+      // [PRESENTATION-ONLY RELOCATION] ADLs move into Functional Status'
+      // presentation ownership per the visual-polish directive. Fields,
+      // storage, validation, LCD facts, and POC ownership remain with
+      // `musculoskeletal` (Body Systems) via `dataSection` -- see
+      // RNICA_SCREEN_AUTHORITY_MATRIX.md.
+      { title: "ADL Assessment (0=Independent, 5=Dependent)", dataSection: "musculoskeletal", fields: [
+        { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
+        { type: "select", label: "Dressing", path: "adl.dressing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Toileting", path: "adl.toileting", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Transferring", path: "adl.transferring", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Eating", path: "adl.eating", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+        { type: "select", label: "Grooming", path: "adl.grooming", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
+      ]},
     ],
   },
 
@@ -9283,7 +9440,7 @@ const SECTION_CONFIGS = {
 
   musculoskeletal: {
     title: "Musculoskeletal",
-    subtitle: "Weakness, ROM, gait, mobility status, ADL assessment",
+    subtitle: "Weakness, ROM, gait, mobility status (ADL assessment presents under Functional Status)",
     cards: [
       { title: "Musculoskeletal Assessment", fields: [
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
@@ -9305,14 +9462,6 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Strength", path: "strength", options: ["Normal", "Decreased", "Absent"] },
         { type: "radio", label: "Balance", path: "balance", options: ["Normal", "Impaired"] },
         { type: "radio", label: "Pain with Movement", path: "painWithMovement", options: ["None", "Mild", "Moderate", "Severe"] },
-      ]},
-      { title: "ADL Assessment (0=Independent, 5=Dependent)", fields: [
-        { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
-        { type: "select", label: "Dressing", path: "adl.dressing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Toileting", path: "adl.toileting", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Transferring", path: "adl.transferring", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Eating", path: "adl.eating", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
-        { type: "select", label: "Grooming", path: "adl.grooming", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
       ]},
       { title: "Fall History & Notes", fields: [
         { type: "input", label: "Falls in Last 90 Days", path: "fallHistory.fallsLast90Days", inputType: "number" },
@@ -9380,9 +9529,37 @@ const SECTION_CONFIGS = {
       { title: "SFV Screening", hopeCode: "J2050", fields: [
         { type: "checkbox", label: "Symptom Impact Screening Completed", path: "symptomImpactScreeningCompleted" },
         { type: "input", label: "Screening Date", path: "symptomImpactScreeningDate", inputType: "date" },
-        { type: "checkbox", label: "In-Person SFV Completed", path: "inPersonSfvCompleted" },
-        { type: "input", label: "SFV Date", path: "sfvDate", inputType: "date" },
-        { type: "input", label: "Reason SFV not completed", path: "reasonNotCompleted" },
+        // P3-009/P3-017 continuation directive Section 4: this triggering
+        // RNICA screen no longer offers a local completion checkbox --
+        // SFV completion is authoritative only through a separate
+        // qualifying follow-up visit calling POST /visits/sfv-requirements/
+        // {id}/complete (see the Symptom Follow-Up Visit section on the
+        // Visit Notes screen). The read-only SfvStatusCard rendered above
+        // this section shows current follow-up status.
+        //
+        // HOPE J2052C (Reason SFV Not Completed): CMS defines exactly one
+        // coded response set (1/2/3/9). This must be a coded selection, not
+        // free text -- hopeReportMapper.js::j2052ReasonNotCompleted() only
+        // ever exports one of these four codes and treats anything else as
+        // NOT_VERIFIED. Conditional on J2052A (sfv.inPersonSfvCompleted):
+        // hidden when the SFV was completed (see the fields.map guard
+        // below), shown only when it was not.
+        // HOPE J2052C ownership fix (issue #146): this field is now a
+        // legacy/manual fallback ONLY. Authoritative capture happens on
+        // the SFV attempt visit (VisitNotes.jsx::SymptomFollowUpVisitSection
+        // -> POST /visits/sfv-requirements/{id}/not-completed), attributed
+        // to the clinician who actually attempted the SFV. This value is
+        // no longer read by hopeReportMapper.js and is no longer required
+        // to sign this assessment -- the triggering RN ICA/HUV author may
+        // not be the same clinician who ever learns this answer. Still
+        // conditionally hidden when J2052A = Yes (see the fields.map guard
+        // below).
+        { type: "radio", label: "Reason SFV Not Completed (legacy -- see SFV attempt visit for the authoritative HOPE export value)", path: "reasonNotCompleted", options: [
+          { value: "1", label: "1 — Patient and/or caregiver declined an in-person visit" },
+          { value: "2", label: "2 — Patient unavailable" },
+          { value: "3", label: "3 — Attempts to contact patient and/or caregiver were unsuccessful" },
+          { value: "9", label: "9 — None of the above" },
+        ] },
       ]},
       { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [
         { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
@@ -10035,6 +10212,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // (no time-saved estimate -- that would require an assumption, not a
   // persisted fact). Refetched alongside Acceptance Analytics above.
   const [rnProductivityMetrics, setRnProductivityMetrics] = useState(null);
+  // P1A (J2052 read-path correction, docs/tenant-platform/
+  // J2052_J2053_LINEAGE_AUDIT.md): the on-screen SFV status badge below
+  // must also read the authoritative SFVRequirement directly rather than
+  // the RNICA form's own self-attested `sfv.inPersonSfvCompleted`. This
+  // mirrors SfvStatusCard's own "most-recently-completed" selection
+  // logic (RNICA.jsx's SfvStatusCard component) so both surfaces agree;
+  // it is a separate, independent fetch from that card's, matching the
+  // existing pattern of other supplementary read-only cards on this page
+  // (e.g. DeclineTrackerCard, WeightLossAutoCalcCard) each fetching their
+  // own data independently.
+  const [latestSfvRequirement, setLatestSfvRequirement] = useState(null);
+
+  useEffect(() => {
+    if (!patientId) {
+      setLatestSfvRequirement(null);
+      return undefined;
+    }
+    let cancelled = false;
+    listSfvRequirements(patientId)
+      .then((rows) => {
+        if (cancelled) return;
+        const completedRows = (rows || []).filter((r) => r.status === "COMPLETED" && r.completedAt);
+        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
+        setLatestSfvRequirement(latest || null);
+      })
+      .catch(() => { if (!cancelled) setLatestSfvRequirement(null); });
+    return () => { cancelled = true; };
+  }, [patientId]);
 
   useEffect(() => {
     setPendingStructuredSignals(intelligence?.structured_findings_signals || []);
@@ -10542,6 +10747,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // opening/closing this never touches `formData` or `activeSection`.
   const [actionCenterOpen, setActionCenterOpen] = useState(false);
 
+  const userEditedRef = useRef(false);
   const { markPersisted, resetAutosaveTracking } = useAssessmentAutosave({
     formData,
     assessmentId,
@@ -10552,6 +10758,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     updateFn: api.updateRNICAAssessment,
     patientId: autosavePatientId,
     intervalMs: 30000,
+    userEditedRef,
   });
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
@@ -10598,6 +10805,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [routes, activeSection]);
 
   useEffect(() => {
+    userEditedRef.current = false;
     resetAutosaveTracking({ markCurrentAsPersisted: true });
   }, [existingAssessmentId, patientId, resetAutosaveTracking, resolvedPatientId]);
 
@@ -10931,6 +11139,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
   // Deep update helper
   const updateField = useCallback((section, path, value) => {
+    userEditedRef.current = true;
     setFormData((prev) => {
       const next = { ...prev };
       next[section] = setNestedValue(prev[section], path, value);
@@ -11203,7 +11412,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const currentRoute = routes.find((r) => r.key === activeSection);
   const currentSectionData = formData[currentRoute?.formSection];
   const sidebarConfig = sidebarConfigItems.find((s) => s.key === activeSection);
-  const sfvStatus = useMemo(() => getSfvStatus(formData), [formData]);
+  const sfvStatus = useMemo(() => getSfvStatus(formData, latestSfvRequirement), [formData, latestSfvRequirement]);
   // SECTION 7 — HOPE Admission harvest/completion-status. RN ICA's job here is
   // only to harvest the answers and show completion status / missing HOPE
   // sources (never to generate, export, or submit the HOPE Admission record
@@ -11345,18 +11554,42 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       regulator: isOngoing && route.regulator === "HOPE" ? undefined : route.regulator,
     }));
 
+    const patientAge = calculateAgeFromDob(facesheetData?.identity?.dob || formData.demographics.dob);
+    const pcg = formData.demographics.pcg || {};
+
     return (
       <AssessmentModeContext.Provider value={mode}>
         <RNICACommandWorkspace
           patient={{
             name: patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected"),
-            mrn: patientSummary?.patient?.mrn || "Not available",
+            mrn: patientSummary?.patient?.mrn || "",
             primaryDiagnosis: formData.diagnoses.primaryDiagnosis.description || patientSummary?.patient?.primary_diagnosis || "",
             secondaryDiagnoses,
             comorbidities: verifiedComorbidities,
             priorIssues: patientSummary
               ? `${patientSummary.incident_summary.total} incident(s), ${patientSummary.communication_summary.total} communication item(s)`
               : "Patient record summary loading",
+            // Additive Patient Story context (Phase B reference screen).
+            // Every value is read from a field already owned/edited by its
+            // authoritative RNICA screen (or the facesheet) -- nothing new
+            // is captured or persisted here.
+            age: patientAge,
+            sex: formData.demographics.gender || "",
+            admissionDate: facesheetData?.service_dates?.soc_date || "",
+            attendingPhysician: patientSummary?.patient?.attending_physician_name || "",
+            currentPps: formData.performanceStatus?.pps || "",
+            assessmentStage: isOngoing ? (assessmentType === "recert" ? "Recertification" : "Update assessment") : "Initial admission",
+            whyHospiceNarrative: formData.diagnoses.clinicalNarrative || "",
+            recentHospitalization: formData.diagnoses.recentHospitalizations || "",
+            functionalDeclineNarrative: formData.performanceStatus?.functionalDeclineNotes || "",
+            caregiver: {
+              name: pcg.name || "",
+              relationship: pcg.relationship || "",
+              noPcg: pcg.noPcg === true,
+              willingToProvideCare: pcg.willingToProvideCare,
+              anxietyLevel: pcg.anxietyLevel || "",
+              concerns: pcg.pcgConcerns || "",
+            },
           }}
           routes={commandRoutes}
           formSections={Object.keys(formData)}
@@ -11376,8 +11609,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
-              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
-              onInsertNarrative={handleInsertAiNarrative}
+              // Withheld until the initial "load existing assessment" fetch
+              // resolves (see the effect that sets assessmentLoaded above).
+              // Otherwise VisitRecorderCard's auto-insert-on-ready effect can
+              // race that fetch: it sees assessmentId still at its initial
+              // null and creates a brand-new duplicate DRAFT instead of
+              // updating the real assessment that was about to load a
+              // moment later. Passing undefined here (not a no-op wrapper)
+              // is what matters: the auto-insert effect's own
+              // `if (!onInsertNarrative) return` guard skips it entirely
+              // without marking the recording as attempted, so it fires for
+              // real once assessmentLoaded flips true and this prop is
+              // supplied.
+              onInsertSymptomSeverity={assessmentLoaded ? handleInsertAiSymptomSeverity : undefined}
+              onInsertNarrative={assessmentLoaded ? handleInsertAiNarrative : undefined}
             />
           )}
           alerts={(
@@ -11611,8 +11856,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               assessmentType={isOngoing ? "RN_RECERT" : "RNICA"}
               COLORS={COLORS}
               styles={styles}
-              onInsertSymptomSeverity={handleInsertAiSymptomSeverity}
-              onInsertNarrative={handleInsertAiNarrative}
+              // See the matching comment on the other VisitRecorderCard
+              // usage above: withheld until assessmentLoaded to prevent a
+              // race that creates a duplicate DRAFT assessment.
+              onInsertSymptomSeverity={assessmentLoaded ? handleInsertAiSymptomSeverity : undefined}
+              onInsertNarrative={assessmentLoaded ? handleInsertAiNarrative : undefined}
             />
             {!isOngoing && sfvStatus.required && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
@@ -12145,7 +12393,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           {assessmentId && !locked && (
             <button
               type="button"
-              style={{ ...styles.btnSecondary, color: COLORS.error || "#dc2626", borderColor: COLORS.error || "#dc2626" }}
+              style={{ ...styles.btnSecondary, color: COLORS.error, borderColor: COLORS.error }}
               onClick={handleDelete}
               disabled={saving}
               title="Permanently delete this draft assessment (only available before it is signed)"

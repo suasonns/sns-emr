@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapRnIcaToHopeReport, getHopeAdmissionStatus } from "./hopeReportMapper";
+import { mapRnIcaToHopeReport, getHopeAdmissionStatus, isSfvExportReady, getSfvStatus } from "./hopeReportMapper";
 
 // Priority 1 HOPE compliance remediation — focused mapper tests for
 // F2000 / F2100 / F2200 / F3000 "was patient/responsible party asked?"
@@ -753,6 +753,282 @@ describe("mapRnIcaToHopeReport — J0915 Neuropathic Pain", () => {
     const formData = baseFormData({ pain: {} });
     const report = mapRnIcaToHopeReport(formData);
     expect(responseCode(report, "J0915")).toBe(PLACEHOLDER);
+  });
+});
+
+// P1A — J2052 read-path correction (docs/tenant-platform/
+// J2052_J2053_LINEAGE_AUDIT.md, P1_J2052_J2053_REMEDIATION_PLAN.md).
+// J2052 (SFV completion status/date) must be derived exclusively from the
+// caller-supplied, backend-authoritative `sfvRequirement` (an
+// SFVRequirement summary fetched via listSfvRequirements()) -- never from
+// the RNICA form's own self-attested `form_data.sfv.inPersonSfvCompleted`/
+// `sfv.sfvDate` fields, even if those fields are present and disagree.
+describe("mapRnIcaToHopeReport — J2052 read-path (P1A)", () => {
+  function formDataWithModerateSymptomTrigger(sfvOverrides = {}) {
+    return baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningDate: "2026-01-01", ...sfvOverrides },
+    });
+  }
+
+  it("completed SFV: exported J2052 reflects the SFVRequirement, not form_data", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z" };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[0].value).toBe("Yes");
+    expect(findItem(report, "J2052").entries[1].value).toBe("01/02/2026");
+  });
+
+  it("incomplete SFV: exported J2052 reflects the SFVRequirement (OPEN, not completed)", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "OPEN", completedAt: null };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[0].value).toBe("No");
+  });
+
+  it("UI state changed manually (form_data.sfv.inPersonSfvCompleted = true) does not make J2052 complete without a matching SFVRequirement", () => {
+    // Simulates a stale/manually-edited RNICA form_data value that
+    // disagrees with the backend -- the exporter must ignore it.
+    const formData = formDataWithModerateSymptomTrigger({ inPersonSfvCompleted: true, sfvDate: "2020-01-01" });
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement: null });
+    expect(findItem(report, "J2052").entries[0].value).toBe("No");
+    expect(findItem(report, "J2052").entries[1].value).toBe(PLACEHOLDER);
+  });
+
+  it("no sfvRequirement supplied at all (e.g. fetch not yet resolved): J2052 defaults to not-completed rather than trusting form_data", () => {
+    const formData = formDataWithModerateSymptomTrigger({ inPersonSfvCompleted: true, sfvDate: "2026-01-02" });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2052").entries[0].value).toBe("No");
+  });
+
+  it("page reload (same SFVRequirement snapshot passed again): J2052 is unchanged and deterministic", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z" };
+    const first = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    const second = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(responseDescription(second, "J2052")).toBe(responseDescription(first, "J2052"));
+    expect(findItem(second, "J2052").entries[1].value).toBe(findItem(first, "J2052").entries[1].value);
+  });
+
+  // HOPE SOURCE MODEL CORRECTION (2026-09-23): J2052C (Reason SFV Not
+  // Completed) must use only the verified CMS code set (1/2/3/9) and must
+  // never export a reason when the SFV IS completed.
+  it("J2052C: valid reason codes (1/2/3/9) are exported verbatim when the SFV is not completed", () => {
+    ["1", "2", "3", "9"].forEach((code) => {
+      const formData = formDataWithModerateSymptomTrigger();
+      const sfvRequirement = { status: "OPEN", completedAt: null, reasonCode: code };
+      const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+      expect(findItem(report, "J2052").entries[2].value.startsWith(`${code} -`)).toBe(true);
+    });
+  });
+
+  it("J2052C: an unsupported/free-text reason value is rejected (not passed through)", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "OPEN", completedAt: null, reasonCode: "patient moved away" };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[2].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+  });
+
+  it("J2052C: a completed SFV (J2052A = Yes) never exports a not-completed reason, even if one is present on the SFVRequirement", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", reasonCode: "1" };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[2].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+  });
+
+  it("J2052B: an SFV that is not completed (J2052A = No) never exports a completion date", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "OPEN", completedAt: null };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2052").entries[1].value).toBe(PLACEHOLDER);
+  });
+});
+
+// HOPE SOURCE MODEL CORRECTION (2026-09-23): J2053 must support the full
+// verified CMS response set 0/1/2/3/9 -- not a 0-3-only model -- and must
+// never silently convert a missing/unsupported value into 0.
+describe("mapRnIcaToHopeReport — J2053 verified CMS response set (0/1/2/3/9)", () => {
+  function formDataWithModerateSymptomTrigger(sfvOverrides = {}) {
+    return baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningDate: "2026-01-01", ...sfvOverrides },
+    });
+  }
+
+  it("code 9 (Not applicable) is a distinct, supported J2053 value -- not converted to 0", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { nausea: "9" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2053").entries[3].value).toBe("9 - Not applicable");
+    expect(findItem(report, "J2053").entries[3].value).not.toBe("0 - Not at all");
+  });
+
+  it("every one of the 8 J2053 symptoms independently supports codes 0/1/2/3/9", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const values = { pain: "0", shortnessOfBreath: "1", anxiety: "2", nausea: "3", vomiting: "9", diarrhea: "0", constipation: "1", agitation: "2" };
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: values };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    const entries = findItem(report, "J2053").entries;
+    expect(entries[0].value).toBe("0 - Not at all");
+    expect(entries[1].value).toBe("1 - Slight");
+    expect(entries[2].value).toBe("2 - Moderate");
+    expect(entries[3].value).toBe("3 - Severe");
+    expect(entries[4].value).toBe("9 - Not applicable");
+    expect(entries[5].value).toBe("0 - Not at all");
+    expect(entries[6].value).toBe("1 - Slight");
+    expect(entries[7].value).toBe("2 - Moderate");
+  });
+
+  it("a missing symptom-impact value is exported as the placeholder, never coerced to 0", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { pain: "2" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    // shortnessOfBreath was never documented -- must be the placeholder, not "0 - Not at all".
+    expect(findItem(report, "J2053").entries[1].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+    expect(findItem(report, "J2053").entries[1].value).not.toBe("0 - Not at all");
+  });
+});
+
+// Phase 3 — J2053 capture/export path (Option A, docs/tenant-platform/
+// J2053_SOURCE_OF_TRUTH_ANALYSIS.md). J2053 (SFV symptom impact) must be
+// derived exclusively from the caller-supplied `sfvRequirement.symptomImpact`
+// -- i.e. the completion visit's own ClinicalNote.content.symptom_impact,
+// surfaced by the backend -- never from the RNICA trigger form's
+// self-attested `form_data.sfv.symptomImpactAtSfv`.
+describe("mapRnIcaToHopeReport — J2053 export path (Phase 3 / Option A)", () => {
+  function formDataWithModerateSymptomTrigger(sfvOverrides = {}) {
+    return baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningDate: "2026-01-01", ...sfvOverrides },
+    });
+  }
+
+  it("pain documented on the completion visit is exported as J2053", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { pain: "2" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2053").entries[0].value).toBe("2 - Moderate");
+  });
+
+  it("anxiety documented on the completion visit is exported as J2053", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { anxiety: "3" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(report, "J2053").entries[2].value).toBe("3 - Severe");
+  });
+
+  it("multiple symptoms documented on the completion visit are all exported as J2053", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = {
+      status: "COMPLETED",
+      completedAt: "2026-01-02T10:00:00Z",
+      symptomImpact: { pain: "1", shortnessOfBreath: "0", anxiety: "2", nausea: "3" },
+    };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    const j2053 = findItem(report, "J2053");
+    expect(j2053.entries[0].value).toBe("1 - Slight");
+    expect(j2053.entries[1].value).toBe("0 - Not at all");
+    expect(j2053.entries[2].value).toBe("2 - Moderate");
+    expect(j2053.entries[3].value).toBe("3 - Severe");
+  });
+
+  it("RNICA trigger-form self-attestation (sfv.symptomImpactAtSfv) is never read for J2053, even when present", () => {
+    const formData = formDataWithModerateSymptomTrigger({ symptomImpactAtSfv: { pain: "3", anxiety: "3" } });
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { pain: "1" } };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    // Must reflect the completion-visit value (1), not the trigger-form value (3).
+    expect(findItem(report, "J2053").entries[0].value).toBe("1 - Slight");
+  });
+
+  it("no symptom impact documented on the completion visit: J2053 exports the placeholder for every field", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: {} };
+    const report = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    findItem(report, "J2053").entries.forEach((entry) => {
+      expect(entry.value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+    });
+  });
+
+  it("no sfvRequirement supplied at all: J2053 exports the placeholder rather than trusting form_data", () => {
+    const formData = formDataWithModerateSymptomTrigger({ symptomImpactAtSfv: { pain: "3" } });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2053").entries[0].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+  });
+
+  it("page reload (same SFVRequirement snapshot passed again): J2053 is unchanged and deterministic", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvRequirement = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { pain: "2", nausea: "1" } };
+    const first = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    const second = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement });
+    expect(findItem(second, "J2053").entries).toEqual(findItem(first, "J2053").entries);
+  });
+
+  // Multi-SFV isolation: a patient may accumulate multiple SFVRequirements
+  // over time (one per distinct RNICA trigger event). Each must export its
+  // OWN completion visit's symptom impact -- no cross-assignment, no
+  // "latest visit" shortcut, no patient-level fallback.
+  it("multiple SFVRequirements for the same patient each export their own distinct J2053 values", () => {
+    const formData = formDataWithModerateSymptomTrigger();
+    const sfvA = { sfvRequirementId: "sfv-a", status: "COMPLETED", completedAt: "2026-01-05T00:00:00Z", symptomImpact: { pain: "1" } };
+    const sfvB = { sfvRequirementId: "sfv-b", status: "COMPLETED", completedAt: "2026-03-10T00:00:00Z", symptomImpact: { pain: "3", anxiety: "2" } };
+    const sfvC = { sfvRequirementId: "sfv-c", status: "OPEN", completedAt: null, symptomImpact: {} };
+
+    const reportA = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement: sfvA });
+    const reportB = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement: sfvB });
+    const reportC = mapRnIcaToHopeReport(formData, undefined, undefined, { sfvRequirement: sfvC });
+
+    expect(findItem(reportA, "J2053").entries[0].value).toBe("1 - Slight");
+    expect(findItem(reportB, "J2053").entries[0].value).toBe("3 - Severe");
+    expect(findItem(reportB, "J2053").entries[2].value).toBe("2 - Moderate");
+    // SFV C is not completed and has no documented symptom impact: placeholder.
+    expect(findItem(reportC, "J2053").entries[0].value).toBe(`${PLACEHOLDER} - ${PLACEHOLDER}`);
+
+    // Cross-check: none of the three reports leak another SFV's value.
+    expect(findItem(reportA, "J2053").entries[0].value).not.toBe(findItem(reportB, "J2053").entries[0].value);
+  });
+});
+
+// Phase 4 — J2053 export-readiness validation (isSfvExportReady /
+// getSfvStatus.exportReady). A COMPLETED SFV must not become HOPE-export-
+// ready unless required symptom-impact content exists on its own
+// completion visit.
+describe("isSfvExportReady — J2053 validation (Phase 4)", () => {
+  it("PASS: pain documented on a completed SFV is export ready", () => {
+    expect(isSfvExportReady({ status: "COMPLETED", symptomImpact: { pain: "2" } })).toBe(true);
+  });
+
+  it("PASS: anxiety documented on a completed SFV is export ready", () => {
+    expect(isSfvExportReady({ status: "COMPLETED", symptomImpact: { anxiety: "3" } })).toBe(true);
+  });
+
+  it("PASS: multiple symptoms documented on a completed SFV is export ready", () => {
+    expect(isSfvExportReady({ status: "COMPLETED", symptomImpact: { pain: "1", nausea: "0" } })).toBe(true);
+  });
+
+  it("FAIL: completed SFV with no documented symptom impact is a validation blocker", () => {
+    expect(isSfvExportReady({ status: "COMPLETED", symptomImpact: {} })).toBe(false);
+    expect(isSfvExportReady({ status: "COMPLETED", symptomImpact: null })).toBe(false);
+  });
+
+  it("FAIL: legacy RNICA trigger-form values alone are not sufficient (symptomImpact must come from the completion visit)", () => {
+    // symptomImpactAtSfv (legacy self-attestation) is intentionally not a
+    // recognized field on the sfvRequirement summary -- only
+    // sfvRequirement.symptomImpact (from the completion visit's own
+    // ClinicalNote) satisfies the check.
+    expect(isSfvExportReady({ status: "COMPLETED", symptomImpactAtSfv: { pain: "3" } })).toBe(false);
+  });
+
+  it("an SFV that is not yet completed is not blocked by missing symptom impact (nothing to export yet)", () => {
+    expect(isSfvExportReady({ status: "OPEN", symptomImpact: {} })).toBe(true);
+    expect(isSfvExportReady(null)).toBe(true);
+  });
+
+  it("getSfvStatus.exportReady mirrors isSfvExportReady for the same sfvRequirement", () => {
+    const formData = baseFormData({ symptomImpact: { pain: 2, assessmentDate: "2026-01-01" } });
+    const completedNoImpact = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: {} };
+    const completedWithImpact = { status: "COMPLETED", completedAt: "2026-01-02T10:00:00Z", symptomImpact: { pain: "2" } };
+    expect(getSfvStatus(formData, completedNoImpact).exportReady).toBe(false);
+    expect(getSfvStatus(formData, completedWithImpact).exportReady).toBe(true);
   });
 });
 

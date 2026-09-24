@@ -1,0 +1,56 @@
+﻿Evidence Hash Verification - 2026-09-15T09:48:10.9105713-07:00
+===================================================
+
+File: data.db
+  Source: C:\Users\rdsua\.copilot_old\data.db
+    Size: 5115904  LastWriteTime: 09/15/2026 01:24:00
+    SHA256: B48E1B73A471FED624A8CABBF77472F08D04254439D0F37DD6A0D78E6ECB744C
+  Copy:   C:\Users\rdsua\Desktop\copilot-recovery-2026-09-15\profile-copy\data.db
+    Size: 5115904  LastWriteTime: 09/15/2026 01:24:00
+    SHA256: B48E1B73A471FED624A8CABBF77472F08D04254439D0F37DD6A0D78E6ECB744C
+  Result: MATCH
+
+File: data.db-shm
+  Source: C:\Users\rdsua\.copilot_old\data.db-shm
+    Size: 32768  LastWriteTime: 09/15/2026 09:25:05
+    SHA256: 8C283D76EF85B79C2B8DF14194C03F1BABACEA68D77C0BCE150DAC57F47048D3
+  Copy:   C:\Users\rdsua\Desktop\copilot-recovery-2026-09-15\profile-copy\data.db-shm
+    Size: 32768  LastWriteTime: 09/15/2026 09:25:05
+    SHA256: 8C283D76EF85B79C2B8DF14194C03F1BABACEA68D77C0BCE150DAC57F47048D3
+  Result: MATCH
+
+File: data.db-wal
+  Source: C:\Users\rdsua\.copilot_old\data.db-wal
+    Size: 4140632  LastWriteTime: 09/15/2026 09:15:12
+    SHA256: D0BDBDA5A5D1E7E0D761A30304271FECFC5C2215BBA1A85DB1428939C952AFF4
+  Copy:   C:\Users\rdsua\Desktop\copilot-recovery-2026-09-15\profile-copy\data.db-wal
+    Size: 4140632  LastWriteTime: 09/15/2026 09:15:12
+    SHA256: D0BDBDA5A5D1E7E0D761A30304271FECFC5C2215BBA1A85DB1428939C952AFF4
+  Result: MATCH
+
+File: session-store.db
+  Source: C:\Users\rdsua\.copilot_old\session-store.db
+    Size: 111550464  LastWriteTime: 09/15/2026 01:24:44
+    SHA256: 8E8648F15CCF67DCB01B9E94D40C4D696E66A72C30F01FF516670CA62C76F80B
+  Copy:   C:\Users\rdsua\Desktop\copilot-recovery-2026-09-15\profile-copy\session-store.db
+    Size: 111550464  LastWriteTime: 09/15/2026 01:24:44
+    SHA256: 8E8648F15CCF67DCB01B9E94D40C4D696E66A72C30F01FF516670CA62C76F80B
+  Result: MATCH
+
+File: session-store.db-shm
+  Source: C:\Users\rdsua\.copilot_old\session-store.db-shm
+    Size: 32768  LastWriteTime: 09/14/2026 11:29:02
+    SHA256: A695A1414442CAD535ADC0EFB581D8EDE07B17613E3A4F200E4CC5FC29D0ED68
+  Copy:   C:\Users\rdsua\Desktop\copilot-recovery-2026-09-15\profile-copy\session-store.db-shm
+    Size: 32768  LastWriteTime: 09/14/2026 11:29:02
+    SHA256: A695A1414442CAD535ADC0EFB581D8EDE07B17613E3A4F200E4CC5FC29D0ED68
+  Result: MATCH
+
+File: session-store.db-wal
+  Source: C:\Users\rdsua\.copilot_old\session-store.db-wal
+    Size: 5768032  LastWriteTime: 09/15/2026 01:28:31
+    SHA256: 2DA9D06F248999ECCDF2E9AAD93D4B6B4465A2FF9E7E6EE1299034EF36C6B289
+  Copy:   C:\Users\rdsua\Desktop\copilot-recovery-2026-09-15\profile-copy\session-store.db-wal
+    Size: 5768032  LastWriteTime: 09/15/2026 01:28:31
+    SHA256: 2DA9D06F248999ECCDF2E9AAD93D4B6B4465A2FF9E7E6EE1299034EF36C6B289
+  Result: MATCH

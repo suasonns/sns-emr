@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime
 
-from sqlalchemy import Boolean, Column, DateTime, ForeignKey, String, Text, text
+from sqlalchemy import Boolean, CheckConstraint, Column, Date, DateTime, ForeignKey, Index, String, Text, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import relationship
 
@@ -49,6 +49,36 @@ class RnicaAssessment(Base):
     hope_unlocked_by = Column(UUID(as_uuid=True), nullable=True)
     hope_unlock_reason = Column(Text, nullable=True)
 
+    # ---------------------------------------------------------
+    # FY2027 HOPE submission-tracking extension (added alongside the
+    # CMS FY2027 compliance work). RnicaAssessment remains the single
+    # authoritative HOPE workflow/submission record -- these fields
+    # extend it rather than introducing a second `hope_records`/
+    # `hope_submission_obligation` table. hope_workflow_status (above)
+    # remains the single submission-status owner; do not add a second
+    # status column here.
+    # ---------------------------------------------------------
+    hope_event_type = Column(
+        String(20),
+        nullable=True,
+        doc="ADMISSION / HUV1 / HUV2 / DISCHARGE -- kept distinguishable, never collapsed.",
+    )
+    hope_event_date = Column(Date, nullable=True)
+    hope_submission_due_at = Column(DateTime(timezone=True), nullable=True)
+    hope_overdue_at = Column(DateTime(timezone=True), nullable=True)
+    hope_receipt_reference = Column(String(128), nullable=True)
+    hope_validation_status = Column(String(32), nullable=True)
+    hope_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    hope_rejected_at = Column(DateTime(timezone=True), nullable=True)
+    hope_correction_required = Column(Boolean, nullable=False, default=False, server_default=text("false"))
+    hope_corrected_assessment_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("rnica_assessments.id", ondelete="SET NULL"),
+        nullable=True,
+        doc="Points to the prior (superseded) assessment this one corrects, preserving submission history.",
+    )
+    hope_last_submission_attempt_at = Column(DateTime(timezone=True), nullable=True)
+
     form_data = Column(JSONB, nullable=False, default=dict)
     notes = Column(Text, nullable=True)
 
@@ -76,3 +106,25 @@ class RnicaAssessment(Base):
 
     patient = relationship("Patient", backref="rnica_assessments")
     visit = relationship("Visit", backref="rnica_assessments")
+
+    __table_args__ = (
+        Index("ix_rnica_assessments_tenant_status_due", "tenant_id", "hope_workflow_status", "hope_submission_due_at"),
+        Index("ix_rnica_assessments_tenant_admission_event", "tenant_id", "admission_id", "hope_event_type"),
+        Index("ix_rnica_assessments_tenant_overdue", "tenant_id", "hope_overdue_at"),
+        CheckConstraint(
+            "hope_submission_due_at IS NULL OR hope_event_date IS NOT NULL",
+            name="ck_rnica_assessments_due_requires_event_date",
+        ),
+        CheckConstraint(
+            "hope_accepted_at IS NULL OR hope_rejected_at IS NULL",
+            name="ck_rnica_assessments_accept_reject_mutually_exclusive",
+        ),
+        CheckConstraint(
+            "hope_corrected_assessment_id IS NULL OR hope_corrected_assessment_id != id",
+            name="ck_rnica_assessments_no_self_correction",
+        ),
+        CheckConstraint(
+            "hope_workflow_status != 'CORRECTION_REQUIRED' OR hope_correction_required = true",
+            name="ck_rnica_assessments_correction_required_flag",
+        ),
+    )

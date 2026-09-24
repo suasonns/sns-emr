@@ -133,4 +133,51 @@ describe("VisitRecorderCard auto-insert narrative", () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(onInsertNarrative).toHaveBeenCalledTimes(1);
   });
+
+  it("does not fire (and does not mark the recording as attempted) while the RNICA assessment is still loading, but fires exactly once as soon as the real handler becomes available", async () => {
+    // Regression test for the duplicate-DRAFT bug: RNICA.jsx used to pass
+    // its real handleInsertAiNarrative/handleInsertAiSymptomSeverity
+    // handlers unconditionally, so this auto-insert effect could fire
+    // before RNICA.jsx's own "load existing assessment" GET resolved,
+    // taking the create-branch (assessmentId still null) instead of the
+    // update-branch and writing a brand-new duplicate DRAFT. The fix gates
+    // these props behind `assessmentLoaded` (undefined until load
+    // completes). This test simulates that gating directly at the
+    // VisitRecorderCard boundary.
+    const onInsertNarrative = vi.fn().mockResolvedValue(true);
+
+    const { rerender } = render(
+      <VisitRecorderCard
+        patientId="patient-1"
+        assessmentId="assessment-1"
+        onInsertNarrative={undefined}
+        onInsertSymptomSeverity={undefined}
+        COLORS={{}}
+        styles={{}}
+      />
+    );
+
+    // While the prop is undefined (assessment still loading), the effect's
+    // own guard must skip cleanly -- nothing to call, nothing thrown, and
+    // critically the recording must not be marked "attempted" yet.
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(onInsertNarrative).not.toHaveBeenCalled();
+
+    // Assessment load completes; RNICA.jsx re-renders with the real handler.
+    rerender(
+      <VisitRecorderCard
+        patientId="patient-1"
+        assessmentId="assessment-1"
+        onInsertNarrative={onInsertNarrative}
+        onInsertSymptomSeverity={vi.fn()}
+        COLORS={{}}
+        styles={{}}
+      />
+    );
+
+    await waitFor(() => {
+      expect(onInsertNarrative).toHaveBeenCalledTimes(1);
+    });
+    expect(onInsertNarrative).toHaveBeenCalledWith(COMPLETED_RECORDING.ai_note_draft.narrative, COMPLETED_RECORDING.id);
+  });
 });
