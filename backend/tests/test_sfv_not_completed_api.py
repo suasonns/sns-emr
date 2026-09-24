@@ -6,11 +6,10 @@
 Mirrors test_sfv_completion_api.py's fixtures/patterns exactly so the
 "not completed" (J2052A = No / J2052C reason) branch is verified with
 the same rigor as the existing "completed" branch: authorization,
-discipline validation (RN/LVN allowed today, NP intentionally rejected
--- tracked separately, see issue: "SFV completion authorization rejects
-NP discipline"), visit separation/ordering, reason-code validation, and
-the append-only correction path (SfvOutcomeCorrection never overwrites,
-only supersedes).
+discipline validation (RN/LVN/LPN/NP allowed, per issue #158's allow-list
+alignment with app.core.patient_access's SFV authorization policy),
+visit separation/ordering, reason-code validation, and the append-only
+correction path (SfvOutcomeCorrection never overwrites, only supersedes).
 """
 
 from __future__ import annotations
@@ -165,14 +164,57 @@ def test_record_sfv_not_completed_endpoint_happy_path_lvn_unavailable(client, db
     assert body["reasonCode"] == "2"
 
 
-def test_record_sfv_not_completed_endpoint_rejects_np_discipline(client, db_session, rn_headers):
-    """Acceptance test (NP -- EXPECTED FAIL today, tracked separately):
-    NP attempts SFV, patient declines. Current backend rejects NP as an
-    authorized SFV discipline (see issue: "SFV completion authorization
-    rejects NP discipline"). This is intentionally NOT fixed as part of
-    the J2052C ownership change (implementation directive Rule 5) -- this
-    test documents/locks in the current, still-broken NP behavior."""
+def _np_headers(client):
+    return login_headers(client, user_id="np_test", role="NP")
+
+
+def _grant_np_patient_access(db_session, patient):
+    """NP is also a provider-identity role gated by the platform's
+    separate Physician Identity Mapping requirement (see
+    app.core.patient_access.get_authorized_patient); an NP account has
+    ZERO patient visibility without a verified, ACTIVE physician_id
+    linkage and an explicit PatientAssignment. That gate is independent
+    of and unrelated to SFV completion authorization (issue #158) --
+    satisfied here so each test isolates the SFV-specific discipline
+    check. Mirrors test_complete_sfv_requirement_endpoint_authorized_np
+    in test_sfv_completion_api.py."""
+    from app.models.physician import Physician
+    from app.models.patient_assignment import PatientAssignment
+    from app.models.user import User
+
+    physician = Physician(
+        tenant_id=_tenant_id(),
+        display_name="Test NP Provider",
+        status="active",
+        created_by=TEST_USER_ID,
+    )
+    db_session.add(physician)
+    db_session.flush()
+
+    db_user = db_session.query(User).filter(User.id == TEST_USER_ID).first()
+    db_user.physician_id = physician.id
+    db_user.physician_link_status = "ACTIVE"
+
+    db_session.add(
+        PatientAssignment(
+            tenant_id=_tenant_id(),
+            patient_id=patient.id,
+            user_id=TEST_USER_ID,
+            discipline="NP",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+
+def test_record_sfv_not_completed_endpoint_accepts_np_discipline_declined(client, db_session):
+    """NP-002 (issue #158): NP attempts SFV on an NP-discipline visit,
+    patient declines. NP is a qualifying nursing credential for SFV
+    outcome recording per app.core.patient_access's documented policy
+    (_SFV_QUALIFYING_NURSING_CREDENTIALS); the service-layer allow-list
+    now matches that policy. J2052A=No, J2052C=1, attributed to the NP."""
     patient, admission = _make_patient_and_admission(db_session)
+    _grant_np_patient_access(db_session, patient)
     now = datetime.now(timezone.utc)
     trigger_visit = _make_visit(
         db_session, patient, admission,
@@ -188,18 +230,135 @@ def test_record_sfv_not_completed_endpoint_rejects_np_discipline(client, db_sess
     resp = client.post(
         f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
         json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "1"},
-        headers=rn_headers,
+        headers=_np_headers(client),
     )
 
-    assert resp.status_code == 409, resp.text
-    assert resp.json()["detail"]["error"]["code"] == "CLINICIAN_NOT_AUTHORIZED"
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "NOT_COMPLETED"
+    assert body["reasonCode"] == "1"
+    assert body["reasonRecordedBy"]["userId"]
 
     requirement = (
         db_session.query(SFVRequirement)
         .filter(SFVRequirement.id == uuid.UUID(outcome.requirement_id))
         .first()
     )
-    assert requirement.status == "OPEN"
+    assert requirement.status == "NOT_COMPLETED"
+    assert requirement.reason_code == "1"
+    assert requirement.reason_recorded_visit_id == attempt_visit.id
+
+
+def test_record_sfv_not_completed_endpoint_accepts_np_discipline_unavailable(client, db_session):
+    """NP-003 (issue #158): NP attempts SFV, patient unavailable.
+    J2052C=2, attributed to the NP."""
+    patient, admission = _make_patient_and_admission(db_session)
+    _grant_np_patient_access(db_session, patient)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="NP",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "2"},
+        headers=_np_headers(client),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["reasonCode"] == "2"
+
+
+def test_record_sfv_not_completed_endpoint_accepts_np_discipline_unable_to_contact(client, db_session):
+    """NP-004 (issue #158): NP attempts SFV, unable to contact patient.
+    J2052C=3, attributed to the NP."""
+    patient, admission = _make_patient_and_admission(db_session)
+    _grant_np_patient_access(db_session, patient)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="NP",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "3"},
+        headers=_np_headers(client),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["reasonCode"] == "3"
+
+
+def test_record_sfv_not_completed_endpoint_accepts_np_discipline_none_of_the_above(client, db_session):
+    """NP-005 (issue #158): NP attempts SFV, reason none of the above.
+    J2052C=9, attributed to the NP."""
+    patient, admission = _make_patient_and_admission(db_session)
+    _grant_np_patient_access(db_session, patient)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="NP",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "9"},
+        headers=_np_headers(client),
+    )
+
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["reasonCode"] == "9"
+
+
+def test_locked_admission_does_not_block_np_not_completed_recording(client, db_session):
+    """NP-006 (issue #158): the triggering RNICA/HUV visit remains
+    unmodified when an NP records a not-completed SFV outcome -- mirrors
+    test_locked_admission_does_not_block_not_completed_recording for the
+    RN/LVN paths, proving RNICA stays a trigger-only source for NP too."""
+    patient, admission = _make_patient_and_admission(db_session)
+    _grant_np_patient_access(db_session, patient)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    trigger_visit_updated_at_before = trigger_visit.updated_at
+    attempt_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="NP",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/not-completed",
+        json={"attemptVisitId": str(attempt_visit.id), "reasonCode": "2"},
+        headers=_np_headers(client),
+    )
+
+    assert resp.status_code == 200, resp.text
+    db_session.refresh(trigger_visit)
+    assert trigger_visit.updated_at == trigger_visit_updated_at_before
 
 
 def test_record_sfv_not_completed_endpoint_on_call_unable_to_contact(client, db_session):
