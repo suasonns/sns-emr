@@ -409,6 +409,14 @@ const J2052_REASON_MAP = {
 // authoritative source. Per the CMS response set (1/2/3/9 only) this
 // function still (a) never trusts an unsupported value, and (b) never
 // exports a reason when the SFV IS completed (J2052A = Yes).
+//
+// Ownership model (issue #146): J2052A/B/C/J2053 are all sourced from
+// `sfvRequirement` -- the Visit Note -> Symptom Follow-up Visit
+// workflow -- and are owned by whichever clinician performed/attempted
+// the SFV. None of the four are ever read from the triggering
+// RNICA/Admission/HUV assessment's form_data. Runtime-verified (real
+// Postgres + HTTP) for all four CMS codes, RN/LVN/On-Call roles, the
+// locked-Admission case, and the correction workflow.
 function j2052ReasonNotCompleted(completed, rawReason) {
   if (completed) return { code: PLACEHOLDER, description: PLACEHOLDER };
   const normalized = rawReason == null ? "" : String(rawReason).trim();
