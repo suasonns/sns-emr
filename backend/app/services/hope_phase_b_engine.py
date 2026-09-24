@@ -35,6 +35,16 @@ HUV_ALERT_PREFIX = "HUV"
 DISCIPLINE_RN = "RN"
 DISCIPLINE_LVN = "LVN"
 DISCIPLINE_LPN = "LPN"
+# NP (Nurse Practitioner) is a qualifying nursing credential for SFV
+# completion/attempt-outcome recording per app.core.patient_access's
+# documented SFV authorization policy (_SFV_QUALIFYING_NURSING_CREDENTIALS).
+# This is a local, file-scoped constant matching this file's existing
+# DISCIPLINE_RN/LVN/LPN convention -- intentionally NOT imported from
+# app.models.enums (TaskDiscipline/Discipline/DISCIPLINE_NORMALIZATION_MAP),
+# which belong to the unrelated Task SLA / IDG physician-review subsystem
+# and classify NP as physician-tier there; that classification does not
+# apply to SFV completion authorization (issue #158).
+DISCIPLINE_NP = "NP"
 
 VISIT_MODE_IN_PERSON = "IN_PERSON"
 
@@ -420,7 +430,7 @@ def complete_sfv_requirement_from_visit(
         raise ValueError("SFV must be completed by an in-person visit")
 
     normalized_discipline = _normalize_discipline(discipline)
-    if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN}:
+    if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN, DISCIPLINE_NP}:
         raise ValueError("SFV must be completed by RN or LPN/LVN")
 
     if str(completing_visit_id) == str(requirement.trigger_reference_id):
@@ -498,9 +508,10 @@ def record_sfv_not_completed_from_visit(
     (separate visit, ordering, patient/tenant match, discipline,
     in-person mode) so the two outcomes are equally trustworthy.
 
-    NP is intentionally NOT yet included in the allowed discipline set
-    here -- tracked separately (see issue: "SFV completion authorization
-    rejects NP discipline"), not fixed as part of this change.
+    NP was added to the allowed discipline set here in issue #158, for
+    consistency with app.core.patient_access's SFV authorization policy
+    (_SFV_QUALIFYING_NURSING_CREDENTIALS), which already treated NP as a
+    qualifying nursing credential at the API-authorization layer.
     """
     requirement = (
         db.query(SFVRequirement)
@@ -521,7 +532,7 @@ def record_sfv_not_completed_from_visit(
         raise ValueError("SFV attempt must be documented on an in-person visit")
 
     normalized_discipline = _normalize_discipline(discipline)
-    if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN}:
+    if normalized_discipline not in {DISCIPLINE_RN, DISCIPLINE_LVN, DISCIPLINE_LPN, DISCIPLINE_NP}:
         raise ValueError("SFV must be attempted by RN or LPN/LVN")
 
     if str(attempt_visit_id) == str(requirement.trigger_reference_id):

@@ -492,6 +492,69 @@ def test_complete_sfv_requirement_endpoint_authorized_np(client, db_session):
     assert resp.json()["status"] == "COMPLETED"
 
 
+def test_complete_sfv_requirement_endpoint_np_discipline_visit_completes(client, db_session):
+    """NP-001 (issue #158): the SFV is COMPLETED on an NP-discipline
+    visit itself (visit_discipline="NP"), not merely called by an
+    NP-role user acting on an RN-discipline visit (that distinct check
+    is test_complete_sfv_requirement_endpoint_authorized_np above). This
+    is the service-layer allow-list path that previously raised
+    CLINICIAN_NOT_AUTHORIZED for NP-discipline visits; it now succeeds,
+    aligning hope_phase_b_engine.py with app.core.patient_access's
+    already-documented SFV authorization policy."""
+    patient, admission = _make_patient_and_admission(db_session)
+    now = datetime.now(timezone.utc)
+    trigger_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="RNICA_ADMISSION", visit_discipline="RN", visit_datetime=now,
+    )
+    completion_visit = _make_visit(
+        db_session, patient, admission,
+        visit_type="SKILLED_NURSING", visit_discipline="NP",
+        visit_datetime=now + timedelta(hours=6),
+    )
+    outcome = _trigger_requirement(db_session, patient, trigger_visit.id, now)
+
+    from app.models.physician import Physician
+    from app.models.patient_assignment import PatientAssignment
+    from app.models.user import User
+    from tests.conftest import login_headers
+
+    physician = Physician(
+        tenant_id=uuid.UUID(_test_tenant_id()),
+        display_name="Test NP Provider 2",
+        status="active",
+        created_by=TEST_USER_ID,
+    )
+    db_session.add(physician)
+    db_session.flush()
+
+    db_user = db_session.query(User).filter(User.id == TEST_USER_ID).first()
+    db_user.physician_id = physician.id
+    db_user.physician_link_status = "ACTIVE"
+
+    db_session.add(
+        PatientAssignment(
+            tenant_id=uuid.UUID(_test_tenant_id()),
+            patient_id=patient.id,
+            user_id=TEST_USER_ID,
+            discipline="NP",
+            active=True,
+        )
+    )
+    db_session.commit()
+
+    resp = client.post(
+        f"/visits/sfv-requirements/{outcome.requirement_id}/complete",
+        json={"completionVisitId": str(completion_visit.id)},
+        headers=login_headers(client, user_id="np_test2", role="NP"),
+    )
+
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["status"] == "COMPLETED"
+    assert body["completionVisitId"] == str(completion_visit.id)
+
+
 def test_complete_sfv_requirement_endpoint_administrator_rejected(client, db_session):
     """ADMINISTRATOR holds the same RN-scope PERFORM_RN_ASSESSMENT /
     FINALIZE_RN_DOCUMENTATION capabilities as RN (clinical-admin
