@@ -108,6 +108,11 @@ def test_list_sfv_requirements_endpoint_returns_open_requirement(client, db_sess
     assert body[0]["sfvRequirementId"] == outcome.requirement_id
     assert body[0]["status"] == "OPEN"
     assert body[0]["triggerVisitId"] == str(trigger_visit.id)
+    # SFV ownership remediation (docs/tenant-platform/
+    # P0_SFV_OWNERSHIP_REMEDIATION.md): triggerSourceType must be exposed
+    # so a caller can scope its lookup to (triggerSourceType,
+    # triggerVisitId) instead of a patient-wide "most recent" pick.
+    assert body[0]["triggerSourceType"] == "INITIAL_RN_ICA"
     assert body[0]["completionVisitId"] is None
 
 

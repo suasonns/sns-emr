@@ -138,6 +138,13 @@ def _serialize_rnica_assessment(record: RnicaAssessment, include_form_data: bool
         "createdAt": record.created_at.isoformat() if record.created_at else None,
         "updatedAt": record.updated_at.isoformat() if record.updated_at else None,
         "admissionId": str(record.admission_id) if record.admission_id else None,
+        # SFV ownership remediation (docs/tenant-platform/
+        # P0_SFV_OWNERSHIP_REMEDIATION.md): the Visit that finalized this
+        # assessment. Lets the frontend resolve the SFVRequirement that
+        # was actually triggered BY this specific record (trigger_source_type
+        # + trigger_reference_id == this visitId), instead of a
+        # patient-wide "most recently completed" lookup.
+        "visitId": str(record.visit_id) if record.visit_id else None,
         "hopeWorkflow": workflow,
     }
     if include_form_data:
@@ -4106,6 +4113,13 @@ class SfvRequirementSummary(BaseModel):
     sfvRequirementId: str
     patientId: str
     triggerVisitId: str
+    # SFV ownership remediation (docs/tenant-platform/
+    # P0_SFV_OWNERSHIP_REMEDIATION.md): the timepoint this requirement was
+    # actually triggered from ("INITIAL_RN_ICA" | "HUV1" | "HUV2"). Paired
+    # with triggerVisitId, this lets a caller resolve the ONE requirement
+    # that belongs to a specific HOPE record, instead of picking the
+    # patient's most-recently-completed requirement regardless of timepoint.
+    triggerSourceType: str
     triggerDatetime: Optional[str] = None
     completionVisitId: Optional[str] = None
     status: str
@@ -4205,6 +4219,7 @@ def list_sfv_requirements(
             sfvRequirementId=str(r.id),
             patientId=str(r.patient_id),
             triggerVisitId=str(r.trigger_reference_id),
+            triggerSourceType=r.trigger_source_type,
             triggerDatetime=r.trigger_datetime.isoformat() if r.trigger_datetime else None,
             completionVisitId=str(r.completed_visit_id) if r.completed_visit_id else None,
             status=r.status,

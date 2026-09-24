@@ -21,6 +21,12 @@ export interface SfvRequirementSummary {
   sfvRequirementId: string;
   patientId: string;
   triggerVisitId: string;
+  /** SFV ownership remediation (docs/tenant-platform/
+   * P0_SFV_OWNERSHIP_REMEDIATION.md): "INITIAL_RN_ICA" | "HUV1" | "HUV2" --
+   * the HOPE timepoint that actually triggered this requirement. Paired
+   * with triggerVisitId to resolve the ONE requirement owned by a specific
+   * HOPE record, instead of a patient-wide "most recent" lookup. */
+  triggerSourceType: string;
   triggerDatetime?: string | null;
   completionVisitId?: string | null;
   status: SfvRequirementStatus;

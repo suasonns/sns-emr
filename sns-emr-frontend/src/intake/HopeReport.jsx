@@ -19,6 +19,20 @@ const MED_ORDER_LINKS = {
   N0520: { section: "add-md-order", label: "Open bowel-regimen order" },
 };
 
+// SFV ownership remediation (docs/tenant-platform/
+// P0_SFV_OWNERSHIP_REMEDIATION.md, SFV_TRIGGER_OWNERSHIP_TRACE.md,
+// SFV_OWNERSHIP_TRACE.md): maps a HOPE record's own timepoint to the
+// SFVRequirement.trigger_source_type that could have been triggered BY
+// that record. DISCHARGE intentionally has no entry -- the mapper never
+// emits J2052/J2053 for Discharge (Section A + Z0500 only), so no SFV
+// lookup applies there.
+const HOPE_EVENT_TYPE_TO_TRIGGER_SOURCE = {
+  ADMISSION: "INITIAL_RN_ICA",
+  HUV1: "HUV1",
+  HUV2: "HUV2",
+};
+
+
 const styles = {
   page: (colors) => ({ flex: 1, backgroundColor: colors.bg, padding: 24, overflowY: "auto", fontFamily: "'Inter', sans-serif" }),
   actions: { display: "flex", gap: 12, justifyContent: "space-between", flexWrap: "wrap", marginBottom: 16 },
@@ -151,16 +165,22 @@ export default function HopeReport({
   const [unlockReason, setUnlockReason] = useState("");
   const [message, setMessage] = useState(null);
   const [busy, setBusy] = useState(false);
-  // P1A (J2052 read-path correction, docs/tenant-platform/
-  // J2052_J2053_LINEAGE_AUDIT.md): fetch the authoritative SFVRequirement
-  // directly here rather than depending on RNICA.jsx's SfvStatusCard
-  // having synced form_data.sfv.* back onto the assessment. Selection
-  // logic (most-recently-completed) mirrors SfvStatusCard's own logic so
-  // both surfaces agree.
+  // SFV ownership remediation (docs/tenant-platform/
+  // P0_SFV_OWNERSHIP_REMEDIATION.md): fetch the authoritative
+  // SFVRequirement OWNED by this specific HOPE record -- matched by
+  // (trigger_source_type, trigger_reference_id), never by "most recently
+  // completed for the patient." A patient-wide latest-completed lookup
+  // was proven (SFV_OWNERSHIP_TRACE.md) to let an ADM export receive a
+  // HUV1/HUV2-triggered SFV and vice versa. This deliberately no longer
+  // mirrors SfvStatusCard's patient-wide status-display logic -- that
+  // surface is a status display, not an export, and was out of scope for
+  // this fix.
   const [sfvRequirement, setSfvRequirement] = useState(null);
 
   useEffect(() => {
-    if (!patientId) {
+    const expectedTriggerSourceType = HOPE_EVENT_TYPE_TO_TRIGGER_SOURCE[normalizedTimepoint];
+    const expectedTriggerVisitId = assessmentMeta?.visitId;
+    if (!patientId || !expectedTriggerSourceType || !expectedTriggerVisitId) {
       setSfvRequirement(null);
       return undefined;
     }
@@ -168,13 +188,19 @@ export default function HopeReport({
     listSfvRequirements(patientId)
       .then((rows) => {
         if (cancelled) return;
-        const completedRows = (rows || []).filter((r) => r.status === "COMPLETED" && r.completedAt);
-        const latest = completedRows.sort((a, b) => (a.completedAt < b.completedAt ? 1 : -1))[0];
-        setSfvRequirement(latest || null);
+        const owned = (rows || []).find(
+          (r) =>
+            r.triggerSourceType === expectedTriggerSourceType &&
+            r.triggerVisitId === expectedTriggerVisitId &&
+            r.status === "COMPLETED" &&
+            r.completedAt
+        );
+        setSfvRequirement(owned || null);
       })
       .catch(() => { if (!cancelled) setSfvRequirement(null); });
     return () => { cancelled = true; };
-  }, [patientId]);
+  }, [patientId, normalizedTimepoint, assessmentMeta?.visitId]);
+
 
   useEffect(() => {
     setWorkflow(assessmentMeta?.hopeWorkflow || null);

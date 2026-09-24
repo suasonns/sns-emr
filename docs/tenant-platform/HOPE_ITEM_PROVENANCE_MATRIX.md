@@ -61,8 +61,8 @@ workflow-level provenance as instructed.
 | J2040 | Not independently re-derived | RnicaAssessment.form_data | `respiratory.treatmentInitiated/.treatmentDate` | `boolCode`, `formatDate` | none | No | Yes | Yes | NOT_VERIFIED |
 | J2050 | Not independently re-derived | RnicaAssessment.form_data | `sfv.symptomImpactScreeningCompleted/.Date` OR `symptomImpact.assessmentDate` | `boolCode`, `formatDate` | none — **reads from RNICA `sfv.*` self-attestation fields, not `SFVRequirement`** (distinct from J2052/J2053, which were corrected) | No | Yes | Yes | **OPEN_QUESTION** — J2050 was not in scope of the P1A/P1B directives; it still reads the same RNICA self-attestation shape those directives required removing for J2052/J2053. Not fixed, not previously flagged. |
 | J2051 | Not independently re-derived (this item's word-based severity vocabulary, distinct from J2053's numeric vocabulary, was confirmed in a prior pass) | RnicaAssessment.form_data | `symptomImpact.*` (8 symptoms) | `symptomEntries()` | word-based MILD/MODERATE/SEVERE vocabulary (per `_severity_rank` on the backend trigger-detection side) | No | Yes | Yes | NOT_VERIFIED |
-| J2052 | **CMS-verified: A=0/1, B=date-only-if-Yes, C=reason code 1/2/3/9** | SFVRequirement (A/B) + RNICA form (C, unvalidated source) | `sfvStatus.completed/.completedAt` (A/B — VERIFIED source); `sfv.reasonNotCompleted` (C — **source itself NOT_VERIFIED**, see `J2052C_SOURCE_DISCOVERY.md`) | `boolCode`, `formatDate`, `j2052ReasonNotCompleted()` | A/B: SFVRequirement-backed, correct. C: strictly validated to codes 1/2/3/9 but has no authoritative backend source at all | Yes (A/B/C code-set) | Yes | Yes (A/B); No authoritative source (C) | **OPEN_QUESTION** (item as a whole; A/B alone would be VERIFIED, C is the unresolved part — kept as one row per the "one row per item" instruction) |
-| J2053 | **CMS-verified: 8 symptoms, codes 0/1/2/3/9** | SFVRequirement → ClinicalNote.content.symptomImpact | `sfvRequirement.symptomImpact` | `symptomEntries()` | restricted to `VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES` (backend-enforced) | Yes | Yes | Yes | **OPEN_QUESTION** — the mapper's own handling of a given `sfvRequirement` object is VERIFIED (correct isolation, correct codes), but per the SFV Cross-Timepoint Selection Risk proof below, the *caller* (`HopeReport.jsx`) can hand the mapper the wrong patient-wide "most recent" SFVRequirement even for an ADM report. Downgraded from an earlier premature `VERIFIED` — corrected here for consistency with that proof rather than left standing. |
+| J2052 | **CMS-verified: A=0/1, B=date-only-if-Yes, C=reason code 1/2/3/9** | SFVRequirement (A/B) + RNICA form (C, unvalidated source) | `sfvStatus.completed/.completedAt` (A/B — VERIFIED source); `sfv.reasonNotCompleted` (C — **source itself NOT_VERIFIED**, see `J2052C_SOURCE_DISCOVERY.md`) | `boolCode`, `formatDate`, `j2052ReasonNotCompleted()` | A/B: SFVRequirement-backed, correct, ownership remediated (see addendum below). C: strictly validated to codes 1/2/3/9 but has no authoritative backend source at all | Yes (A/B/C code-set) | Yes | Yes (A/B); No authoritative source (C) | **VERIFIED (A/B)** — ownership remediated, see addendum. **C remains NOT_VERIFIED** (separate, unrelated source-of-truth gap; not a "kept as one row" compromise anymore since A/B is now fully resolved — see `J2052C_SOURCE_DISCOVERY.md`) |
+| J2053 | **CMS-verified: 8 symptoms, codes 0/1/2/3/9** | SFVRequirement → ClinicalNote.content.symptomImpact | `sfvRequirement.symptomImpact` | `symptomEntries()` | restricted to `VISIT_NOTE_SYMPTOM_IMPACT_VALUE_CHOICES` (backend-enforced) | Yes | Yes | Yes | **VERIFIED** — remediated: `HopeReport.jsx` now resolves `sfvRequirement` by `(triggerSourceType, triggerVisitId)` matching the exported record's own trigger, not by patient-wide recency. See ownership addendum below and `P0_SFV_OWNERSHIP_REMEDIATION.md`. |
 | M1190 | Not independently re-derived | RnicaAssessment.form_data | `skin.skinConditionsPresent` | `boolCode` | none | No | Yes | Yes | NOT_VERIFIED — also flagged in `HOPE_DATA_PROVENANCE_MATRIX.md` as dual-tagged (conflicting, not dual-write) with an unrelated `performanceStatus` field in the RNICA UI registry |
 | M1195 | Not independently re-derived | RnicaAssessment.form_data | `skin.skinStatus` | `arrayText` | none | No | Yes | Yes | NOT_VERIFIED |
 | M1200 | Not independently re-derived | RnicaAssessment.form_data | `deriveSkinTreatments(skin)` | derivation helper | none | No | Yes | Yes | NOT_VERIFIED |
@@ -86,7 +86,7 @@ inherited item is unchanged from its ADM row above **except**:
 |---|---|---|
 | Z0350 | New for HUV1/HUV2 only. Source: `completionDate` (finalization/assessment-meta derived). No CMS re-derivation this pass. | NOT_VERIFIED |
 | A0250 | Resolves to the HUV1/HUV2-specific reason text via the same `RECORD_REASON_BY_TIMEPOINT` map already CMS-verified for ADM. | VERIFIED |
-| J2052 / J2053 | Same SFVRequirement-backed mechanism as ADM applies structurally, **but** see the cross-timepoint SFV-selection open question below — whether the *correct* SFVRequirement (the one actually triggered by this specific HUV1/HUV2 record) is selected is unresolved at the `HopeReport.jsx` caller layer. | OPEN_QUESTION |
+| J2052 / J2053 | Same SFVRequirement-backed mechanism as ADM applies structurally. Ownership remediated — `HopeReport.jsx` resolves `sfvRequirement` by `(triggerSourceType, triggerVisitId)` matching this specific HUV1/HUV2 record's own trigger visit, not by patient-wide recency. See `P0_SFV_OWNERSHIP_REMEDIATION.md`. | VERIFIED |
 | All other 51 items | Same mechanics/status as their ADM row (word-based/free-text/lookup patterns are timepoint-independent in the mapper code). | Same as ADM row (mostly NOT_VERIFIED) |
 
 **Not independently re-derived this pass:** whether CMS actually
@@ -181,35 +181,38 @@ has a cross-timepoint selection mechanism):
 
 | CMS Item | SOURCE VERIFIED | OWNERSHIP VERIFIED | SELECTION LOGIC VERIFIED | STATUS |
 |---|---|---|---|---|
-| J2052 (A/B) | YES | NO | NO | OPEN_QUESTION |
-| J2053 | YES | NO | NO | OPEN_QUESTION |
+| J2052 (A/B) | YES | **YES (remediated)** | **YES (remediated)** | VERIFIED |
+| J2053 | YES | **YES (remediated)** | **YES (remediated)** | VERIFIED |
 
-"Source verified" = the field/table the mapper reads from is correctly
-shaped and CMS-code-restricted (VERIFIED BY REPOSITORY TRACE). "Ownership
-verified" = the specific `SFVRequirement` instance handed to the mapper
-is proven to belong to the specific HOPE record being exported (NOT
-verified — 7 of 7 acceptance tests in `SFV_OWNERSHIP_TRACE.md` FAIL under
-current code). "Selection logic verified" = `HopeReport.jsx`'s query is
-proven to select by trigger, not by patient-wide recency (NOT verified —
-it selects by patient-wide recency only).
+**Remediated** (see `P0_SFV_OWNERSHIP_REMEDIATION.md`): `HopeReport.jsx`'s
+SFV selection is now scoped to `(triggerSourceType, triggerVisitId)`
+matching the specific HOPE record being exported, instead of a
+patient-wide "most recently completed" pick. All 7 acceptance-test
+scenarios from `SFV_OWNERSHIP_TRACE.md` now pass (verified via
+`HopeReport.sfvOwnership.test.jsx`, 5 tests covering CASE A/B/C, the
+no-match-means-null rule, and the Discharge no-lookup rule). J2052(A/B)
+and J2053 are upgraded from OPEN_QUESTION to VERIFIED accordingly. J2052C
+(the reason-not-completed free-text value) is unaffected by this fix and
+remains NOT_VERIFIED — a separate, still-open source-of-truth question
+(see `J2052C_SOURCE_DISCOVERY.md`).
 
 ## Item counts by timepoint
 
 | Timepoint | Item count | VERIFIED | NOT_VERIFIED | OPEN_QUESTION |
 |---|---|---|---|---|
-| ADM | 57 | 1 (A0250) | 52 | 4 (I0000, J2050, J2052, J2053) |
-| HUV1 | 54 | 1 (A0250) | 49 | 4 (I0000, J2050, J2052, J2053) |
-| HUV2 | 54 | 1 (A0250) | 49 | 4 (I0000, J2050, J2052, J2053) |
+| ADM | 57 | 3 (A0250, J2052, J2053) | 52 | 2 (I0000, J2050) |
+| HUV1 | 54 | 3 (A0250, J2052, J2053) | 49 | 2 (I0000, J2050) |
+| HUV2 | 54 | 3 (A0250, J2052, J2053) | 49 | 2 (I0000, J2050) |
 | DC | 21 | 1 (A0250) | 20 | 0 |
 
-**HOPE GENERATION READY: NO.** Item-level provenance (not just workflow
-provenance) shows the overwhelming majority of items as NOT_VERIFIED
-(CMS-authority citation not independently re-derived this pass) and 4
-open questions per non-Discharge timepoint, including the newly-proven
-SFV cross-timepoint selection defect. None of this blocks correcting
-individual items going forward, but per the stated gate, generation may
-not begin until: item-level CMS verification is completed (or explicitly
-accepted as out of scope by Romel), the SFV selection defect is
-resolved, and J2052C is resolved or formally accepted as a permanent
-export gap.
+**HOPE GENERATION READY: NO.** The SFV cross-timepoint selection defect
+is remediated (J2052/J2053 upgraded to VERIFIED), but item-level
+provenance still shows the overwhelming majority of items as NOT_VERIFIED
+(CMS-authority citation not independently re-derived this pass), plus 2
+remaining open questions per non-Discharge timepoint (I0000, J2050).
+Generation may not begin until: item-level CMS verification is completed
+(or explicitly accepted as out of scope by Romel), and J2052C is
+resolved or formally accepted as a permanent export gap. J2050's
+self-attestation-source gap is unrelated to the SFV ownership fix and
+remains open.
 
