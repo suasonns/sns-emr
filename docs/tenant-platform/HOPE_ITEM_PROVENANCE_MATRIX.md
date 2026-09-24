@@ -170,6 +170,29 @@ discovery before any implementation.
 
 ---
 
+## Ownership dimension addendum (J2052 / J2053 only)
+
+Per the SFV ownership investigation (`SFV_OWNERSHIP_TRACE.md`,
+`SFV_TRIGGER_OWNERSHIP_TRACE.md`), STATUS alone collapses two distinct
+facts for J2052/J2053. Adding the required OWNERSHIP VERIFIED dimension
+for these two items specifically (the only items where a triggering-
+record-to-source linkage question applies — no other item in this matrix
+has a cross-timepoint selection mechanism):
+
+| CMS Item | SOURCE VERIFIED | OWNERSHIP VERIFIED | SELECTION LOGIC VERIFIED | STATUS |
+|---|---|---|---|---|
+| J2052 (A/B) | YES | NO | NO | OPEN_QUESTION |
+| J2053 | YES | NO | NO | OPEN_QUESTION |
+
+"Source verified" = the field/table the mapper reads from is correctly
+shaped and CMS-code-restricted (VERIFIED BY REPOSITORY TRACE). "Ownership
+verified" = the specific `SFVRequirement` instance handed to the mapper
+is proven to belong to the specific HOPE record being exported (NOT
+verified — 7 of 7 acceptance tests in `SFV_OWNERSHIP_TRACE.md` FAIL under
+current code). "Selection logic verified" = `HopeReport.jsx`'s query is
+proven to select by trigger, not by patient-wide recency (NOT verified —
+it selects by patient-wide recency only).
+
 ## Item counts by timepoint
 
 | Timepoint | Item count | VERIFIED | NOT_VERIFIED | OPEN_QUESTION |
