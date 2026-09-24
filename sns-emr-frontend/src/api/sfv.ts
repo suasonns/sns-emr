@@ -28,6 +28,10 @@ export interface SfvRequirementSummary {
    * HOPE record, instead of a patient-wide "most recent" lookup. */
   triggerSourceType: string;
   triggerDatetime?: string | null;
+  /** Issue #157 remediation: distinguishing context (which symptom group
+   * triggered this requirement) so a clinician facing multiple
+   * simultaneously-OPEN requirements can tell them apart at a glance. */
+  triggerSymptomGroup?: string | null;
   completionVisitId?: string | null;
   status: SfvRequirementStatus;
   dueAt?: string | null;
@@ -77,6 +81,7 @@ export type SfvErrorCode =
   | "TENANT_MISMATCH"
   | "SAME_VISIT_NOT_ALLOWED"
   | "COMPLETION_BEFORE_TRIGGER"
+  | "COMPLETION_VISIT_ALREADY_LINKED"
   | "VISIT_NOT_ELIGIBLE"
   | "CLINICIAN_NOT_AUTHORIZED"
   | "REASON_CODE_INVALID"
@@ -103,6 +108,8 @@ export function describeSfvError(code: SfvErrorCode): string {
       return "SFV follow-up must be documented in a separate visit from the triggering RNICA encounter.";
     case "COMPLETION_BEFORE_TRIGGER":
       return "The selected follow-up visit occurred before the symptom trigger.";
+    case "COMPLETION_VISIT_ALREADY_LINKED":
+      return "This visit has already been used to complete a different Symptom Follow-Up Visit requirement. Select the correct requirement or choose another visit.";
     case "PATIENT_MISMATCH":
     case "TENANT_MISMATCH":
     case "COMPLETION_VISIT_NOT_FOUND":

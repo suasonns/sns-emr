@@ -34,7 +34,12 @@ def audit_event(
 
     data: Dict[str, Any] = {}
     if "user_id" in model_cols:
-        data["user_id"] = str(user_id) if user_id else ""
+        # user_id is a nullable UUID column -- an empty string is not a
+        # valid UUID and fails at the DB layer for any caller without a
+        # real actor id (e.g. system/automation-initiated events with no
+        # human clinician). Store NULL instead, which the column already
+        # supports.
+        data["user_id"] = str(user_id) if user_id else None
     if "role" in model_cols:
         data["role"] = str(role or "")
     if "action" in model_cols:
