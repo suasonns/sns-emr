@@ -10,6 +10,16 @@ will be issued — future corrections revise this document directly.*
 services, UI implementation, or state machines are authorized by this
 document.*
 
+```
+ARCHITECTURE AUTHORIZED: NO
+CODE AUTHORIZED:         NO
+SCHEMA AUTHORIZED:       NO
+MIGRATIONS AUTHORIZED:  NO
+APIs AUTHORIZED:         NO
+ROUTES AUTHORIZED:       NO
+IMPLEMENTATION READY:    NO
+```
+
 ---
 
 ## 1. PURPOSE
@@ -32,6 +42,41 @@ Ownership is chart-level, but Patient Story itself is **episode-specific**
 (Section 4A). The chart holds a collection of episode-scoped stories, not one
 lifetime story.
 
+### 2.1 Designated Clinical-Record Status (decision gate)
+
+Before architecture is authorized, SNS must obtain organizational privacy,
+health-information-management (HIM), compliance, and legal confirmation on
+whether Patient Story is:
+
+**A.** part of the designated clinical record, **or**
+**B.** a clinical workspace and orientation aid outside the formal designated
+record set.
+
+Until that decision is confirmed:
+- Patient Story must not be presented as replacing the clinical record.
+- Patient Story must not be used as the sole source for release of
+  information.
+- Patient Story must not be used as the sole basis for certification,
+  eligibility, billing, transfer, discharge, revocation, or legal decisions.
+
+**If Patient Story is part of the designated clinical record:**
+- published content must be authenticated and dated
+- amendments must preserve prior versions
+- authorized record exports must follow organizational policy
+- retention must follow the controlling record-retention policy
+- patient and representative access must follow applicable policy and law
+- access controls and disclosures must be auditable
+
+**If Patient Story is a workspace aid:**
+- it must be clearly labeled
+- authoritative source records must remain directly accessible
+- it must not appear to be the controlling clinical record
+- formal record-production behavior must be defined
+
+Product validation (Section 30) does not substitute for privacy, HIM, legal,
+or compliance approval of this issue. See Section 28.6 for the related open
+governance questions.
+
 ---
 
 ## 3. PRIMARY AND SECONDARY USERS
@@ -40,7 +85,7 @@ lifetime story.
 clinicians, social work, chaplaincy, Medical Director/attending.
 
 **Secondary:** Auditors and surveyors, new team members onboarding to an
-existing patient, quality/compliance reviewers.
+existing patient, quality/compliance reviewers, privacy/HIM reviewers.
 
 ---
 
@@ -49,8 +94,7 @@ existing patient, quality/compliance reviewers.
 - **Patient Identity** — durable, person-centered context describing who the
   patient is: relationships, values, culture, fears, priorities. Not
   demographics. Not chapter-bound. Evolves over time rather than being fixed
-  at a point in time. (Term "Patient Identity Snapshot" is retired — see
-  Section 4B.)
+  at a point in time.
 - **Timeline** — the chronological record of dates, encounters, and clinical
   facts as documented in the chart.
 - **Story Contribution** — a discrete, attributed, reviewed statement
@@ -91,13 +135,13 @@ Patient Chart
 Each episode independently preserves its own Introduction, Patient Identity,
 Chapters, Meaning and Goals history, and Final Chapter.
 
-### 4B. Terminology Correction: "Patient Identity Snapshot" → "Patient Identity"
+### 4B. Terminology: "Patient Identity" (not "Snapshot")
 
-The term "Snapshot" is retired everywhere in this document and all prior
-versions. It implied a fixed point-in-time capture, which conflicts with the
-approved model that Patient Identity evolves (Section 5).
+The term "Snapshot" is retired everywhere in this document. It implied a
+fixed point-in-time capture, which conflicts with the approved model that
+Patient Identity evolves (Section 5).
 
-### 4C. Episode References (prior episodes)
+### 4C. Episode References and Prior-Episode Content Boundary
 
 A new Patient Story may reference prior hospice episodes for historical
 context:
@@ -106,23 +150,24 @@ context:
 > 06/18/2026 · Disposition: Discharged Alive
 
 The previous episode is viewable but **strictly read-only** and is not
-incorporated into the new story automatically.
-
-A closed episode may appear as a read-only reference as soon as its closure
-record exists, even if its Final Chapter narrative is not yet complete
-(see Section 22.7 for the exact rule — this replaces the earlier, too-rigid
-"no reference until Final Chapter exists" position).
+incorporated into the new story automatically. See Section 22.5 for the
+exact rule on referencing an episode whose Final Chapter is still pending.
 
 **Identity reuse across episodes:** Patient Identity elements (preferred
 name, important relationships, cultural/spiritual preferences, sources of
 meaning, good-death preferences, important goals) may be **proposed** for
 reuse from a prior episode. Nothing is copied forward automatically — every
-proposed item requires re-review and re-confirmation in the new episode,
-since caregivers, priorities, goals, living arrangements, legal
-representatives, or cultural/spiritual needs may have changed since the
-prior episode closed.
+proposed item requires re-review and re-confirmation in the new episode.
 
 **Net rule: Identity is reusable. Identity is not inherited.**
+
+**Prior-episode clinical content boundary:** prior-episode clinical findings
+remain historical context only. A prior-episode clinical finding may not
+appear as a current-episode finding unless it is documented again, or
+explicitly incorporated into a current, authorized source. Do not use a
+prior episode's PPS, functional state, symptom status, caregiver capacity,
+diagnosis interpretation, treatment response, legal authority, or goal
+status as current without current-episode evidence.
 
 ---
 
@@ -137,7 +182,7 @@ supplied it, which discipline documented it, source encounter/note, date
 captured, last-reviewed date, current/historical/uncertain/conflicting
 status, and who last amended the displayed wording. Streamlined review
 process (not the full IDG chapter-publication cycle), but never an unsourced
-one. See Section 9 for exactly which discipline may review which kind of
+one. See Section 28.2 for exactly which discipline may review which kind of
 Identity statement.
 
 **Stable, not static:** rarely changes, but is not frozen. New disclosures
@@ -168,22 +213,17 @@ approves it. Published Introduction is **clinician-reviewed and
 clinician-approved** — not necessarily typed from scratch ("clinician-
 authored" is not used unless literally true).
 
-**Amendment rule (resolves former Section 28 Question 3):** the Introduction
-may be amended after the first chapter closes **only** for:
-- factual correction
-- missing historical admission context
-- corrected attribution
-- newly available source material that genuinely describes the admission
-  starting point
-
-Later clinical developments do not rewrite the Introduction — later clinical
-changes belong in the applicable chapter, and later goals belong in the
-current Meaning and Goals thread and applicable chapter.
-
-Every Introduction amendment must preserve: prior wording, amended wording,
-reason, author, date, source, and attribution. The Introduction must never
-be rewritten to make later events appear predictable, and it never becomes
-certification or eligibility prose.
+**Amendment rule — full decision at Section 28.3.** In summary: the
+Introduction may be amended after the first chapter closes only for factual
+correction, corrected attribution, or missing/newly available historical
+referral or admission information. Later clinical developments, goals, or
+caregiver circumstances never rewrite the Introduction — they belong in the
+applicable chapter or the current Meaning and Goals thread. Every amendment
+preserves prior wording, amended wording, reason, source, author/reviewer,
+date/time, attribution, and amendment history. The Introduction must never
+silently regenerate, be rewritten to make later events appear predictable,
+backdate later findings into admission context, or become certification/
+eligibility prose.
 
 ---
 
@@ -204,41 +244,51 @@ chapter. Recertification is a cross-cutting lens applied across chapters
 **within one episode** — never across episode boundaries. Prior chapters are
 never silently rewritten.
 
+### 8.1 Discipline and Source Availability
+
+A chapter must distinguish (product meanings only, not authorized database
+states):
+
+- **DOCUMENTED_FINDING**
+- **NO_MATERIAL_CHANGE_DOCUMENTED**
+- **SOURCE_NOT_AVAILABLE**
+- **DISCIPLINE_NOTE_NOT_AVAILABLE**
+- **VISIT_NOT_COMPLETED**
+- **REVIEW_PENDING**
+- **NOT_APPLICABLE**
+- **UNABLE_TO_DETERMINE**
+
+The absence of documentation must never be displayed as: no concern, no
+change, negative finding, normal, or resolved. A discipline with no
+available note during the review period must not appear to have completed
+an assessment.
+
+### 8.2 Ready for IDG Review
+
+A chapter is ready for IDG review when: the review period is identified;
+eligible authenticated records have been evaluated; high-priority pending
+proposals are visible; material conflicts are visible; patient and family
+priorities have been reviewed when documented; hospice responses are linked
+when documented; unresolved issues are identified; missing-discipline
+documentation is labeled (Section 8.1); source links have been verified; and
+any urgent issue has already been routed through the appropriate workflow
+(Section 17.1).
+
+**"Ready for IDG Review" does not mean:** every discipline documented, every
+field populated, every conflict resolved, every goal fulfilled, or every
+proposed contribution accepted. Do not create false completeness merely to
+close a chapter.
+
 ---
 
-## 9. DISCIPLINE CONTRIBUTION AND SCOPE-APPROPRIATE REVIEW RULES
-
-*(Expanded — resolves former Section 28 Question 2.)*
+## 9. DISCIPLINE CONTRIBUTION RULES
 
 Each discipline may contribute story material grounded in its own documented
 encounters within the current episode. A contribution becomes part of
 Patient Story only when source-linked, correctly attributed, and reviewed by
-a reviewer with scope-appropriate authority. Routine, unchanged
-documentation does not itself become a new contribution.
-
-**No discipline has universal approval authority over the entire Patient
-Story.** Review authority is scoped:
-
-- **Nursing** reviews nursing observations, symptoms, function, safety, and
-  nursing response.
-- **Social work, MFT, or mental-health roles** review psychosocial, family,
-  caregiver, coping, resource, and placement contributions.
-- **Spiritual care** reviews spiritual, existential, meaning, ritual, and
-  spiritual-goal contributions.
-- **Physicians or the Medical Director** review physician-level disease
-  trajectory, prognosis context, and treatment interpretation.
-- **Hospice aides** contribute observations within aide scope. Unsupported
-  clinical conclusions require review by the appropriate licensed
-  discipline.
-- **Volunteers** contribute direct observations, engagement, and
-  patient-stated quality-of-life interests within volunteer scope.
-  Volunteers do not originate diagnostic or prognostic conclusions.
-- **IDG** reviews interdisciplinary chapter synthesis without erasing
-  originating discipline attribution.
-
-Patient Identity may use a streamlined review process, but every statement
-remains sourced, attributable, reviewed, and auditable regardless of which
-discipline's scope it falls into.
+a reviewer with scope-appropriate authority — full decision at **Section
+28.2**. Routine, unchanged documentation does not itself become a new
+contribution.
 
 ---
 
@@ -270,12 +320,12 @@ erased, when superseded.
 
 **Goal responsibility:** every approved current goal must answer: who stated
 it, when, current lifecycle meaning, responsible discipline for follow-up,
-next review point, whether it requires action through another workflow,
-whether it is actionable/aspirational/informational, and — if fulfilled or
-revised — what source confirms it. Not every goal becomes an order or
-plan-of-care intervention, but no actionable goal is left without a visible
-follow-up owner, and Patient Story never independently authorizes the
-response.
+next review point, whether it requires action through another workflow
+(Section 18.2), whether it is actionable/aspirational/informational, and —
+if fulfilled or revised — what source confirms it. Not every goal becomes an
+order or plan-of-care intervention, but no actionable goal is left without a
+visible follow-up owner, and Patient Story never independently authorizes
+the response.
 
 ---
 
@@ -339,53 +389,40 @@ never attributed as a patient statement.
 
 ---
 
-## 16. CONFLICT REPRESENTATION
+## 16. CONFLICT REPRESENTATION AND AUTHORIZED RESOLUTION
 
-*(Corrected — Patient Story is not an actor.)*
+*(Full replacement per owner revision — Patient Story is not an actor.)*
 
-Patient Story displays conflicting perspectives side by side with clear
-attribution and source links.
+Patient Story displays conflicting perspectives side by side.
 
-Patient Story **records** clarification, verification, reconciliation, or
-continued disagreement performed through the responsible authorized
-workflow. Patient Story **never independently determines** which account is
-correct.
+Each perspective must preserve: source; speaker or information provider;
+attribution classification; documenting discipline; date; current review
+status.
 
-Conflicts involving legal authority, code status, advance directives,
-treatment direction, orders, or disposition must link to their authoritative
-record and workflow.
+Patient Story **may display:** responsible follow-up workflow; responsible
+discipline; date last reviewed; documented clarification; documented
+reconciliation; continued disagreement; verification against an
+authoritative record; final disposition when documented.
 
-Patient Story may display:
-- responsible follow-up discipline
-- current conflict status
-- date last reviewed
-- documented outcome
-- continued disagreement
-- linked authoritative record
+Patient Story **does not:** determine which account is correct; adjudicate
+family disagreements; determine legal authority; select a surrogate;
+determine code status; interpret an advance directive; enter or change an
+order; choose a treatment direction; resolve a conflict independently.
 
-**Patient Story may not adjudicate.**
+Authorized people and authoritative workflows perform clarification,
+verification, reconciliation, escalation, and disposition. Patient Story
+records and displays the documented outcome.
 
-**Family-versus-family conflict closure rule** (resolves former Section 28
-Question 1): a family-versus-family conflict may be considered appropriately
-addressed when the responsible workflow documents one of these outcomes:
+Conflicts involving legal authority, representative/surrogate designation,
+code status, advance directives, treatment direction, orders, discharge
+disposition, revocation, transfer, certification, or eligibility must link
+to their authoritative record and workflow.
 
-- clarified directly by the patient
-- clarified by an authorized representative within the representative's
-  authority
-- verified through an authoritative document
-- reconciled through an authorized clinical or interdisciplinary process
-- continued disagreement documented with an operational care plan
-- no longer relevant
-- unable to verify
+If disagreement remains unresolved, Patient Story displays **CONTINUED
+DISAGREEMENT**. It must not silently select one account as true.
 
-Possible responsible owners: social work/mental-health workflow (family-
-system conflict), spiritual-care workflow (meaning/spiritual conflict),
-physician/responsible clinician (treatment conflict), advance-care-planning/
-legal-authority workflow (representative, directive, or surrogate issues),
-IDG (interdisciplinary care-plan impact).
-
-Patient Story records the owner and documented outcome. Patient Story does
-not resolve the conflict.
+The family-versus-family conflict closure rule is defined at **Section
+28.1**.
 
 ---
 
@@ -405,24 +442,133 @@ publish/amend/lock/delete Patient Story content, use an unauthenticated note
 as published evidence, treat a transcript error as clinical truth, calculate
 or declare eligibility, or produce certification language.
 
+### 17.1 Urgent Safety and Incident Boundary
+
+Patient Story is **not** an urgent-alert, incident-reporting,
+emergency-response, mandated-reporting, or supervisory-escalation system.
+
+Information indicating possible: uncontrolled symptoms, immediate patient
+danger, medication danger, caregiver collapse, suspected abuse or neglect,
+self-harm or violence risk, imminent loss of essential care, urgent
+equipment failure, or immediate environmental danger — **must route
+immediately** through the existing authorized clinical, supervisory,
+incident, emergency, or reporting workflow.
+
+Patient Story may later display a reviewed, source-linked contribution
+describing the documented event and hospice response. Patient Story must
+not delay urgent action while waiting for AI processing, contribution
+review, IDG review, or chapter publication.
+
 ---
 
 ## 18. CLINICIAN REVIEW
 
 Every contribution requires human review, by a reviewer with scope-
-appropriate authority (Section 9), before publication. Reviewer sees:
+appropriate authority (Section 28.2), before publication. Reviewer sees:
 proposed contribution, category, exact source excerpt, source note/author/
 date, attribution, related existing content, possible conflict/duplicate.
 Reviewer actions: Accept, Edit and Accept, Reject, Defer, Mark Duplicate,
 Mark Conflict, Change Attribution, Change Category. Editing the contribution
 never edits the source note; rejecting never removes source information.
 
+### 18.1 Review and Publication Meanings
+
+Patient Story must distinguish:
+
+- **AI PROPOSAL** — content suggested by AI but not reviewed or published.
+- **CLINICIAN-REVIEWED PROPOSAL** — reviewed by an authorized clinician but
+  not yet included in published story content.
+- **CLINICIAN-AUTHENTICATED CONTRIBUTION** — approved with: reviewer
+  identity, reviewer role, date and time, exact source, source version,
+  final approved wording, attribution, applicable chapter.
+- **IDG-REVIEWED CHAPTER** — a chapter reviewed through the IDG workflow.
+- **PUBLISHED CHAPTER** — the approved chapter visible as part of Patient
+  Story.
+- **AMENDED CHAPTER** — a published chapter with a visible, additive
+  correction.
+- **HISTORICAL VERSION** — a prior reproducible version preserved after an
+  amendment.
+
+**No AI proposal may appear as published clinical truth.**
+
+### 18.2 Contribution Disposition
+
+Every accepted Story Contribution must identify whether it is (product
+meanings only, not authorized database enums):
+
+- STORY_ONLY
+- NO_ACTION_REQUIRED
+- IDG_REVIEW_REQUIRED
+- POC_REVIEW_REQUIRED
+- ORDER_REVIEW_REQUIRED
+- ACP_REVIEW_REQUIRED
+- SAFETY_ESCALATION_REQUIRED
+- LEGAL_AUTHORITY_REVIEW_REQUIRED
+- CAREGIVER_SUPPORT_REVIEW_REQUIRED
+- OTHER_AUTHORIZED_WORKFLOW_REQUIRED
+
+Patient Story does not execute the action. It displays: required
+destination workflow, responsible role or discipline, current follow-up
+state, source, date. The authoritative workflow records the clinical
+action.
+
+### 18.3 Source Correction
+
+If a source note or document is corrected after a contribution is accepted:
+the published contribution is not silently rewritten; the contribution is
+marked **SOURCE_UPDATED**; the corrected source remains linked according to
+record policy; an authorized reviewer must confirm, amend, supersede, or
+withdraw the contribution; prior published wording remains reproducible;
+amendment history remains visible.
+
+### 18.4 Source Loss or Access Change
+
+If a source is superseded, entered in error, becomes unavailable, becomes
+restricted to the current user, is removed under policy, or belongs to a
+prior episode — Patient Story must not display an unsupported orphan claim
+as though the source remains verified. Display an appropriate status such
+as: SOURCE_SUPERSEDED, SOURCE_CORRECTED, SOURCE_RESTRICTED,
+SOURCE_UNAVAILABLE, PRIOR_EPISODE_SOURCE, REVIEW_REQUIRED (product meanings
+only; no new technical states are authorized).
+
+### 18.5 Late Documentation
+
+When a note is entered after the applicable chapter has closed: preserve
+the event/effective date when documented; preserve the documentation date;
+do not backdate publication; do not silently insert the contribution into
+the closed chapter; do not silently rewrite the closed chapter.
+
+**Allowed product paths:**
+- **A.** Amend the closed chapter through the authorized amendment workflow.
+- **B.** Display the contribution in the current chapter labeled "Late
+  documentation concerning a prior review period."
+- **C.** Exclude the contribution when it is duplicate, unsupported, or not
+  story-worthy.
+
+A late entry affecting a closure event, legal authority, order, plan of
+care, certification, or discharge must route to its authoritative workflow.
+
+### 18.6 Multiple-Source Handling
+
+When multiple sources describe the same event, distinguish:
+- **CORROBORATING SOURCE** — a separate source independently supports the
+  same material fact.
+- **DUPLICATE CONTENT** — a source repeats substantially the same
+  information without adding a distinct perspective or evidentiary value.
+- **DISTINCT DISCIPLINE PERSPECTIVE** — the sources discuss the same event
+  from different scope-appropriate perspectives.
+- **CONFLICTING SOURCE** — the sources materially disagree.
+
+Patient Story must not remove a valid discipline perspective merely because
+another discipline documented the same event, and must not create repeated
+story statements from duplicate text.
+
 ---
 
 ## 19. IDG WORKFLOW
 
 IDG uses Patient Story as pre-meeting orientation, not a replacement for the
-record (Section 25's 60-second usability target). See Section 21A for the
+record (Section 25's 60-second usability target). See Section 28.4 for the
 Next-Period Focus artifact IDG produces and Patient Story displays.
 
 ---
@@ -444,33 +590,14 @@ understanding — it does not replace source-record review.
 A cross-cutting review lens applied across chapters **within one episode** —
 not a separate chapter, and never crossing an episode boundary.
 Recertification reviews relevant findings across chapters without altering
-them.
-
-### 21A. Next-Period Focus
-
-*(Resolves former Section 28 Question 4.)*
-
-Next-Period Focus is an **IDG workflow artifact displayed in Patient
-Story** — it is not an ordinary Story Contribution. It may contain:
-unresolved issues, monitoring priorities, assigned discipline follow-up,
-caregiver risks, pending assessments, goals due for review, recertification
-preparation, and anticipated transitions supported by current
-documentation.
-
-At the next IDG: addressed items are marked addressed, unresolved items
-carry forward, changed priorities require a documented update, and no item
-silently disappears.
-
-Patient Story **displays** Next-Period Focus. Patient Story does not assign
-staff, enter orders, or change the plan of care.
+them. See Section 28.4 for Next-Period Focus, the related IDG artifact.
 
 ---
 
 ## 22. FINAL CHAPTER PRODUCT DEFINITION
 
-*(Strengthened per owner correction.)* The Final Chapter closes the hospice
-journey **without inventing meaning, eligibility conclusions, cause of
-death, or future outcomes.**
+The Final Chapter closes the hospice journey **without inventing meaning,
+eligibility conclusions, cause of death, or future outcomes.**
 
 ### 22.1 Triggering closure events
 Death · Discharge (including "Discharged Alive" / extended prognosis) ·
@@ -508,6 +635,23 @@ issues, authoritative death documentation. Do **not** infer cause of death,
 create sentimental narrative, infer whether death was peaceful, infer goal
 fulfillment, or replace death documentation/bereavement workflows.
 
+#### 22.3.1 Death and Bereavement Boundary
+
+The death Final Chapter closes the patient's hospice journey. Bereavement
+documentation created after death remains linked to the closed hospice
+episode but belongs to the authoritative bereavement workflow.
+
+Post-death bereavement activity does **not** create: a new Patient Story
+chapter, an extension of the deceased patient's clinical journey, or
+additional clinical decline content.
+
+Patient Story may display a limited bereavement-status reference only when
+authorized, relevant, consistent with privacy policy, and sourced from the
+bereavement workflow. Patient Story does not expose private bereavement
+counseling content merely because it is linked to the same episode.
+Bereavement services are recognized as support provided before and after
+death, but Patient Story remains focused on the patient's hospice journey.
+
 **Discharge — no longer terminally ill / extended prognosis** — display
 authoritative discharge reason, discharge date, final documented
 clinical/functional state, last-known goals, unresolved needs, documented
@@ -542,7 +686,7 @@ documented, current unresolved issues, last-known goals, source transfer
 documentation, whether an authorized handoff was completed. Do not merge the
 receiving hospice's later documentation, continue chapter numbering, assume
 the receiving hospice uses SNS, or imply the story continues under the
-receiving hospice.
+receiving hospice. Full transfer-handoff rule at **Section 28.5**.
 
 **Other documented closure** — display exact authoritative closure
 classification, date, source, minimal source-grounded explanation,
@@ -558,42 +702,22 @@ follows the same amendment-preserving pattern as any other Patient Story
 content (Sections 6/18): the correction is visible, and prior wording/
 history is preserved, never silently replaced.
 
-### 22.5 Transfer handoff rule
-
-*(Resolves former Section 28 Question 5.)* A transfer closes the current
-hospice provider's Patient Story. The current provider's Final Chapter
-remains part of the current provider's read-only historical record. Patient
-Story itself is **not automatically transmitted** to the receiving hospice.
-If SNS supports an authorized transfer packet or health-information-exchange
-workflow, selected source-linked information may be included through that
-workflow.
-
-Any transfer handoff must: use the authoritative transfer workflow;
-identify the sending hospice; identify the receiving hospice when
-documented; include only authorized information; preserve source
-attribution; exclude unsupported AI synthesis; avoid implying the receiving
-hospice is continuing the same Patient Story; avoid assumptions about the
-receiving hospice's software system.
-
-The receiving hospice creates its own episode record and story under its
-own authority. Standard product wording: "the receiving hospice maintains
-its own episode record under its authorized record system" (not "a separate
-system," unless that specific fact is confirmed for a given transfer).
-
-### 22.6 Readmission interaction with prior Final Chapters
+### 22.5 Prior-Episode Reference
 
 An authoritative closed episode may appear as a read-only prior-episode
-reference **as soon as its closure record exists** — a Final Chapter does
-not need to be fully complete first. If the Final Chapter narrative has not
-been completed, the reference displays: **"Episode closed. Final Chapter
-pending review."** The incomplete Final Chapter becomes a visible quality/
-workflow issue, but the prior episode remains read-only, no information
-copies automatically, the new admission still creates a new Patient Story,
-and completing the prior Final Chapter does not alter the new story. A
-valid historical episode is never hidden merely because its narrative
-review is pending.
+reference **when the authoritative closure record exists.** A completed
+Final Chapter is **not required** merely to show that the prior episode
+existed.
 
-### 22.7 Acceptance criteria
+If the episode is closed but the Final Chapter is incomplete, display:
+**"Episode closed. Final Chapter pending review."** The incomplete Final
+Chapter becomes a visible workflow or quality item. The prior episode
+remains read-only; no information copies automatically; a new admission
+still creates a new Patient Story; completing or amending the prior Final
+Chapter does not modify the new story. A valid historical episode is never
+hidden merely because its narrative review is pending.
+
+### 22.6 Acceptance criteria
 
 - [ ] Every closed episode has exactly one Final Chapter.
 - [ ] Closure type and date match the authoritative discharge/death/
@@ -604,10 +728,11 @@ review is pending.
 - [ ] A closed episode's Final Chapter is never edited to reopen the
       episode; corrections are additive/visible, not silent replacements.
 - [ ] A closed episode with a closure record but pending Final Chapter
-      narrative still appears as a read-only reference, clearly labeled
-      "Final Chapter pending review."
+      narrative still appears as a read-only reference, clearly labeled.
 - [ ] Transfer content never merges the receiving hospice's later
       documentation or assumes its software system.
+- [ ] Post-death bereavement activity never creates a new chapter or
+      clinical-decline content for the closed episode.
 
 ---
 
@@ -624,7 +749,8 @@ care relevance.
 
 Content minimization is an SNS Patient Story product rule — it does not
 replace the organization's existing privacy, security, access-control,
-disclosure, or record-retention policies.
+disclosure, or record-retention policies. See Section 2.1 and Section 28.6
+for the unresolved designated-record and access governance questions.
 
 ---
 
@@ -637,7 +763,9 @@ disclosure, or record-retention policies.
 | Advance-Care Planning / legal authority | Code status, representative/surrogate designation | Cross-references only |
 | Certification / eligibility | Regulatory eligibility determination, physician narrative | Not a certification, eligibility determination, or independent basis for eligibility; may provide source-linked orientation to documented findings only |
 | Conflict resolution (Section 16) | Clarification, verification, reconciliation performed by the responsible clinical/legal/IDG workflow | Displays and records the outcome; never adjudicates |
-| Transfer handoff (Section 22.5) | Authorized transfer/HIE workflow | Not automatically transmitted; contributes only through that workflow |
+| Transfer handoff (Section 28.5) | Authorized transfer/HIE workflow | Not automatically transmitted; contributes only through that workflow |
+| Urgent safety/incident (Section 17.1) | Existing clinical/supervisory/incident/emergency/reporting workflow | Never delays urgent action; may later display a reviewed contribution |
+| Bereavement (Section 22.3.1) | Authoritative bereavement workflow | May display a limited, authorized status reference only |
 
 ---
 
@@ -650,13 +778,15 @@ hospice episode.
 
 **Episode boundary:** readmission always creates a new story; chapter
 numbering never continues across episodes; prior episodes are read-only
-references (available even with a pending Final Chapter, per 22.6); Identity
-reuse is always proposed, never automatic.
+references (available even with a pending Final Chapter, per 22.5); Identity
+reuse is always proposed, never automatic; prior-episode clinical findings
+never appear as current without current-episode evidence.
 
 **Governance:** no unsourced/anonymous Identity edits; every Identity
 statement carries attribution + accountability metadata; updates are
 additive; legal authority never inferred by Patient Story; review authority
-is scope-appropriate per discipline (Section 9).
+is scope-appropriate per discipline (Section 28.2); the designated-record
+status decision (Section 2.1) is confirmed before architecture proceeds.
 
 **Attribution:** all family-relation states remain visually distinct; a
 family statement never silently becomes patient-stated.
@@ -671,38 +801,46 @@ never finalized as fact.
 
 **Conflict:** always shown, never adjudicated by Patient Story itself;
 legal/order-related conflicts route to authoritative workflow; family-vs-
-family conflict closure follows the seven documented outcomes in Section 16.
+family conflict closure follows the seven documented outcomes in Section
+28.1.
 
 **Goals lifecycle:** all 8 statuses representable; superseded goals
 preserved; every current goal answers the Section 11 responsibility
-questions; no independent authorization of clinical action.
+questions and carries a Section 18.2 disposition; no independent
+authorization of clinical action.
 
 **Privacy:** no care-irrelevant/stigmatizing/gossip content; neutral
 wording; minimization stated as a product rule, not a substitute for org
 policy.
 
-**Introduction:** explains why hospice was considered, referral/admission
-context, baseline, initial caregiver/living situation; preserves patient/
-family perspective distinctly; links to sources; clinician-reviewed and
-approved; not silently regenerated; amendments after first-chapter-close are
-limited to the four permitted reasons in Section 6 and always preserve
-prior wording/reason/author/date/source/attribution; never becomes
-certification prose.
+**Introduction:** per Section 28.3 — explains why hospice was considered,
+referral/admission context, baseline, initial caregiver/living situation;
+preserves patient/family perspective distinctly; links to sources;
+clinician-reviewed and approved; not silently regenerated; amendments after
+first-chapter-close are limited to the permitted reasons and always
+preserve history; never becomes certification prose.
 
 **Chapters:** each completed IDG period (within an episode) representable as
-a chapter; milestones inside correct chapter; no false progression from
-routine notes; meaningful stability representable; each material change has
-a documented source and (if present) hospice response; unresolved issues
-carry forward via Next-Period Focus (21A); prior chapters never silently
-rewritten; recertification reviews across chapters within one episode only;
-Final Chapter reflects documented closure per Section 22.
+a chapter; missing-discipline documentation labeled per Section 8.1; ready-
+for-review does not imply false completeness (Section 8.2); milestones
+inside correct chapter; no false progression from routine notes; meaningful
+stability representable; each material change has a documented source and
+(if present) hospice response; unresolved issues carry forward via
+Next-Period Focus (28.4); prior chapters never silently rewritten;
+recertification reviews across chapters within one episode only; Final
+Chapter reflects documented closure per Section 22.
 
 **Source & review:** every published contribution links to an authenticated
 source; View Source opens the exact record/version; source date/author
 visible; excerpt preserves context; reviewing clinician recorded; rejected/
 deferred proposals never appear as published facts; duplicates don't create
-duplicate statements; conflicts remain visible; AI cannot publish/amend/
-lock/delete content.
+duplicate statements (Section 18.6); conflicts remain visible; AI cannot
+publish/amend/lock/delete content; source corrections and source loss are
+handled per Sections 18.3–18.4; late documentation follows Section 18.5.
+
+**Safety:** urgent safety information always routes through the existing
+authorized workflow first, never delayed for Patient Story processing
+(Section 17.1).
 
 **IDG value (60-second target — usability, not regulatory):** an authorized
 IDG user can identify in under 60 seconds why the patient entered hospice,
@@ -723,6 +861,13 @@ eligibility.
 
 ## 26. PRODUCT TEST SCENARIOS
 
+Scenarios 1–30 (foundational) and 31–55 (regulatory/workflow expansion). Each
+scenario is validated using the structure: **Given / When / Then / Must
+Remain Unchanged / Attribution Requirement / Source Requirement / Review
+Requirement / Expected User Understanding.**
+
+### 26.1 Foundational scenarios (1–30)
+
 1. Initial story from H&P and referral
 2. Duplicate administrative document
 3. Authenticated voice note
@@ -732,8 +877,8 @@ eligibility.
 7. Functional decline
 8. Caregiver change
 9. Important patient wish
-10. Goal changes over time (new proposal recorded as REVISED/SUPERSEDED;
-    prior stated goal remains visible, attributed, dated)
+10. Goal changes over time — new proposal recorded REVISED/SUPERSEDED;
+    prior stated goal remains visible, attributed, dated
 11. Duplicate documentation across disciplines
 12. Conflicting sources
 13. Improvement after intervention
@@ -755,31 +900,222 @@ eligibility.
     slate
 29. Attempted cross-episode chapter numbering or story merge (must not
     occur)
-30. Correction to a Final Chapter after closure (must remain additive/
-    visible, never a silent rewrite)
-31. Death with documented final goals
-32. Death with no documented final-period assessment
-33. Discharge for extended prognosis
-34. Discharge after moving outside the service area
-35. Discharge for cause with sensitive supporting documentation
-36. Revocation with no documented reason
-37. Revocation with a patient-stated reason
-38. Transfer to another hospice
-39. Other or unclear closure requiring review
-40. Episode closed but Final Chapter pending
-41. New admission begins while prior Final Chapter is pending
-42. Final Chapter correction after a later source correction
-43. Goal fulfilled shortly before closure
-44. Unresolved family conflict at closure
-45. Transfer handoff produced through an authorized workflow
+30. Correction to a Final Chapter after closure (additive/visible only)
 
-Each scenario (1–45) is validated against the following structure once
-product validation begins (Section 30): **Given / When / Then / Content
-that must remain unchanged / Attribution requirement / Source requirement /
-Review requirement / Expected user understanding.** This structure is
-defined as a validation method here; individual scenario write-ups are
-produced during the validation sessions described in Section 30, not
-invented in advance of real user testing.
+### 26.2 Regulatory and workflow expansion scenarios (31–55)
+
+Each entry below is written as
+**Given → When → Then → Unchanged → Attribution → Source → Review →
+Understanding.**
+
+**31. Death with documented final patient goals**
+Given a death closure with documented final-period goals → When the Final
+Chapter is created → Then goals display with their last lifecycle status →
+Unchanged: prior goal history → Attribution: as originally recorded →
+Source: final-period notes → Review: clinician-confirmed at closure →
+Understanding: reviewer sees what mattered to the patient at the end without
+invented meaning.
+
+**32. Death without a final-period assessment**
+Given a death with no final-period assessment documented → When the Final
+Chapter is generated → Then it shows the last available documented state
+labeled with its actual date, not a fabricated current state → Unchanged:
+earlier chapters → Attribution: as last documented → Source: last available
+note → Review: clinician confirms absence is disclosed, not hidden →
+Understanding: reviewer knows exactly how current the closing information is.
+
+**33. Discharge because the patient is no longer terminally ill**
+Given a discharge for extended prognosis → When the Final Chapter is created
+→ Then it displays the authoritative discharge reason without describing
+stability as cure or speculating about readmission → Unchanged: PPS/goal
+history → Attribution: physician/discharge order → Source: discharge
+documentation → Review: physician-confirmed → Understanding: reviewer
+understands discharge is a documented clinical determination, not a product
+inference.
+
+**34. Discharge after moving outside the service area**
+Given a documented move → When Final Chapter created → Then it shows the
+move reason and effective date only, no assumption of hospice transfer →
+Unchanged: prior chapters → Attribution: discharge documentation →
+Source: discharge record → Review: documenting workflow confirmed →
+Understanding: reviewer does not assume continuity of hospice care elsewhere.
+
+**35. Discharge for cause with sensitive documentation**
+Given a for-cause discharge with sensitive supporting notes → When Final
+Chapter created → Then only the formal disposition and permitted
+care-transition facts display, no allegations/stigmatizing language →
+Unchanged: source note (unaltered, access-controlled) → Attribution:
+discharge record → Source: authoritative discharge documentation →
+Review: HIM/compliance-consistent → Understanding: reviewer sees a neutral,
+minimally-detailed closure record.
+
+**36. Revocation without a documented reason**
+Given a revocation with no stated reason → When Final Chapter created →
+Then it shows only that revocation occurred and its effective date, no
+inferred reason → Unchanged: prior goals → Attribution: revocation document
+→ Source: revocation form → Review: confirmed by documenting workflow →
+Understanding: reviewer does not see a fabricated rationale.
+
+**37. Revocation with a patient-stated reason**
+Given a revocation with a documented patient-stated reason → When Final
+Chapter created → Then the stated reason displays attributed as
+Patient-Stated → Unchanged: earlier goal history → Attribution:
+Patient-Stated → Source: revocation documentation → Review: clinician-
+confirmed → Understanding: reviewer sees the patient's own words, not a
+paraphrase presented as clinical interpretation.
+
+**38. Transfer to another hospice**
+Given a transfer → When Final Chapter created → Then it shows transfer date,
+receiving hospice if documented, unresolved issues, and whether an
+authorized handoff occurred, without merging future receiving-hospice
+documentation → Unchanged: sending provider's chapters → Attribution:
+transfer documentation → Source: transfer record → Review: sending-provider
+workflow confirmed → Understanding: reviewer understands the sending
+provider's story ends here; the receiving hospice's records are separate.
+
+**39. Other or unclear closure requiring review**
+Given an ambiguous closure classification → When Final Chapter attempted →
+Then the system flags it for authorized review instead of generating a
+generic narrative → Unchanged: nothing published prematurely → Attribution:
+n/a until classified → Source: pending → Review: required before
+publication → Understanding: reviewer knows this closure needs a human
+decision.
+
+**40. Closed episode with Final Chapter pending**
+Given a closure record exists but Final Chapter narrative incomplete →
+When a user references the episode → Then it displays "Episode closed. Final
+Chapter pending review." → Unchanged: read-only status → Attribution: n/a →
+Source: closure record → Review: pending, visibly flagged → Understanding:
+reviewer knows the episode is real and closed, but its narrative isn't done.
+
+**41. New admission while the prior Final Chapter is pending**
+Given readmission occurs before prior Final Chapter completes → When new
+Patient Story is created → Then it is fully independent; completing the old
+Final Chapter later does not alter the new story → Unchanged: new episode
+content → Attribution: independent → Source: independent → Review:
+independent → Understanding: reviewer sees two clearly separate stories.
+
+**42. Source note corrected after chapter publication**
+Given a published contribution whose source note is later corrected → When
+correction is saved → Then the contribution is marked SOURCE_UPDATED, not
+silently rewritten → Unchanged: prior published wording, reproducible →
+Attribution: original + correction note → Source: corrected note linked →
+Review: authorized reviewer confirms/amends/supersedes/withdraws →
+Understanding: reviewer sees both what was said and what was corrected.
+
+**43. Source note entered in error**
+Given a source is marked entered-in-error → When Patient Story evaluates
+dependent contributions → Then affected contributions show SOURCE_CORRECTED
+or SOURCE_SUPERSEDED, never presented as still verified → Unchanged: audit
+trail → Attribution: preserved → Source: error status linked → Review:
+required → Understanding: reviewer never mistakes an erroneous source for
+current truth.
+
+**44. Source becomes restricted or unavailable**
+Given a source becomes access-restricted for the current user → When
+Patient Story renders the contribution → Then it shows SOURCE_RESTRICTED
+rather than exposing or silently dropping the claim → Unchanged: content for
+authorized users → Attribution: preserved → Source: restricted-status shown
+→ Review: per access policy → Understanding: reviewer understands why a
+claim's source isn't visible to them specifically.
+
+**45. Goal fulfilled shortly before closure**
+Given a goal is fulfilled just before episode closure → When Final Chapter
+is created → Then the goal shows FULFILLED with its confirming source →
+Unchanged: prior goal states → Attribution: source of fulfillment evidence →
+Source: confirming note → Review: clinician-confirmed → Understanding:
+reviewer sees a genuine, sourced outcome, not an assumed happy ending.
+
+**46. Unresolved family disagreement at closure**
+Given a family conflict never reached a documented outcome → When Final
+Chapter is created → Then it displays CONTINUED DISAGREEMENT at closure,
+never silently resolved → Unchanged: original conflicting statements →
+Attribution: both perspectives preserved → Source: original notes → Review:
+responsible workflow's last documented status → Understanding: reviewer
+knows the disagreement was real and never adjudicated by the product.
+
+**47. Transfer handoff completed through an authorized workflow**
+Given an authorized transfer/HIE workflow includes selected Patient Story
+information → When the handoff packet is produced → Then it includes only
+authorized, source-attributed information, excludes unsupported AI
+synthesis → Unchanged: sending provider's Patient Story → Attribution:
+preserved in the packet → Source: authoritative transfer workflow → Review:
+per that workflow's own authorization → Understanding: receiving party gets
+attributed facts, not an implied story continuation.
+
+**48. Post-death bereavement note**
+Given a bereavement contact note is created after death → When linked to
+the closed episode → Then it does not create a new chapter or clinical
+content, and remains within the bereavement workflow's own privacy rules →
+Unchanged: Final Chapter → Attribution: bereavement workflow → Source:
+bereavement record → Review: per bereavement policy → Understanding:
+reviewer does not see bereavement counseling content mixed into the clinical
+journey.
+
+**49. Late documentation concerning a prior chapter**
+Given a note is entered after its chapter closed → When Patient Story
+evaluates it → Then it is either routed through the amendment workflow,
+shown in the current chapter as "Late documentation concerning a prior
+review period," or excluded as non-story-worthy/duplicate → Unchanged:
+original closed chapter (unless a proper amendment) → Attribution:
+original documentation date preserved → Source: the late note → Review:
+required before any placement decision → Understanding: reviewer is never
+misled about when information was actually known.
+
+**50. Duplicate fact documented by nursing and social work**
+Given both disciplines record essentially the same fact → When AI proposes
+contributions → Then it is flagged DUPLICATE CONTENT, not published twice →
+Unchanged: both source notes remain intact → Attribution: single
+attributed statement retains its originating discipline → Source: primary
+originating note → Review: reviewer confirms duplicate designation →
+Understanding: reviewer sees one clear statement, not redundant noise.
+
+**51. Same event documented from distinct discipline perspectives**
+Given nursing and chaplaincy document the same event differently → When AI
+proposes contributions → Then both are retained as DISTINCT DISCIPLINE
+PERSPECTIVE, not collapsed → Unchanged: each note → Attribution: each
+discipline's own → Source: each respective note → Review: each reviewed by
+its scope-appropriate discipline (Section 28.2) → Understanding: reviewer
+sees the full, undiminished multi-disciplinary picture.
+
+**52. Urgent safety issue identified in a note**
+Given a note describes an urgent safety concern → When detected → Then it
+is never held pending AI/IDG/chapter review — it routes immediately through
+the existing safety/incident workflow (Section 17.1); Patient Story may
+later show a reviewed, source-linked contribution describing the event and
+response → Unchanged: n/a (urgent path bypasses story-publication delay) →
+Attribution: as documented → Source: the originating note → Review: safety
+workflow first, story contribution after → Understanding: reviewer
+understands Patient Story never gates or delays urgent safety response.
+
+**53. Missing discipline note during an IDG period**
+Given a discipline has no note for the period → When the chapter is
+prepared → Then it displays DISCIPLINE_NOTE_NOT_AVAILABLE, never "no
+concern" or "normal" → Unchanged: chapter readiness criteria (Section 8.2)
+→ Attribution: n/a → Source: n/a, explicitly labeled absent → Review: IDG
+aware of the gap → Understanding: reviewer distinguishes "nothing wrong"
+from "nothing documented."
+
+**54. Prior-episode clinical finding proposed as current**
+Given AI or a user attempts to carry a prior episode's clinical finding
+(e.g., PPS) into the current episode without new evidence → When evaluated
+→ Then it is blocked/flagged per Section 4C's prior-episode content
+boundary → Unchanged: prior episode's own record → Attribution: prior
+episode, clearly dated → Source: prior episode's note → Review: rejected
+unless current-episode evidence exists → Understanding: reviewer never
+mistakes historical data for a current-episode finding.
+
+**55. Patient disputes a Patient Story statement**
+Given a patient or authorized representative disputes a published statement
+→ When the dispute is raised → Then it routes through the applicable
+governance process (Section 28.6 — pending confirmation) rather than being
+silently edited or deleted by any single user → Unchanged: original
+statement remains reproducible → Attribution: dispute is itself documented
+and attributed → Source: the disputed contribution's original source →
+Review: authorized reviewer/HIM process → Understanding: reviewer sees both
+the original statement and the fact that it was disputed, with resolution
+handled by the correct authority — this exact process remains an open
+governance question until Section 28.6 is resolved.
 
 ---
 
@@ -802,20 +1138,161 @@ Patient Story is **not** a federally prescribed form.
 Patient Identity model, IDG chapters, AI contribution proposals, the
 Meaning and Goals lifecycle, the 60-second orientation target,
 story-worthiness rules, the episode/readmission model, the Final Chapter
-definition, scope-appropriate review, and the exact layout/interaction
-design are all SNS product decisions, not regulatory mandates.
+definition, scope-appropriate review, contribution-disposition categories,
+and the exact layout/interaction design are all SNS product decisions, not
+regulatory mandates.
 
 ---
 
-## 28. OPEN QUESTIONS
+## 28. RESOLVED PRODUCT DECISIONS AND OPEN GOVERNANCE QUESTIONS
 
-All five previously open product questions have been resolved directly in
-this revision (Sections 16, 9, 6, 21A, and 22.5 respectively). No
-unresolved product questions remain as of this revision.
+### 28.1 Family-Versus-Family Conflict
 
-Per document control policy (Section 29), further questions may only be
-added here if discovered during real product validation (Section 30) —
-they are not to be manufactured in advance of that validation.
+A family-versus-family conflict may be marked appropriately addressed only
+when the responsible workflow documents one of the following outcomes
+(product meanings only, not authorized database states):
+
+- CLARIFIED_BY_PATIENT
+- CLARIFIED_BY_AUTHORIZED_REPRESENTATIVE
+- VERIFIED_BY_AUTHORITATIVE_DOCUMENT
+- RECONCILED
+- CONTINUED_DISAGREEMENT
+- NO_LONGER_RELEVANT
+- UNABLE_TO_VERIFY
+
+**Responsible workflow by subject:**
+- Family or caregiver relationship conflict → social work, MFT,
+  mental-health workflow, IDG when care planning is affected
+- Spiritual or meaning-related conflict → spiritual-care workflow, IDG when
+  care planning is affected
+- Clinical treatment conflict → physician, authorized prescriber,
+  responsible clinical workflow
+- Legal authority, representative, surrogate, or advance-directive conflict
+  → authoritative legal-authority or advance-care-planning workflow
+- Plan-of-care impact → IDG and plan-of-care workflow
+
+Patient Story displays: responsible workflow, responsible discipline,
+current status, source evidence, documented outcome. **Patient Story does
+not close the conflict merely because a reviewer read it.**
+
+### 28.2 Scope-Appropriate Review
+
+No discipline has universal approval authority over the entire Patient
+Story.
+
+- **Nursing** may review: nursing observations, symptom changes, functional
+  changes, ADL changes, safety findings, nutrition findings, caregiver
+  observations, nursing interventions and response.
+- **Social work, MFT, or mental-health roles** may review: psychosocial
+  findings, caregiver burden, family dynamics, coping, resource barriers,
+  placement concerns, support-system changes.
+- **Spiritual care** may review: spiritual concerns, existential concerns,
+  meaning, ritual, unfinished business, sources of comfort, spiritual
+  goals.
+- **Physician or Medical Director** review is required for:
+  physician-level disease-trajectory interpretation, prognosis-related
+  interpretation, eligibility-related clinical interpretation, treatment
+  conclusions, physician-authored findings.
+- **Hospice aides** may contribute direct observations within aide scope.
+  Aide observations implying diagnosis, prognosis, or clinical
+  interpretation require review by the appropriate licensed discipline.
+- **Volunteers** may contribute: direct patient statements, patient
+  interests, quality-of-life goals, engagement observations within
+  volunteer scope. Volunteers may not originate: diagnoses, prognosis
+  conclusions, clinical symptom interpretations, eligibility conclusions.
+- **IDG** may approve: interdisciplinary synthesis, chapter summary, team
+  priorities, unresolved issues, Next-Period Focus. IDG approval does not
+  remove the original discipline attribution.
+
+Patient Identity may use a streamlined review workflow, but every published
+statement remains sourced, attributed, reviewed, dated, and auditable.
+
+### 28.3 Introduction Amendments
+
+The Introduction may be amended after the first chapter closes only for:
+factual correction; corrected attribution; missing historical referral
+information; missing historical admission information; newly available
+source material that genuinely describes the original admission starting
+point.
+
+Later clinical developments do not rewrite the Introduction. Later changes
+belong in the applicable chapter. Later goals belong in the current Meaning
+and Goals thread and the applicable chapter. Later caregiver circumstances
+belong in the applicable chapter.
+
+Every Introduction amendment must preserve: prior wording; amended wording;
+reason for amendment; source; author or reviewer; date and time;
+attribution; amendment history.
+
+The Introduction must not: silently regenerate; be rewritten to make later
+events appear predictable; backdate later findings into admission context;
+become certification or eligibility prose.
+
+### 28.4 Next-Period Focus
+
+Next-Period Focus is an IDG workflow artifact displayed in Patient Story —
+it is not an ordinary Story Contribution. It may display: unresolved
+issues, monitoring priorities, assigned discipline follow-up, caregiver
+risks, pending assessments, goals requiring review, recertification
+preparation, documented anticipated transitions, unresolved conflicts
+requiring follow-up.
+
+At the next IDG: addressed items may be marked addressed; unresolved items
+carry forward; changed priorities require a documented update; deferred
+items remain visible; items may not silently disappear. Supporting clinical
+facts remain separate, source-linked Story Contributions.
+
+Patient Story does not independently: assign staff; enter orders; modify
+the plan of care; change visit frequency; authorize interventions; change
+certification status.
+
+### 28.5 Transfer Handoff
+
+A transfer closes the sending hospice provider's Patient Story for that
+episode. The sending hospice's Final Chapter remains part of the sending
+provider's read-only historical clinical record. Patient Story is not
+automatically transmitted as the transfer record.
+
+When an authorized transfer, release-of-information, interoperability, or
+health-information-exchange workflow permits it, selected source-linked
+information may accompany the authoritative transfer materials.
+
+Any transfer summary or handoff must: use the authorized transfer workflow;
+identify the sending hospice; identify the receiving hospice when
+documented; preserve source attribution; include only authorized
+information; use the documented transfer effective date; include
+unresolved care needs when authorized and relevant; exclude unsupported AI
+synthesis; exclude hidden source information inaccessible to the receiving
+party; avoid implying that the receiving hospice continues the same Patient
+Story.
+
+The receiving hospice maintains its own episode record under its
+authorized record system. The receiving hospice's later documentation does
+not become part of the sending provider's Patient Story. A transfer does
+not: continue chapter numbering; merge records; merge stories; make the
+receiving hospice a contributor to the closed sending-provider story.
+
+### 28.6 Open Governance Questions (privacy, HIM, legal, compliance)
+
+Before architecture authorization, privacy, HIM, compliance, and legal
+review must determine:
+
+- Whether Patient Story is included in patient-access requests.
+- Whether Patient Story appears in the designated record set (see Section
+  2.1).
+- How a patient or authorized representative disputes a statement
+  (see Scenario 55, Section 26.2).
+- How attribution disputes are handled.
+- How amendments are requested and documented.
+- Whether any content may be restricted under applicable policy or law.
+- How sensitive information about another person is handled.
+- How disclosures and record exports represent AI proposals versus
+  authenticated contributions.
+- How record retention applies to historical Patient Story versions.
+
+**These questions must not be silently decided by engineering.** They
+remain open pending formal privacy/HIM/legal review — this is the only
+category of question this document leaves unresolved, by design.
 
 ---
 
@@ -835,12 +1312,31 @@ No V3.1 or further addendum will be issued — all future corrections revise
 this document directly.
 
 ```
-PRODUCT DEFINITION:      READY FOR PRODUCT VALIDATION
-ARCHITECTURE AUTHORIZED: NO
-CODE AUTHORIZED:         NO
-SCHEMA AUTHORIZED:       NO
-MIGRATIONS AUTHORIZED:   NO
-IMPLEMENTATION-READY:    NO
+PATIENT STORY V3
+
+STATUS:
+CONSOLIDATED WORKING PRODUCT DEFINITION
+
+PRODUCT DEFINITION:
+READY FOR PRODUCT VALIDATION AFTER THE REVISIONS IN THIS DOCUMENT
+
+REGULATORY BOUNDARIES:
+DOCUMENTED
+
+PRIVACY / HIM / LEGAL QUESTIONS:
+PENDING CONFIRMATION WHERE IDENTIFIED (Section 2.1, Section 28.6)
+
+PRODUCT QUESTIONS:
+RESOLVED EXCEPT QUESTIONS DISCOVERED DURING PRODUCT VALIDATION AND FORMAL
+PRIVACY / HIM / LEGAL REVIEW
+
+ARCHITECTURE AUTHORIZED:      NO
+CODE AUTHORIZED:              NO
+SCHEMA AUTHORIZED:            NO
+MIGRATIONS AUTHORIZED:        NO
+APIs AUTHORIZED:              NO
+ROUTES AUTHORIZED:            NO
+IMPLEMENTATION READY:         NO
 ```
 
 ---
@@ -848,131 +1344,129 @@ IMPLEMENTATION-READY:    NO
 ## 30. PRODUCT VALIDATION PLAN
 
 Patient Story must be validated as a product concept before architecture is
-authorized. Use de-identified or synthetic scenarios unless authorized
-historical-data testing safeguards are confirmed.
+authorized. Use de-identified or synthetic cases unless authorized
+historical-record testing and all required safeguards are confirmed.
 
-### 30.1 Representative roles to validate with
+### 30.1 Representative validators
 - [ ] Admitting RN
 - [ ] Case manager RN
+- [ ] Physician or Medical Director
 - [ ] Social worker, MFT, or mental-health role
 - [ ] Spiritual-care role
-- [ ] Physician or Medical Director
 - [ ] Hospice aide representative
 - [ ] Volunteer-program representative
 - [ ] IDG coordinator
 - [ ] Quality or compliance reviewer
-- [ ] Authorized chart reviewer or auditor proxy
+- [ ] Privacy or HIM reviewer
+- [ ] Authorized auditor or surveyor proxy
 
 ### 30.2 Patient Identity
 - [ ] Users distinguish Patient Identity from demographics.
 - [ ] Users understand that Patient Identity is stable but not static.
-- [ ] Users understand attribution immediately.
-- [ ] Users can distinguish people important to the patient from legal
-      decision-makers.
+- [ ] Users identify attribution immediately.
+- [ ] Users distinguish important relationships from legal authority.
 - [ ] Users understand that prior-episode identity is proposed, not
       inherited.
 
 ### 30.3 Introduction
-- [ ] Users can identify why hospice was considered.
-- [ ] Users can identify why hospice was considered at that time.
-- [ ] Users can identify the admission baseline.
-- [ ] Users can distinguish patient statements, family reports, clinician
+- [ ] Users identify why hospice was considered.
+- [ ] Users identify why hospice was considered at that time.
+- [ ] Users identify the admission baseline.
+- [ ] Users distinguish patient statements, family reports, clinician
       observations, and source documents.
-- [ ] Users recognize that Introduction amendments preserve history.
+- [ ] Users understand that later developments do not rewrite the
+      Introduction.
 
-### 30.4 IDG and chapters
-- [ ] IDG users can identify what changed since the previous IDG.
-- [ ] IDG users can identify what hospice did in response.
-- [ ] IDG users can identify unresolved issues.
-- [ ] IDG users can identify current Meaning and Goals.
-- [ ] IDG users understand milestones are within chapters.
-- [ ] IDG users understand recertification is a cross-chapter lens.
-- [ ] Routine stable notes do not produce false progression.
-- [ ] Clinically meaningful stability can be represented accurately.
+### 30.4 Chapters and IDG
+- [ ] IDG users identify what changed since the previous review.
+- [ ] IDG users identify hospice response.
+- [ ] IDG users identify unresolved issues.
+- [ ] IDG users identify current patient and family priorities.
+- [ ] Users understand milestones remain inside chapters.
+- [ ] Users understand recertification is a cross-chapter lens.
+- [ ] Routine documentation does not create false progression.
+- [ ] Meaningful stability can be represented.
 
-### 30.5 Source and trust
-- [ ] Users can open the exact supporting source.
-- [ ] Users can see author and source date.
-- [ ] Users can see the supporting excerpt in context.
-- [ ] Users understand AI proposed the contribution but did not publish it.
-- [ ] Users can identify who reviewed the contribution.
-- [ ] Users can identify a duplicate or conflict.
-- [ ] Users do not mistake Patient Story for the authoritative note.
+### 30.5 Source trust
+- [ ] Users open the exact source and version.
+- [ ] Users see source author and date.
+- [ ] Users see supporting context.
+- [ ] Users understand that AI proposed but did not publish the content.
+- [ ] Users identify the human reviewer.
+- [ ] Users recognize duplicate, corroborating, distinct perspectives, and
+      conflict (Section 18.6).
+- [ ] Users do not mistake Patient Story for the authoritative source note.
 
-### 30.6 Voice documentation
-- [ ] Raw audio cannot publish content.
-- [ ] Unauthenticated transcripts cannot publish content.
-- [ ] Uncertain speakers block publication.
+### 30.6 Voice
+- [ ] Raw audio cannot publish.
+- [ ] An unreviewed transcript cannot publish.
+- [ ] Uncertain speaker attribution blocks publication.
 - [ ] Patient, family, representative, and clinician speech remain
       distinct.
 - [ ] Background conversation is excluded.
 - [ ] Clinician questions are not attributed to the patient.
-- [ ] Transcript correction occurs before story analysis.
+- [ ] Transcript correction precedes contribution analysis.
 
 ### 30.7 Conflicts
-- [ ] Conflicting perspectives appear side by side.
-- [ ] Users can identify the responsible follow-up workflow.
-- [ ] Users can identify whether the conflict is clarified, reconciled,
-      unresolved, or unable to verify.
+- [ ] Conflicts display side by side.
+- [ ] Users identify the responsible workflow.
+- [ ] Users identify the documented outcome.
 - [ ] Patient Story does not appear to adjudicate.
 
 ### 30.8 Goals
 - [ ] Current and historical goals remain distinguishable.
-- [ ] Revised goals do not erase prior goals.
-- [ ] Fulfilled goals identify supporting evidence.
-- [ ] Actionable goals have a visible follow-up owner.
-- [ ] Patient Story does not independently authorize an intervention.
+- [ ] Revised goals preserve prior goals.
+- [ ] Fulfilled goals identify sources.
+- [ ] Actionable goals identify a follow-up owner and disposition (18.2).
+- [ ] Patient Story does not independently authorize clinical action.
 
-### 30.9 Episodes and readmission
-- [ ] A readmission starts a new story.
+### 30.9 Episodes
+- [ ] Readmission creates a new story.
 - [ ] Chapter numbering resets.
 - [ ] Prior stories remain read-only.
-- [ ] Prior identity is never automatically inherited.
-- [ ] Users can review prior episodes without merging them.
-- [ ] A closed episode with a pending Final Chapter remains visible and
-      clearly labeled.
+- [ ] Prior identity does not automatically carry forward.
+- [ ] Prior clinical findings remain historical (Section 4C).
+- [ ] Closed episodes remain visible if the Final Chapter is pending.
 
 ### 30.10 Final Chapter
 - [ ] Closure type matches the authoritative record.
 - [ ] Closure date matches the authoritative record.
-- [ ] Final-period summary contains only reviewed, source-grounded
-      information.
+- [ ] Final-period summary is source-grounded.
 - [ ] Unresolved issues remain visible.
-- [ ] Last-known Meaning and Goals state is preserved.
+- [ ] Last-known Meaning and Goals states remain visible.
 - [ ] Death content does not infer cause or circumstances.
 - [ ] Discharge content does not speculate about readmission.
-- [ ] Revocation content remains neutral.
-- [ ] Transfer content does not merge records or assume the receiving
-      system.
-- [ ] Corrections remain additive and visible.
+- [ ] Revocation wording remains neutral.
+- [ ] Transfer content does not merge records.
+- [ ] Corrections remain visible and additive.
+- [ ] Bereavement content stays within its own boundary (22.3.1).
 
 ### 30.11 Auditor and reviewer
-- [ ] Reviewer can follow progression across chapters.
-- [ ] Reviewer can compare baseline and later findings.
-- [ ] Reviewer can identify underlying sources.
-- [ ] Reviewer can identify hospice response.
-- [ ] Reviewer can distinguish Patient Story from certification, physician
-      narrative, plan of care, orders, and legal records.
+- [ ] Reviewer follows progression across chapters.
+- [ ] Reviewer compares baseline and later findings.
+- [ ] Reviewer identifies the source behind each claim.
+- [ ] Reviewer identifies documented hospice response.
+- [ ] Reviewer distinguishes Patient Story from certification, physician
+      narrative, plan of care, orders, legal authority, and source notes.
 - [ ] Patient Story reduces navigation burden without replacing source
       review.
 
 ### 30.12 Usability
-- [ ] IDG users can orient to the patient in under 60 seconds.
-- [ ] New team members can identify who the patient is and what matters in
+- [ ] IDG users orient to the patient in under 60 seconds.
+- [ ] New team members identify who the patient is and what matters in
       under 60 seconds.
 - [ ] Patient Story remains readable.
 - [ ] Patient Story does not become a note dump.
-- [ ] No participant confuses Timeline with Patient Story.
-- [ ] No participant believes Patient Story independently determines
-      eligibility.
+- [ ] Users distinguish Timeline from Patient Story.
+- [ ] Users understand that Patient Story does not determine eligibility.
 
 ### 30.13 Accessibility
-- [ ] Keyboard-only review is possible in the prototype.
+- [ ] Keyboard-only use is possible in the prototype.
 - [ ] Focus order is understandable.
-- [ ] Status is not communicated by color alone.
+- [ ] Status is not conveyed by color alone.
 - [ ] Attribution and source links have accessible labels.
-- [ ] Conflict and uncertainty are understandable without relying on
-      visual styling alone.
+- [ ] Conflict and uncertainty remain understandable without visual
+      styling.
 
 ---
 
