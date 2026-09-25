@@ -682,7 +682,9 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
             { label: "ICD-10 code + description (supporting detail)", value: principalDiagnosis },
           ] },
           ...comorbidityItems,
-          { code: "I0000", label: "Comorbidities and Co-existing Conditions", entries: [{ label: "Active conditions", value: diagnosisList(diagnoses) }] },
+          // Not a CMS HOPE item code — internal SNS summary of the full diagnosis list, retained for
+          // clinician convenience alongside the CMS-coded I0010/comorbidity items above. Issue #147.
+          { code: "SNS-DX", label: "Diagnosis Summary (SNS internal — not a CMS HOPE item)", entries: [{ label: "Active conditions", value: diagnosisList(diagnoses) }] },
         ],
       },
       {

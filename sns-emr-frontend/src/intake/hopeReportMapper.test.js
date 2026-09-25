@@ -521,6 +521,44 @@ describe("mapRnIcaToHopeReport — I0010 Principal Diagnosis category", () => {
   });
 });
 
+// Issue #147 — "I0000" is not a CMS HOPE item code (absent from the v1.02
+// manual TOC/body and from HOPE_DIAGNOSIS_ITEM_CODES). It was a fully
+// redundant diagnosis-list summary row mislabeled with an invented
+// CMS-style code, implying CMS authority it never had. Retained as an
+// internal SNS summary row, now clearly non-CMS-coded.
+describe("mapRnIcaToHopeReport — I0000 mislabeled CMS code removed (Issue #147)", () => {
+  it("no longer exports an 'I0000' CMS-coded item", () => {
+    const formData = baseFormData();
+    formData.diagnoses = {
+      primaryDiagnosis: { icd10: "C50.911", description: "Malignant neoplasm", onsetDate: "2024-01-01", hopeDiagnosisCategory: "01" },
+      secondaryDiagnoses: [{ icd10: "I50.9", description: "Heart failure, unspecified" }],
+    };
+    const report = mapRnIcaToHopeReport(formData);
+    expect(() => findItem(report, "I0000")).toThrow(/not found/);
+  });
+
+  it("retains the diagnosis-summary content under a non-CMS internal code", () => {
+    const formData = baseFormData();
+    formData.diagnoses = {
+      primaryDiagnosis: { icd10: "C50.911", description: "Malignant neoplasm", onsetDate: "2024-01-01", hopeDiagnosisCategory: "01" },
+      secondaryDiagnoses: [{ icd10: "I50.9", description: "Heart failure, unspecified" }],
+    };
+    const report = mapRnIcaToHopeReport(formData);
+    const item = findItem(report, "SNS-DX");
+    expect(item.label).toMatch(/not a CMS HOPE item/i);
+    expect(item.entries[0].value).toContain("C50.911");
+  });
+
+  it("Principal Diagnosis (I0010) still exports unaffected", () => {
+    const formData = baseFormData();
+    formData.diagnoses = {
+      primaryDiagnosis: { icd10: "C50.911", description: "Malignant neoplasm", onsetDate: "2024-01-01", hopeDiagnosisCategory: "01" },
+    };
+    const report = mapRnIcaToHopeReport(formData);
+    expect(responseCode(report, "I0010")).toBe("01");
+  });
+});
+
 // A1400 Payer Information is sourced from the Facesheet insurance record
 // (patient.primaryPayerType / patient.secondaryPayerType), not RN ICA
 // form_data. See checkpoint notes: duplicating payer data into RN ICA would
