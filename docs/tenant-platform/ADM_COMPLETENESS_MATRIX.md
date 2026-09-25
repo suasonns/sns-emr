@@ -39,7 +39,7 @@ marked NOT_VERIFIED, not assumed correct.
 | I0010 | RnicaAssessment.form_data | `diagnoses.primaryDiagnosis.{icd10,description,hopeDiagnosisCategory}` | category-code lookup + string concat | category restricted; ICD-10 text free | NOT_VERIFIED |
 | I0100, I0600, I0900, I0950, I1101, I1510, I2102, I2900, I2910, I4501, I4801, I5150, I5401, I6202 (14 codes) | RnicaAssessment.form_data | `diagnoses.hopeComorbidities.{key}` (structured) or free-text regex inference (legacy path) | `boolCode()` OR regex heuristic | Structured: boolean only. Legacy: heuristic, flagged by mapper's own `dataSourceNote` | NOT_VERIFIED |
 | I8005 | RnicaAssessment.form_data | `diagnoses.hopeComorbidities.other` or `diagnosisEntries(diagnoses).length` heuristic | `boolCode()` | same caveat as above | NOT_VERIFIED |
-| I0000 | RnicaAssessment.form_data | `diagnosisEntries(diagnoses)` | list join | none | **OPEN_QUESTION** (see `I0000_PROVENANCE_TRACE.md`) |
+| I0000 | ~~RnicaAssessment.form_data~~ N/A | ~~`diagnosisEntries(diagnoses)` (`hopeReportMapper.js`)~~ | N/A | N/A | **RESOLVED (Issue #147)** — not a CMS item; excluded from the applicable-item count. Retained as internal `SNS-DX` row (non-CMS), see `I0000_PROVENANCE_TRACE.md` |
 | J0050 | RnicaAssessment.form_data | `imminentDeath.appearsThreeDaysOrLess` | `YES_NO_UNABLE_MAP` lookup | restricted to Yes/No/Unable | NOT_VERIFIED — also flagged CONFLICTING with `diagnoses.terminalPrognosis` in `HOPE_DATA_PROVENANCE_MATRIX.md` |
 | J0900 | RnicaAssessment.form_data | `pain.{screenedForPain,painSeverityCategory,standardizedPainToolType,screeningDate}` | `painScreeningResponse()` | restricted per internal code maps | NOT_VERIFIED |
 | J0905 | RnicaAssessment.form_data | `pain.painIntensity.current`/`.painManagementPlan`/`.painLocation` | `boolCode(Boolean(...))` | boolean derivation only | NOT_VERIFIED |
@@ -47,7 +47,7 @@ marked NOT_VERIFIED, not assumed correct.
 | J0915 | RnicaAssessment.form_data | `pain.neuropathicPain` | `NEUROPATHIC_PAIN_MAP` lookup | restricted; unmapped → placeholder | NOT_VERIFIED |
 | J2030 | RnicaAssessment.form_data | `respiratory.{shortnessOfBreathScreened,sobSeverity,screeningDate}` | `boolCode` + derived `sobIndicated` | none beyond boolean | NOT_VERIFIED |
 | J2040 | RnicaAssessment.form_data | `respiratory.treatmentInitiated/.treatmentDate` | `boolCode`, `formatDate` | none | NOT_VERIFIED |
-| J2050 | RNICA `sfv.*` self-attestation / `symptomImpact` | `sfv.symptomImpactScreeningCompleted/.Date` OR `symptomImpact.assessmentDate` | `boolCode`, `formatDate` | none — reads self-attestation, not SFVRequirement | **OPEN_QUESTION** (see `J2050_PROVENANCE_TRACE.md`) |
+| J2050 | RNICA `sfv.*` self-attestation / `symptomImpact` | `sfv.symptomImpactScreeningCompleted` (sole source, OR-fallback removed) / `sfv.symptomImpactScreeningDate ‖ symptomImpact.assessmentDate` | `boolCode`, `formatDate` | A. Completed derives solely from the completion flag (Issue #148 fix) | **RESOLVED (Issue #148)** — no longer OPEN_QUESTION |
 | J2051 | RnicaAssessment.form_data | `symptomImpact.*` (8 symptoms) | `symptomEntries()` | word-based MILD/MODERATE/SEVERE vocabulary | NOT_VERIFIED |
 | J2052 (A/B) | SFVRequirement | `sfvStatus.completed/.completedAt` | `boolCode`, `formatDate` | ownership remediated, trigger-scoped | **VERIFIED** |
 | J2052 (C) | RNICA form (unvalidated) | `sfv.reasonNotCompleted` | `j2052ReasonNotCompleted()` | restricted to codes 1/2/3/9, but no authoritative backend source | NOT_VERIFIED (see `J2052C_DECISION_RECORD.md`) |
@@ -65,9 +65,22 @@ marked NOT_VERIFIED, not assumed correct.
 | Status | Count |
 |---|---|
 | VERIFIED | 3 (A0250, J2052 A/B, J2053) |
+| RESOLVED (Issues #147/#148) | 2 (I0000 — excluded, non-CMS; J2050 — now sole-source, no longer open) |
 | NOT_VERIFIED | 52 |
-| OPEN_QUESTION | 2 (I0000, J2050) |
-| **Total** | **57** |
+| OPEN_QUESTION | 0 |
+| **Total (applicable CMS items)** | **56** (57 emitted rows minus I0000, which is confirmed non-CMS) |
+
+**Update (2026-09-24, Issues #147/#148 sync):** the two `OPEN_QUESTION` rows in
+this matrix (I0000, J2050) are resolved as of PR #163 and PR #162
+respectively. I0000 is removed from the applicable-item denominator (it was
+never a CMS HOPE item code); J2050 is reclassified out of OPEN_QUESTION now
+that its OR-fallback is removed. No other rows in this matrix were
+re-reviewed in this update — the remaining 52 `NOT_VERIFIED` rows are
+unchanged and still require the full item-by-item CMS primary-source
+reconciliation scoped to Issue #149 (not performed in this pass; a partial
+sample pass this session did surface likely additional discrepancies —
+A0250's Discharge-timepoint code, A1110.B, J2040, and N0520 — but these are
+noted for a *future* #149 pass, not resolved or re-verified here).
 
 **COMPLETENESS: NOT_VERIFIED. DENOMINATOR: NOT_VERIFIED.**
 
