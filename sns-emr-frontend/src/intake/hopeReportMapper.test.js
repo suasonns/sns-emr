@@ -844,6 +844,63 @@ describe("mapRnIcaToHopeReport — J2052 read-path (P1A)", () => {
   });
 });
 
+// Issue #148 remediation (2026-09-24): J2050.A "Was a symptom impact
+// screening completed?" must be controlled solely by
+// sfv.symptomImpactScreeningCompleted, per HOPE Guidance Manual v1.02
+// p.73-74 (A is the completion gate; B is a dependent detail collected
+// once A=1). The prior OR-fallback (`sfv.symptomImpactScreeningCompleted
+// || symptomImpact.assessmentDate`) allowed a truthy assessmentDate alone
+// -- including a stale one carried over within the same record -- to
+// report "Completed = Yes" even though the completion checkbox was never
+// checked. These tests isolate the two operands, which no pre-existing
+// fixture did (both were always set truthy together).
+describe("mapRnIcaToHopeReport — J2050 Symptom Impact Screening (Issue #148)", () => {
+  it("A=false, B=populated date: Completed = No (assessmentDate alone must not satisfy completion)", () => {
+    const formData = baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningCompleted: false, symptomImpactScreeningDate: "" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2050").entries[0].value).toBe("No");
+  });
+
+  it("A=true, B=populated date: Completed = Yes", () => {
+    const formData = baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningCompleted: true, symptomImpactScreeningDate: "2026-01-01" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2050").entries[0].value).toBe("Yes");
+  });
+
+  it("A=false, B=stale date carried over from a prior/unrelated symptom assessment: Completed = No", () => {
+    const formData = baseFormData({
+      symptomImpact: { pain: 0, assessmentDate: "2020-01-01" },
+      sfv: { symptomImpactScreeningCompleted: false, symptomImpactScreeningDate: "" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2050").entries[0].value).toBe("No");
+  });
+
+  it("A=true, B absent: Completed = Yes (assessmentDate is not required to report completion)", () => {
+    const formData = baseFormData({
+      symptomImpact: {},
+      sfv: { symptomImpactScreeningCompleted: true, symptomImpactScreeningDate: "2026-01-01" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2050").entries[0].value).toBe("Yes");
+  });
+
+  it("B (Date) still falls back to symptomImpact.assessmentDate when sfv.symptomImpactScreeningDate is absent -- supporting-detail fallback is unchanged", () => {
+    const formData = baseFormData({
+      symptomImpact: { pain: 2, assessmentDate: "2026-01-01" },
+      sfv: { symptomImpactScreeningCompleted: true, symptomImpactScreeningDate: "" },
+    });
+    const report = mapRnIcaToHopeReport(formData);
+    expect(findItem(report, "J2050").entries[1].value).toBe("01/01/2026");
+  });
+});
+
 // HOPE SOURCE MODEL CORRECTION (2026-09-23): J2053 must support the full
 // verified CMS response set 0/1/2/3/9 -- not a 0-3-only model -- and must
 // never silently convert a missing/unsupported value into 0.

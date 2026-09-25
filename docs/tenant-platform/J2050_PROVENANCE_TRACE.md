@@ -1,7 +1,13 @@
 # J2050 Provenance Trace
 
-Status: OPEN_QUESTION. Repository trace only — no implementation
-performed, per instruction.
+Status: **RESOLVED (Issue #148, PR TBD)**. The OR-fallback defect
+identified below has been remediated: `hopeReportMapper.js:689`'s
+`A. Completed?` now derives solely from
+`sfv.symptomImpactScreeningCompleted` (the completion checkbox).
+`symptomImpact.assessmentDate` is no longer able to satisfy completion
+on its own; it remains a fallback source for `B. Date` only (dependent
+detail, per CMS's A-gates-B structure). See "Final Disposition" at the
+end of this document.
 
 ## CMS Requirement — VERIFIED BY CMS (reverified against v1.02)
 
@@ -132,3 +138,70 @@ identical to I0010/I0000, (b) an unvalidated OR-fallback between two
 independent fields, and (c) an unverified within-record staleness
 question for `symptomImpact.assessmentDate`. No repository change is
 proposed here — trace only, per instruction.
+
+## Final Disposition (Issue #148, resolved 2026-09-24)
+
+**Decision**: the OR-fallback constitutes a confirmed SNS
+implementation defect, not a CMS-mandated behavior (per the CMS
+authority re-verification above — CMS's own text presents A as the
+skip-logic gate and B as an A-dependent detail, and does not authorize
+inferring A from a truthy B). Approved remediation: **A
+(`sfv.symptomImpactScreeningCompleted`) is now the sole source of truth
+for "Completed?"**; `symptomImpact.assessmentDate` remains eligible
+only as a fallback source for `B. Date` (supporting detail), never for
+`A. Completed?`.
+
+**Change made**: `sns-emr-frontend/src/intake/hopeReportMapper.js:689`
+
+```diff
+- { label: "A. Completed?", value: boolCode(Boolean(sfv.symptomImpactScreeningCompleted || symptomImpact.assessmentDate)).description },
++ { label: "A. Completed?", value: boolCode(Boolean(sfv.symptomImpactScreeningCompleted)).description },
+  { label: "B. Date", value: formatDate(sfv.symptomImpactScreeningDate || symptomImpact.assessmentDate) },
+```
+
+`B. Date`'s existing fallback to `symptomImpact.assessmentDate` is
+**unchanged** — it is supporting detail, not the completion gate, and
+CMS does not restrict how the date detail itself is sourced.
+
+**Updated truth table** (production behavior after remediation):
+
+| Operand A (`symptomImpactScreeningCompleted`) | Operand B (`assessmentDate`) | Production result (`A. Completed?`) | CMS-authorized result | Status |
+|---|---|---|---|---|
+| `false` | `""` (empty) | No | No | Match |
+| `true` | `""` (empty) | Yes | Yes | Match |
+| `false` | `"2026-01-01"` (truthy date) | **No** | No | **Match (defect resolved)** |
+| `true` | `"2026-01-01"` | Yes | Yes | Match |
+| `null`/`undefined` | `null`/`undefined` | No (both falsy) | No | Match |
+| `false` | stale date carried over from a prior/unrelated symptom assessment within the same record | **No** | No | **Match (staleness risk moot — A alone now controls)** |
+
+The prior "Mismatch risk" and "Open risk" rows are both resolved by
+removing A's dependency on B. The within-record staleness question for
+`symptomImpact.assessmentDate` (whether it is reliably re-populated per
+timepoint) is now moot for J2050.A specifically, since B no longer
+influences completion status; it remains only a cosmetic concern for
+`B. Date`'s display value, outside this issue's scope.
+
+**Scope discipline**: J2051, J2052A/B/C, J2053, the SFV workflow,
+RNICA ownership, HOPE timing, schema, and migrations are all
+unchanged — this remediation touches only the single OR expression
+above.
+
+**Test coverage added**: `hopeReportMapper.test.js`, new describe block
+"mapRnIcaToHopeReport — J2050 Symptom Impact Screening (Issue #148)" —
+5 tests isolating Operand A from Operand B (a boundary no pre-existing
+fixture exercised), covering A=false/B=date, A=true/B=date, A=false/
+B=stale-date, A=true/B=absent, and B's continued fallback behavior.
+
+**Verification results**:
+- `hopeReportMapper.test.js`: 170/170 passed (up from 165; +5 new).
+- Full frontend suite (`npx vitest run`): 318/318 passed, 22/22 test
+  files, 0 failed.
+- Frontend build (`npm run build`, `tsc -b && vite build`): passes.
+- No backend files touched (repo-wide grep confirms
+  `symptomImpactScreeningCompleted`'s only OR-fallback logic existed in
+  `hopeReportMapper.js`; other matches are docs, schema descriptors, or
+  an unaffected fixture-seeding script).
+
+**Deployment risk: LOW** — single-expression logic correction, no
+schema/migration/workflow/ownership change, isolated to HOPE export
+report rendering, backed by full frontend test/build verification.
