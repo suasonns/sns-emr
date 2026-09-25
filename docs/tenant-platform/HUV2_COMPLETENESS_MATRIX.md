@@ -31,7 +31,7 @@ performed.
 | I0010 | RnicaAssessment(HUV2).form_data | `diagnoses.primaryDiagnosis.{icd10,description,hopeDiagnosisCategory}` | category-code lookup + string concat | category restricted; ICD-10 text free | NOT_VERIFIED |
 | I0100...I6202 (14 codes) | RnicaAssessment(HUV2).form_data | `diagnoses.hopeComorbidities.{key}` (structured) or regex inference (legacy) | `boolCode()` OR regex heuristic | structured: boolean only; legacy: heuristic | NOT_VERIFIED |
 | I8005 | RnicaAssessment(HUV2).form_data | `diagnoses.hopeComorbidities.other` or heuristic | `boolCode()` | same caveat | NOT_VERIFIED |
-| I0000 | RnicaAssessment(HUV2).form_data | `diagnosisEntries(diagnoses)` | list join | none | **OPEN_QUESTION** (see `I0000_PROVENANCE_TRACE.md`) |
+| I0000 | ~~RnicaAssessment(HUV2).form_data~~ N/A | ~~`diagnosisEntries(diagnoses)`~~ | N/A | N/A | **RESOLVED (Issue #147)** — not a CMS item; excluded from the applicable-item count. Retained as internal `SNS-DX` row (non-CMS) |
 | J0050 | RnicaAssessment(HUV2).form_data | `imminentDeath.appearsThreeDaysOrLess` | `YES_NO_UNABLE_MAP` lookup | restricted | NOT_VERIFIED — flagged CONFLICTING |
 | J0900 | RnicaAssessment(HUV2).form_data | `pain.{screenedForPain,painSeverityCategory,standardizedPainToolType,screeningDate}` | `painScreeningResponse()` | restricted per internal code maps | NOT_VERIFIED |
 | J0905 | RnicaAssessment(HUV2).form_data | `pain.painIntensity.current`/`.painManagementPlan`/`.painLocation` | `boolCode(Boolean(...))` | boolean derivation only | NOT_VERIFIED |
@@ -39,7 +39,7 @@ performed.
 | J0915 | RnicaAssessment(HUV2).form_data | `pain.neuropathicPain` | `NEUROPATHIC_PAIN_MAP` lookup | restricted; unmapped → placeholder | NOT_VERIFIED |
 | J2030 | RnicaAssessment(HUV2).form_data | `respiratory.{shortnessOfBreathScreened,sobSeverity,screeningDate}` | `boolCode` + derived `sobIndicated` | none beyond boolean | NOT_VERIFIED |
 | J2040 | RnicaAssessment(HUV2).form_data | `respiratory.treatmentInitiated/.treatmentDate` | `boolCode`, `formatDate` | none | NOT_VERIFIED |
-| J2050 | RNICA `sfv.*` self-attestation / `symptomImpact` | `sfv.symptomImpactScreeningCompleted/.Date` OR `symptomImpact.assessmentDate` | `boolCode`, `formatDate` | reads self-attestation, not SFVRequirement | **OPEN_QUESTION** (see `J2050_PROVENANCE_TRACE.md`) |
+| J2050 | RNICA `sfv.*` self-attestation / `symptomImpact` | `sfv.symptomImpactScreeningCompleted` (sole source, OR-fallback removed) / `sfv.symptomImpactScreeningDate ‖ symptomImpact.assessmentDate` | `boolCode`, `formatDate` | A. Completed derives solely from the completion flag (Issue #148 fix) | **RESOLVED (Issue #148)** — no longer OPEN_QUESTION |
 | J2051 | RnicaAssessment(HUV2).form_data | `symptomImpact.*` (8 symptoms) | `symptomEntries()` | word-based MILD/MODERATE/SEVERE vocabulary | NOT_VERIFIED |
 | J2052 (A/B) | SFVRequirement | `sfvStatus.completed/.completedAt` | `boolCode`, `formatDate` | ownership remediated — resolved via `(triggerSourceType='HUV2', triggerVisitId)` matching this record's own trigger visit | **VERIFIED** |
 | J2052 (C) | RNICA form (unvalidated) | `sfv.reasonNotCompleted` | `j2052ReasonNotCompleted()` | restricted to 1/2/3/9, no authoritative backend source | NOT_VERIFIED (see `J2052C_DECISION_RECORD.md`) |
@@ -58,11 +58,18 @@ performed.
 | Status | Count |
 |---|---|
 | VERIFIED | 3 (A0250, J2052 A/B, J2053) |
+| RESOLVED (Issues #147/#148) | 2 (I0000 — excluded, non-CMS; J2050 — resolved) |
 | NOT_VERIFIED | 49 |
-| OPEN_QUESTION | 2 (I0000, J2050) |
-| **Total** | **54** |
+| OPEN_QUESTION | 0 |
+| **Total (applicable CMS items)** | **53** (54 emitted rows minus I0000) |
 
 **COMPLETENESS: NOT_VERIFIED. DENOMINATOR: NOT_VERIFIED.**
+
+**Update (2026-09-24, Issues #147/#148 sync):** I0000 and J2050 resolved
+per PR #163/#162 — same disposition as `ADM_COMPLETENESS_MATRIX.md`/
+`HUV1_COMPLETENESS_MATRIX.md`. No other rows re-reviewed in this update;
+remaining 49 `NOT_VERIFIED` rows are unchanged pending the full Issue
+#151 CMS primary-source pass.
 
 Same caveat as `ADM_COMPLETENESS_MATRIX.md`/`HUV1_COMPLETENESS_MATRIX.md`:
 the 54-item denominator is an emitted-code count, not a CMS-authority-
@@ -74,9 +81,9 @@ confirmed applicable-item count. Retained:
   and Section J items relevant to HUV2, but the full HUV2 item set was
   not individually re-derived page-by-page against v1.02 this pass —
   that remains the scope of issue #151.
-- **Total applicable items**: NOT_VERIFIED (54 is emitted-code count)
+- **Total applicable items**: NOT_VERIFIED (53 real-CMS-item count after excluding I0000)
 - **Verified items**: 3 (A0250, J2052 A/B, J2053)
 - **NOT_VERIFIED items**: 49
-- **OPEN_QUESTION items**: 2 (I0000, J2050)
-- **Blocked/Excluded items**: 0
+- **OPEN_QUESTION items**: 0 (both resolved — see update above)
+- **Blocked/Excluded items**: 1 (I0000 — non-CMS, excluded)
 - **Reproducible counting command**: none exists (hand-compiled)
