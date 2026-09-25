@@ -1470,4 +1470,88 @@ historical-record testing and all required safeguards are confirmed.
 
 ---
 
+## 31. OWNER-APPROVED DECISIONS
+
+This section exists to prevent previously resolved decisions from being
+reopened during future revisions. Unless explicitly changed by the owner,
+these decisions are considered closed.
+
+### 31.1 One Story = One Hospice Episode
+**Status: LOCKED**
+
+Patient Story represents one hospice episode. Readmission creates a new
+Patient Story. Readmission does not: continue chapter numbering, continue
+the previous story, merge stories, or create a lifetime narrative. Previous
+stories remain read-only references.
+
+*Owner approval date: V3*
+
+### 31.2 Episode References
+**Status: LOCKED**
+
+Prior hospice episodes may be displayed for historical reference. Prior
+stories are: read only, historical, not merged, not automatically
+inherited. Viewing a prior story does not modify the current story.
+
+### 31.3 Identity Reuse
+**Status: LOCKED**
+
+Identity is reusable. Identity is not inherited. Prior-episode Patient
+Identity may be proposed for review. Nothing automatically copies forward.
+Current-episode confirmation is required.
+
+### 31.4 Introduction Model
+**Status: LOCKED**
+
+Introduction exists once per episode. It establishes: referral context,
+admission context, admission baseline, caregiver context, patient
+perspective. Later findings belong in chapters. The Introduction is not
+silently regenerated.
+
+### 31.5 Chapter Model
+**Status: LOCKED**
+
+Completed IDG periods are the primary chapter unit. Milestones remain
+inside chapters. Recertification remains a cross-chapter lens.
+Recertification is not a chapter.
+
+### 31.6 AI Model
+**Status: LOCKED**
+
+AI proposes. Authorized humans review. AI never: publishes, certifies,
+determines eligibility, resolves conflicts, enters orders, or modifies
+plans of care.
+
+### 31.7 Final Chapter
+**Status: LOCKED**
+
+Every episode should end with one Final Chapter: Death, Discharge,
+Revocation, Transfer, or Other documented closure. The Final Chapter
+reflects documented closure facts and does not replace authoritative
+records.
+
+---
+
+## 32. ISSUES THAT REQUIRE OWNER APPROVAL
+
+The following categories of change are never made unilaterally during
+future revisions, validation, or governance review — they require explicit
+owner approval before being applied to this document:
+
+1. Changing episode boundaries
+2. Changing chapter model
+3. Changing attribution hierarchy
+4. Changing Final Chapter behavior
+5. Changing AI authority
+6. Changing identity reuse rules
+7. Changing review responsibility
+8. Changing governance decisions
+
+Any material finding from product validation (Section 30) or formal
+Privacy/HIM/Compliance/Legal review (Section 28.6) that would touch one of
+these eight categories must be brought to the owner as a proposed change,
+not applied directly to V3.
+
+---
+
 *End of Patient Story Product Definition V3.*
