@@ -2567,20 +2567,20 @@ function DmeStatusCard({ data, updateField, styles, COLORS }) {
 // CMS carve-out for a second, distinct cancer diagnosis.
 // ════════════════════════════════════════════════════════════════
 const HOPE_COMORBIDITY_CATEGORIES = [
-  { key: "cancer", hopeCode: "I0100", label: "Cancer", group: "Cancer", regex: /^C\d/i },
-  { key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", group: "Heart/Circulation", regex: /^I50/i },
-  { key: "pvdPad", hopeCode: "I0900", label: "Peripheral Vascular Disease (PVD) or Peripheral Arterial Disease (PAD)", group: "Heart/Circulation", regex: /^I7[03]/i },
-  { key: "cardiovascularExclHF", hopeCode: "I0950", label: "Cardiovascular (excluding heart failure)", group: "Heart/Circulation", regex: /^I(1[0-3]|15|2[0-5])/i },
-  { key: "liverDisease", hopeCode: "I1101", label: "Liver disease (e.g., cirrhosis)", group: "Gastrointestinal", regex: /^K7[0-4]/i },
-  { key: "renalDisease", hopeCode: "I1510", label: "Renal disease", group: "Genitourinary", regex: /^(N18|N19)/i },
-  { key: "sepsis", hopeCode: "I2102", label: "Sepsis", group: "Infections", regex: /^A41/i },
-  { key: "diabetesMellitus", hopeCode: "I2900", label: "Diabetes Mellitus (DM)", group: "Metabolic", regex: /^E(0[89]|1[013])/i },
-  { key: "neuropathy", hopeCode: "I2910", label: "Neuropathy", group: "Metabolic", regex: /^(G6[023]|E1[013]\.4|E08\.4|E09\.4)/i },
-  { key: "stroke", hopeCode: "I4501", label: "Stroke", group: "Neurological", regex: /^(I6[0-3]|I65|I66|I69)/i },
-  { key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i },
-  { key: "neurologicalConditions", hopeCode: "I5150", label: "Neurological Conditions (e.g., Parkinson's disease, MS, ALS)", group: "Neurological", regex: /^(G20|G35|G12\.2)/i },
-  { key: "seizureDisorder", hopeCode: "I5401", label: "Seizure Disorder", group: "Neurological", regex: /^G40/i },
-  { key: "copd", hopeCode: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", group: "Pulmonary", regex: /^J44/i },
+  { key: "cancer", hopeCode: "I0100", label: "Cancer", shortLabel: "Cancer", group: "Cancer", regex: /^C\d/i },
+  { key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", shortLabel: "Heart Failure", group: "Heart/Circulation", regex: /^I50/i },
+  { key: "pvdPad", hopeCode: "I0900", label: "Peripheral Vascular Disease (PVD) or Peripheral Arterial Disease (PAD)", shortLabel: "PVD/PAD", group: "Heart/Circulation", regex: /^I7[03]/i },
+  { key: "cardiovascularExclHF", hopeCode: "I0950", label: "Cardiovascular (excluding heart failure)", shortLabel: "Cardiovascular Disease", group: "Heart/Circulation", regex: /^I(1[0-3]|15|2[0-5])/i },
+  { key: "liverDisease", hopeCode: "I1101", label: "Liver disease (e.g., cirrhosis)", shortLabel: "Liver Disease", group: "Gastrointestinal", regex: /^K7[0-4]/i },
+  { key: "renalDisease", hopeCode: "I1510", label: "Renal disease", shortLabel: "Renal Disease", group: "Genitourinary", regex: /^(N18|N19)/i },
+  { key: "sepsis", hopeCode: "I2102", label: "Sepsis", shortLabel: "Sepsis", group: "Infections", regex: /^A41/i },
+  { key: "diabetesMellitus", hopeCode: "I2900", label: "Diabetes Mellitus (DM)", shortLabel: "Diabetes", group: "Metabolic", regex: /^E(0[89]|1[013])/i },
+  { key: "neuropathy", hopeCode: "I2910", label: "Neuropathy", shortLabel: "Neuropathy", group: "Metabolic", regex: /^(G6[023]|E1[013]\.4|E08\.4|E09\.4)/i },
+  { key: "stroke", hopeCode: "I4501", label: "Stroke", shortLabel: "Stroke", group: "Neurological", regex: /^(I6[0-3]|I65|I66|I69)/i },
+  { key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", shortLabel: "Dementia", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i },
+  { key: "neurologicalConditions", hopeCode: "I5150", label: "Neurological Conditions (e.g., Parkinson's disease, MS, ALS)", shortLabel: "Parkinson's/MS/ALS", group: "Neurological", regex: /^(G20|G35|G12\.2)/i },
+  { key: "seizureDisorder", hopeCode: "I5401", label: "Seizure Disorder", shortLabel: "Seizure Disorder", group: "Neurological", regex: /^G40/i },
+  { key: "copd", hopeCode: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", shortLabel: "COPD", group: "Pulmonary", regex: /^J44/i },
 ];
 
 function matchesCategory(icd10, regex) {
@@ -2772,18 +2772,6 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
   const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
   const hope = diagnosesData?.hopeComorbidities || {};
-  // FR-009: collapsed by default (RN toggles open); a group with any
-  // checked condition is always shown expanded regardless of toggle state
-  // so documented HOPE content is never hidden. Pilot-only -- legacy mode
-  // keeps every group always expanded, unchanged.
-  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
-  const toggleGroupOpen = (group) => {
-    setExpandedGroups((current) => {
-      const next = new Set(current);
-      if (next.has(group)) next.delete(group); else next.add(group);
-      return next;
-    });
-  };
 
   const principalCategory = useMemo(() => categorizeIcd10(primaryIcd10), [primaryIcd10]);
 
@@ -2803,16 +2791,9 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
 
   const setHope = (key, value) => updateField(`hopeComorbidities.${key}`, value);
 
-  const groups = useMemo(() => {
-    const order = ["Cancer", "Heart/Circulation", "Gastrointestinal", "Genitourinary", "Infections", "Metabolic", "Neurological", "Pulmonary"];
-    return order
-      .map((group) => ({ group, categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group) }))
-      .filter((g) => g.categories.length);
-  }, []);
-
   // Whether a category is checked (accounting for the Principal Diagnosis
-  // exclusion/cancer carve-out) -- shared by the checked-count badge and
-  // each category row below so both agree on what "checked" means.
+  // exclusion/cancer carve-out) -- shared by the top summary and each
+  // category row below so both agree on what "checked" means.
   const isCategoryChecked = (cat) => {
     const isPrincipal = principalCategory?.key === cat.key;
     const detected = autoDetected.has(cat.key);
@@ -2820,6 +2801,49 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
     const excluded = isPrincipal && !cancerException;
     return excluded ? false : Boolean(hope[cat.key]);
   };
+
+  // Legacy (non-pilot) grouping/order is unchanged -- single-column,
+  // always-expanded category sections, exactly as before this redesign.
+  const legacyGroups = useMemo(() => {
+    const order = ["Cancer", "Heart/Circulation", "Gastrointestinal", "Genitourinary", "Infections", "Metabolic", "Neurological", "Pulmonary"];
+    return order
+      .map((group) => ({ group, heading: group, categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group) }))
+      .filter((g) => g.categories.length);
+  }, []);
+
+  // Pilot (RNICA workspace) presentation: a fixed 3-column clinical
+  // checklist grid instead of single-column stacking, per owner directive
+  // -- Row 1 Cardiac/Pulmonary/Neurological, Row 2 GI/GU/Metabolic,
+  // Row 3 Infection/Cancer/Other. Same HOPE_COMORBIDITY_CATEGORIES data,
+  // same checked/excluded logic -- presentation-only reorder + relabel.
+  const pilotColumns = useMemo(() => {
+    const order = [
+      { group: "Heart/Circulation", heading: "Cardiac" },
+      { group: "Pulmonary", heading: "Pulmonary" },
+      { group: "Neurological", heading: "Neurological" },
+      { group: "Gastrointestinal", heading: "GI" },
+      { group: "Genitourinary", heading: "GU" },
+      { group: "Metabolic", heading: "Metabolic" },
+      { group: "Infections", heading: "Infection" },
+      { group: "Cancer", heading: "Cancer" },
+    ];
+    return order.map(({ group, heading }) => ({
+      group,
+      heading,
+      categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group),
+    }));
+  }, []);
+
+  const groups = workspacePilot ? pilotColumns : legacyGroups;
+
+  // Compact "Selected Comorbidities" summary -- immediate visibility of
+  // what's already checked without scanning the whole grid. Pilot-only.
+  const selectedSummary = useMemo(() => {
+    const names = HOPE_COMORBIDITY_CATEGORIES.filter(isCategoryChecked).map((cat) => cat.shortLabel || cat.label);
+    if (hope.other) names.push("Other Medical Condition");
+    return names;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hope, principalCategory, autoDetected]);
 
   return (
     <div className={workspacePilot ? "rnica-comorbidity-panel" : undefined}>
@@ -2829,33 +2853,19 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
         — the exception is if the patient has a second, distinct cancer diagnosis.
       </div>
 
+      {workspacePilot && (
+        <div className="rnica-comorbidity-summary">
+          <strong>Selected Comorbidities: {selectedSummary.length}</strong>
+          {selectedSummary.length > 0 && <span>{selectedSummary.join(", ")}</span>}
+        </div>
+      )}
+
       <div className={workspacePilot ? "rnica-comorbidity-grid" : undefined}>
-      {groups.map(({ group, categories }) => {
-        const checkedCount = categories.filter(isCategoryChecked).length;
-        const groupOpen = !workspacePilot || checkedCount > 0 || expandedGroups.has(group);
-        return (
+      {groups.map(({ group, heading, categories }) => (
         <div key={group} className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 14 }}>
-          {workspacePilot ? (
-            <button
-              type="button"
-              className="rnica-comorbidity-group__toggle"
-              aria-expanded={groupOpen}
-              onClick={() => toggleGroupOpen(group)}
-              style={{
-                display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
-                background: "none", border: "none", padding: 0, cursor: "pointer",
-                fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6,
-              }}
-            >
-              <span>{groupOpen ? "▾" : "▸"} {group}</span>
-              <span style={{ fontWeight: 700, textTransform: "none", letterSpacing: 0 }}>({checkedCount})</span>
-            </button>
-          ) : (
-          <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
-            {group}
+          <div className={workspacePilot ? "rnica-comorbidity-group__heading" : undefined} style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+            {heading}
           </div>
-          )}
-          {groupOpen && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {categories.map((cat) => {
               const isPrincipal = principalCategory?.key === cat.key;
@@ -2881,7 +2891,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
                       disabled={excluded}
                       onCheckedChange={(v) => setHope(cat.key, Boolean(v))}
                     />
-                    <span>{cat.label}</span>
+                    <span>{workspacePilot ? (cat.shortLabel || cat.label) : cat.label}</span>
                   </label>
                   <HopeTag code={cat.hopeCode} />
                   {excluded && (
@@ -2905,14 +2915,13 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
               );
             })}
           </div>
-          )}
         </div>
-        );
-      })}
-      </div>
-
-      <div style={{ marginBottom: 8 }}>
-        <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+      ))}
+      {/* "Other" participates in the same grid flow as a regular category
+          column in the pilot layout (Row 3, 3rd column); legacy mode keeps
+          it as its own section below the groups, unchanged. */}
+      <div className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 8 }}>
+        <div className={workspacePilot ? "rnica-comorbidity-group__heading" : undefined} style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
           Other
         </div>
         <label style={styles.checkboxLabel}>
@@ -2925,6 +2934,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
             Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${dx.icd10} ${dx.description || ""}`.trim()).join("; ")}
           </div>
         )}
+      </div>
       </div>
 
       <FormTextarea
