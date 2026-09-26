@@ -6466,6 +6466,197 @@ function ReferralRefusalCard({ domain, recommended, familyResponse, refusal, upd
   );
 }
 
+// ── Pain Summary Layer (owner review 2026-09-26, superseded 2026-09-26
+// "FINAL OWNER REQUIREMENTS") ────────────────────────────────────────────
+// Read-only/derived cards that consume existing Pain documentation. Never
+// fabricate a value: every row either reflects an RN-entered field or is
+// omitted/"Not documented". AI and Overdue Alerts render nothing at all
+// (no card, no placeholder) when there is no grounded finding/triggered
+// rule -- enforced by the branch-level hide checks in the card-render
+// loop (search for "computeAiPainNotes" / "computePainOverdueAlerts").
+function SummaryRow({ label, value }) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(148, 163, 184, 0.14)" }}>
+      <div style={{ flex: "0 0 40%", fontSize: 11, fontWeight: 600, color: "var(--sns-dim)" }}>{label}</div>
+      <div style={{ flex: 1, fontSize: 11, color: "var(--sns-white)" }}>{value}</div>
+    </div>
+  );
+}
+
+const joinList = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "");
+
+// Section 15 "Current Pain Summary": omit undocumented fields entirely
+// rather than fabricating a value or a default clinical statement.
+function PainAssessmentSummaryCard({ data, styles }) {
+  const currentPain = data?.currentPain;
+  const chronicHistory = data?.chronicPainHistory;
+  const rows = [];
+
+  if (data?.screenedForPain === "0") {
+    rows.push(<div key="not-assessed" style={styles.infoBox}>Patient was not assessed for pain. Reason: {data?.reasonNotAssessed || "Not documented"}</div>);
+    return <div>{rows}</div>;
+  }
+
+  if (currentPain === "0") {
+    // Auto-generated statement is the exact fixed sentence the field value
+    // supports — it never implies current pain is present.
+    rows.push(<div key="denied" style={styles.infoBox}>Pain assessed. Patient denied current pain.</div>);
+  }
+
+  rows.push(<SummaryRow key="active" label="Pain Active Problem" value={{ "1": "Yes", "0": "No", "9": "Unable to determine" }[data?.painActiveProblem] || ""} />);
+  rows.push(<SummaryRow key="current-status" label="Current Pain" value={{ "1": "Yes", "0": "No / none reported", "9": "Unable to determine" }[currentPain] || ""} />);
+
+  if (currentPain === "1") {
+    rows.push(<SummaryRow key="intensity" label="Current Intensity" value={data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "" ? `${data.painIntensity.current}/10` : ""} />);
+    rows.push(<SummaryRow key="worst" label="Worst Pain (24h)" value={data?.painIntensity?.worst !== undefined && data?.painIntensity?.worst !== "" ? `${data.painIntensity.worst}/10` : ""} />);
+    rows.push(<SummaryRow key="location" label="Pain Location" value={joinList(data?.painLocation)} />);
+    rows.push(<SummaryRow key="character" label="Pain Character" value={joinList(data?.painCharacter)} />);
+    rows.push(<SummaryRow key="onset" label="Onset & Progression" value={data?.painOnsetProgression} />);
+    rows.push(<SummaryRow key="duration" label="Duration & Frequency" value={data?.painDurationFrequency} />);
+    rows.push(<SummaryRow key="agg" label="Aggravating Factors" value={joinList(data?.aggravatingFactors)} />);
+    rows.push(<SummaryRow key="rel" label="Relieving Factors" value={joinList(data?.relievingFactors)} />);
+    rows.push(<SummaryRow key="function" label="Effect on Function/QOL" value={data?.effectOnFunction} />);
+  }
+
+  rows.push(<SummaryRow key="chronic-history" label="Chronic/Recurrent Pain History" value={{ "1": "Present", "0": "None reported", "9": "Unknown", "unable": "Unable to determine" }[chronicHistory] || ""} />);
+
+  if (currentPain === "0" && chronicHistory === "1") {
+    rows.push(<SummaryRow key="condition" label="Chronic Pain Condition/Source" value={data?.chronicPainCondition} />);
+    rows.push(<SummaryRow key="baseline" label="Usual Baseline Level" value={data?.usualBaselinePainLevel} />);
+    rows.push(<SummaryRow key="tolerable" label="Tolerable Level" value={data?.tolerablePainLevel} />);
+    rows.push(<SummaryRow key="threshold" label="Intervention Threshold" value={data?.interventionThresholdLevel} />);
+    rows.push(<SummaryRow key="frequency" label="Usual Frequency/Pattern" value={data?.usualFrequencyPattern} />);
+    rows.push(<SummaryRow key="approach" label="Current Management Approach" value={joinList(data?.currentManagementApproach)} />);
+    rows.push(<SummaryRow key="control" label="Control Status" value={data?.controlStatus} />);
+  }
+
+  const managementDocumented = data?.scheduledRegimen || data?.breakthroughRegimen || data?.painManagementPlan || (data?.nonPharmInterventions || []).length;
+  rows.push(
+    <SummaryRow
+      key="mgmt-status"
+      label="Pain Management Status"
+      value={managementDocumented
+        ? [data?.scheduledRegimen && `Scheduled: ${data.scheduledRegimen}`, data?.breakthroughRegimen && `Breakthrough: ${data.breakthroughRegimen}`, data?.painEffectivenessRating && `Effectiveness: ${data.painEffectivenessRating}`].filter(Boolean).join(" · ")
+        : (currentPain === "0" && chronicHistory !== "1" ? "No active pain-management plan documented." : "")}
+    />
+  );
+
+  return <div>{rows}</div>;
+}
+
+// Deterministic rule-based analysis (not a real AI/ML call — same pattern
+// as resolveReferralRecommendation): every note cites the RN-entered field
+// it came from. Returns [] when there is nothing grounded to say; the
+// render loop hides the card entirely in that case rather than showing an
+// empty panel (owner requirement: never show an AI conclusion with no
+// supporting data, never imply pain is present when denied).
+function computeAiPainNotes(data) {
+  const notes = [];
+  const currentPain = data?.currentPain;
+  const current = Number(data?.painIntensity?.current);
+  const worst = Number(data?.painIntensity?.worst);
+  const hasCurrent = currentPain === "1" && data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "";
+  const hasWorst = currentPain === "1" && data?.painIntensity?.worst !== undefined && data?.painIntensity?.worst !== "";
+  const managementDocumented = Boolean(data?.scheduledRegimen || data?.breakthroughRegimen || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
+
+  if (hasCurrent && current >= 7 && !managementDocumented) {
+    notes.push({ text: `Current pain is severe (${current}/10) with no documented pain-management intervention.`, field: "Current Pain Intensity" });
+  }
+  if (hasCurrent && hasWorst && worst - current >= 4) {
+    notes.push({ text: `Worst pain (${worst}/10) is substantially higher than current (${current}/10) — breakthrough control may need review.`, field: "Current/Worst Pain Intensity" });
+  }
+  if (data?.neuropathicPain === "1") {
+    notes.push({ text: "Neuropathic pain documented (HOPE J0915) — confirm an adjuvant agent is part of the pain management plan.", field: "Neuropathic Pain" });
+  }
+  if (data?.painEffectivenessRating && /partial|ineffective/i.test(data.painEffectivenessRating)) {
+    notes.push({ text: `Pain management effectiveness documented as "${data.painEffectivenessRating}" — consider regimen reassessment.`, field: "Effectiveness Rating" });
+  }
+  if (data?.controlStatus === "Uncontrolled") {
+    notes.push({ text: "Chronic pain control status documented as Uncontrolled.", field: "Control Status" });
+  }
+  if (currentPain === "0" && data?.chronicPainHistory === "1" && data?.effectOnFunction) {
+    notes.push({ text: `Pain is documented as affecting function/quality of life: "${data.effectOnFunction}".`, field: "Effect on Function/QOL" });
+  }
+  if (currentPain === "1" && data?.effectOnFunction) {
+    notes.push({ text: `Pain is documented as affecting function/quality of life: "${data.effectOnFunction}".`, field: "Effect on Function/QOL" });
+  }
+  if (currentPain === "1" && !hasCurrent) {
+    notes.push({ text: "Patient reports current pain but current intensity has not been documented.", field: "Current Pain / Current Intensity" });
+  }
+  return notes;
+}
+
+function AiPainAnalysisCard({ data, styles }) {
+  const notes = computeAiPainNotes(data);
+  if (notes.length === 0) return <div style={styles.infoBox}>Insufficient reviewed pain data for analysis.</div>;
+  return (
+    <div style={styles.infoBox}>
+      {notes.map((n, i) => (
+        <div key={i} style={{ marginBottom: i < notes.length - 1 ? 6 : 0 }}>
+          {n.text} <span style={{ opacity: 0.7, fontSize: 10 }}>(from {n.field})</span>
+        </div>
+      ))}
+      <div style={{ fontSize: 10, marginTop: 8, opacity: 0.75 }}>AI-suggested — RN review required. Not a documented order or completed assessment.</div>
+    </div>
+  );
+}
+
+// Section 17: only real, currently-implemented rules — no arbitrary
+// timing/deadline logic (no reassessment-overdue-by-N-days rule exists
+// yet, so it is intentionally not included here).
+function computePainOverdueAlerts(data, painAssessmentMode) {
+  const alerts = [];
+  if (!data?.screenedForPain) {
+    alerts.push("Pain screening incomplete — was the patient assessed for pain? (HOPE J0900.A) has not been answered.");
+    return alerts;
+  }
+  if (data.screenedForPain === "0" && !data?.reasonNotAssessed) {
+    alerts.push("Reason pain assessment was not completed is required.");
+  }
+  if (data.screenedForPain === "1" && !data?.currentPain) {
+    alerts.push("Current pain status (\"Is the patient experiencing pain now?\") has not been documented.");
+  }
+  if (data?.currentPain === "0" && !data?.chronicPainHistory) {
+    alerts.push("Chronic/recurrent pain history has not been documented.");
+  }
+  if (data?.currentPain === "1" && !data?.comprehensiveAssessmentCompleted) {
+    alerts.push("Required comprehensive pain assessment incomplete.");
+  }
+  if (painAssessmentMode === "painad") {
+    const complete = ["breathing", "vocalization", "facialExpression", "bodyLanguage", "consolability"].every((k) => data?.painad?.[k] !== undefined && data?.painad?.[k] !== "");
+    if (!complete) alerts.push("Required PAINAD Scale incomplete.");
+  }
+  if (painAssessmentMode === "flacc") {
+    const complete = ["face", "legs", "activity", "cry", "consolability"].every((k) => data?.flacc?.[k] !== undefined && data?.flacc?.[k] !== "");
+    if (!complete) alerts.push("Required FLACC Scale incomplete.");
+  }
+  const managementDocumented = Boolean(data?.scheduledRegimen || data?.breakthroughRegimen || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
+  if (data?.currentPain === "1" && Number(data?.painIntensity?.current) >= 7 && !managementDocumented) {
+    alerts.push("Current pain is severe without documented intervention.");
+  }
+  if (data?.breakthroughRegimen && !data?.painEffectivenessRating) {
+    alerts.push("Breakthrough regimen documented without an effectiveness assessment.");
+  }
+  if (data?.painActiveProblem === "1" && !managementDocumented) {
+    alerts.push("Active pain problem documented without a pain-management plan.");
+  }
+  return alerts;
+}
+
+function PainOverdueAlertsCard({ data, painAssessmentMode, styles }) {
+  const alerts = computePainOverdueAlerts(data, painAssessmentMode);
+  if (alerts.length === 0) return null;
+  return (
+    <div style={styles.warningBox}>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {alerts.map((a, i) => <li key={i} style={{ marginBottom: i < alerts.length - 1 ? 4 : 0 }}>{a}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+
 const SEVERITY_COLORS = {
   CONTRAINDICATED: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
   MAJOR: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
@@ -8780,6 +8971,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics & Body Map" && painAssessmentMode === "verbal";
         const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
         const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
+        // Section 8 of the FINAL OWNER REQUIREMENTS: pain remains clinically
+        // relevant when the patient denies *current* pain but has a chronic
+        // or recurrent pain history -- this card only applies to that path.
+        const shouldRenderChronicPainProfile = sectionKey === "pain" && card.title === "Chronic Pain Profile" && data?.currentPain === "0" && data?.chronicPainHistory === "1";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
           return null;
@@ -8791,6 +8986,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
         if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
+          return null;
+        }
+        if (sectionKey === "pain" && card.title === "Chronic Pain Profile" && !shouldRenderChronicPainProfile) {
           return null;
         }
 
@@ -8939,6 +9137,37 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <DmeStatusCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        // [OWNER REVIEW -- 2026-09-26, superseded by FINAL OWNER
+        // REQUIREMENTS] Current Pain Summary is a single read-only card
+        // (no separate "Pain Management Summary"). AI Pain Analysis and
+        // Overdue Action Alerts render nothing at all -- no card, no
+        // placeholder -- when there is no grounded finding/triggered rule.
+        if (sectionKey === "pain" && card.customRenderer === "painAssessmentSummary") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <PainAssessmentSummaryCard data={data} styles={styles} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "pain" && card.customRenderer === "aiPainAnalysis") {
+          if (computeAiPainNotes(data).length === 0) return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <AiPainAnalysisCard data={data} styles={styles} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "pain" && card.customRenderer === "painOverdueAlerts") {
+          if (computePainOverdueAlerts(data, painAssessmentMode).length === 0) return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <PainOverdueAlertsCard data={data} painAssessmentMode={painAssessmentMode} styles={styles} />
             </Card>
           );
         }
@@ -9160,6 +9389,37 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               if (sectionKey === "sfv" && field.path === "reasonNotCompleted" && cardData.inPersonSfvCompleted) {
                 return null;
               }
+              // [FINAL OWNER REQUIREMENTS -- 2026-09-26] Pain Screening
+              // conditional gates. "Pain assessed?" reuses the existing
+              // HOPE J0900.A screenedForPain field (Yes/No) rather than a
+              // duplicate question -- CMS defines that field as binary, so
+              // "Unable to assess" is intentionally NOT added to it (would
+              // corrupt the coded HOPE value); reasonNotAssessed captures
+              // that path as free text instead. Pain absent does not stop
+              // the assessment: it branches to a chronic-pain-history
+              // question, then (only if chronic AND the patient can
+              // verbalize) RN-entered baseline/tolerance/threshold fields.
+              if (sectionKey === "pain" && field.path === "reasonNotAssessed" && cardData.screenedForPain !== "0") {
+                return null;
+              }
+              if (sectionKey === "pain" && field.path === "currentPain" && cardData.screenedForPain !== "1") {
+                return null;
+              }
+              if (sectionKey === "pain" && field.path === "chronicPainHistory" && cardData.currentPain !== "0") {
+                return null;
+              }
+              if (sectionKey === "pain" && field.path === "neuropathicCharacteristics" && cardData.neuropathicPain !== "1") {
+                return null;
+              }
+              if (sectionKey === "pain" && ["chronicPainCondition", "usualBaselinePainLevel", "tolerablePainLevel", "interventionThresholdLevel", "usualFrequencyPattern", "currentManagementApproach", "controlStatus"].includes(field.path)) {
+                if (cardData.currentPain !== "0" || cardData.chronicPainHistory !== "1") return null;
+                // Per Section 9: patient-stated tolerance/threshold levels
+                // never apply when the patient cannot reliably self-report.
+                if (field.path === "tolerablePainLevel" && painAssessmentMode !== "verbal") return null;
+              }
+              if (sectionKey === "pain" && ["painOnsetProgression", "painDurationFrequency", "effectOnFunction"].includes(field.path) && card.title === "Pain Characteristics & Body Map" && cardData.currentPain === "0" && cardData.chronicPainHistory !== "1") {
+                return null;
+              }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
@@ -9343,6 +9603,9 @@ const SECTION_CONFIGS = {
           { type: "radio", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
             { value: "0", label: "No — skip to Pain Active Problem (J0905)" }, { value: "1", label: "Yes" }
           ]},
+          // Reason not assessed: shown only when screenedForPain = No.
+          // Free text so it never has to fit CMS's binary J0900.A coding.
+          { type: "textarea", label: "Reason pain assessment was not completed", path: "reasonNotAssessed" },
           { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
           { type: "radio", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
             { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
@@ -9350,14 +9613,33 @@ const SECTION_CONFIGS = {
           { type: "radio", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
             { value: "1", label: "Numeric" }, { value: "2", label: "Verbal descriptor" }, { value: "3", label: "Patient visual" }, { value: "4", label: "Staff observation" }, { value: "9", label: "No standardized tool used" }
           ]},
-          { type: "radio", label: "Can the patient verbalize pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
+          { type: "radio", label: "Can the patient reliably self-report pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
           ]},
           { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
+          // Section 4: current pain is conceptually distinct from HOPE
+          // J0900.C severity-in-general and from pain-as-active-problem.
+          { type: "radio", label: "Is the patient experiencing pain now?", path: "currentPain", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
+          ]},
+          // Section 6/7/8: denying current pain does not end the
+          // assessment -- chronic/recurrent history remains clinically
+          // relevant and is captured on the Chronic Pain Profile card below.
+          { type: "radio", label: "Does the patient have a history of chronic or recurrent pain?", path: "chronicPainHistory", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }, { value: "unable", label: "Unable to determine" }
+          ]},
           { type: "radio", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes" }
+          ]},
+          { type: "checkboxGroup", label: "Supporting neuropathic characteristics", path: "neuropathicCharacteristics", options: ["Burning", "Tingling", "Pins and needles", "Electric/shooting quality", "Hyperesthesia", "Allodynia (pain to light touch)", "Other documented characteristic"] },
+          // Section 10: conceptually distinct from "current pain" -- a
+          // patient can deny pain right now and still have an active pain
+          // problem requiring ongoing management/monitoring. AI may
+          // propose this (see AI Pain Analysis); the RN always confirms.
+          { type: "radio", label: "Is pain an active problem? (J0905)", path: "painActiveProblem", hopeCode: "J0905", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
           ]},
         ],
       },
@@ -9378,11 +9660,35 @@ const SECTION_CONFIGS = {
         // significant vertical space the nurse doesn't need to keep in view
         // while reviewing Pain Management/treatment response above. Current
         // Pain Assessment (Pain Screening) and Pain Management stay open.
+        // Onset/Duration/Effect-on-function are RN-entered assessment
+        // fields (the RN is a valid source -- no upstream module owns
+        // these) and only apply on the current-pain path (Section 5).
         title: "Pain Characteristics & Body Map", fields: [
           { type: "checkboxGroup", label: "Pain location", path: "painLocation", options: ["Head", "Neck", "Chest", "Abdomen", "Back", "Upper extremities", "Lower extremities", "Generalized"] },
           { type: "checkboxGroup", label: "Pain character", path: "painCharacter", options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
+          { type: "textarea", label: "Onset & progression", path: "painOnsetProgression" },
+          { type: "input", label: "Duration & frequency", path: "painDurationFrequency" },
           { type: "checkboxGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
           { type: "checkboxGroup", label: "Relieving factors", path: "relievingFactors", options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
+          { type: "textarea", label: "Effect on function or quality of life", path: "effectOnFunction" },
+        ],
+      },
+      {
+        // Section 8: only rendered when Current Pain = No AND Chronic/
+        // Recurrent Pain History = Yes (see shouldRenderChronicPainProfile
+        // in renderGenericSection). Distinguishes CURRENT PAIN (none
+        // reported) from CHRONIC PAIN HISTORY (present) and USUAL BASELINE/
+        // TOLERABLE LEVEL (patient-reported) -- never merges them.
+        title: "Chronic Pain Profile", fields: [
+          { type: "textarea", label: "Chronic pain condition or source", path: "chronicPainCondition" },
+          { type: "input", label: "Usual/baseline pain level (0-10, or \"Unable to quantify\")", path: "usualBaselinePainLevel" },
+          { type: "input", label: "Patient's tolerable pain level before requesting intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "tolerablePainLevel" },
+          { type: "input", label: "Pain level that typically requires intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "interventionThresholdLevel" },
+          { type: "input", label: "Usual frequency or pattern", path: "usualFrequencyPattern" },
+          { type: "checkboxGroup", label: "Current pain-management approach", path: "currentManagementApproach", options: ["Medication", "Positioning", "Heat", "Cold", "Massage", "Rest", "Distraction", "Other nonpharmacologic intervention", "No current intervention", "Unable to determine"] },
+          { type: "radio", label: "Current control status", path: "controlStatus", options: [
+            { value: "Controlled", label: "Controlled" }, { value: "Partially controlled", label: "Partially controlled" }, { value: "Uncontrolled", label: "Uncontrolled" }, { value: "Unable to determine", label: "Unable to determine" }
+          ]},
         ],
       },
       {
@@ -9404,11 +9710,33 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        // Section 14: Pain Management stays open (RN documentation). RN is
+        // a valid source for Scheduled/Breakthrough/Adjuvant/Last dose --
+        // Current Medications is the *preferred* source when a reliable
+        // linked medication record exists, but that linkage is not yet
+        // implemented (tracked separately; do not block this layout on it).
         title: "Pain Management", fields: [
           { type: "checkboxGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
           { type: "textarea", label: "Pain Management Plan", path: "painManagementPlan" },
+          { type: "input", label: "Scheduled regimen (prefer Current Medications when linked; verify/supplement here)", path: "scheduledRegimen" },
+          { type: "input", label: "Breakthrough regimen (prefer Current Medications when linked; verify/supplement here)", path: "breakthroughRegimen" },
+          { type: "input", label: "Adjuvant therapy (prefer Current Medications when linked; verify/supplement here)", path: "adjuvantTherapy" },
+          { type: "input", label: "Last breakthrough dose (date, time, medication, dose, administered by, response — or \"Unknown\")", path: "lastBreakthroughDose" },
+          { type: "radio", label: "Effectiveness", path: "painEffectivenessRating", options: [
+            { value: "Effective", label: "Effective" }, { value: "Partially effective", label: "Partially effective" }, { value: "Ineffective", label: "Ineffective" }, { value: "Not yet evaluated", label: "Not yet evaluated" }, { value: "Unable to determine", label: "Unable to determine" }
+          ]},
+          { type: "textarea", label: "Response to intervention", path: "responseToIntervention" },
         ],
       },
+      // Section 1 approved page structure: three derived/read-only cards
+      // follow Pain Management. Each is grounded-only (never fabricates)
+      // and, per Section 15/16, the AI Analysis and Overdue Alerts cards
+      // render nothing at all -- no card, no placeholder -- when there is
+      // no supported finding/triggered rule (see the customRenderer
+      // dispatch above for the hide-when-empty guards).
+      { title: "Current Pain Summary", customRenderer: "painAssessmentSummary" },
+      { title: "AI Pain Analysis", customRenderer: "aiPainAnalysis" },
+      { title: "Overdue Action Alerts", customRenderer: "painOverdueAlerts" },
     ],
   },
 
