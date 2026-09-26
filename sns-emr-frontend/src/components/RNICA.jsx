@@ -38,6 +38,8 @@ import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as Shadcn
 import { Badge as ShadcnBadge } from "./ui/badge";
 import { Progress as ShadcnProgress } from "./ui/progress";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
+import { Input as ShadcnInput } from "./ui/input";
+import { Textarea as ShadcnTextarea } from "./ui/textarea";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { listSfvRequirements } from "../api/sfv";
@@ -1239,8 +1241,8 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <input
-        style={styles.input} type={type} value={value || ""}
+      <ShadcnInput
+        type={type} value={value || ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder} {...rest}
       />
@@ -1255,8 +1257,8 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled 
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>{label}</label>
-      <textarea
-        style={{ ...styles.textarea, minHeight: rows * 24 }} value={value || ""}
+      <ShadcnTextarea
+        style={{ minHeight: rows * 24 }} value={value || ""}
         onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
       />
     </div>
@@ -9139,7 +9141,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -9149,34 +9151,48 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
   // `collapsible` support on Card so any card can opt into this pattern
   // without a bespoke wrapper.
   const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
-  const titleRow = (
-    <div
-      className="rnica-form-card__title"
-      style={{
-        ...styles.cardTitle,
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        cursor: collapsible ? "pointer" : undefined,
-      }}
-      onClick={collapsible ? () => setCollapsed((c) => !c) : undefined}
-      role={collapsible ? "button" : undefined}
-      tabIndex={collapsible ? 0 : undefined}
-      aria-expanded={collapsible ? !collapsed : undefined}
-      onKeyDown={collapsible ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCollapsed((c) => !c); } } : undefined}
-    >
+  const titleRowContent = (
+    <>
       {collapsible && <span aria-hidden="true" style={{ fontSize: 11, color: COLORS.label || COLORS.gray }}>{collapsed ? "►" : "▾"}</span>}
       {title}
       {hopeCode && <HopeTag code={hopeCode} />}
       {sfv && <SfvTag />}
       {cms && <CmsTag label={cms} />}
-    </div>
+    </>
   );
+  const titleRowProps = {
+    className: "rnica-form-card__title",
+    style: { ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8, cursor: collapsible ? "pointer" : undefined },
+    onClick: collapsible ? () => setCollapsed((c) => !c) : undefined,
+    role: collapsible ? "button" : undefined,
+    tabIndex: collapsible ? 0 : undefined,
+    "aria-expanded": collapsible ? !collapsed : undefined,
+    onKeyDown: collapsible ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCollapsed((c) => !c); } } : undefined,
+  };
+  // `bare` renders an inline group (title row + children only, no card
+  // box/border/shadow/margin) -- used to pack multiple sub-sections into
+  // one shared workspace Card instead of each getting its own bordered
+  // container. Same title/hopeCode/sfv/cms row and same children content;
+  // only the outer box chrome is removed.
+  if (bare) {
+    return (
+      <div className="rnica-bodysystem-workspace__group" id={id}>
+        <div {...titleRowProps}>{titleRowContent}</div>
+        {(!collapsible || !collapsed) && children}
+      </div>
+    );
+  }
+  // Migrated onto the shadcn Card primitives (ShadcnCard/CardHeader/
+  // CardTitle/CardContent, restyled to the RNICA theme tokens) instead of
+  // a hand-rolled div -- same title/hopeCode/sfv/cms/collapsible/id
+  // contract, so none of the 28 modules' field configs change.
   return (
-    <div className="rnica-form-card" style={styles.card} id={id}>
-      {titleRow}
-      {(!collapsible || !collapsed) && children}
-    </div>
+    <ShadcnCard id={id} className="rnica-form-card">
+      <ShadcnCardHeader>
+        <ShadcnCardTitle {...titleRowProps}>{titleRowContent}</ShadcnCardTitle>
+      </ShadcnCardHeader>
+      {(!collapsible || !collapsed) && <ShadcnCardContent>{children}</ShadcnCardContent>}
+    </ShadcnCard>
   );
 }
 
@@ -9573,6 +9589,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const showFast = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "dementia");
   const showEcog = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "cancer");
 
+  const isBodySystemWorkspace = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
+
   return (
     <>
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
@@ -9585,7 +9603,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
       <div className={
         workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid"
         : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
-        : workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey) ? "rnica-bodysystem-cardgrid"
+        // Body Systems architectural correction: one workspace container
+        // per system (not a card grid of N separate boxes) -- generic
+        // fallback cards render `bare` (see isBodySystemPilotCard below)
+        // so they read as inline groups inside this single box. Widgets
+        // with their own customRenderer (wound list, DME status, ADL grid,
+        // etc.) still render as their own Card -- those are distinct
+        // structured components, not generic field subsections.
+        : isBodySystemWorkspace ? "rnica-bodysystem-workspace"
         : undefined
       }>
         {resolvedCards.map((card, ci) => {
@@ -10017,12 +10042,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             </Card>
           );
         }
-
-        // Body Systems density redesign (pilot-only): every sub-card
-        // within a body system module defaults to collapsed so the RN
-        // sees compact titles first (same mechanism Pain Assessment Tool
-        // already uses) -- expanding is one click, nothing about the
-        // fields/HOPE mapping/POC controls inside changes.
+        // Body Systems architectural correction (pilot-only, supersedes
+        // the earlier per-card collapse-by-default density fix): each
+        // system renders as ONE workspace instead of N bordered cards, so
+        // sub-sections use `bare` (title row + fields only, no box/
+        // collapse) and are visually packed together -- nothing is hidden
+        // behind a click, preventing missed documentation. The outer
+        // workspace Card wrapper is added once per section below (see
+        // the wrapping <Card> around this whole map() call).
         const isBodySystemPilotCard = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
         return (
           <Card
@@ -10032,8 +10059,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             hopeCode={card.hopeCode}
             sfv={card.sfv}
             cms={card.cms}
-            collapsible={isBodySystemPilotCard || (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
-            defaultCollapsed={isBodySystemPilotCard || (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
+            bare={isBodySystemPilotCard}
+            collapsible={!isBodySystemPilotCard && (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
+            defaultCollapsed={!isBodySystemPilotCard && (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
           >
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
@@ -10235,7 +10263,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             })}
             </div>
-            {POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
+            {!isBodySystemPilotCard && POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
               <PocSectionControls
                 assessmentId={assessmentId}
                 sectionKey={cardDataSection}
