@@ -218,10 +218,11 @@
 .rnica-diagnosis-ledger__summary p { margin: 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.35; }
 .rnica-diagnosis-ledger__summary strong { flex: 0 0 auto; color: var(--sns-teal); }
 .rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
-.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; overflow: hidden; }
+.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; }
 .rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
-.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; }
+.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 0.4rem 0.4rem 0 0; }
 .rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
+.rnica-diagnosis-ledger__table > *:last-child { border-radius: 0 0 0.4rem 0.4rem; }
 .rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
 .rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 500; white-space: nowrap; }
 .rnica-diagnosis-ledger__related input { width: 1.15rem; height: 1.15rem; }
