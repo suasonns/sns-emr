@@ -96,15 +96,15 @@ function AdminFindingRow({ finding, doc }) {
   return (
     <li className="rounded-lg border border-rnica-border px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <strong className="text-sm">{finding.label}</strong>
+        <strong className="text-[11px] font-medium">{finding.label}</strong>
         <Badge variant="orange">Harvested &middot; review required</Badge>
       </div>
-      <p className="text-sm text-rnica-text mt-0.5">{finding.value}</p>
-      <p className="text-xs text-rnica-dim mt-1">
+      <p className="text-[11px] text-rnica-text mt-0.5">{finding.value}</p>
+      <p className="text-[10px] text-rnica-dim mt-1">
         Source: {doc.file_name || doc.document_type} &middot; {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "\u2014"}
       </p>
       {finding.original_text_excerpt && (
-        <p className="text-xs text-rnica-dim mt-1 italic">&ldquo;{finding.original_text_excerpt}&rdquo;</p>
+        <p className="text-[10px] text-rnica-dim mt-1 italic">&ldquo;{finding.original_text_excerpt}&rdquo;</p>
       )}
     </li>
   );
@@ -115,17 +115,17 @@ function IntakeEvidenceRow({ field, referralState }) {
     return (
       <li className="rounded-lg border border-rnica-border px-3 py-2">
         <div className="flex items-center justify-between gap-2">
-          <strong className="text-sm">{field.label}</strong>
+          <strong className="text-[11px] font-medium">{field.label}</strong>
           <Badge variant="orange">Harvested &middot; review required</Badge>
         </div>
-        <p className="text-sm text-rnica-text mt-0.5">{field.value}</p>
+        <p className="text-[11px] text-rnica-text mt-0.5">{field.value}</p>
         {field.doc && (
-          <p className="text-xs text-rnica-dim mt-1">
+          <p className="text-[10px] text-rnica-dim mt-1">
             Source: {field.doc.file_name || field.doc.document_type}
             {field.doc.uploaded_at ? ` \u00b7 ${new Date(field.doc.uploaded_at).toLocaleDateString()}` : ""}
           </p>
         )}
-        {field.excerpt && <p className="text-xs text-rnica-dim mt-1 italic">&ldquo;{field.excerpt}&rdquo;</p>}
+        {field.excerpt && <p className="text-[10px] text-rnica-dim mt-1 italic">&ldquo;{field.excerpt}&rdquo;</p>}
       </li>
     );
   }
@@ -133,7 +133,7 @@ function IntakeEvidenceRow({ field, referralState }) {
   return (
     <li className="rounded-lg border border-rnica-border px-3 py-2 opacity-70">
       <div className="flex items-center justify-between gap-2">
-        <strong className="text-sm">{field.label}</strong>
+        <strong className="text-[11px] font-medium">{field.label}</strong>
         <Badge variant="neutral">{label}</Badge>
       </div>
     </li>
@@ -259,7 +259,7 @@ export default function EvidenceIntakeOverview({ patientId, intelligence, onNavi
             or write path exists in this file. */}
 
         <Card className="rnica-ds-card">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ClipboardCheck className="h-4 w-4" /> Intake Evidence</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardCheck className="h-4 w-4" /> Intake Evidence</CardTitle></CardHeader>
           <CardContent>
             <ul className="flex flex-col gap-2">
               {intakeEvidence.map((field) => <IntakeEvidenceRow key={field.key} field={field} referralState={referralState} />)}
@@ -269,14 +269,14 @@ export default function EvidenceIntakeOverview({ patientId, intelligence, onNavi
 
         {hAndPDocs.length > 0 && (
           <Card className="rnica-ds-card">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4" /> Uploaded H&amp;P</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> Uploaded H&amp;P</CardTitle></CardHeader>
             <CardContent>
               <ul className="flex flex-col gap-2">
                 {hAndPDocs.map((doc) => {
                   const status = documentStatus(doc);
                   return (
                     <li key={doc.id} className="flex items-center justify-between gap-2 rounded-lg border border-rnica-border px-3 py-2">
-                      <span className="text-sm">{doc.file_name || "H&P"} <span className="text-rnica-dim">&middot; {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "\u2014"}</span></span>
+                      <span className="text-[11px]">{doc.file_name || "H&P"} <span className="text-rnica-dim">&middot; {doc.uploaded_at ? new Date(doc.uploaded_at).toLocaleDateString() : "\u2014"}</span></span>
                       <Badge variant={status.tone}>{status.label}</Badge>
                     </li>
                   );
@@ -287,10 +287,10 @@ export default function EvidenceIntakeOverview({ patientId, intelligence, onNavi
         )}
 
         <Card className="rnica-ds-card">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileText className="h-4 w-4" /> Imported Clinical Documents</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><FileText className="h-4 w-4" /> Imported Clinical Documents</CardTitle></CardHeader>
           <CardContent>
             {otherDocs.length === 0 ? (
-              <p className="text-sm text-rnica-dim">No other documents imported yet.</p>
+              <p className="text-[11px] text-rnica-dim">No other documents imported yet.</p>
             ) : (
               <Table>
                 <TableHeader>
@@ -321,7 +321,7 @@ export default function EvidenceIntakeOverview({ patientId, intelligence, onNavi
 
         {nonReferralAdminFindings.length > 0 && (
           <Card className="rnica-ds-card">
-            <CardHeader><CardTitle className="flex items-center gap-2 text-base"><ClipboardList className="h-4 w-4" /> Document &amp; Intake Findings</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="flex items-center gap-2"><ClipboardList className="h-4 w-4" /> Document &amp; Intake Findings</CardTitle></CardHeader>
             <CardContent>
               <ul className="flex flex-col gap-2">
                 {nonReferralAdminFindings.map((row, i) => <AdminFindingRow key={i} finding={row.finding} doc={row.doc} />)}
@@ -331,33 +331,33 @@ export default function EvidenceIntakeOverview({ patientId, intelligence, onNavi
         )}
 
         <Card className="rnica-ds-card">
-          <CardHeader><CardTitle className="flex items-center gap-2 text-base"><Stethoscope className="h-4 w-4" /> Structured Clinical Findings</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Stethoscope className="h-4 w-4" /> Structured Clinical Findings</CardTitle></CardHeader>
           <CardContent>
             {findings.length === 0 ? (
-              <p className="text-sm text-rnica-dim">No AI-extracted clinical findings yet. Upload the H&amp;P or other clinical documents above.</p>
+              <p className="text-[11px] text-rnica-dim">No AI-extracted clinical findings yet. Upload the H&amp;P or other clinical documents above.</p>
             ) : (
               <ul className="flex flex-col gap-2">
                 {findings.map((finding, index) => (
                   <li key={`${finding.category}-${index}`} className="rounded-lg border border-rnica-border px-3 py-2">
                     <div className="flex items-center justify-between gap-2">
-                      <strong className="text-sm">{finding.title}</strong>
+                      <strong className="text-[11px] font-medium">{finding.title}</strong>
                       {finding.category && <Badge variant="neutral">{finding.category}</Badge>}
                     </div>
-                    {finding.details && <p className="text-xs text-rnica-dim mt-1">{finding.details}</p>}
+                    {finding.details && <p className="text-[10px] text-rnica-dim mt-1">{finding.details}</p>}
                   </li>
                 ))}
               </ul>
             )}
           </CardContent>
         </Card>
-        {loadError && <p className="text-sm text-rnica-red">{loadError}</p>}
+        {loadError && <p className="text-[11px] text-rnica-red">{loadError}</p>}
       </div>
 
       <Card className="rnica-ds-card h-fit sticky top-4">
-        <CardHeader><CardTitle className="flex items-center gap-2 text-base"><FileCheck2 className="h-4 w-4" /> Evidence Readiness Checklist</CardTitle></CardHeader>
+        <CardHeader><CardTitle className="flex items-center gap-2"><FileCheck2 className="h-4 w-4" /> Evidence Readiness Checklist</CardTitle></CardHeader>
         <CardContent className="flex flex-col gap-3">
           <p className="text-[10px] text-rnica-dim">{completenessChecks.filter((c) => c.met).length} of {completenessChecks.length} criteria met &middot; each criterion is independent (document import, referral evidence, review status, extraction, gaps) and is not a clinical-completeness score.</p>
-          <ul className="flex flex-col gap-1.5 text-sm">
+          <ul className="flex flex-col gap-1.5 text-[11px]">
             {completenessChecks.map((check) => (
               <li key={check.label} className="flex items-center gap-2">
                 <Badge variant={check.met ? "success" : "warning"}>{check.met ? "Met" : "Not met"}</Badge>
@@ -367,21 +367,21 @@ export default function EvidenceIntakeOverview({ patientId, intelligence, onNavi
           </ul>
           {(missingEvidence.length > 0 || pendingReviewDocs.length > 0 || failedDocs.length > 0 || processingDocs.length > 0) && (
             <div>
-              <span className="text-[10px] font-semibold uppercase tracking-wide text-rnica-dim">Evidence Gaps &amp; Pending Reviews</span>
+              <span className="text-[10px] font-normal uppercase tracking-wide text-rnica-dim">Evidence Gaps &amp; Pending Reviews</span>
               <ul className="mt-1 flex flex-col gap-1">
                 {missingEvidence.slice(0, 6).map((item, index) => (
-                  <li key={`gap-${index}`} className="text-xs text-rnica-orange">
+                  <li key={`gap-${index}`} className="text-[10px] text-rnica-orange">
                     {typeof item === "string" ? item : item?.label || item?.text}
                   </li>
                 ))}
                 {pendingReviewDocs.map((doc) => (
-                  <li key={`pending-${doc.id}`} className="text-xs text-rnica-orange">Pending review: {doc.file_name || doc.document_type}</li>
+                  <li key={`pending-${doc.id}`} className="text-[10px] text-rnica-orange">Pending review: {doc.file_name || doc.document_type}</li>
                 ))}
                 {failedDocs.map((doc) => (
-                  <li key={`failed-${doc.id}`} className="text-xs text-rnica-red">Extraction failed: {doc.file_name || doc.document_type}</li>
+                  <li key={`failed-${doc.id}`} className="text-[10px] text-rnica-red">Extraction failed: {doc.file_name || doc.document_type}</li>
                 ))}
                 {processingDocs.map((doc) => (
-                  <li key={`processing-${doc.id}`} className="text-xs text-rnica-dim">Still processing: {doc.file_name || doc.document_type}</li>
+                  <li key={`processing-${doc.id}`} className="text-[10px] text-rnica-dim">Still processing: {doc.file_name || doc.document_type}</li>
                 ))}
               </ul>
             </div>
