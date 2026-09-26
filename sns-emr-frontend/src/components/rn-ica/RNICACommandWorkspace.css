@@ -390,6 +390,25 @@ button.rnica-command-screen-group__header {
    entirely, not layered on top of it. Uses the same --sns-* tokens as the
    rest of the redesign so it is theme-aware (Light/Dark) automatically. */
 .rnica-screen {
+  /* Formal SNS RNICA typography scale, same --cw-* mapping/values used by
+     .rnica-command (generic fallback layout) -- kept as its own block
+     (rather than sharing the .rnica-command class) since this shell has
+     its own layout/overflow rules. Density is RN-selectable via the
+     RNICA Workflow rail's Compact/Comfortable/Large text controls,
+     added 2026-09-26 to fix the two nav bars not sharing a text-size
+     control. */
+  --cw-gap: 0.5rem;
+  --cw-pad: 0.625rem;
+  --cw-body-size: 11px;
+  --cw-input-size: 11px;
+  --cw-label-size: 10px;
+  --cw-meta-size: 10px;
+  --cw-section-size: 13px;
+  --cw-patient-size: 16px;
+  --cw-nav-size: 11px;
+  --cw-nav-meta-size: 10px;
+  --cw-button-size: 11px;
+  --cw-control-height: 34px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -397,6 +416,55 @@ button.rnica-command-screen-group__header {
   background: var(--sns-bg);
   color: var(--sns-white);
 }
+
+.rnica-screen--comfortable {
+  --cw-gap: 0.75rem;
+  --cw-pad: 0.75rem;
+  --cw-body-size: 12.5px;
+  --cw-input-size: 12.5px;
+  --cw-label-size: 10.5px;
+  --cw-meta-size: 10px;
+  --cw-section-size: 15px;
+  --cw-nav-size: 12.5px;
+  --cw-nav-meta-size: 10px;
+  --cw-button-size: 12.5px;
+  --cw-control-height: 36px;
+}
+
+.rnica-screen--large {
+  --cw-gap: 0.625rem;
+  --cw-pad: 0.7rem;
+  --cw-body-size: 14px;
+  --cw-input-size: 14px;
+  --cw-label-size: 11.5px;
+  --cw-meta-size: 11px;
+  --cw-section-size: 16px;
+  --cw-patient-size: 19.5px;
+  --cw-nav-size: 14px;
+  --cw-nav-meta-size: 11px;
+  --cw-button-size: 14px;
+  --cw-control-height: 36px;
+}
+
+/* Base plain-<button> styling for the whole RnicaScreenShell scope --
+   mirrors .rnica-command button (generic fallback layout). Without this,
+   unclassed buttons ("Use classic view", the density controls, etc.) fall
+   back to the browser's default white button chrome, which is a white box
+   against the dark theme -- owner correction: never render a white
+   background in dark theme. More specific selectors below (e.g.
+   .rnica-screen__footer-actions button) still override as needed. */
+.rnica-screen button {
+  min-height: var(--cw-control-height);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font-size: var(--cw-button-size);
+  cursor: pointer;
+}
+.rnica-screen button:hover { border-color: var(--sns-teal); }
+.rnica-screen button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .rnica-screen__bar {
   display: flex;
@@ -515,6 +583,15 @@ button.rnica-command-screen-group__header {
   text-transform: uppercase;
   color: var(--sns-muted);
 }
+
+/* Compact/Comfortable/Large-text density controls -- same shared density
+   state/persistence as .rnica-command-density (generic fallback layout),
+   added here so the RNICA Workflow rail (used by Patient Story/HOPE
+   Administrative Review/Evidence & Intake/Pain & Symptom Burden) is no
+   longer the one nav surface without a text-size control. */
+.rnica-rail__density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0 0 0.4rem; padding: 0 0.6rem; }
+.rnica-rail__density button { min-height: var(--cw-control-height, 34px); padding: 0.25rem; font-size: var(--cw-nav-size, 11px); }
+.rnica-rail__density button[aria-pressed="true"] { border-color: var(--sns-teal); color: var(--sns-teal); }
 
 .rnica-rail__progress-text { color: var(--sns-teal); }
 

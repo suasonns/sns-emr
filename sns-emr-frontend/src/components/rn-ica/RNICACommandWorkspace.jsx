@@ -220,10 +220,10 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
 // only: a compact identity/status bar, the 13-screen tab strip, the screen's
 // own content, and the save/lock controls -- there is no old-workspace
 // content behind it.
-function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, children }) {
+function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, density, onChangeDensity, children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   return (
-    <div className="rnica-screen">
+    <div className={`rnica-screen rnica-screen--${density || "compact"}`}>
       <header className="rnica-screen__bar">
         <div className="rnica-screen__identity">
           <span className="rnica-command-eyebrow">RNICA</span>
@@ -265,6 +265,8 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
           activeScreenKey={activeScreenKey}
           onSelectScreen={onSelectScreenTab}
           statusContext={statusContext}
+          density={density}
+          onChangeDensity={onChangeDensity}
         />
         <main className="rnica-screen__content">{children}</main>
       </div>
@@ -516,6 +518,8 @@ export default function RNICACommandWorkspace({
         onLock={onLock}
         canLock={canLock}
         statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
       >
         <PatientStoryPanel
           patient={patient}
@@ -557,6 +561,8 @@ export default function RNICACommandWorkspace({
         onLock={onLock}
         canLock={canLock}
         statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
       >
         <HopeAdministrativeReview
           value={patient.administrativeDemographics}
@@ -600,6 +606,8 @@ export default function RNICACommandWorkspace({
         onLock={onLock}
         canLock={canLock}
         statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
       >
         {/* Clinical Snapshot (vitals) renders first -- 2026-09-25 owner
             direction: "Do not bury vitals beneath evidence sections."
@@ -652,6 +660,8 @@ export default function RNICACommandWorkspace({
         onLock={onLock}
         canLock={canLock}
         statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
       >
         {renderWorkspaceSections(["pain"])}
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
