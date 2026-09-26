@@ -23,6 +23,10 @@ import {
 } from "./design-system/RnicaDesignSystem";
 import { listBenefitPeriods } from "../../api/benefitPeriods";
 import { fetchFacesheet } from "../../api/facesheet";
+import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as ShadcnCardTitle, CardContent as ShadcnCardContent } from "../ui/card";
+import { Badge as ShadcnBadge } from "../ui/badge";
+import { Progress as ShadcnProgress } from "../ui/progress";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../ui/accordion";
 import "./RNICACommandWorkspace.css";
 
 const DENSITY_KEY = "sns-clinical-command-workspace-density";
@@ -302,6 +306,8 @@ export default function RNICACommandWorkspace({
   saveStatus,
   intelligence,
   renderWorkspaceSections,
+  bodySystemsAccordionItems,
+  bodySystemsStructuredFindings,
   visitRecorder,
   alerts,
   onSelect,
@@ -640,6 +646,97 @@ export default function RNICACommandWorkspace({
         onChangeDensity={changeDensity}
       >
         {renderWorkspaceSections(["pain"])}
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "bodySystems") {
+    // Body Systems is a presentation-only consolidation of the 10 body
+    // system modules (Neuro, CV, Respiratory, Infection, GI, Nutrition,
+    // Endocrine, GU, Musculoskeletal, Skin) into ONE compact accordion
+    // screen instead of a one-at-a-time wizard, per 2026 owner directive
+    // ("Body Systems Review — Preserve HOPE + Preserve SFV + Do Not Move
+    // Safety Content Into Body Systems"). Every accordion item reuses the
+    // exact same field config / HOPE mapping / POC controls as legacy,
+    // non-grouped rendering (see bodySystemsAccordionItems in RNICA.jsx) --
+    // nothing about matching, validation, or data is changed here. Falls,
+    // Safety, and Disaster Triage remain their own independent screen
+    // (safetyClinicalRisk) and are never rendered here, per the owner's
+    // explicit "do not move Safety/Falls into Body Systems" warning. Skin
+    // stays a full body-system accordion item (not reduced to a checkbox)
+    // since it is already its own module with its own field depth.
+    const reviewedCount = (bodySystemsAccordionItems || []).filter((item) => item.reviewed).length;
+    const totalSystems = (bodySystemsAccordionItems || []).length;
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="bodySystems"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
+      >
+        <div className="rnica-bodysystems">
+          <div className="rnica-bodysystems__main">
+            <div className="rnica-bodysystems__status">
+              <span className="rnica-bodysystems__status-label">System Assessment Status</span>
+              <ShadcnProgress
+                value={totalSystems ? (reviewedCount / totalSystems) * 100 : 0}
+                className="rnica-bodysystems__progress"
+              />
+              <span className="rnica-bodysystems__status-count">{reviewedCount} of {totalSystems} Systems Reviewed</span>
+            </div>
+            <Accordion type="multiple" className="rnica-bodysystems__accordion">
+              {(bodySystemsAccordionItems || []).map((item) => (
+                <AccordionItem key={item.key} value={item.key} className="rnica-bodysystems__item">
+                  <AccordionTrigger className="rnica-bodysystems__trigger">
+                    <span className="rnica-bodysystems__trigger-label">
+                      <span aria-hidden="true">{item.icon}</span> {item.label}
+                    </span>
+                    <ShadcnBadge variant={item.reviewed ? "success" : "neutral"}>
+                      {item.reviewed ? "Reviewed" : "Not started"}
+                    </ShadcnBadge>
+                  </AccordionTrigger>
+                  <AccordionContent className="rnica-bodysystems__content">{item.content}</AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+          <aside className="rnica-bodysystems__rail">
+            <ShadcnCard className="rnica-bodysystems__findings">
+              <ShadcnCardHeader>
+                <ShadcnCardTitle>Structured Findings</ShadcnCardTitle>
+              </ShadcnCardHeader>
+              <ShadcnCardContent>
+                {/* Deterministic restatement of already-charted fields only
+                    -- never generated/inferred/predicted. See
+                    bodySystemsStructuredFindings in RNICA.jsx. */}
+                {(bodySystemsStructuredFindings || []).length ? (
+                  <ul className="rnica-bodysystems__findings-list">
+                    {bodySystemsStructuredFindings.map((finding, idx) => (
+                      <li key={idx}>{finding}</li>
+                    ))}
+                  </ul>
+                ) : (
+                  <p className="rnica-bodysystems__findings-empty">No structured findings documented yet.</p>
+                )}
+              </ShadcnCardContent>
+            </ShadcnCard>
+          </aside>
+        </div>
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
           <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>

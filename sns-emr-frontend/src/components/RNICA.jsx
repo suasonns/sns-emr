@@ -12899,6 +12899,91 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     );
   });
 
+  // ── Body Systems screen (pilot-only) ──────────────────────────────
+  // Purely mechanical "is anything here documented" scan used only to
+  // badge a body system Reviewed/Not Started in the compact accordion
+  // below -- never a clinical judgment, never invents a finding. Treats
+  // empty string/false/[]/{}/undefined/null as "not documented"; any
+  // other value (including "0", itself a charted answer) counts.
+  const sectionHasDocumentedData = (value) => {
+    if (value === null || value === undefined || value === "") return false;
+    if (typeof value === "boolean") return value === true;
+    if (Array.isArray(value)) return value.some((item) => sectionHasDocumentedData(item));
+    if (typeof value === "object") return Object.values(value).some((v) => sectionHasDocumentedData(v));
+    return true;
+  };
+
+  // One compact accordion item per body system (all 10, always rendered
+  // together instead of one-at-a-time) -- reuses the exact same
+  // config/sectionData/renderGenericSection call as every other route, so
+  // fields, HOPE mappings, and Add/View POC controls are byte-for-byte the
+  // same as legacy/non-grouped rendering. Presentation-only grouping.
+  const bodySystemsAccordionItems = useMemo(() => {
+    return RNICA_BODY_SYSTEM_MODULES.map((module) => {
+      const route = routes.find((r) => r.key === module.key);
+      if (!route) return null;
+      const config = SECTION_CONFIGS[route.formSection];
+      const sectionData = formData[route.formSection];
+      const meta = sidebarConfigItems.find((s) => s.key === module.key);
+      return {
+        key: module.key,
+        label: meta?.label || module.label,
+        icon: meta?.icon || "🩺",
+        reviewed: sectionHasDocumentedData(sectionData),
+        content: config && sectionData
+          ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
+          : null,
+      };
+    }).filter(Boolean);
+  }, [routes, formData, sidebarConfigItems, COLORS, styles, patientId, assessmentId, locked, onNavigateToSection, assessmentUiProfile]);
+
+  // Structured Findings — a deterministic, plain-language restatement of
+  // ALREADY-DOCUMENTED body-system fields only (owner directive: "only
+  // include findings already documented... do not generate/infer/create
+  // findings"). Every line below reads one specific, already-existing
+  // field and only appears when that field has a real charted value; none
+  // of these paths are new fields, and nothing is derived/predicted.
+  const bodySystemsStructuredFindings = useMemo(() => {
+    const findings = [];
+    const neuro = formData?.neurological || {};
+    if (neuro.cognition) findings.push(`Cognitive status: ${neuro.cognition}.`);
+    const bimsFields = [neuro?.hopeItems?.n0500, neuro?.hopeItems?.n0510, neuro?.hopeItems?.n0520];
+    if (bimsFields.every((v) => v !== "" && v !== undefined && v !== null)) {
+      const bimsSum = bimsFields.reduce((sum, v) => sum + parseInt(v, 10), 0);
+      findings.push(`BIMS score: ${bimsSum}/9.`);
+    }
+    const resp = formData?.respiratory || {};
+    if (resp.oxygenTherapy?.inUse) {
+      const detail = [resp.oxygenTherapy.litersPerMinute && `${resp.oxygenTherapy.litersPerMinute} L/min`, resp.oxygenTherapy.deliveryMode].filter(Boolean).join(", ");
+      findings.push(`Continuous oxygen therapy in use${detail ? ` (${detail})` : ""}.`);
+    }
+    const cv = formData?.cardiovascular || {};
+    if (cv.edema?.present === "Yes") {
+      findings.push(`${cv.edema.severity || "Edema"} documented${cv.edema.location?.length ? ` (${cv.edema.location.join(", ")})` : ""}.`);
+    }
+    const skin = formData?.skin || {};
+    if ((skin.wounds || []).length > 0) {
+      findings.push(`${skin.wounds.length} active wound${skin.wounds.length === 1 ? "" : "s"} documented — ongoing wound care oversight required.`);
+    }
+    const gi = formData?.gastrointestinal || {};
+    if (gi.ostomy?.present) findings.push(`Ostomy present (${gi.ostomy.type || "type not specified"}).`);
+    if (gi.feedingTube?.present) findings.push(`Feeding tube present (${gi.feedingTube.type || "type not specified"}).`);
+    const gu = formData?.genitourinary || {};
+    if (gu.catheter?.present) findings.push(`Urinary catheter present (${gu.catheter.type || "type not specified"}).`);
+    const nutrition = formData?.nutrition || {};
+    if (nutrition.weightLossPastSixMonths && !/^(none|no)$/i.test(nutrition.weightLossPastSixMonths)) {
+      findings.push(`Weight loss documented: ${nutrition.weightLossPastSixMonths}.`);
+    }
+    const endocrine = formData?.endocrine || {};
+    if (endocrine.diabetes?.type && !["Not diabetic", "Unknown"].includes(endocrine.diabetes.type)) {
+      findings.push(`Diabetes (${endocrine.diabetes.type})${endocrine.diabetes.insulinType ? `, on insulin` : ""}.`);
+    }
+    const infection = formData?.infection || {};
+    const activeInfections = (infection.currentInfections || []).filter((i) => i && i !== "None");
+    if (activeInfections.length > 0) findings.push(`Active infection: ${activeInfections.join(", ")}.`);
+    return findings;
+  }, [formData]);
+
   if (workspacePilot) {
     const ownSecondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
       .map((diagnosis) => `${diagnosis.description || formatIcd10Code(diagnosis.icd10) || ""}`.trim())
@@ -13023,6 +13108,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           intelligence={intelligence}
           isOngoingAssessment={isOngoing}
           renderWorkspaceSections={renderWorkspaceSections}
+          bodySystemsAccordionItems={bodySystemsAccordionItems}
+          bodySystemsStructuredFindings={bodySystemsStructuredFindings}
           // Lets Evidence & Intake's Administrative Demographics section
           // (Language/Interpreter/Ethnicity/Race/Living Arrangement/
           // Availability of Assistance) write directly back into RNICA's
