@@ -363,31 +363,17 @@ export default function RNICACommandWorkspace({
   }, [patient?.id]);
   const patientWithAdmissionFacts = useMemo(() => ({ ...patient, ...admissionFacts }), [patient, admissionFacts]);
 
-  const [query, setQuery] = useState("");
   const [density, setDensity] = useState(storedDensity);
-  const [searchStartedAt, setSearchStartedAt] = useState(0);
-  const [collapsedScreens, setCollapsedScreens] = useState({});
   const [viewMode, setViewMode] = useState("screen");
-  const filteredRoutes = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return normalized ? routes.filter((route) => route.label.toLowerCase().includes(normalized)) : routes;
-  }, [query, routes]);
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
   // data. See rnicaThirteenScreenTaxonomy.js.
-  const screenGroups = useMemo(() => groupRoutesIntoScreens(filteredRoutes), [filteredRoutes]);
+  const screenGroups = useMemo(() => groupRoutesIntoScreens(routes), [routes]);
   const activeScreen = useMemo(() => screenForModuleKey(activeSection), [activeSection]);
   const activeScreenIndex = activeScreen
     ? RNICA_THIRTEEN_SCREENS.findIndex((screen) => screen.key === activeScreen.key)
     : -1;
-  const isScreenCollapsed = (screenKey) => {
-    if (screenKey in collapsedScreens) return collapsedScreens[screenKey];
-    return activeScreen?.key !== screenKey;
-  };
-  const toggleScreen = (screenKey) => {
-    setCollapsedScreens((prev) => ({ ...prev, [screenKey]: !isScreenCollapsed(screenKey) }));
-  };
   const selectCrossCuttingScreen = (screen) => {
     if (screen.key === "patientStory") {
       setViewMode("patientStory");
@@ -435,17 +421,6 @@ export default function RNICACommandWorkspace({
     setDensity(nextDensity);
     window.localStorage.setItem(DENSITY_KEY, nextDensity);
     emitRnIcaTelemetry({ name: "density_changed", density: nextDensity });
-  };
-
-  const changeSearch = (event) => {
-    if (!searchStartedAt) setSearchStartedAt(performance.now());
-    const next = event.target.value;
-    setQuery(next);
-    if (next.length > 1) {
-      const normalized = next.toLowerCase();
-      const resultCount = routes.filter((route) => route.label.toLowerCase().includes(normalized)).length;
-      emitRnIcaTelemetry({ name: "section_find", elapsedMs: Math.round(performance.now() - (searchStartedAt || performance.now())), resultCount });
-    }
   };
 
   // RNICA Diagnosis & LCD Workspace Optimization (owner directive FR-002):
@@ -741,84 +716,6 @@ export default function RNICACommandWorkspace({
       </ClinicalCommandContextBar>
 
       <ClinicalCommandLayout className="rnica-command-layout">
-        <ScrollRegion name="navigator" className="rnica-command-nav">
-          <label className="rnica-command-search">
-            <span>Find section</span>
-            <input type="search" value={query} onChange={changeSearch} placeholder={`Search ${routes.length} sections`} />
-          </label>
-          <div className="rnica-command-density" role="group" aria-label="Workspace density">
-            {DENSITIES.map((item) => (
-              <button type="button" key={item} aria-pressed={density === item} onClick={() => changeDensity(item)}>
-                {item === "large" ? "Large text" : item[0].toUpperCase() + item.slice(1)}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--mobile" onClick={() => select("finalization")}>
-            Narrative &amp; final review
-          </button>
-          <div className="rnica-command-screens" aria-label="RN ICA 13-screen navigator">
-            {screenGroups.map((screen, screenIndex) => {
-              if (screen.crossCutting) {
-                return (
-                  <div className="rnica-command-screen-group rnica-command-screen-group--crosscutting" key={screen.key}>
-                    <button
-                      type="button"
-                      className={`rnica-command-screen-group__header ${activeScreen?.key === screen.key ? "is-active" : ""}`}
-                      onClick={() => selectCrossCuttingScreen(screen)}
-                    >
-                      <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
-                      <span className="rnica-command-screen-group__label">{screen.label}</span>
-                    </button>
-                  </div>
-                );
-              }
-              if (screen.routes.length === 0) return null;
-              const collapsed = isScreenCollapsed(screen.key);
-              const screenComplete = screen.routes.filter((route) => completedSections.includes(route.key)).length;
-              return (
-                <div className="rnica-command-screen-group" key={screen.key}>
-                  <button
-                    type="button"
-                    className={`rnica-command-screen-group__header ${activeScreen?.key === screen.key ? "is-active" : ""}`}
-                    onClick={() => toggleScreen(screen.key)}
-                    aria-expanded={!collapsed}
-                  >
-                    <span className="rnica-command-screen-group__caret">{collapsed ? "▸" : "▾"}</span>
-                    <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
-                    <span className="rnica-command-screen-group__label">{screen.label}</span>
-                    <span className="rnica-command-screen-group__progress">{screenComplete}/{screen.routes.length}</span>
-                  </button>
-                  {!collapsed && (
-                    <div className="rnica-command-matrix" aria-label={`${screen.label} sections`}>
-                      {screen.routes.map((route) => {
-                        const complete = completedSections.includes(route.key);
-                        return (
-                          <button
-                            type="button"
-                            key={route.key}
-                            className={`${activeSection === route.key ? "is-active" : ""} ${complete ? "is-complete" : ""}`.trim()}
-                            onClick={() => select(route.key)}
-                          >
-                            {/* [OWNER DESIGN CORRECTION -- 2026-09-25] Removed the
-                                per-item Open/Risk/Changed/Missing signal badges
-                                and the HOPE/CDPH regulator tag -- "exposes
-                                implementation and workflow metadata rather than
-                                guide clinical workflow... little RN value,
-                                visual clutter." A completed item is now
-                                indicated only by a quiet dot via .is-complete
-                                (see CSS), not text badges. */}
-                            <span className="rnica-command-matrix__title">{route.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </ScrollRegion>
-
         <ScrollRegion name="detail" className="rnica-command-detail">
           <>
               {/* FR-002/FR-005: Visit Recording is no longer a permanent
