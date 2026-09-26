@@ -970,7 +970,31 @@
   color: var(--sns-muted);
 }
 
+/* Owner directive 2026-09-26: "No structured findings documented yet"
+   must not occupy an entire side-panel card -- cap the empty state's
+   footprint; the card grows automatically once real findings exist. */
+.rnica-bodysystems__findings-empty { max-height: 80px; }
+
+/* Clinical Review Grid (owner directive 2026-09-26): a body system's own
+   sub-cards (Mental Status, BIMS, Communication & Sensory, Skin Integrity,
+   Pressure Injury, Wounds, ...) pack into a responsive 2-3 column grid
+   instead of stacking one-per-row, and each defaults to collapsed (see
+   the `collapsible`/`defaultCollapsed` props on the Card component in
+   RNICA.jsx) -- only expanded cards claim real vertical space. */
+.rnica-bodysystem-cardgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.5rem;
+  align-items: start;
+}
+
+.rnica-bodysystem-cardgrid .rnica-form-card { margin-bottom: 0; }
+
 @media (max-width: 1100px) {
   .rnica-bodysystems { grid-template-columns: 1fr; }
   .rnica-bodysystems__rail { order: -1; }
+}
+
+@media (max-width: 700px) {
+  .rnica-bodysystem-cardgrid { grid-template-columns: 1fr; }
 }

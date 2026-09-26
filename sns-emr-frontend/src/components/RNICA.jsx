@@ -3707,6 +3707,75 @@ function WeightLossAutoCalcCard({ patientId, assessmentId, currentWeight, existi
   );
 }
 
+// Integumentary -> Treatment Summary (read-only).
+//
+// Per owner directive: Skin/Integumentary assessment findings live in
+// Body Systems; wound/skin TREATMENT (dressings, frequency, DME) stays
+// owned by Orders & POC / Tx-Meds-DME. There is no separate
+// WoundTreatment/TreatmentOrder backend entity in this codebase today —
+// confirmed by inspecting app/models and app/api/routes/rnica_poc.py: the
+// only structured "treatment" data already captured against the skin
+// section is the intervention_text on that section's Plan of Care
+// problems (the same PocSectionControls Add/View/Update/Resolve API
+// below). This component does not add a new data model or duplicate
+// entry; it only reads those existing records and displays the
+// intervention text as an "Active Treatments" list, with a link to the
+// real Orders & POC screen (the single source of truth) instead of
+// re-implementing treatment management inside Body Systems.
+function SkinTreatmentSummary({ assessmentId, patientId, styles, COLORS }) {
+  const [problems, setProblems] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!assessmentId) return;
+    let cancelled = false;
+    setLoading(true);
+    viewRnicaSectionPoc(assessmentId, "skin")
+      .then((res) => {
+        if (!cancelled) setProblems(Array.isArray(res?.problems) ? res.problems : []);
+      })
+      .catch(() => {
+        if (!cancelled) setProblems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assessmentId]);
+
+  const activeTreatments = (problems || []).filter(
+    (p) => p.status !== "RESOLVED" && p.intervention_text && p.intervention_text.trim()
+  );
+
+  if (loading) return null;
+  if (!problems || activeTreatments.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}` }}>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+        Active Treatments
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5 }}>
+        {activeTreatments.map((p) => (
+          <li key={p.rule_key} style={{ marginBottom: 3 }}>{p.intervention_text}</li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => window.open(`/plan-of-care?patientId=${encodeURIComponent(patientId || "")}#tx-meds-dme-supplies`, "_blank", "noopener")}
+        style={{
+          marginTop: 8, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 5,
+          border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+        }}
+      >
+        View Treatment Details →
+      </button>
+    </div>
+  );
+}
+
 // RN ICA -> Plan of Care controls for a single body-system subcard.
 // Add / View / Update / Resolve here all call the authoritative Plan of
 // Care document API (via backend app/services/rnica_poc_adapter.py) — this
@@ -9414,6 +9483,21 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
+// Body Systems density redesign (owner directive, 2026-09-26): the 10
+// body-system modules render inside one compact accordion screen (see
+// RNICACommandWorkspace.jsx bodySystems branch) -- within that screen,
+// each module's own sub-cards (Mental Status, BIMS, Communication &
+// Sensory, Skin Integrity, Pressure Injury, Wounds, ...) pack into a
+// responsive 2-3 column "clinical review grid" instead of stacking full
+// width, and default to collapsed (same `collapsible`/`defaultCollapsed`
+// mechanism the Pain Assessment Tool card already uses) so the RN sees
+// compact titles first and expands only what's relevant. Pilot-only;
+// legacy/non-grouped rendering of these same sections is unaffected --
+// no field, HOPE mapping, POC, or validation behavior changes.
+const BODY_SYSTEM_FORM_SECTIONS = new Set(
+  RNICA_BODY_SYSTEM_MODULES.map((module) => module.formSection),
+);
+
 function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
@@ -9498,6 +9582,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
       <div className={
         workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid"
         : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
+        : workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey) ? "rnica-bodysystem-cardgrid"
         : undefined
       }>
         {resolvedCards.map((card, ci) => {
@@ -9750,6 +9835,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <WoundListCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+              <SkinTreatmentSummary assessmentId={assessmentId} patientId={patientId} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
@@ -9913,6 +9999,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        // Body Systems density redesign (pilot-only): every sub-card
+        // within a body system module defaults to collapsed so the RN
+        // sees compact titles first (same mechanism Pain Assessment Tool
+        // already uses) -- expanding is one click, nothing about the
+        // fields/HOPE mapping/POC controls inside changes.
+        const isBodySystemPilotCard = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
         return (
           <Card
             key={ci}
@@ -9921,8 +10013,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             hopeCode={card.hopeCode}
             sfv={card.sfv}
             cms={card.cms}
-            collapsible={sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")}
-            defaultCollapsed={sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")}
+            collapsible={isBodySystemPilotCard || (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
+            defaultCollapsed={isBodySystemPilotCard || (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
           >
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
