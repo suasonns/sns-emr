@@ -515,20 +515,55 @@ export default function RNICACommandWorkspace({
     );
   }
 
+  if (viewMode === "screen" && activeSection === "demographics") {
+    // [OWNER DECISION -- 2026-09-25] "demographics" (HOPE Section A
+    // administrative items: A1005/A1010/A1110 x2/A1905/A1910) is now a
+    // sub-item of Evidence & Intake rather than its own top-level
+    // "HOPE Administrative Review" navigation step -- "HOPE should be
+    // populated from Evidence & Intake... The RN documents naturally. SNS
+    // maps to HOPE." Checked ahead of the generic Evidence & Intake branch
+    // below (module-level, not screen-level) so this specific sub-item
+    // still renders HopeAdministrativeReview instead of the vitals/overview
+    // content. Same component, same formData.demographics /
+    // formData.livingSituation persistence -- no schema change, only its
+    // navigation home changed.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="evidenceIntake"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+      >
+        <HopeAdministrativeReview
+          value={patient.administrativeDemographics}
+          onUpdateField={onUpdateField}
+          locked={locked}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
   if (viewMode === "screen" && activeScreen?.key === "evidenceIntake" && evidenceIntakeGroup) {
     // Evidence & Intake is the first substantive RNICA screen after Patient
-    // Story (2026-09-25 owner-direction reorder -- was previously screen 3,
-    // after HOPE Administrative Review; moved ahead of it because this is
-    // the screen the nurse actually wants first: referral reason, admission
-    // source, supporting documents, and decline evidence). Per owner
-    // direction: vitals are continuous clinical context, not a sub-
-    // navigation tab -- they render inline, always visible, as the Clinical
-    // Snapshot leading the screen, above the evidence review content
-    // (2026-09-25 owner correction: "Do not bury vitals beneath evidence
-    // sections."). forceVisibleKeys keeps the legacy "vitals" section
-    // mounted-visible regardless of which module is globally "active".
-    // Discipline referrals (social work/spiritual
-    // care/volunteer/etc.) moved to Orders & POC -- see
+    // Story. Per owner direction: vitals are continuous clinical context,
+    // not a sub-navigation tab -- they render inline, always visible, as
+    // the Clinical Snapshot leading the screen, above the evidence review
+    // content (2026-09-25 owner correction: "Do not bury vitals beneath
+    // evidence sections."). Discipline referrals (social work/spiritual
+    // care/volunteer/etc.) live under Clinical Review -- see
     // rnicaThirteenScreenTaxonomy.js. The former "Patient Demographics" tab
     // is replaced by EvidenceIntakeOverview -- per owner direction, RNICA
     // must not store or edit a second copy of Face Sheet demographics. It
@@ -577,48 +612,8 @@ export default function RNICACommandWorkspace({
     );
   }
 
-  if (viewMode === "screen" && activeScreen?.key === "hopeAdministrativeReview") {
-    // HOPE Administrative Review is its own standalone RNICA screen --
-    // positioned after Evidence & Intake (2026-09-25 owner-direction
-    // reorder -- was previously screen 2, ahead of Evidence & Intake; moved
-    // behind it because Evidence & Intake is the screen the nurse wants
-    // first). It is NOT a duplicate Face Sheet and NOT part of Evidence &
-    // Intake or Psychosocial. It renders the CMS Section A administrative
-    // items (A1005/A1010/A1110 x2/A1905/A1910) via HopeAdministrativeReview,
-    // reading/writing the same `formData.demographics` /
-    // `formData.livingSituation` state as before -- no new persistence
-    // path, no schema change.
-    return (
-      <RnicaScreenShell
-        patient={patientWithAdmissionFacts}
-        locked={locked}
-        completedSections={completedSections}
-        totalRoutes={routes.length}
-        activeScreenKey="hopeAdministrativeReview"
-        onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
-        saving={saving}
-        saveStatus={saveStatus}
-        onSave={onSave}
-        onLock={onLock}
-        canLock={canLock}
-        statusContext={railStatusContext}
-      >
-        <HopeAdministrativeReview
-          value={patient.administrativeDemographics}
-          onUpdateField={onUpdateField}
-          locked={locked}
-        />
-        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
-          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
-          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
-        </nav>
-      </RnicaScreenShell>
-    );
-  }
-
   if (viewMode === "screen" && activeScreen?.key === "painSymptomBurden") {
-    // Pain & Symptom Burden is its own standalone RNICA screen. Owner
+    // Pain Assessment is its own standalone RNICA screen. Owner
     // correction 2026-09-25: Symptom Impact Screening ("J2051 A-H") is
     // NOT rendered here as its own RN-facing section -- pain, dyspnea,
     // nausea/vomiting/diarrhea/constipation, and anxiety/agitation are
