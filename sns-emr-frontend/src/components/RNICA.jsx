@@ -10128,7 +10128,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               />
             )}
 
-            <div style={styles.fieldsGrid}>
+            <div style={isBodySystemPilotCard ? undefined : styles.fieldsGrid} className={isBodySystemPilotCard ? "rnica-bodysystem-workspace__fields" : undefined}>
             {card.fields.map((field, fi) => {
               if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
                 return null;

@@ -989,24 +989,48 @@
   margin-bottom: 0;
 }
 
+/* Multi-column (masonry-style) flow instead of CSS Grid: a CSS Grid row's
+   height is set by its tallest cell, which left large empty gaps under
+   every shorter sub-section sharing that row (owner-reported "disorganized"
+   defect, 2026-09-26). `columns` flows each group down a column
+   independently of its neighbors' height, so short and tall groups pack
+   tightly with no dead space, while `break-inside: avoid` keeps a whole
+   group (title + its fields) from being split across two columns. */
 .rnica-bodysystem-workspace__content {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.6rem 1rem;
-  align-items: start;
+  columns: 3 260px;
+  column-gap: 16px;
 }
 
 .rnica-bodysystem-workspace__group {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
+  break-inside: avoid;
+  margin-bottom: 12px;
+}
+
+/* Same masonry fix applied one level down, inside a single sub-section's
+   own field list (e.g. Mental Status's Symptoms/Consciousness/Orientation
+   checkboxes vs. a lone text input) -- prevents the identical dead-space
+   defect from reappearing inside each group. */
+.rnica-bodysystem-workspace__fields {
+  columns: 2 200px;
+  column-gap: 12px;
+}
+
+.rnica-bodysystem-workspace__fields > * {
+  break-inside: avoid;
+  margin-bottom: 8px;
+}
+
+@media (max-width: 700px) {
+  .rnica-bodysystem-workspace__content,
+  .rnica-bodysystem-workspace__fields {
+    columns: 1;
+  }
 }
 
 @media (max-width: 1100px) {
   .rnica-bodysystems { grid-template-columns: 1fr; }
   .rnica-bodysystems__rail { order: -1; }
-}
-
-@media (max-width: 700px) {
-  .rnica-bodysystem-workspace__content { grid-template-columns: 1fr; }
 }
