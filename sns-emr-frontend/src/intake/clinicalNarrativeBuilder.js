@@ -42,6 +42,8 @@
 //     never creates, infers, or duplicates POC problems itself.
 // ════════════════════════════════════════════════════════════════
 
+import { resolveReferralRecommendation } from "./referralRecommendation";
+
 // Stable, storage-safe keys for the Disease Trajectory selector. Persist
 // `value` in formData.diagnoses.diseaseTrajectory — never the label —
 // so relabeling copy later never requires a data migration.
@@ -123,6 +125,7 @@ export function buildClinicalNarrative(formData = {}, patient = {}) {
   const pcg = formData.demographics?.pcg || {};
   const psychosocial = formData.psychosocial || {};
   const spiritual = formData.spiritual || {};
+  const bereavement = formData.bereavement || {};
   const imminent = formData.imminentDeath || {};
   const admittedFrom = formData.demographics?.livingSituation?.admittedFrom || "";
 
@@ -235,19 +238,40 @@ export function buildClinicalNarrative(formData = {}, patient = {}) {
       : `Caregiver willingness to provide care is documented as ${pcg.willingToProvideCare || "not documented"}; ability to administer medications is documented as ${pcg.ableToAdministerMeds || "not documented"}.`
   ));
 
-  // Psychosocial findings.
-  const patientConcerns = psychosocial.patientConcerns || [];
+  // Psychosocial findings (referral-determination model, not a discipline
+  // assessment): summarize referral indicators, SNS-derived recommendation,
+  // and the RN-recorded Family Response (Accepted/Refused/Deferred). When
+  // SNS recommends the referral and the family refused, this is restated
+  // as an explicit "Status: REFUSED" clause -- refusal materially changes
+  // RN follow-up responsibilities and must be visible in the narrative
+  // (owner requirement 2026-09-25).
+  const psychosocialIndicators = psychosocial.referralIndicators || [];
+  const psychosocialRec = resolveReferralRecommendation(psychosocialIndicators);
   lines.push(narrativeLine(
-    patientConcerns.length > 0 || hasDocumentedValue(psychosocial.distressRating),
-    `${patientConcerns.length ? `Documented psychosocial concerns: ${patientConcerns.join(", ")}` : ""}${hasDocumentedValue(psychosocial.distressRating) ? `${patientConcerns.length ? "; " : ""}distress rating documented as ${psychosocial.distressRating}` : ""}.`
+    psychosocialIndicators.length > 0 || hasDocumentedValue(psychosocial.familyResponse),
+    `${psychosocialIndicators.length ? `Documented psychosocial referral indicators: ${psychosocialIndicators.join(", ")}; SNS-derived MSW referral recommendation: ${psychosocialRec.recommended ? "Yes" : "No"}` : ""}${hasDocumentedValue(psychosocial.familyResponse) ? `${psychosocialIndicators.length ? "; " : ""}Family response to MSW referral documented as ${psychosocial.familyResponse}` : ""}${psychosocialRec.recommended && psychosocial.familyResponse === "Refused" ? " — Recommended Referral Status: REFUSED" : ""}.`
   ));
 
-  // Spiritual findings.
-  const spiritualConcerns = spiritual.spiritualConcerns || [];
+  // Spiritual findings (referral-determination model, not a chaplain
+  // assessment): summarize referral indicators, SNS-derived recommendation,
+  // and the RN-recorded Family Response.
+  const spiritualIndicators = spiritual.referralIndicators || [];
+  const spiritualRec = resolveReferralRecommendation(spiritualIndicators);
   lines.push(narrativeLine(
-    spiritualConcerns.length > 0 || hasDocumentedValue(spiritual.spiritualDistressRating),
-    `${spiritualConcerns.length ? `Documented spiritual concerns: ${spiritualConcerns.join(", ")}` : ""}${hasDocumentedValue(spiritual.spiritualDistressRating) ? `${spiritualConcerns.length ? "; " : ""}spiritual distress rating documented as ${spiritual.spiritualDistressRating}` : ""}.`
+    spiritualIndicators.length > 0 || hasDocumentedValue(spiritual.familyResponse),
+    `${spiritualIndicators.length ? `Documented spiritual referral indicators: ${spiritualIndicators.join(", ")}; SNS-derived Spiritual Care referral recommendation: ${spiritualRec.recommended ? "Yes" : "No"}` : ""}${hasDocumentedValue(spiritual.familyResponse) ? `${spiritualIndicators.length ? "; " : ""}Family response to Spiritual Care referral documented as ${spiritual.familyResponse}` : ""}${spiritualRec.recommended && spiritual.familyResponse === "Refused" ? " — Recommended Referral Status: REFUSED" : ""}.`
   ));
+
+  // Bereavement findings (referral-determination model, not bereavement
+  // counseling documentation): summarize risk factors, SNS-derived
+  // recommendation, and the RN-recorded Family Response.
+  const bereavementIndicators = bereavement.riskFactors || [];
+  const bereavementRec = resolveReferralRecommendation(bereavementIndicators);
+  lines.push(narrativeLine(
+    bereavementIndicators.length > 0 || hasDocumentedValue(bereavement.familyResponse),
+    `${bereavementIndicators.length ? `Documented bereavement risk factors: ${bereavementIndicators.join(", ")}; SNS-derived bereavement follow-up recommendation: ${bereavementRec.recommended ? "Yes" : "No"}` : ""}${hasDocumentedValue(bereavement.familyResponse) ? `${bereavementIndicators.length ? "; " : ""}Family response to bereavement follow-up documented as ${bereavement.familyResponse}` : ""}${bereavementRec.recommended && bereavement.familyResponse === "Refused" ? " — Recommended Referral Status: REFUSED" : ""}.`
+  ));
+
 
   // Imminently-dying findings — only restated when explicitly charted.
   // HOPE J0050 ("appearsThreeDaysOrLess") is captured as the literal CMS

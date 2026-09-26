@@ -126,6 +126,7 @@ import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
+import { resolveReferralRecommendation } from "../intake/referralRecommendation";
 import {
   buildClinicalNarrative,
   DISEASE_TRAJECTORY_OPTIONS,
@@ -502,6 +503,13 @@ const INITIAL_FORM = {
   },
 
   // ─── 4. SYMPTOM IMPACT ─────────────────────────────
+  // No RN-facing UI (owner correction 2026-09-25: pain, dyspnea, GI, and
+  // anxiety/agitation severity are each documented exactly once in their
+  // true owning section -- Pain, Respiratory, GI, Neuro/Mental Status --
+  // never re-asked here). This object is a derived/computed store only,
+  // kept in sync live by a background effect, so HOPE J2051 export, SFV
+  // symptom logic, and reporting continue to work off a single source
+  // of truth.
   symptomImpact: {
     pain: "", shortnessOfBreath: "", anxiety: "",
     nausea: "", vomiting: "", diarrhea: "",
@@ -827,40 +835,49 @@ const INITIAL_FORM = {
 
   // ─── 20. PSYCHOSOCIAL ─────────────────────────────
   psychosocial: {
-    familySocialSupport: "",
-    primarySupportPerson: "", supportRelationship: "",
-    patientConcerns: [],
-    caregiverFamilyConcerns: [],
-    distressRating: "",
-    psychosocialHistory: [],
-    copingAssessment: "", copingNotes: "",
-    interventionPlan: [],
-    socialWorkVisitNeeded: false,
+    // Referral-determination workflow (owner design correction 2026-09-25,
+    // refined 2026-09-25): Psychosocial is NOT a standalone discipline
+    // assessment -- the RN documents findings only; SNS derives the MSW
+    // Recommended YES/NO from those findings (display-only, never stored --
+    // see referralRecommendation.js). The RN records only the Family
+    // Response. When Recommended=YES and Family Response=Refused, the
+    // Referral Refused record below captures who refused, when, and why
+    // (RN follow-up responsibility changes on refusal).
+    referralIndicators: [],
+    familyResponse: "", // Accepted / Refused / Deferred
+    refusal: { date: "", personRefusing: "", relationship: "", reason: "", recordedBy: "" },
     notes: "",
   },
 
   // ─── 21. SPIRITUAL ────────────────────────────────
   spiritual: {
-    patientActiveInFaithTradition: false,
-    patientFaith: "",
-    caregiverActiveInFaithTradition: false,
-    caregiverFaith: "",
-    spiritualConcerns: [],
-    spiritualDistressRating: "",
-    concernsDiscussed: false,
+    // Referral-determination workflow (owner design correction 2026-09-25,
+    // refined 2026-09-25): Spiritual is NOT a Chaplain assessment -- the RN
+    // documents findings only; SNS derives the Spiritual Care Recommended
+    // YES/NO (display-only, never stored). The RN records only the Family
+    // Response, plus a Referral Refused record on refusal. F3000
+    // (HOPE-required) is retained verbatim.
+    religiousPreference: "",
+    clergyInvolvement: "", // Not involved / Community clergy involved / Facility chaplain involved / Both
+    referralIndicators: [],
+    familyResponse: "", // Accepted / Refused / Deferred
+    refusal: { date: "", personRefusing: "", relationship: "", reason: "", recordedBy: "" },
     concernsAskedStatus: "", // HOPE F3000 A: 0 No / 1 Yes-discussed / 2 Yes-refused
-    concernsDiscussedDate: "",
-    chaplainNeeded: false,
+    concernsDiscussedDate: "", // HOPE F3000 B
     notes: "",
   },
 
   // ─── 22. BEREAVEMENT ──────────────────────────────
   bereavement: {
-    patientConcerns: [],
-    caregiverConcerns: [],
-    bereavementRisk: "",
+    // Referral-determination workflow (owner design correction 2026-09-25,
+    // refined 2026-09-25): Bereavement is NOT bereavement-counseling
+    // documentation -- the RN documents risk factors only; SNS derives the
+    // Bereavement Follow-Up Recommended YES/NO (display-only, never
+    // stored). The RN records only the Family Response, plus a Referral
+    // Refused record on refusal.
     riskFactors: [],
-    bereavementVisitNeeded: false,
+    familyResponse: "", // Accepted / Refused / Deferred
+    refusal: { date: "", personRefusing: "", relationship: "", reason: "", recordedBy: "" },
     notes: "",
   },
 
@@ -1111,8 +1128,8 @@ function validateRNICA(formData, mode = "ica") {
   }
 
   // Psychosocial ? Suicide/self-harm safety documentation (CDPH: complete, accurate documentation required)
-  if (formData.psychosocial.patientConcerns?.includes("Suicide concerns") && !formData.psychosocial.notes?.trim()) {
-    warnings["psychosocial.notes"] = "Safety: Suicide concerns indicated — document safety assessment/plan in Psychosocial Notes";
+  if (formData.psychosocial.referralIndicators?.includes("Suicide/self-harm risk indicated") && !formData.psychosocial.notes?.trim()) {
+    warnings["psychosocial.notes"] = "Safety: Suicide/self-harm risk indicated — document safety assessment/plan in Notes";
   }
 
   // SECTION 10 — Clinical Narrative & Disease Trajectory. The frozen
@@ -6353,6 +6370,102 @@ function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateFie
   );
 }
 
+// Owner correction (2026-09-25): Symptom Impact / "Symptom Burden Matrix"
+// is no longer an RN-facing card at all -- each J2051 item is documented
+// once in its true owning section (Pain, Respiratory, GI, Neuro/Mental
+// Status). HOPE J2051 continues to be derived from those source fields
+// via the symptomImpact sync effect (see below); there is no card or
+// component to render here.
+
+// ── Referral-Determination Suggestion (Psychosocial / Spiritual /
+// Bereavement) ───────────────────────────────────────────────────────────
+// Owner design correction (2026-09-25, refined 2026-09-25): Psychosocial,
+// Spiritual, and Bereavement are referral-determination workflows, not
+// standalone discipline assessments, and the RN must NOT manually classify
+// referral priority (Routine/Priority/Urgent) -- that adds documentation
+// burden. The RN documents findings only; SNS derives a binary YES/NO
+// recommendation from those findings (resolveReferralRecommendation,
+// deterministic rule-based logic, not a real AI/ML call -- shared with
+// clinicalNarrativeBuilder.js). This card is purely informational and
+// writes nothing to formData: the RN confirms by acting on the
+// recommendation, then records the outcome via the section's own Family
+// Response field (Accepted / Refused / Deferred).
+const REFERRAL_DOMAIN_LABELS = {
+  psychosocial: "MSW Referral",
+  spiritual: "Spiritual Care Referral",
+  bereavement: "Bereavement Follow-Up",
+};
+
+function ReferralRecommendationCard({ domain, indicators, styles }) {
+  const recommendation = useMemo(() => resolveReferralRecommendation(indicators), [indicators]);
+  const label = REFERRAL_DOMAIN_LABELS[domain] || "Referral";
+
+  return (
+    <div style={styles.infoBox}>
+      SNS Recommendation: <strong>{label} Recommended — {recommendation.recommended ? "YES" : "NO"}</strong>
+      <div style={{ marginTop: 4 }}>{recommendation.reason}</div>
+      <div style={{ fontSize: 12, marginTop: 6, opacity: 0.8 }}>
+        This recommendation is informational only. RN judgment governs whether a referral is made; record the outcome below.
+      </div>
+    </div>
+  );
+}
+
+const REFERRAL_REFUSED_LABELS = {
+  psychosocial: "MSW",
+  spiritual: "Spiritual Care",
+  bereavement: "Bereavement Services",
+};
+
+// Referral Refusal record (owner requirement 2026-09-25): when SNS
+// recommends a referral (YES) and the RN records Family Response =
+// Refused, this materially changes RN follow-up responsibilities and must
+// be captured explicitly -- who refused, their relationship to the
+// patient, when, and why (optional) -- surfaced as an alert here and
+// restated in the Clinical Narrative (buildClinicalNarrative). RN identity
+// is captured automatically from the signed-in user, never re-typed.
+function ReferralRefusalCard({ domain, recommended, familyResponse, refusal, updateField, styles, COLORS }) {
+  if (!recommended || familyResponse !== "Refused") return null;
+  const label = REFERRAL_REFUSED_LABELS[domain] || "Referral";
+
+  const handleField = (field, value) => {
+    updateField(`refusal.${field}`, value);
+    if (!refusal?.recordedBy) {
+      const currentUser = getCurrentUser();
+      updateField("refusal.recordedBy", currentUser?.full_name || currentUser?.name || "");
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, background: "#450a0a", borderColor: "#fb7185", color: "#fecaca" }}>
+        ⚠ {label} Referral Recommended — Family Refused {label}
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Date</div>
+          <input type="date" value={refusal?.date || ""} onChange={(e) => handleField("date", e.target.value)} style={styles.input} />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Person Refusing</div>
+          <input type="text" value={refusal?.personRefusing || ""} onChange={(e) => handleField("personRefusing", e.target.value)} style={styles.input} placeholder="Name" />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Relationship to Patient</div>
+          <input type="text" value={refusal?.relationship || ""} onChange={(e) => handleField("relationship", e.target.value)} style={styles.input} placeholder="e.g. Spouse, Adult Child, POA" />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Reason (optional)</div>
+          <textarea value={refusal?.reason || ""} onChange={(e) => handleField("reason", e.target.value)} style={styles.textarea} />
+        </label>
+        {refusal?.recordedBy && (
+          <div style={{ fontSize: 12, color: COLORS.gray }}>Recorded by: {refusal.recordedBy}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 const SEVERITY_COLORS = {
   CONTRAINDICATED: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
   MAJOR: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
@@ -8821,6 +8934,38 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (card.customRenderer === "referralRecommendation" && ["psychosocial", "spiritual", "bereavement"].includes(sectionKey)) {
+          const indicatorsPath = sectionKey === "bereavement" ? "riskFactors" : "referralIndicators";
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ReferralRecommendationCard
+                domain={sectionKey}
+                indicators={data?.[indicatorsPath]}
+                styles={styles}
+              />
+            </Card>
+          );
+        }
+
+        if (card.customRenderer === "referralRefusal" && ["psychosocial", "spiritual", "bereavement"].includes(sectionKey)) {
+          const indicatorsPath = sectionKey === "bereavement" ? "riskFactors" : "referralIndicators";
+          const recommendation = resolveReferralRecommendation(data?.[indicatorsPath]);
+          if (!recommendation.recommended || data?.familyResponse !== "Refused") return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ReferralRefusalCard
+                domain={sectionKey}
+                recommended={recommendation.recommended}
+                familyResponse={data?.familyResponse}
+                refusal={data?.refusal}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
         if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -9229,25 +9374,11 @@ const SECTION_CONFIGS = {
     ],
   },
 
-  symptomImpact: {
-    title: "Symptom Impact (J2051 A-H)",
-    subtitle: "HOPE J2051 — Rate each symptom 0-3 based on impact on daily life",
-    cards: [
-      {
-        title: "Symptom Impact Screening", hopeCode: "J2051", fields: [
-          { type: "radio", label: "A. Pain", path: "pain", hopeCode: "J2051A", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "B. Shortness of Breath", path: "shortnessOfBreath", hopeCode: "J2051B", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "C. Anxiety", path: "anxiety", hopeCode: "J2051C", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "D. Nausea", path: "nausea", hopeCode: "J2051D", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "E. Vomiting", path: "vomiting", hopeCode: "J2051E", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "F. Diarrhea", path: "diarrhea", hopeCode: "J2051F", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "G. Constipation", path: "constipation", hopeCode: "J2051G", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "radio", label: "H. Agitation", path: "agitation", hopeCode: "J2051H", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
-          { type: "input", label: "Assessment Date", path: "assessmentDate", inputType: "date" },
-        ],
-      },
-    ],
-  },
+  // symptomImpact intentionally has no RN-facing section config (owner
+  // correction 2026-09-25): each J2051 symptom is documented once, in its
+  // true owning section, never re-asked here. See the symptomImpact
+  // default-state comment and its background sync effect for how HOPE
+  // J2051 export/SFV/reporting still derive from those source fields.
 
   diagnoses: {
     title: "Diagnoses",
@@ -9852,94 +9983,70 @@ const SECTION_CONFIGS = {
   },
 
   psychosocial: {
-    title: "Psychosocial Screening",
-    subtitle: "Family/social support, patient/caregiver concerns, distress, coping",
+    title: "Psychosocial Referral Determination",
+    subtitle: "Is Social Work involvement needed? The RN documents findings — SNS determines the recommendation.",
     cards: [
-      { title: "Social Support", fields: [
-        { type: "radio", label: "Family/Social Support Level", path: "familySocialSupport", options: ["Strong support", "Adequate support", "Limited support", "No support", "Declined to answer"] },
-        { type: "input", label: "Primary Support Person", path: "primarySupportPerson" },
-        { type: "input", label: "Relationship", path: "supportRelationship" },
-      ]},
-      { title: "Patient Concerns", fields: [
-        { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
-          "None indicated",
-          "Anxiety about illness", "Depression", "Grief/loss", "Financial concerns",
-          "Family conflict", "Caregiver burden", "Social isolation", "Role changes",
-          "Unfinished business", "Fear of dying", "Loss of independence", "Body image concerns",
-          "Non-acceptance of diagnosis", "Potential for non-compliance", "Lack of coping skills",
-          "Suicide concerns", "Substance abuse concerns", "History of emotional illness",
-          "Cultural concerns", "Burial concerns", "Anger",
-          "Want/need help with advance directives", "Want/need help with funeral plans"
+      { title: "Referral Indicators", fields: [
+        { type: "checkboxGroup", label: "Findings supporting an MSW referral", path: "referralIndicators", options: [
+          "Family unable to cope", "Caregiver overwhelmed", "Caregiver burden present", "Family in denial",
+          "Family conflict present", "Limited hospice understanding", "Resource concerns (financial/housing/transportation)",
+          "Inadequate support system", "Suicide/self-harm risk indicated", "None indicated",
         ]},
       ]},
-      { title: "Caregiver/Family Concerns", fields: [
-        { type: "checkboxGroup", label: "Caregiver Concerns", path: "caregiverFamilyConcerns", options: [
-          "Anticipatory grief", "Caregiver fatigue", "Financial stress",
-          "Work-life balance", "Children/family coping", "Funeral planning", "Estate/legal matters"
-        ]},
+      { title: "SNS Referral Recommendation", customRenderer: "referralRecommendation" },
+      { title: "Family Response", fields: [
+        { type: "radio", label: "Family Response", path: "familyResponse", options: ["Accepted", "Refused", "Deferred"] },
+        { type: "textarea", label: "Notes", path: "notes" },
       ]},
-      { title: "Distress & Coping", fields: [
-        { type: "select", label: "Distress Thermometer (0-10)", path: "distressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
-        { type: "checkboxGroup", label: "Psychosocial History", path: "psychosocialHistory", options: [
-          "History of depression", "History of anxiety", "History of substance abuse",
-          "Current mental health treatment", "Psychiatric medications", "Previous counseling/therapy"
-        ]},
-        { type: "radio", label: "Coping Assessment", path: "copingAssessment", options: ["Effective coping", "Developing coping strategies", "Ineffective coping", "Crisis"] },
-        { type: "textarea", label: "Coping Notes", path: "copingNotes" },
-      ]},
-      { title: "Intervention Plan", fields: [
-        { type: "checkboxGroup", label: "Interventions", path: "interventionPlan", options: [
-          "Counseling referral", "Support group", "Community resources", "Crisis intervention", "Psychiatric evaluation"
-        ]},
-        { type: "checkbox", label: "Social Work Visit Needed", path: "socialWorkVisitNeeded" },
-        { type: "textarea", label: "Psychosocial Notes", path: "notes" },
-      ]},
+      { title: "Referral Refused", customRenderer: "referralRefusal" },
     ],
   },
 
   spiritual: {
-    title: "Spiritual Screening",
-    subtitle: "Patient/caregiver faith, spiritual concerns, chaplain needs",
+    title: "Spiritual Referral Determination",
+    subtitle: "Is Spiritual Care involvement needed? The RN documents findings — SNS determines the recommendation.",
     cards: [
-      { title: "Spiritual Assessment", fields: [
-        { type: "checkbox", label: "Patient Active in Faith Tradition", path: "patientActiveInFaithTradition" },
-        { type: "input", label: "Patient Faith Tradition", path: "patientFaith" },
-        { type: "checkbox", label: "Caregiver Active in Faith Tradition", path: "caregiverActiveInFaithTradition" },
-        { type: "input", label: "Caregiver Faith Tradition", path: "caregiverFaith" },
-        { type: "checkboxGroup", label: "Spiritual Concerns", path: "spiritualConcerns", options: [
-          "Meaning of illness", "Forgiveness", "Hope", "Legacy", "Prayer requests",
-          "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress",
-          "Fear", "Hopelessness"
+      { title: "Faith & Clergy", fields: [
+        { type: "input", label: "Religious / Faith Preference", path: "religiousPreference" },
+        { type: "select", label: "Clergy Involvement", path: "clergyInvolvement", options: ["Not involved", "Community clergy involved", "Facility chaplain involved", "Both"] },
+      ]},
+      { title: "Referral Indicators", fields: [
+        { type: "checkboxGroup", label: "Findings supporting a Spiritual Care referral", path: "referralIndicators", options: [
+          "Family requested clergy", "Patient requested clergy", "Last rites requested",
+          "Spiritual distress expressed by family", "Spiritual support needs identified",
+          "Existing clergy already involved", "None indicated",
         ]},
-        { type: "select", label: "Spiritual Distress Rating (0-10)", path: "spiritualDistressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
-        { type: "checkbox", label: "Spiritual / existential concerns asked", path: "concernsDiscussed" },
-        { type: "radio", label: "F3000: Was patient and/or caregiver asked about spiritual/existential concerns?", path: "concernsAskedStatus", hopeCode: "F3000",
+      ]},
+      { title: "SNS Referral Recommendation", customRenderer: "referralRecommendation" },
+      { title: "Family Response", fields: [
+        { type: "radio", label: "Family Response", path: "familyResponse", options: ["Accepted", "Refused", "Deferred"] },
+      ]},
+      { title: "Referral Refused", customRenderer: "referralRefusal" },
+      { title: "F3000 — Spiritual / Existential Concerns", hopeCode: "F3000", fields: [
+        { type: "radio", label: "Was patient and/or caregiver asked about spiritual/existential concerns?", path: "concernsAskedStatus", hopeCode: "F3000",
           options: [{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }] },
-        { type: "input", label: "Spiritual concerns discussion date", path: "concernsDiscussedDate", inputType: "date" },
-        { type: "checkbox", label: "Chaplain Referral Needed", path: "chaplainNeeded" },
-        { type: "textarea", label: "Spiritual Notes", path: "notes" },
+        { type: "input", label: "Date first asked", path: "concernsDiscussedDate", inputType: "date" },
+        { type: "textarea", label: "Additional Notes", path: "notes" },
       ]},
     ],
   },
 
   bereavement: {
-    title: "Bereavement Screening",
-    subtitle: "Patient/caregiver bereavement concerns, risk assessment",
+    title: "Bereavement Referral Determination",
+    subtitle: "Should bereavement follow-up be prioritized? The RN documents risk factors — SNS determines the recommendation.",
     cards: [
-      { title: "Bereavement Assessment", fields: [
-        { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
-          "Fear of death", "Unresolved grief", "Existential distress", "Legacy concerns", "Family preparedness",
-          "Multiple losses", "Active grieving"
+      { title: "Risk Factors", fields: [
+        { type: "checkboxGroup", label: "Findings supporting bereavement follow-up priority", path: "riskFactors", options: [
+          "High-risk family situation", "Vulnerable caregiver(s) identified", "Anticipatory grief concerns",
+          "Significant family stressors", "History of complicated grief", "Multiple recent losses", "None indicated",
         ]},
-        { type: "checkboxGroup", label: "Caregiver Concerns", path: "caregiverConcerns", options: [
-          "Anticipatory grief", "Previous losses", "Complicated grief history",
-          "Mental health concerns", "Substance abuse history", "Social isolation", "Concurrent stressors",
-          "Multiple losses", "Active grieving"
-        ]},
-        { type: "radio", label: "Bereavement Risk Level", path: "bereavementRisk", options: ["Low", "Moderate", "High"] },
-        { type: "checkbox", label: "Bereavement Visit Needed", path: "bereavementVisitNeeded" },
-        { type: "textarea", label: "Bereavement Notes", path: "notes" },
       ]},
+      { title: "SNS Referral Recommendation", customRenderer: "referralRecommendation" },
+      { title: "Family Response", fields: [
+        { type: "radio", label: "Family Response", path: "familyResponse", options: ["Accepted", "Refused", "Deferred"] },
+        { type: "textarea", label: "Notes", path: "notes" },
+      ]},
+      { title: "Referral Refused", customRenderer: "referralRefusal" },
     ],
   },
 
@@ -11375,12 +11482,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     setSaveStatus(null);
   }, []);
 
-  // Auto-derive all HOPE J2051 A-H Symptom Impact ratings from the
-  // clinical sections elsewhere in this same RNICA where each symptom is
-  // already assessed -- the RN shouldn't have to re-check something that
-  // was already documented. Each value only fills in while the Symptom
-  // Impact field is still blank, so a deliberate manual entry in Symptom
-  // Impact (which may legitimately differ) is never overwritten.
+  // Live single-source derivation of all HOPE J2051 A-H Symptom Impact
+  // ratings from the clinical sections where each symptom is actually
+  // assessed (owner design review 2026-09-25: "Document symptom severity
+  // once. Store symptom severity once. Reuse everywhere." -- Symptom
+  // Impact Screening no longer accepts independent RN entry for these
+  // eight items; it is now a read-only summary, so this effect always
+  // keeps `symptomImpact` in sync with its true source instead of only
+  // filling once while blank).
   //   A. Pain              <- Pain Assessment: painSeverityCategory (0-3)
   //   B. Shortness of Breath <- Respiratory: sobSeverity (None-Severe)
   //   C. Anxiety           <- Neuro/Mental Status: symptomsDemeanor checklist
@@ -11393,18 +11502,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const severityMap = { None: "0", Mild: "1", Moderate: "2", Severe: "3" };
     const painSeverity = formData.pain?.painSeverityCategory;
     const demeanor = formData.neurological?.symptomsDemeanor || [];
-    // symptomsDemeanor is a presence checklist, not a graded scale -- a
-    // checked box only tells us the symptom is present, so it's mapped to
-    // "1 - Mild" as a conservative starting point the RN can still adjust.
+    // symptomsDemeanor is a presence checklist, not a graded scale -- its
+    // absence is read as "0 - None reported" so the summary never shows a
+    // stale severity after the checkbox is unchecked.
     const derived = {
-      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : undefined,
-      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity],
-      anxiety: demeanor.includes("Anxiety") ? "1" : undefined,
-      nausea: severityMap[formData.gastrointestinal?.nausea],
-      vomiting: severityMap[formData.gastrointestinal?.vomiting],
-      diarrhea: severityMap[formData.gastrointestinal?.diarrhea],
-      constipation: severityMap[formData.gastrointestinal?.constipation],
-      agitation: demeanor.includes("Agitation") ? "1" : undefined,
+      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : "",
+      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity] ?? "",
+      anxiety: demeanor.includes("Anxiety") ? "1" : "0",
+      nausea: severityMap[formData.gastrointestinal?.nausea] ?? "",
+      vomiting: severityMap[formData.gastrointestinal?.vomiting] ?? "",
+      diarrhea: severityMap[formData.gastrointestinal?.diarrhea] ?? "",
+      constipation: severityMap[formData.gastrointestinal?.constipation] ?? "",
+      agitation: demeanor.includes("Agitation") ? "1" : "0",
     };
 
     setFormData((prev) => {
@@ -11412,7 +11521,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       let next = current;
       let changed = false;
       for (const key of Object.keys(derived)) {
-        if (!current[key] && derived[key] !== undefined) {
+        if (current[key] !== derived[key]) {
           next = { ...next, [key]: derived[key] };
           changed = true;
         }

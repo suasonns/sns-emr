@@ -618,15 +618,15 @@ export default function RNICACommandWorkspace({
   }
 
   if (viewMode === "screen" && activeScreen?.key === "painSymptomBurden") {
-    // Pain & Symptom Burden is its own standalone RNICA screen (owner
-    // direction 2026-09-25: "render for review" using what is already
-    // wired -- do not add fields). This reuses the existing, fully wired
-    // `pain` (HOPE J0900/J0915, pain intensity, characteristics,
-    // FLACC/PAINAD, management plan) and `symptomImpact` (HOPE J2051 A-H)
-    // legacy modules verbatim via the same renderWorkspaceSections prop
-    // already used for `vitals` in the evidenceIntake screen above --
-    // same persistence, same CMS-controlled values, no new UI, no new
-    // fields, no sample data.
+    // Pain & Symptom Burden is its own standalone RNICA screen. Owner
+    // correction 2026-09-25: Symptom Impact Screening ("J2051 A-H") is
+    // NOT rendered here as its own RN-facing section -- pain, dyspnea,
+    // nausea/vomiting/diarrhea/constipation, and anxiety/agitation are
+    // each documented exactly once, in their true owning section (Pain
+    // Assessment, Respiratory, GI, Neuro/Mental Status). HOPE J2051
+    // derivation/export/SFV/reporting logic still runs silently in the
+    // background off those source fields (see the symptomImpact sync
+    // effect) -- there is simply no duplicate RN-facing entry surface.
     return (
       <RnicaScreenShell
         patient={patientWithAdmissionFacts}
@@ -643,7 +643,7 @@ export default function RNICACommandWorkspace({
         canLock={canLock}
         statusContext={railStatusContext}
       >
-        {renderWorkspaceSections(["pain", "symptomImpact"])}
+        {renderWorkspaceSections(["pain"])}
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
           <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>

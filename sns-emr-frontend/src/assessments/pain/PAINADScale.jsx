@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainToolReference } from './PainGuide';
 import { getPainadInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -170,27 +170,27 @@ const PAINADScale = ({ value, onChange }) => {
         Score ranges (0 No Pain, 1-3 Mild, 4-6 Moderate, 7-10 Severe) are based on a standard 0-10 scale but have not been substantiated in the literature for this tool.
       </div>
 
-      {/* Scoring & Interpretation */}
-      <GuideBox title="Scoring & Interpretation">
-        <GradientBar />
-        <GuideList items={[
-          '0 = No Pain (green)',
-          '1-3 = Mild Pain (yellow-green)',
-          '4-6 = Moderate Pain (amber)',
-          '7-10 = Severe Pain (red)',
-        ]} />
-      </GuideBox>
+      <PainToolReference>
+        <GuideBox title="Scoring & Interpretation">
+          <GradientBar />
+          <GuideList items={[
+            '0 = No Pain (green)',
+            '1-3 = Mild Pain (yellow-green)',
+            '4-6 = Moderate Pain (amber)',
+            '7-10 = Severe Pain (red)',
+          ]} />
+        </GuideBox>
 
-      {/* Psychometric Properties */}
-      <GuideBox title="Psychometric Properties">
-        <GuideList items={[
-          'Source: Warden V, Hurley AC, Volicer L. Development and psychometric evaluation of the PAINAD scale. J Am Med Dir Assoc. 2003;4(1):9-15.',
-          'Target: For patients with advanced dementia who cannot self-report pain.',
-          'Administration: Observe patient for 5 minutes. Score each behavior 0-2. Takes < 5 minutes.',
-        ]} />
-      </GuideBox>
+        <GuideBox title="Psychometric Properties" style={{ marginBottom: 4 }}>
+          <GuideList items={[
+            'Source: Warden V, Hurley AC, Volicer L. Development and psychometric evaluation of the PAINAD scale. J Am Med Dir Assoc. 2003;4(1):9-15.',
+            'Target: For patients with advanced dementia who cannot self-report pain.',
+            'Administration: Observe patient for 5 minutes. Score each behavior 0-2. Takes < 5 minutes.',
+          ]} />
+        </GuideBox>
 
-      <References items={['Warden V, Hurley AC, Volicer L. (2003). Development and psychometric evaluation of the Pain Assessment in Advanced Dementia (PAINAD) scale.']} />
+        <References items={['Warden V, Hurley AC, Volicer L. (2003). Development and psychometric evaluation of the Pain Assessment in Advanced Dementia (PAINAD) scale.']} />
+      </PainToolReference>
     </div>
   );
 };

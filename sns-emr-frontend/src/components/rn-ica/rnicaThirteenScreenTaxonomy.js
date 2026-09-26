@@ -68,7 +68,12 @@ export const RNICA_THIRTEEN_SCREENS = [
     // with both in context.
     key: "painSymptomBurden",
     label: "Pain & Symptom Burden",
-    moduleKeys: ["pain", "symptomImpact"],
+    // Owner correction 2026-09-25: Symptom Impact Screening ("symptomImpact"
+    // / HOPE J2051 A-H) is no longer an RN-facing module -- each symptom is
+    // documented once, in its true owning section (Pain, Respiratory, GI,
+    // Neuro/Mental Status), and HOPE J2051 is derived from those fields.
+    // Only "pain" remains a countable module here.
+    moduleKeys: ["pain"],
   },
   {
     key: "diagnosisLcd",
