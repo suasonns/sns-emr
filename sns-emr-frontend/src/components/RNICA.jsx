@@ -6470,10 +6470,11 @@ function ReferralRefusalCard({ domain, recommended, familyResponse, refusal, upd
 // "FINAL OWNER REQUIREMENTS") ────────────────────────────────────────────
 // Read-only/derived cards that consume existing Pain documentation. Never
 // fabricate a value: every row either reflects an RN-entered field or is
-// omitted/"Not documented". AI and Overdue Alerts render nothing at all
-// (no card, no placeholder) when there is no grounded finding/triggered
-// rule -- enforced by the branch-level hide checks in the card-render
-// loop (search for "computeAiPainNotes" / "computePainOverdueAlerts").
+// omitted/"Not documented". AI Pain Analysis always renders (an honest
+// placeholder when nothing is grounded, so the feature is never
+// invisible). Overdue Alerts renders nothing at all (no card, no
+// placeholder) when no rule is triggered -- enforced by the branch-level
+// hide check in the card-render loop (search for "computePainOverdueAlerts").
 function SummaryRow({ label, value }) {
   if (value === undefined || value === null || value === "") return null;
   return (
@@ -9238,9 +9239,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         // [OWNER REVIEW -- 2026-09-26, superseded by FINAL OWNER
         // REQUIREMENTS] Current Pain Summary is a single read-only card
-        // (no separate "Pain Management Summary"). AI Pain Analysis and
-        // Overdue Action Alerts render nothing at all -- no card, no
-        // placeholder -- when there is no grounded finding/triggered rule.
+        // (no separate "Pain Management Summary"). AI Pain Analysis always
+        // renders (with an honest placeholder when there is nothing
+        // grounded to say). Overdue Action Alerts renders nothing at all
+        // -- no card, no placeholder -- when no rule is triggered.
         if (sectionKey === "pain" && card.customRenderer === "painAssessmentSummary") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -9250,7 +9252,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
 
         if (sectionKey === "pain" && card.customRenderer === "aiPainAnalysis") {
-          if (computeAiPainNotes(data).length === 0) return null;
+          // Always render: AiPainAnalysisCard already shows an honest
+          // "Insufficient reviewed pain data for analysis." placeholder
+          // when computeAiPainNotes() returns []. Hiding the whole card in
+          // that case made the feature invisible/undiscoverable during
+          // review -- it must always be present so the RN/owner can see
+          // it is implemented, not missing.
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <AiPainAnalysisCard data={data} styles={styles} />
