@@ -67,10 +67,10 @@
 .rnica-command-prep span { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; }
 .rnica-command-prep strong { margin-top: 0.15rem; }
 
-.rnica-command-layout { display: grid; grid-template-columns: 220px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
+.rnica-command-layout { display: grid; grid-template-columns: 196px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
 .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
 .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 720px; }
-.rnica-command-nav { padding: var(--cw-pad); border-right: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
+.rnica-command-nav { padding: 0.5rem; border-right: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
 .rnica-command-detail { padding: var(--cw-pad); }
 .rnica-command-rail { padding: var(--cw-pad); border-left: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
 .rnica-command .visit-recorder-card { margin-bottom: var(--cw-gap) !important; border-color: var(--sns-border) !important; border-radius: 8px !important; background: var(--sns-card); }
@@ -95,30 +95,33 @@
 .rnica-command-density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0.6rem 0; }
 .rnica-command-density button { min-height: var(--cw-control-height); padding: 0.25rem; font-size: var(--cw-nav-size); }
 .rnica-command-density button[aria-pressed="true"] { border-color: var(--sns-teal); color: var(--sns-teal); }
-.rnica-command-matrix { display: flex; flex-direction: column; gap: 0.3rem; }
-.rnica-command-matrix > button { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; width: 100%; min-height: max(38px, var(--cw-control-height)); text-align: left; background: var(--sns-card); font-size: var(--cw-nav-size); }
-.rnica-command-matrix > button.is-active { border-color: var(--sns-teal); box-shadow: inset 0.22rem 0 var(--sns-teal); }
-.rnica-command-matrix__module { display: flex; min-width: 0; align-items: center; gap: 0.35rem; }
-.rnica-command-matrix__title { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rnica-command-matrix__regulator { flex: 0 0 auto; color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 800; }
-.rnica-command-matrix__signals { display: grid; grid-template-columns: repeat(4, 2.2rem); gap: 0.15rem; color: var(--sns-muted); font-size: var(--cw-nav-meta-size); text-align: center; }
-.rnica-command-matrix__signals span:last-child { color: var(--sns-orange); font-weight: 800; }
+.rnica-command-matrix { display: flex; flex-direction: column; gap: 0.2rem; }
+/* [OWNER DESIGN CORRECTION -- 2026-09-25] Compact, quiet workflow-tracker
+   styling for the RNICA navigation only (not the outer EMR chart nav).
+   Reduced control height/padding, dropped bold/uppercase weight, and
+   removed the Open/Risk/Changed/HOPE/CDPH metadata badges in favor of a
+   single small completion dot -- patient information, not navigation,
+   should dominate the screen. */
+.rnica-command-matrix > button { display: flex; align-items: center; gap: 0.4rem; width: 100%; min-height: 28px; padding: 0.25rem 0.5rem; text-align: left; background: var(--sns-card); font-size: var(--cw-nav-size); font-weight: 400; }
+.rnica-command-matrix > button.is-active { border-color: var(--sns-teal); box-shadow: inset 0.18rem 0 var(--sns-teal); }
+.rnica-command-matrix > button.is-complete::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px; background: var(--sns-teal); }
+.rnica-command-matrix__title { min-width: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.rnica-command-screens { display: flex; flex-direction: column; gap: 0.5rem; }
-.rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.3rem; }
+.rnica-command-screens { display: flex; flex-direction: column; gap: 0.35rem; }
+.rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.2rem; }
 .rnica-command-screen-group__header {
-  display: flex; align-items: center; gap: 0.4rem; width: 100%;
-  min-height: max(34px, var(--cw-control-height)); text-align: left;
-  background: var(--sns-bgAlt); font-weight: 800; font-size: var(--cw-nav-size);
-  text-transform: uppercase; letter-spacing: 0.03em;
+  display: flex; align-items: center; gap: 0.35rem; width: 100%;
+  min-height: 26px; padding: 0.2rem 0.45rem; text-align: left;
+  background: var(--sns-bgAlt); font-weight: 500; font-size: var(--cw-nav-size);
+  text-transform: none; letter-spacing: normal;
 }
 .rnica-command-screen-group__header.is-active { border-color: var(--sns-teal); color: var(--sns-teal); }
 .rnica-command-screen-group__caret { flex: 0 0 auto; color: var(--sns-muted); }
 .rnica-command-screen-group__index { flex: 0 0 auto; color: var(--sns-muted); }
 .rnica-command-screen-group__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rnica-command-screen-group__progress { flex: 0 0 auto; color: var(--sns-muted); font-weight: 700; text-transform: none; }
+.rnica-command-screen-group__progress { flex: 0 0 auto; color: var(--sns-muted); font-weight: 400; font-size: var(--cw-nav-meta-size); text-transform: none; }
 .rnica-command-screen-group--crosscutting .rnica-command-screen-group__header { background: var(--sns-cardSoft); }
-.rnica-command-screen-group .rnica-command-matrix { padding-left: 0.6rem; }
+.rnica-command-screen-group .rnica-command-matrix { padding-left: 0.5rem; }
 
 .rnica-command-not-documented { color: var(--sns-muted); font-style: italic; font-weight: 400; }
 .rnica-command-story-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 0.6rem 0; }
@@ -275,7 +278,6 @@
   .rnica-command-nav { position: sticky; top: 4.25rem; z-index: 25; padding: 0.45rem; border-right: 0; border-bottom: 1px solid var(--sns-border); overflow: visible; }
   .rnica-command-density, .rnica-command-screens { display: none; }
   .rnica-command-nav:focus-within .rnica-command-screens { display: flex; flex-direction: column; max-height: 420px; margin-top: 0.4rem; overflow-y: auto; }
-  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.6rem; overflow: visible; }
   .rnica-command-rail { position: static; width: auto; max-height: none; padding: 0.6rem; border-left: 0; box-shadow: none; }
   .rnica-command-final-shortcut--mobile { display: block; margin: 0.4rem 0 0; }
@@ -320,7 +322,6 @@
   .rnica-command-nav { position: sticky; top: 0; z-index: 25; padding: 0.55rem; border-right: 0; border-bottom: 1px solid var(--sns-border); }
   .rnica-command-density, .rnica-command-screens { display: none; }
   .rnica-command-nav:focus-within .rnica-command-screens { display: flex; flex-direction: column; max-height: 420px; margin-top: 0.4rem; overflow-y: auto; }
-  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.65rem; }
   .rnica-command-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0.65rem; }
   .rnica-command-final-shortcut--mobile { display: block; margin-top: 0.4rem; }

@@ -515,25 +515,24 @@ export default function RNICACommandWorkspace({
     );
   }
 
-  if (viewMode === "screen" && activeSection === "demographics") {
-    // [OWNER DECISION -- 2026-09-25] "demographics" (HOPE Section A
-    // administrative items: A1005/A1010/A1110 x2/A1905/A1910) is now a
-    // sub-item of Evidence & Intake rather than its own top-level
-    // "HOPE Administrative Review" navigation step -- "HOPE should be
-    // populated from Evidence & Intake... The RN documents naturally. SNS
-    // maps to HOPE." Checked ahead of the generic Evidence & Intake branch
-    // below (module-level, not screen-level) so this specific sub-item
-    // still renders HopeAdministrativeReview instead of the vitals/overview
-    // content. Same component, same formData.demographics /
-    // formData.livingSituation persistence -- no schema change, only its
-    // navigation home changed.
+  if (viewMode === "screen" && activeScreen?.key === "hopeAdministrativeReview") {
+    // [OWNER DESIGN DECISION -- 2026-09-25, RESTORED] HOPE Administrative
+    // Review is restored as its own standalone RNICA screen (owner
+    // rejected the 2026-09-25 consolidation into Evidence & Intake --
+    // "RESTORE THIS ONE" / "THATS WHAT YOU DESTROYED", referring to the
+    // original 14-screen navigation). It is NOT a duplicate Face Sheet and
+    // NOT part of Evidence & Intake or Psychosocial. It renders the CMS
+    // Section A administrative items (A1005/A1010/A1110 x2/A1905/A1910)
+    // via HopeAdministrativeReview, reading/writing the same
+    // `formData.demographics` / `formData.livingSituation` state as
+    // before -- no persistence path change, no schema change.
     return (
       <RnicaScreenShell
         patient={patientWithAdmissionFacts}
         locked={locked}
         completedSections={completedSections}
         totalRoutes={routes.length}
-        activeScreenKey="evidenceIntake"
+        activeScreenKey="hopeAdministrativeReview"
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -563,7 +562,7 @@ export default function RNICACommandWorkspace({
     // the Clinical Snapshot leading the screen, above the evidence review
     // content (2026-09-25 owner correction: "Do not bury vitals beneath
     // evidence sections."). Discipline referrals (social work/spiritual
-    // care/volunteer/etc.) live under Clinical Review -- see
+    // care/volunteer/etc.) live under Orders & POC -- see
     // rnicaThirteenScreenTaxonomy.js. The former "Patient Demographics" tab
     // is replaced by EvidenceIntakeOverview -- per owner direction, RNICA
     // must not store or edit a second copy of Face Sheet demographics. It
@@ -723,20 +722,22 @@ export default function RNICACommandWorkspace({
                     <div className="rnica-command-matrix" aria-label={`${screen.label} sections`}>
                       {screen.routes.map((route) => {
                         const complete = completedSections.includes(route.key);
-                        const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
-                        const changed = complete && !locked;
                         return (
-                          <button type="button" key={route.key} className={activeSection === route.key ? "is-active" : ""} onClick={() => select(route.key)}>
-                            <span className="rnica-command-matrix__module">
-                              <span className="rnica-command-matrix__title">{route.label}</span>
-                              {route.regulator && <span className="rnica-command-matrix__regulator">{route.regulator}</span>}
-                            </span>
-                            <span className="rnica-command-matrix__signals">
-                              <span title="Completion">{complete ? "Done" : "Open"}</span>
-                              <span title="Risk">{missing ? "Risk" : "—"}</span>
-                              <span title="Changed">{changed ? "Changed" : "—"}</span>
-                              <span title="Missing requirements">{missing || "—"}</span>
-                            </span>
+                          <button
+                            type="button"
+                            key={route.key}
+                            className={`${activeSection === route.key ? "is-active" : ""} ${complete ? "is-complete" : ""}`.trim()}
+                            onClick={() => select(route.key)}
+                          >
+                            {/* [OWNER DESIGN CORRECTION -- 2026-09-25] Removed the
+                                per-item Open/Risk/Changed/Missing signal badges
+                                and the HOPE/CDPH regulator tag -- "exposes
+                                implementation and workflow metadata rather than
+                                guide clinical workflow... little RN value,
+                                visual clutter." A completed item is now
+                                indicated only by a quiet dot via .is-complete
+                                (see CSS), not text badges. */}
+                            <span className="rnica-command-matrix__title">{route.label}</span>
                           </button>
                         );
                       })}

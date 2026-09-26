@@ -1,61 +1,25 @@
-// RNICA approved 9-step workflow navigation taxonomy.
+// RNICA 13-screen presentation taxonomy.
 //
-// This is a PRESENTATION-ONLY grouping layer. It does not add, remove, or
-// change any clinical field, validation rule, response set, or backend
-// behavior -- it only defines how the existing assessment modules (see
-// rnIcaClinicalNavigation.js) are grouped and labeled for navigation.
+// This is a PRESENTATION-ONLY grouping layer (Phase B of the RNICA redesign
+// authorization). It does not add, remove, or change any clinical field,
+// validation rule, response set, or backend behavior -- it only defines how
+// the existing assessment modules (see rnIcaClinicalNavigation.js) are
+// grouped and labeled for navigation.
 //
-// [OWNER DECISION -- 2026-09-25, "FINAL GITHUB IMPLEMENTATION PACKAGE"]
-// Superseded the prior 13(+Other)-screen taxonomy (numbered accordion,
-// one entry per data domain). RNICA navigation represents WORKFLOW, not a
-// one-to-one map of every data domain. The approved, exact 9-step order is:
-//   1. Patient Story
-//   2. Evidence & Intake
-//   3. Clinical Review    (NEW -- synthesis workspace; see below)
-//   4. Functional Status
-//   5. Pain Assessment    (renamed from "Pain & Symptom Burden")
-//   6. Caregiver & Support
-//   7. Safety & Risk       (renamed from "Safety & Clinical Risk")
-//   8. Compliance          (renamed from "Compliance & Readiness")
-//   9. Finalize            (renamed from "Finalization")
-// Do not add additional primary navigation items and do not reintroduce
-// HOPE Administrative Review, Diagnosis & LCD, Body Systems, ACP & Goals of
-// Care, Orders & POC, or AI Action Center as their own top-level steps --
-// per owner direction their underlying modules still exist and are still
-// fully RN-documentable, just re-homed as noted per screen below:
-//
-//   - HOPE Administrative Review's "demographics" module (CMS Section A:
-//     A1005/A1010/A1110 x2/A1905/A1910) is now owned by Evidence & Intake
-//     (2nd sub-item, alongside vitals) -- "HOPE should be populated from
-//     Evidence & Intake" per owner direction. Same component
-//     (HopeAdministrativeReview), same formData.demographics /
-//     formData.livingSituation persistence -- only its screen membership
-//     changed. See RNICACommandWorkspace.jsx's dedicated
-//     `activeSection === "demographics"` render branch.
-//   - Diagnosis & LCD ("diagnoses"), Body Systems (the ten body-system
-//     modules), and ACP & Goals of Care ("advancedCarePlanning") are now
-//     owned by Clinical Review -- owner direction: "Clinical Review...
-//     may contain: Diagnosis & LCD, Disease Trajectory, Prognosis Support,
-//     Supporting Evidence, Clinical Narrative, ACP & Goals of Care...
-//     without becoming separate navigation entries." Body Systems was not
-//     enumerated by name in owner direction; it is grouped here rather
-//     than left without any navigation home, consistent with the same
-//     "Clinical Review is the synthesis workspace" principle and the
-//     approved mockup's Clinical Review screen showing a Systems Review
-//     Summary. Flagged for explicit owner confirmation.
-//   - Orders & POC ("admissionsOrder", "ordersHub", "referrals") are now
-//     owned by Clinical Review -- owner direction: "Orders remain
-//     available from Clinical Review / Plan of Care integration."
-//   - AI Action Center is removed entirely as a navigation entry (no
-//     screen owns it). "AI Action Center remains globally available. Do
-//     not place AI Action Center inside RNICA workflow navigation." Its
-//     content (RNICA Intelligence) remains visible inline on the
-//     Finalization screen (unchanged) -- a persistent global header
-//     button is a separate, not-yet-built UI affordance outside the scope
-//     of this navigation restructuring.
-//
-// Each screen still groups the same, unchanged module routes -- no field,
-// validation, or persistence path changes as a result of this file.
+// Module ownership per screen is taken directly from the repository's own
+// authoritative design docs -- NOT re-derived here:
+//   - docs/tenant-platform/RNICA_SCREEN_AUTHORITY_MATRIX.md (v2, screen
+//     ownership/consumes/produces per screen)
+//   - docs/tenant-platform/RNICA_REDESIGN_SOURCE_OF_TRUTH.md (Screens 1-13,
+//     "Always visible" / "Do not touch" per screen)
+// Screens 1 (Patient Story), 11 (Compliance & Readiness), 12 (AI Action
+// Center), and the amendment-history portion of 13 (Finalization) are
+// documented as owning NO module ("Owns: Nothing" / "Presentation only") --
+// their content already exists as cross-cutting rail panels (RNICA
+// Intelligence, Validation/readiness, AmendmentPanel) rather than as a
+// legacy form module. Selecting one of these screens navigates to the
+// existing screen that already surfaces that panel and scrolls/highlights
+// it, instead of duplicating or rebuilding it.
 
 export const RNICA_THIRTEEN_SCREENS = [
   {
@@ -69,29 +33,52 @@ export const RNICA_THIRTEEN_SCREENS = [
   {
     key: "evidenceIntake",
     label: "Evidence & Intake",
-    // Vitals (Clinical Snapshot) render inline, always visible, leading
-    // the screen -- see RNICACommandWorkspace.jsx. "demographics" (HOPE
-    // Section A administrative items) is folded in here per the
-    // 2026-09-25 owner decision above -- not a separate top-level step.
-    moduleKeys: ["vitals", "demographics"],
+    // [OWNER-DIRECTION OVERRIDE -- 2026-09-25, reordered ahead of HOPE
+    // Administrative Review] This is the first screen the nurse actually
+    // wants after Patient Story: referral reason, admission source,
+    // supporting documents, and decline evidence give the clinical context
+    // the RN needs before anything else. Supersedes
+    // RNICA_SCREEN_AUTHORITY_MATRIX.md #2's prior "legacy demographics,
+    // vitals, referrals modules" grouping: discipline referrals (social
+    // work/spiritual care/volunteer/dietitian/pharmacist) are a
+    // post-assessment care-planning decision, not intake evidence -- moved
+    // to `ordersPoc` (screen 10) below. HOPE administrative demographics
+    // moved to `hopeAdministrativeReview` below. `vitals` stays owned by
+    // this screen but is no longer a separate subnav tab -- see
+    // RNICACommandWorkspace.jsx's evidenceIntake screen render.
+    moduleKeys: ["vitals"],
   },
   {
-    // [OWNER DECISION -- 2026-09-25] NEW screen. Clinical Review is the
-    // synthesis workspace: disease trajectory, hospice support rationale,
-    // systems summary, and problem list, consuming Evidence & Intake,
-    // Functional Status, Pain, Caregiver & Support, and Safety & Risk. Its
-    // own documentation sub-items (Diagnosis & LCD, Body Systems, ACP &
-    // Goals of Care, Orders & POC) are folded in here rather than
-    // duplicating another documentation form at the top level.
-    key: "clinicalReview",
-    label: "Clinical Review",
-    moduleKeys: [
-      "diagnoses", "advancedCarePlanning",
-      "neurological", "cardiovascular", "respiratory", "infection",
-      "gastrointestinal", "nutrition", "endocrine", "genitourinary",
-      "musculoskeletal", "skin",
-      "admissionsOrder", "ordersHub", "referrals",
-    ],
+    // [OWNER-DIRECTION OVERRIDE -- 2026-09-25, reordered after Evidence &
+    // Intake] HOPE Section A administrative items (A1005/A1010/A1110/
+    // A1905/A1910, legacy "demographics" module) are their own screen --
+    // never inside Evidence & Intake, never inside Psychosocial. Owns the
+    // legacy "demographics" module key so HOPE-requirement jump links for
+    // these items land here.
+    key: "hopeAdministrativeReview",
+    label: "HOPE Administrative Review",
+    moduleKeys: ["demographics"],
+  },
+  {
+    // [PRODUCT-AUTHORITY DECISION -- 2026-09-22, final] Order 3-5 is
+    // Pain & Symptom Burden, Diagnosis & LCD, Functional Status -- see
+    // docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md and
+    // RNICA_SCREEN_AUTHORITY_MATRIX.md #3. Identify pain/symptom burden
+    // before establishing diagnosis; interpret functional status last,
+    // with both in context.
+    key: "painSymptomBurden",
+    label: "Pain & Symptom Burden",
+    // Owner correction 2026-09-25: Symptom Impact Screening ("symptomImpact"
+    // / HOPE J2051 A-H) is no longer an RN-facing module -- each symptom is
+    // documented once, in its true owning section (Pain, Respiratory, GI,
+    // Neuro/Mental Status), and HOPE J2051 is derived from those fields.
+    // Only "pain" remains a countable module here.
+    moduleKeys: ["pain"],
+  },
+  {
+    key: "diagnosisLcd",
+    label: "Diagnosis & LCD",
+    moduleKeys: ["diagnoses"],
   },
   {
     key: "functionalStatus",
@@ -99,14 +86,16 @@ export const RNICA_THIRTEEN_SCREENS = [
     moduleKeys: ["performanceStatus"],
   },
   {
-    key: "painSymptomBurden",
-    label: "Pain Assessment",
-    // Owner correction 2026-09-25: Symptom Impact Screening ("symptomImpact"
-    // / HOPE J2051 A-H) is no longer an RN-facing module -- each symptom is
-    // documented once, in its true owning section (Pain, Respiratory, GI,
-    // Neuro/Mental Status), and HOPE J2051 is derived from those fields.
-    // Only "pain" remains a countable module here.
-    moduleKeys: ["pain"],
+    key: "bodySystems",
+    label: "Body Systems",
+    // RNICA_REDESIGN_SOURCE_OF_TRUTH.md Screen 6: the ten body-system
+    // domains only. SFV and Imminent Death are covered under their own
+    // screens per the Source of Truth (Screen 8, Safety & Clinical Risk).
+    moduleKeys: [
+      "neurological", "cardiovascular", "respiratory", "infection",
+      "gastrointestinal", "nutrition", "endocrine", "genitourinary",
+      "musculoskeletal", "skin",
+    ],
   },
   {
     key: "caregiverSupport",
@@ -117,15 +106,30 @@ export const RNICA_THIRTEEN_SCREENS = [
   },
   {
     key: "safetyClinicalRisk",
-    label: "Safety & Risk",
+    label: "Safety & Clinical Risk",
     // RNICA_REDESIGN_SOURCE_OF_TRUTH.md Screen 8: fall risk, oxygen safety,
     // home/disaster safety, imminent-death screening -- legacy `safety` and
     // `imminentDeath` modules, plus SFV per the Feature-to-UI Wiring Matrix.
     moduleKeys: ["safety", "imminentDeath", "sfv"],
   },
   {
+    key: "acpGoalsOfCare",
+    label: "ACP & Goals of Care",
+    moduleKeys: ["advancedCarePlanning"],
+  },
+  {
+    key: "ordersPoc",
+    label: "Orders & POC",
+    // [OWNER-DIRECTION OVERRIDE -- 2026-09-24] `referrals` (discipline
+    // referrals: social work/spiritual care/volunteer/dietitian/pharmacist)
+    // moved here from Evidence & Intake -- these are care-planning
+    // decisions made once the comprehensive assessment is complete, not
+    // intake evidence gathered before assessment begins.
+    moduleKeys: ["admissionsOrder", "ordersHub", "referrals"],
+  },
+  {
     key: "complianceReadiness",
-    label: "Compliance",
+    label: "Compliance & Readiness",
     // RNICA_SCREEN_AUTHORITY_MATRIX.md #11: "Owns: Presentation only."
     // Backed by getRnicaFinalizationReadiness -- same source as the Lock
     // gate. Surfaced today via the Finalization screen's readiness/
@@ -136,14 +140,23 @@ export const RNICA_THIRTEEN_SCREENS = [
     railTarget: "validation",
   },
   {
+    key: "aiActionCenter",
+    label: "AI Action Center",
+    // RNICA_SCREEN_AUTHORITY_MATRIX.md #12: "Owns: No clinical source
+    // data." Backed by getRnicaIntelligence -- the existing RNICA
+    // Intelligence rail panel.
+    moduleKeys: [],
+    crossCutting: true,
+    landingModuleKey: "finalization",
+    railTarget: "intelligence",
+  },
+  {
     key: "finalization",
-    label: "Finalize",
+    label: "Finalization",
     // RNICA_SCREEN_AUTHORITY_MATRIX.md #13: narrative, readiness,
     // attestation, signature, lock, amendment, and audit review all live
     // here today (AmendmentPanel is rendered inside the finalization
-    // module -- see RNICA.jsx:6099). RNICA Intelligence (formerly reached
-    // via the separate "AI Action Center" nav entry) also surfaces inline
-    // here.
+    // module -- see RNICA.jsx:6099).
     moduleKeys: ["finalization"],
   },
 ];
