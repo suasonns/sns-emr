@@ -365,6 +365,7 @@ export default function RNICACommandWorkspace({
 
   const [density, setDensity] = useState(storedDensity);
   const [viewMode, setViewMode] = useState("screen");
+  const [genericNavOpen, setGenericNavOpen] = useState(false);
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
@@ -659,6 +660,17 @@ export default function RNICACommandWorkspace({
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
           <span>{completedSections.length}/{routes.length} sections</span>
           {activeScreenIndex >= 0 && <span>Screen {activeScreenIndex + 1} of {RNICA_THIRTEEN_SCREENS.length}</span>}
+          {/* Same mobile workflow-nav trigger pattern as RnicaScreenShell
+              (owner correction 2026-09-26: RnicaWorkflowRail must work for
+              every RNICA screen, not just the 4 dedicated-shell ones). */}
+          <button
+            type="button"
+            className="rnica-screen__mobile-nav-trigger"
+            aria-haspopup="dialog"
+            onClick={() => setGenericNavOpen(true)}
+          >
+            Workflow
+          </button>
         </div>
       </ClinicalCommandHeader>
 
@@ -716,6 +728,13 @@ export default function RNICACommandWorkspace({
       </ClinicalCommandContextBar>
 
       <ClinicalCommandLayout className="rnica-command-layout">
+        <RnicaWorkflowRail
+          activeScreenKey={activeScreen?.key}
+          onSelectScreen={selectScreenTab}
+          statusContext={railStatusContext}
+          density={density}
+          onChangeDensity={changeDensity}
+        />
         <ScrollRegion name="detail" className="rnica-command-detail">
           <>
               {/* FR-002/FR-005: Visit Recording is no longer a permanent
@@ -796,6 +815,14 @@ export default function RNICACommandWorkspace({
           </section>
         </ScrollRegion>
       </ClinicalCommandLayout>
+
+      <RnicaWorkflowSheet
+        open={genericNavOpen}
+        onClose={() => setGenericNavOpen(false)}
+        activeScreenKey={activeScreen?.key}
+        onSelectScreen={selectScreenTab}
+        statusContext={railStatusContext}
+      />
     </ClinicalCommandWorkspace>
   );
 }

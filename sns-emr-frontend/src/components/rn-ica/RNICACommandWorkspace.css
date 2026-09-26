@@ -119,13 +119,16 @@
 }
 .rnica-command-card__heading--toggle h2 { margin: 0; }
 
-/* [OWNER DIRECTIVE -- 2026-09-26] Removed the duplicate numbered
-   ("1 Patient Story / 2 Evidence & Intake / ...") .rnica-command-nav
-   navigator column entirely -- RnicaWorkflowRail (RNICA WORKFLOW) is the
-   single approved workflow nav; this generic-layout column duplicated it.
-   The "Jump to" toolbar dropdown remains the quick-navigation control for
-   this layout. Two columns now: detail + intelligence/save rail. */
-.rnica-command-layout { display: grid; grid-template-columns: minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
+/* [OWNER DIRECTIVE -- 2026-09-26, reversed 2026-09-26] Restored
+   RnicaWorkflowRail (the "RNICA WORKFLOW" nav) as this layout's workflow
+   navigator -- owner correction: "THIS NAVBAR SHOULD BE WORKING FOR ALL
+   NOT FOR JUST THE FIRST 3 TABS." The numbered .rnica-command-nav column
+   that used to live here was a bespoke duplicate and stays removed, but
+   RnicaWorkflowRail (already used by Patient Story/HOPE Administrative
+   Review/Evidence & Intake/Pain & Symptom Burden) is now rendered here
+   too, so every RNICA screen shares the exact same nav component/state.
+   The "Jump to" toolbar dropdown remains as a secondary shortcut. */
+.rnica-command-layout { display: grid; grid-template-columns: 270px minmax(28rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
 .rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
 .rnica-command-detail, .rnica-command-rail { max-height: 720px; }
 .rnica-command-detail { padding: var(--cw-pad); }
