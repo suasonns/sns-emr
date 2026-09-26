@@ -30,6 +30,10 @@ import {
   RNICA_ASSESSMENT_MODULES,
   validateBodyMapRegions,
 } from "./rn-ica/rnIcaClinicalNavigation";
+import { LANGUAGE_OPTIONS, ETHNICITY_OPTIONS, RACE_OPTIONS } from "./rn-ica/hope-admin-review/HopeAdministrativeReview";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
+import { Checkbox } from "./ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { listSfvRequirements } from "../api/sfv";
@@ -372,6 +376,12 @@ const INITIAL_FORM = {
   demographics: {
     firstName: "", lastName: "", dob: "", gender: "",
     race: [], ethnicity: [], preferredLanguage: "", needsInterpreter: false,
+    // A1005/A1010 source-attribution: recorded only when "Patient unable to
+    // respond" is selected for that item, per CMS HOPE guidance -- when
+    // another source supplies race/ethnicity, that source is documented
+    // alongside the coded categories (owner design decision 2026-09-25).
+    raceInformationSource: "", raceInformationSourceOther: "",
+    ethnicityInformationSource: "", ethnicityInformationSourceOther: "",
     religion: "", maritalStatus: "", militaryService: "", phone: "", alternatePhone: "",
     address: { street: "", city: "", state: "", zip: "", county: "" },
     emergencyContact: { name: "", relationship: "", phone: "" },
@@ -384,6 +394,19 @@ const INITIAL_FORM = {
       healthStatus: "", anxietyLevel: "",
       ableToAdministerMeds: "", willingToProvideCare: "",
       pcgConcerns: "",
+      // Cross-checked directly against real HospiceMD "Communications & Other
+      // Factors > PCG" section (2026-09-25 owner-provided screenshots): these
+      // 4 fields match that section 1:1. PCG education needs are intentionally
+      // NOT duplicated here — the existing Teaching Needs module (moduleKey
+      // "teachingNeeds", DEFAULT_EDUCATION_TOPICS) already covers "Teach
+      // Patient/Family/PCG" with all 4 HospiceMD topics (Hospice, Disease
+      // process, Medication, Advance directive) as a superset.
+      participatesInCare: "", // Is PCG able to participate in care?
+      signLanguageInterpreterNeeded: "", // If PCG hard of hearing/deaf, sign-language interpreter needed?
+      householdChildren: "", // Any young children at home?
+      householdChildrenDetail: "",
+      householdPets: "", // Any pets? (If yes, specify)
+      householdPetsDetail: "",
       // CDPH Caregiver Evaluation (Gap #2 — elevated for survey visibility)
       caregiverEvaluation: {
         physicalAbility: "",
@@ -396,6 +419,16 @@ const INITIAL_FORM = {
         supportSystemAdequacy: "",
         evaluationNotes: "",
       },
+    },
+    // Patient's own medication self-administration capability — cross-checked
+    // against real HospiceMD "Communications & Other Factors > Patient"
+    // section: "Is Patient able to safely administer meds?" + "If No, who is
+    // able to safely administer meds to Patient?" Distinct from the PCG's own
+    // ableToAdministerMeds above (that is the caregiver's capability, this is
+    // the patient's).
+    medicationSafety: {
+      selfAdministersMeds: "",
+      medsAdministeredBy: "",
     },
     livingSituation: {
       siteOfService: "", admittedFrom: "",
@@ -1214,14 +1247,16 @@ function FormSelect({ label, value, onChange, options, required, hopeCode, disab
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <select style={styles.select} value={value || ""} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-        <option value="">— Select —</option>
-        {options.map((opt) => (
-          <option key={typeof opt === "string" ? opt : opt.value} value={typeof opt === "string" ? opt : opt.value}>
-            {typeof opt === "string" ? opt : opt.label}
-          </option>
-        ))}
-      </select>
+      <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger><SelectValue placeholder="— Select —" /></SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => {
+            const val = typeof opt === "string" ? opt : opt.value;
+            const lbl = typeof opt === "string" ? opt : opt.label;
+            return <SelectItem key={val} value={val}>{lbl}</SelectItem>;
+          })}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -1237,18 +1272,18 @@ function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
         {sfv && <> <SfvTag /></>}
       </label>
-      <div style={styles.radioGroup}>
+      <RadioGroup style={styles.radioGroup} value={value ?? undefined} onValueChange={onChange}>
         {options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
           const lbl = typeof opt === "string" ? opt : opt.label;
           return (
             <label key={val} style={styles.radioLabel}>
-              <input type="radio" checked={value === val} onChange={() => onChange(val)} />
+              <RadioGroupItem value={val} />
               {lbl}
             </label>
           );
         })}
-      </div>
+      </RadioGroup>
     </div>
   );
 }
@@ -1291,17 +1326,17 @@ function FormTriState({ label, value, onChange, hopeCode }) {
         {label}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <div style={styles.radioGroup}>
+      <RadioGroup style={styles.radioGroup} value={normalized || "unassessed"} onValueChange={(v) => onChange(v === "unassessed" ? "" : v)}>
         {options.map((opt) => (
           <label key={opt.value || "unassessed"} style={{
             ...styles.radioLabel,
             ...(opt.value === "" && normalized === "" ? { color: COLORS.gray, fontStyle: "italic" } : {}),
           }}>
-            <input type="radio" checked={normalized === opt.value} onChange={() => onChange(opt.value)} />
+            <RadioGroupItem value={opt.value || "unassessed"} />
             {opt.label}
           </label>
         ))}
-      </div>
+      </RadioGroup>
     </div>
   );
 }
@@ -1326,8 +1361,8 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
           const lbl = typeof opt === "string" ? opt : opt.label;
           return (
             <label key={val} style={styles.checkboxLabel}>
-              <input type="checkbox" checked={values.includes(val)} onChange={() => toggle(val)} />
-              {lbl}
+              <Checkbox checked={values.includes(val)} onCheckedChange={() => toggle(val)} />
+              <span>{lbl}</span>
             </label>
           );
         })}
@@ -1342,7 +1377,7 @@ function FormCheckbox({ label, checked, onChange, disabled = false }) {
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <label style={{ ...styles.checkboxLabel, ...styles.formGroup, opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>
-      <input type="checkbox" checked={checked || false} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <Checkbox checked={checked || false} disabled={disabled} onCheckedChange={onChange} />
       <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
     </label>
   );
@@ -2642,11 +2677,10 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
                     }}
                     title={excluded ? "Already coded as Principal Diagnosis — not double-entered per HOPE guidance." : ""}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
                       disabled={excluded}
-                      onChange={(e) => setHope(cat.key, e.target.checked)}
+                      onCheckedChange={(v) => setHope(cat.key, Boolean(v))}
                     />
                     <span>{cat.label}</span>
                   </label>
@@ -2681,7 +2715,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
           Other
         </div>
         <label style={styles.checkboxLabel}>
-          <input type="checkbox" checked={Boolean(hope.other)} onChange={(e) => setHope("other", e.target.checked)} />
+          <Checkbox checked={Boolean(hope.other)} onCheckedChange={(v) => setHope("other", Boolean(v))} />
           <span>Other Medical Condition</span>
         </label>
         <HopeTag code="I8005" />
@@ -2702,6 +2736,18 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
     </div>
   );
 }
+
+// CMS HOPE J2051/J2053 Symptom Impact scale -- the full 5-value response
+// set (Not at all / Slight / Moderate / Severe / Not applicable), not the
+// collapsed 4-value None/Mild/Moderate/Severe set used previously. Codes
+// 0/1/2/3/9 match hopeReportMapper.js's IMPACT_MAP exactly.
+const SYMPTOM_IMPACT_OPTIONS = [
+  { value: "0", label: "0 — Not at all" },
+  { value: "1", label: "1 — Slight" },
+  { value: "2", label: "2 — Moderate" },
+  { value: "3", label: "3 — Severe" },
+  { value: "9", label: "9 — Not applicable" },
+];
 
 const PPS_ORDER = ["100%", "90%", "80%", "70%", "60%", "50%", "40%", "30%", "20%", "10%", "0%"];
 const FAST_ORDER = ["1", "2", "3", "4", "5", "6a", "6b", "6c", "6d", "6e", "7a", "7b", "7c", "7d", "7e", "7f"];
@@ -2888,11 +2934,131 @@ function DeclineTrackerCard({ patientId, assessmentId, performanceData, weight, 
   );
 }
 
+// Owner bug report (2026-09-25, HIGH severity, clinical data integrity):
+// switching the Temperature unit toggle must convert the stored numeric
+// value, not just relabel it (98.6 was staying "98.6" after switching to
+// °C instead of becoming 37.0). Standard clinical conversion formulas;
+// rounded to one decimal place, matching the field's normal precision.
+function convertTemperature(value, fromUnit, toUnit) {
+  if (value === "" || value === null || value === undefined) return value;
+  const num = Number(value);
+  if (Number.isNaN(num) || fromUnit === toUnit) return value;
+  const converted = fromUnit === "F" ? ((num - 32) * 5) / 9 : (num * 9) / 5 + 32;
+  return Math.round(converted * 10) / 10;
+}
+
 // Auto-calculates BMI from height (inches) and weight (lbs) so it is never
 // entered as an independent, unrelated manual value. The field remains
 // editable (RN can override), but is pre-populated/kept in sync whenever
 // height or weight change, and is still persisted at vitals.bmi in the
 // existing form_data JSONB model (no new storage location).
+// Vital signs are clinical *concepts*, not raw database columns — a nurse
+// reads "BP 120/80" as one measurement, not two independent numbers that
+// happen to live in separate fields. Each tile below groups the inputs that
+// make up a single clinical reading (e.g. Systolic/Diastolic under one
+// "Blood Pressure" label) so the whole panel can be scanned in <2 seconds.
+function VitalSignsClinicalCard({ data, updateField, styles, COLORS }) {
+  const tileStyle = {
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    padding: "8px 10px",
+    background: COLORS.bg,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    minWidth: 0,
+  };
+  const rowStyle = { display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap" };
+  const numInputStyle = { ...styles.input, width: 52, textAlign: "center", padding: "5px 4px", flex: "0 0 auto" };
+  const bpInputStyle = { ...styles.input, width: 46, textAlign: "center", padding: "5px 4px", flex: "0 0 auto", fontWeight: 700 };
+  const unitStyle = { fontSize: 10.5, color: COLORS.gray, fontWeight: 600, whiteSpace: "nowrap" };
+  const smallSelectStyle = { ...styles.select, fontSize: 10.5, padding: "3px 6px" };
+  const unitToggleBtn = (active) => ({
+    padding: "3px 7px", borderRadius: 5, fontSize: 10.5, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${active ? COLORS.teal : COLORS.border}`,
+    background: active ? COLORS.tealBg : "transparent",
+    color: active ? COLORS.tealDark : COLORS.gray,
+  });
+
+  const temperatureUnit = data?.temperatureUnit || "F";
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+      <div style={tileStyle}>
+        <label style={styles.label}>Temperature</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.temperature ?? ""} placeholder="98.6"
+            onChange={(e) => updateField("temperature", e.target.value)} />
+          <div style={{ display: "flex", gap: 4 }}>
+            {["F", "C"].map((u) => (
+              <button key={u} type="button" style={unitToggleBtn(temperatureUnit === u)}
+                onClick={() => {
+                  if (u === temperatureUnit) return;
+                  updateField("temperature", convertTemperature(data?.temperature, temperatureUnit, u));
+                  updateField("temperatureUnit", u);
+                }}>°{u}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={tileStyle}>
+        <label style={styles.label}>Pulse</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.pulse ?? ""}
+            onChange={(e) => updateField("pulse", e.target.value)} />
+          <span style={unitStyle}>bpm</span>
+        </div>
+        <select style={smallSelectStyle} value={data?.pulseQuality || ""}
+          onChange={(e) => updateField("pulseQuality", e.target.value)}>
+          <option value="">Quality — Select —</option>
+          {["Strong", "Weak", "Thready", "Bounding", "Irregular"].map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={tileStyle}>
+        <label style={styles.label}>Respirations</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.respirations ?? ""}
+            onChange={(e) => updateField("respirations", e.target.value)} />
+          <span style={unitStyle}>/min</span>
+        </div>
+      </div>
+
+      {/* Blood Pressure is ONE clinical measurement — Systolic/Diastolic
+          are rendered together under a single label, never as two
+          independent top-level fields. */}
+      <div style={tileStyle}>
+        <label style={styles.label}>Blood Pressure</label>
+        <div style={rowStyle}>
+          <input style={bpInputStyle} type="number" value={data?.bloodPressure?.systolic ?? ""} placeholder="120"
+            onChange={(e) => updateField("bloodPressure.systolic", e.target.value)} />
+          <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.dark, lineHeight: 1 }}>/</span>
+          <input style={bpInputStyle} type="number" value={data?.bloodPressure?.diastolic ?? ""} placeholder="80"
+            onChange={(e) => updateField("bloodPressure.diastolic", e.target.value)} />
+          <span style={unitStyle}>mmHg</span>
+        </div>
+      </div>
+
+      <div style={tileStyle}>
+        <label style={styles.label}>Oxygen Saturation</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.oxygenSaturation ?? ""}
+            onChange={(e) => updateField("oxygenSaturation", e.target.value)} />
+          <span style={unitStyle}>%</span>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: COLORS.dark, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!data?.oxygenSaturationOnRA}
+            onChange={(e) => updateField("oxygenSaturationOnRA", e.target.checked)} />
+          On Room Air
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function AnthropometricsAutoBmiCard({ data, updateField, styles, COLORS }) {
   const height = parseFloat(data?.height);
   const weight = parseFloat(data?.weight);
@@ -8076,6 +8242,18 @@ function Card({ title, children, hopeCode, sfv, cms, id }) {
 // 6. SECTION RENDERERS — All 28 Modules
 // ════════════════════════════════════════════════════════════════
 
+// HOPE A1905 Living Arrangement value-code labels -- kept in sync with the
+// FormRadioGroup options rendered in renderDemographics below. Used by the
+// Patient Story "Patient Attributes" panel to display the human-readable
+// label rather than the raw HOPE code.
+const LIVING_ARRANGEMENT_LABELS = {
+  "1": "Alone (no other residents in the home)",
+  "2": "With others in the home (family, friends, or paid caregiver)",
+  "3": "Congregate home (e.g., assisted living or residential care home)",
+  "4": "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)",
+  "5": "Does not have a permanent home (unstable housing / homeless)",
+};
+
 function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiProfile = {}) {
   const u = (path, val) => update("demographics", path, val);
   const showPatient = moduleKey === "all" || moduleKey === "demographics";
@@ -8103,12 +8281,12 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
           <FormInput label="Alternate Phone" value={data.alternatePhone} onChange={(v) => u("alternatePhone", v)} type="tel" />
         </div>
         <FormCheckboxGroup label="Race" values={data.race} onChange={(v) => u("race", v)} hopeCode="A1010"
-          options={["White", "Black/African American", "Asian", "American Indian/Alaska Native", "Native Hawaiian/Pacific Islander", "Other"]} />
+          options={RACE_OPTIONS} />
         <FormCheckboxGroup label="Ethnicity" values={data.ethnicity} onChange={(v) => u("ethnicity", v)} hopeCode="A1005"
-          options={["Hispanic/Latino", "Not Hispanic/Latino", "Unknown"]} />
+          options={ETHNICITY_OPTIONS} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormSelect label="Preferred Language" value={data.preferredLanguage} onChange={(v) => u("preferredLanguage", v)}
-            options={["English", "Spanish", "Chinese", "Vietnamese", "Tagalog", "Korean", "Other"]} />
+            options={LANGUAGE_OPTIONS} />
           <FormCheckbox label="Needs Interpreter" checked={data.needsInterpreter} onChange={(v) => u("needsInterpreter", v)} />
           <FormInput label="Religion" value={data.religion} onChange={(v) => u("religion", v)} />
           <FormSelect label="Marital Status" value={data.maritalStatus} onChange={(v) => u("maritalStatus", v)}
@@ -8174,10 +8352,45 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
               options={["Good", "Fair", "Poor"]} />
             <FormRadioGroup label="PCG Anxiety Level" value={data.pcg?.anxietyLevel} onChange={(v) => u("pcg.anxietyLevel", v)}
               options={["None", "Mild", "Moderate", "Severe"]} />
+            <FormRadioGroup label="Sign-Language Interpreter Needed (if PCG hard of hearing/deaf)" value={data.pcg?.signLanguageInterpreterNeeded} onChange={(v) => u("pcg.signLanguageInterpreterNeeded", v)}
+              options={["No", "Yes", "Unable to determine"]} />
+            <FormRadioGroup label="PCG Able to Participate in Care" value={data.pcg?.participatesInCare} onChange={(v) => u("pcg.participatesInCare", v)}
+              options={["Yes", "Partially", "No", "Unable to assess"]} />
             <FormRadioGroup label="Able to Administer Medications" value={data.pcg?.ableToAdministerMeds} onChange={(v) => u("pcg.ableToAdministerMeds", v)}
               options={["Yes", "No", "With training"]} />
             <FormRadioGroup label="Willing to Provide Care" value={data.pcg?.willingToProvideCare} onChange={(v) => u("pcg.willingToProvideCare", v)}
               options={["Yes", "No", "Ambivalent"]} />
+
+            {/* Household factors — cross-checked against real HospiceMD
+                "Communications & Other Factors > PCG" section: "Any young
+                children at home?" and "Any pets? (If yes, specify)". These
+                are household/safety/care-planning factors, not demographics. */}
+            <FormRadioGroup label="Young Children in the Home" value={data.pcg?.householdChildren} onChange={(v) => u("pcg.householdChildren", v)}
+              options={["No", "Yes", "Unknown"]} />
+            {data.pcg?.householdChildren === "Yes" && (
+              <FormInput label="Age Range / Safety-Support Concern (if clinically useful)" value={data.pcg?.householdChildrenDetail} onChange={(v) => u("pcg.householdChildrenDetail", v)} />
+            )}
+            <FormRadioGroup label="Pets in the Home" value={data.pcg?.householdPets} onChange={(v) => u("pcg.householdPets", v)}
+              options={["No", "Yes", "Unknown"]} />
+            {data.pcg?.householdPets === "Yes" && (
+              <FormInput label="Specify (safety/access/infection concern if applicable)" value={data.pcg?.householdPetsDetail} onChange={(v) => u("pcg.householdPetsDetail", v)} />
+            )}
+
+            {/* Patient's own medication self-administration capability —
+                deliberately adjacent to PCG's "Able to Administer
+                Medications" above so both capabilities are reviewed
+                together, but visually distinct (own heading) since
+                HospiceMD tracks these as two separate fields. */}
+            <div className="rnica-classic-subheading" style={{ fontSize: 12, fontWeight: 700, color: COLORS?.label || "#64748b", textTransform: "uppercase", letterSpacing: "0.03em", marginTop: 12, marginBottom: 4 }}>
+              Medication Safety — Patient Self-Administration
+            </div>
+            <FormRadioGroup label="Patient Able to Safely Self-Administer Medications" value={data.medicationSafety?.selfAdministersMeds} onChange={(v) => u("medicationSafety.selfAdministersMeds", v)}
+              options={["Yes", "With assistance", "No", "Not applicable", "Unable to assess"]} />
+            {["With assistance", "No"].includes(data.medicationSafety?.selfAdministersMeds) && (
+              <FormSelect label="If No, Who Administers Medications to Patient" value={data.medicationSafety?.medsAdministeredBy} onChange={(v) => u("medicationSafety.medsAdministeredBy", v)}
+                options={["Primary caregiver", "Family member", "Facility staff", "Hospice staff under an authorized plan", "Other", "No responsible person identified"]} />
+            )}
+
             <FormTextarea label="PCG Concerns / Notes" value={data.pcg?.pcgConcerns} onChange={(v) => u("pcg.pcgConcerns", v)} />
           </>
         )}
@@ -8561,6 +8774,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "vitals" && card.customRenderer === "vitalSignsClinical") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <VitalSignsClinicalCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "vitals" && card.customRenderer === "anthropometricsAutoBmi") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -8884,7 +9105,13 @@ function getNestedValue(obj, path) {
 }
 
 function setNestedValue(obj, path, value) {
-  const clone = JSON.parse(JSON.stringify(obj));
+  // Guard against a missing/undefined section state (e.g. a formData section
+  // that has not yet been initialized for an older/partial persisted record).
+  // Without this, JSON.stringify(undefined) => undefined and the subsequent
+  // JSON.parse(undefined) throws, crashing the entire RNICA tree with no
+  // error boundary to catch it (this was the root cause of the Living
+  // Environment "not working at all" crash).
+  const clone = obj == null ? {} : JSON.parse(JSON.stringify(obj));
   const keys = path.split(".");
   let curr = clone;
   for (let i = 0; i < keys.length - 1; i++) {
@@ -8906,17 +9133,8 @@ const SECTION_CONFIGS = {
     subtitle: "Temperature, pulse, respirations, blood pressure, anthropometrics, IV assessment",
     cards: [
       {
-        title: "Vital Signs", fields: [
-          { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "98.6" },
-          { type: "radio", label: "Unit", path: "temperatureUnit", options: ["F", "C"] },
-          { type: "input", label: "Pulse", path: "pulse", inputType: "number" },
-          { type: "select", label: "Pulse Quality", path: "pulseQuality", options: ["Strong", "Weak", "Thready", "Bounding", "Irregular"] },
-          { type: "input", label: "Respirations", path: "respirations", inputType: "number" },
-          { type: "input", label: "BP Systolic", path: "bloodPressure.systolic", inputType: "number" },
-          { type: "input", label: "BP Diastolic", path: "bloodPressure.diastolic", inputType: "number" },
-          { type: "input", label: "O2 Saturation %", path: "oxygenSaturation", inputType: "number" },
-          { type: "checkbox", label: "On Room Air", path: "oxygenSaturationOnRA" },
-        ],
+        title: "Vital Signs",
+        customRenderer: "vitalSignsClinical",
       },
       {
         title: "Anthropometrics",
@@ -9017,14 +9235,14 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Symptom Impact Screening", hopeCode: "J2051", fields: [
-          { type: "radio", label: "A. Pain", path: "pain", hopeCode: "J2051A", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "B. Shortness of Breath", path: "shortnessOfBreath", hopeCode: "J2051B", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "C. Anxiety", path: "anxiety", hopeCode: "J2051C", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "D. Nausea", path: "nausea", hopeCode: "J2051D", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "E. Vomiting", path: "vomiting", hopeCode: "J2051E", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "F. Diarrhea", path: "diarrhea", hopeCode: "J2051F", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "G. Constipation", path: "constipation", hopeCode: "J2051G", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "H. Agitation", path: "agitation", hopeCode: "J2051H", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+          { type: "radio", label: "A. Pain", path: "pain", hopeCode: "J2051A", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "B. Shortness of Breath", path: "shortnessOfBreath", hopeCode: "J2051B", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "C. Anxiety", path: "anxiety", hopeCode: "J2051C", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "D. Nausea", path: "nausea", hopeCode: "J2051D", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "E. Vomiting", path: "vomiting", hopeCode: "J2051E", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "F. Diarrhea", path: "diarrhea", hopeCode: "J2051F", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "G. Constipation", path: "constipation", hopeCode: "J2051G", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
+          { type: "radio", label: "H. Agitation", path: "agitation", hopeCode: "J2051H", sfv: true, options: SYMPTOM_IMPACT_OPTIONS },
           { type: "input", label: "Assessment Date", path: "assessmentDate", inputType: "date" },
         ],
       },
@@ -9562,14 +9780,14 @@ const SECTION_CONFIGS = {
         ] },
       ]},
       { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [
-        { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "B. Shortness of Breath", path: "symptomImpactAtSfv.shortnessOfBreath", hopeCode: "J2053B", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "C. Anxiety", path: "symptomImpactAtSfv.anxiety", hopeCode: "J2053C", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "D. Nausea", path: "symptomImpactAtSfv.nausea", hopeCode: "J2053D", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "E. Vomiting", path: "symptomImpactAtSfv.vomiting", hopeCode: "J2053E", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "F. Diarrhea", path: "symptomImpactAtSfv.diarrhea", hopeCode: "J2053F", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "G. Constipation", path: "symptomImpactAtSfv.constipation", hopeCode: "J2053G", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "H. Agitation", path: "symptomImpactAtSfv.agitation", hopeCode: "J2053H", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "B. Shortness of Breath", path: "symptomImpactAtSfv.shortnessOfBreath", hopeCode: "J2053B", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "C. Anxiety", path: "symptomImpactAtSfv.anxiety", hopeCode: "J2053C", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "D. Nausea", path: "symptomImpactAtSfv.nausea", hopeCode: "J2053D", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "E. Vomiting", path: "symptomImpactAtSfv.vomiting", hopeCode: "J2053E", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "F. Diarrhea", path: "symptomImpactAtSfv.diarrhea", hopeCode: "J2053F", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "G. Constipation", path: "symptomImpactAtSfv.constipation", hopeCode: "J2053G", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "H. Agitation", path: "symptomImpactAtSfv.agitation", hopeCode: "J2053H", options: SYMPTOM_IMPACT_OPTIONS },
       ]},
       { title: "SFV Findings", fields: [
         { type: "checkboxGroup", label: "Triggered Symptoms", path: "triggeredSymptoms", options: ["Pain", "SOB", "Anxiety", "Nausea", "Vomiting", "Diarrhea", "Constipation", "Agitation"] },
@@ -10992,6 +11210,15 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         d.preferredLanguage = identity.language;
         changed = true;
       }
+      // HOPE A0550 (Patient ZIP Code): same blank-only hydration pattern as
+      // the fields above -- Face Sheet's mailing address is the only place
+      // ZIP is captured today; RNICA's own address.zip field (used for
+      // HOPE A0550 export) never had this fallback wired, unlike its
+      // neighboring demographic fields.
+      if (!d.address?.zip && facesheetData.address?.zip) {
+        d.address = { ...(d.address || {}), zip: facesheetData.address.zip };
+        changed = true;
+      }
       if (!d.religion && identity.religion) {
         d.religion = identity.religion;
         changed = true;
@@ -11507,7 +11734,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     );
   });
 
-  const renderWorkspaceSections = () => routes.map((route) => {
+  // `forceVisibleKeys` lets a screen show a legacy section's content
+  // continuously (no click/tab required) even when it is not the globally
+  // "active" section -- used by Evidence & Intake to keep Vitals visible
+  // inline per owner direction ("vitals are part of continuous clinical
+  // context, not a tab"). Every other caller passes nothing and behavior is
+  // unchanged (only the active section renders visible).
+  const renderWorkspaceSections = (forceVisibleKeys = []) => routes.map((route) => {
     const config = SECTION_CONFIGS[route.formSection];
     const sectionData = formData[route.formSection];
     const isDemographicsModule = ["demographics", "caregiverAssessment", "advancedCarePlanning"].includes(route.key);
@@ -11532,18 +11765,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           )
         : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
+    const visible = route.key === activeSection || forceVisibleKeys.includes(route.key);
     return (
-      <div key={route.key} hidden={route.key !== activeSection} aria-hidden={route.key !== activeSection}>
+      <div key={route.key} hidden={!visible} aria-hidden={!visible}>
         {content}
       </div>
     );
   });
 
   if (workspacePilot) {
-    const secondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
+    const ownSecondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
       .map((diagnosis) => `${diagnosis.description || diagnosis.icd10 || ""}`.trim())
       .filter(Boolean)
       .join(", ");
+    // Fallback to the Face Sheet's already-documented secondary diagnoses
+    // when RNICA's own Diagnoses section hasn't been filled in yet (e.g.
+    // early in the assessment). Read-only display fallback only -- never
+    // written back into `formData.diagnoses`, so it can never mask or
+    // conflict with the RN's own entry once made.
+    const facesheetSecondaryDiagnoses = (facesheetData?.clinical?.active_secondary_diagnoses || [])
+      .map((dx) => dx.display_name || dx.diagnosis_description || "")
+      .filter(Boolean)
+      .join(", ") || facesheetData?.clinical?.secondary_diagnoses || "";
+    const secondaryDiagnoses = ownSecondaryDiagnoses || facesheetSecondaryDiagnoses;
+    // Latest RNICA/Recert performance entry (same source + ordering already
+    // used by the Face Sheet's "PPS (auto)" display) -- fallback for the
+    // context bar only when the current assessment's own Performance Status
+    // section hasn't been filled in yet.
+    const latestPerformance = performanceHistory?.[0] || null;
     const verifiedComorbidities = Object.entries(formData.diagnoses.hopeComorbidities || {})
       .filter(([, selected]) => selected === true)
       .map(([key]) => key)
@@ -11561,6 +11810,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       <AssessmentModeContext.Provider value={mode}>
         <RNICACommandWorkspace
           patient={{
+            id: resolvedPatientId,
             name: patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected"),
             mrn: patientSummary?.patient?.mrn || "",
             primaryDiagnosis: formData.diagnoses.primaryDiagnosis.description || patientSummary?.patient?.primary_diagnosis || "",
@@ -11577,11 +11827,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             sex: formData.demographics.gender || "",
             admissionDate: facesheetData?.service_dates?.soc_date || "",
             attendingPhysician: patientSummary?.patient?.attending_physician_name || "",
-            currentPps: formData.performanceStatus?.pps || "",
+            currentPps: formData.performanceStatus?.pps || latestPerformance?.pps || "",
             assessmentStage: isOngoing ? (assessmentType === "recert" ? "Recertification" : "Update assessment") : "Initial admission",
             whyHospiceNarrative: formData.diagnoses.clinicalNarrative || "",
             recentHospitalization: formData.diagnoses.recentHospitalizations || "",
             functionalDeclineNarrative: formData.performanceStatus?.functionalDeclineNotes || "",
+            // Read-only reflection of the existing `vitals` module's own
+            // state -- nothing new is captured here. Used by the persistent
+            // clinical context bar so vitals are visible on every screen
+            // without navigating to the Vitals section.
+            vitals: {
+              temperature: formData.vitals?.temperature || "",
+              temperatureUnit: formData.vitals?.temperatureUnit || "F",
+              pulse: formData.vitals?.pulse || "",
+              respirations: formData.vitals?.respirations || "",
+              bpSystolic: formData.vitals?.bloodPressure?.systolic || "",
+              bpDiastolic: formData.vitals?.bloodPressure?.diastolic || "",
+              oxygenSaturation: formData.vitals?.oxygenSaturation || "",
+              weight: formData.vitals?.weight || latestPerformance?.weight || "",
+            },
             caregiver: {
               name: pcg.name || "",
               relationship: pcg.relationship || "",
@@ -11589,6 +11853,37 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               willingToProvideCare: pcg.willingToProvideCare,
               anxietyLevel: pcg.anxietyLevel || "",
               concerns: pcg.pcgConcerns || "",
+            },
+            // Administrative Demographics -- a small, independent HOPE
+            // concept (A0215 Site of Service, A1805 Admitted From, A1005
+            // Ethnicity, A1010 Race, A1110 Language/Interpreter, A1905
+            // Living Arrangement, A1910 Availability of Assistance). Per
+            // owner direction this is NOT a "Patient Information" screen
+            // and must never be bundled with identity/contact fields
+            // (name, DOB, phone, address, emergency contact, religion,
+            // marital status, military service) -- those remain Face
+            // Sheet's exclusively. Raw values are passed (not joined
+            // display strings) so HOPE Administrative Review can render
+            // them as its own compact, editable grid via `onUpdateField`.
+            administrativeDemographics: {
+              preferredLanguage: formData.demographics.preferredLanguage || "",
+              needsInterpreter: formData.demographics.needsInterpreter,
+              interpreterOffered: formData.demographics.interpreterOffered,
+              understandsParticipatesInCare: formData.demographics.understandsParticipatesInCare,
+              specialWishStatus: formData.demographics.specialWishStatus,
+              specialEventDesire: formData.demographics.specialEventDesire || "",
+              specialWishFollowUpDiscipline: formData.demographics.specialWishFollowUpDiscipline || "",
+              specialWishReviewStatus: formData.demographics.specialWishReviewStatus || "",
+              ethnicity: formData.demographics.ethnicity || [],
+              race: formData.demographics.race || [],
+              raceInformationSource: formData.demographics.raceInformationSource || "",
+              raceInformationSourceOther: formData.demographics.raceInformationSourceOther || "",
+              ethnicityInformationSource: formData.demographics.ethnicityInformationSource || "",
+              ethnicityInformationSourceOther: formData.demographics.ethnicityInformationSourceOther || "",
+              siteOfService: formData.livingSituation?.siteOfService || "",
+              admittedFrom: formData.livingSituation?.admittedFrom || "",
+              livingArrangement: formData.livingSituation?.livingArrangement || "",
+              availabilityOfAssistance: formData.livingSituation?.availabilityOfAssistance || "",
             },
           }}
           routes={commandRoutes}
@@ -11602,6 +11897,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           intelligence={intelligence}
           isOngoingAssessment={isOngoing}
           renderWorkspaceSections={renderWorkspaceSections}
+          // Lets Evidence & Intake's Administrative Demographics section
+          // (Language/Interpreter/Ethnicity/Race/Living Arrangement/
+          // Availability of Assistance) write directly back into RNICA's
+          // own `demographics`/`livingSituation` form state -- the exact
+          // same update path every other RNICA field already uses.
+          onUpdateField={updateField}
           visitRecorder={(
             <VisitRecorderCard
               patientId={resolvedPatientId || patientId}

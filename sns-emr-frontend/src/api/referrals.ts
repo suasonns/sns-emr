@@ -74,11 +74,24 @@ export async function createReferral(payload: ReferralIntakePayload): Promise<Re
   return response.data;
 }
 
-export async function listReferrals(status?: ReferralStatus): Promise<Referral[]> {
+export async function listReferrals(
+  status?: ReferralStatus,
+  filters?: { converted_patient_id?: string },
+): Promise<Referral[]> {
   const response = await api.get<Referral[]>("/referrals", {
-    params: status ? { status } : undefined,
+    params: { ...(status ? { status } : {}), ...(filters?.converted_patient_id ? { converted_patient_id: filters.converted_patient_id } : {}) },
   });
   return response.data;
+}
+
+/**
+ * Fetches the original admission referral(s) for an already-converted
+ * patient -- read-only source for RNICA Evidence & Intake's "Referral Data"
+ * card (referral source, date, referring physician, diagnosis, reason).
+ * Does not duplicate or re-author Face Sheet/RNICA data.
+ */
+export async function listReferralsForPatient(patientId: string): Promise<Referral[]> {
+  return listReferrals(undefined, { converted_patient_id: patientId });
 }
 
 export async function getReferral(referralId: string): Promise<Referral> {

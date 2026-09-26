@@ -12,11 +12,17 @@ import {
 import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
 import { RnicaWorkflowRail, RnicaWorkflowSheet } from "./RnicaWorkflowRail";
 import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
+import EvidenceIntakeOverview from "./evidence-intake/EvidenceIntakeOverview";
+import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeReview";
 import {
   PrimaryCard,
   SourceLink,
   StatusChip,
+  DocumentedValue,
+  notYetDocumented,
 } from "./design-system/RnicaDesignSystem";
+import { listBenefitPeriods } from "../../api/benefitPeriods";
+import { fetchFacesheet } from "../../api/facesheet";
 import "./RNICACommandWorkspace.css";
 
 const DENSITY_KEY = "sns-clinical-command-workspace-density";
@@ -25,6 +31,34 @@ const DENSITIES = ["compact", "comfortable", "large"];
 function storedDensity() {
   const value = window.localStorage.getItem(DENSITY_KEY) || window.localStorage.getItem(LEGACY_DENSITY_KEY);
   return DENSITIES.includes(value) ? value : "compact";
+}
+
+// Shared, read-only formatters for the persistent clinical context bar
+// (used by both the new RnicaScreenShell admission-facts bar and the
+// legacy ClinicalCommandContextBar) so every screen presents allergies and
+// vitals the same way. `patient` here is the object assembled in
+// RNICA.jsx -- nothing is computed or fabricated, only formatted.
+function formatAllergies(patient) {
+  if (patient?.hasAllergies === false) return "NKA";
+  if (patient?.allergiesText) return patient.allergiesText;
+  if (patient?.hasAllergies === true) return "Present (see Face Sheet)";
+  return null;
+}
+
+// Individual vitals facts (owner direction 2026-09-25: the context strip
+// must be a single dense row, not a paragraph -- each vital is its own
+// short fact so the strip can wrap per-item on narrow viewports instead of
+// hiding everything behind one combined sentence).
+function vitalsFacts(vitals) {
+  if (!vitals) return [];
+  return [
+    (vitals.bpSystolic && vitals.bpDiastolic) ? { label: "BP", value: `${vitals.bpSystolic}/${vitals.bpDiastolic}` } : null,
+    vitals.pulse ? { label: "P", value: vitals.pulse } : null,
+    vitals.respirations ? { label: "RR", value: vitals.respirations } : null,
+    vitals.temperature ? { label: "Temp", value: `${vitals.temperature}\u00b0${vitals.temperatureUnit || "F"}` } : null,
+    vitals.oxygenSaturation ? { label: "O2", value: `${vitals.oxygenSaturation}%` } : null,
+    vitals.weight ? { label: "Wt", value: `${vitals.weight} lbs` } : null,
+  ].filter(Boolean);
 }
 
 function ScrollRegion({ name, className, children }) {
@@ -120,7 +154,10 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
 // scoped to this screen's three legacy modules (demographics, vitals,
 // referrals), e.g. the existing `referrals.reviewed` requirement.
 function EvidenceIntakeAlertBanner({ errorKeys, warningKeys, routeForRequirement, onNavigate }) {
-  const screenModuleKeys = new Set(["demographics", "vitals", "referrals"]);
+  // `referrals` (discipline referrals) moved to Orders & POC -- see
+  // rnicaThirteenScreenTaxonomy.js. This banner only scopes to modules this
+  // screen still owns.
+  const screenModuleKeys = new Set(["demographics", "vitals"]);
   const scoped = [...errorKeys, ...warningKeys]
     .map((key) => ({ key, route: routeForRequirement(key) }))
     .filter(({ route }) => route && screenModuleKeys.has(route.key));
@@ -192,6 +229,21 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
           <span className="rnica-command-eyebrow">RNICA</span>
           <strong>{patient.name}</strong>
           <span>MRN {patient.mrn}</span>
+          {!notYetDocumented(patient.assessmentStage) && <StatusChip tone="warning">{patient.assessmentStage}</StatusChip>}
+        </div>
+        <div className="rnica-screen__admission-facts" aria-label="Persistent clinical context (read-only)">
+          <span><em>Dx</em> <DocumentedValue value={patient.primaryDiagnosis} /></span>
+          <span><em>2nd Dx</em> <DocumentedValue value={patient.secondaryDiagnoses} /></span>
+          <span><em>Allergies</em> <DocumentedValue value={formatAllergies(patient)} /></span>
+          <span><em>PPS</em> <DocumentedValue value={patient.currentPps ? `${patient.currentPps}%` : null} /></span>
+          {vitalsFacts(patient.vitals).map((fact) => (
+            <span key={fact.label}><em>{fact.label}</em> {fact.value}</span>
+          ))}
+          <span><em>Decline</em> <DocumentedValue value={patient.functionalDeclineNarrative} /></span>
+          <span><em>Admit</em> <DocumentedValue value={patient.admissionDate} /></span>
+          <span><em>BP#</em> <DocumentedValue value={patient.benefitPeriodNumber ? `${patient.benefitPeriodNumber} (${patient.benefitPeriodStart || "?"}\u2013${patient.benefitPeriodEnd || "?"})` : null} /></span>
+          <span><em>Recert</em> <DocumentedValue value={patient.recertDueDate} /></span>
+          <span><em>F2F</em> <DocumentedValue value={patient.faceToFaceDueDate} /></span>
         </div>
         <div className="rnica-screen__status">
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
@@ -258,7 +310,57 @@ export default function RNICACommandWorkspace({
   onExitPilot,
   canLock,
   isOngoingAssessment = false,
+  onUpdateField,
 }) {
+  // Persistent admission/benefit-period reference facts (benefit period #,
+  // dates, recert due, allergies, F2F due). Read-only -- sourced live from
+  // the Benefit Period API and the Face Sheet facesheet endpoint, never
+  // copied into RNICA form state, per owner direction that RNICA must not
+  // duplicate other modules' data or touch the Face Sheet. Recert Due is
+  // the current benefit period's end date (the date recertification must
+  // be completed by), not a separately fabricated field. Allergies: the
+  // Face Sheet (`clinical.has_allergies`/`clinical.allergies`) is the
+  // authoritative, already-live source for this read-only display --
+  // resolves the prior "two conflicting ownership claims" note in
+  // PATIENT_CHART_AUTHORITY_MAP.md pragmatically for display purposes only
+  // (this does not settle Medications-module write ownership, which is a
+  // separate concern from showing the current value here).
+  const [admissionFacts, setAdmissionFacts] = useState({
+    benefitPeriodLabel: null,
+    benefitPeriodStart: null,
+    benefitPeriodEnd: null,
+    benefitPeriodNumber: null,
+    recertDueDate: null,
+    allergiesText: null,
+    hasAllergies: null,
+    faceToFaceDueDate: null,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    if (!patient?.id) return undefined;
+    Promise.all([
+      listBenefitPeriods(patient.id).catch(() => []),
+      fetchFacesheet(patient.id).catch(() => null),
+    ]).then(([benefitPeriods, facesheet]) => {
+      if (cancelled) return;
+      const current = (benefitPeriods || []).find((bp) => bp.is_current) || (benefitPeriods || [])[0] || null;
+      setAdmissionFacts({
+        benefitPeriodLabel: current
+          ? `#${current.period_number} (${current.benefit_type === "RECERT" ? "Recert" : "Initial"}) \u00b7 ${current.start_date || "?"} \u2013 ${current.end_date || "?"}`
+          : null,
+        benefitPeriodStart: current?.start_date || null,
+        benefitPeriodEnd: current?.end_date || null,
+        benefitPeriodNumber: current?.period_number ?? null,
+        recertDueDate: current?.end_date || null,
+        allergiesText: facesheet?.clinical?.allergies || null,
+        hasAllergies: facesheet?.clinical?.has_allergies ?? null,
+        faceToFaceDueDate: facesheet?.service_dates?.face_to_face_due_date || null,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [patient?.id]);
+  const patientWithAdmissionFacts = useMemo(() => ({ ...patient, ...admissionFacts }), [patient, admissionFacts]);
+
   const [query, setQuery] = useState("");
   const [density, setDensity] = useState(storedDensity);
   const [searchStartedAt, setSearchStartedAt] = useState(0);
@@ -385,7 +487,7 @@ export default function RNICACommandWorkspace({
     // itself, sourced from the same data).
     return (
       <RnicaScreenShell
-        patient={patient}
+        patient={patientWithAdmissionFacts}
         locked={locked}
         completedSections={completedSections}
         totalRoutes={routes.length}
@@ -414,15 +516,28 @@ export default function RNICACommandWorkspace({
   }
 
   if (viewMode === "screen" && activeScreen?.key === "evidenceIntake" && evidenceIntakeGroup) {
-    // Evidence & Intake is the second RNICA screen rebuilt into the
-    // standalone shell (no legacy chrome). It owns three existing legacy
-    // modules unchanged (demographics, vitals, referrals -- see
-    // rnicaThirteenScreenTaxonomy.js) and reuses their real form content
-    // via renderWorkspaceSections/select exactly as the legacy workspace
-    // did; only the surrounding composition changes.
+    // Evidence & Intake is the first substantive RNICA screen after Patient
+    // Story (2026-09-25 owner-direction reorder -- was previously screen 3,
+    // after HOPE Administrative Review; moved ahead of it because this is
+    // the screen the nurse actually wants first: referral reason, admission
+    // source, supporting documents, and decline evidence). Per owner
+    // direction: vitals are continuous clinical context, not a sub-
+    // navigation tab -- they render inline, always visible, as the Clinical
+    // Snapshot leading the screen, above the evidence review content
+    // (2026-09-25 owner correction: "Do not bury vitals beneath evidence
+    // sections."). forceVisibleKeys keeps the legacy "vitals" section
+    // mounted-visible regardless of which module is globally "active".
+    // Discipline referrals (social work/spiritual
+    // care/volunteer/etc.) moved to Orders & POC -- see
+    // rnicaThirteenScreenTaxonomy.js. The former "Patient Demographics" tab
+    // is replaced by EvidenceIntakeOverview -- per owner direction, RNICA
+    // must not store or edit a second copy of Face Sheet demographics. It
+    // shows the real intake evidence pipeline (referral evidence, imported
+    // clinical documents, AI-extracted structured findings), sourced live
+    // -- nothing here is captured or persisted by RNICA.
     return (
       <RnicaScreenShell
-        patient={patient}
+        patient={patientWithAdmissionFacts}
         locked={locked}
         completedSections={completedSections}
         totalRoutes={routes.length}
@@ -436,29 +551,99 @@ export default function RNICACommandWorkspace({
         canLock={canLock}
         statusContext={railStatusContext}
       >
-        <nav className="rnica-screen__subnav" aria-label="Evidence & Intake modules">
-          {evidenceIntakeGroup.routes.map((route) => {
-            const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
-            return (
-              <button
-                type="button"
-                key={route.key}
-                className={activeSection === route.key ? "is-active" : ""}
-                onClick={() => select(route.key, "evidence_intake_subnav")}
-              >
-                {route.label}
-                {missing > 0 && <span className="rnica-screen__subnav-badge">{missing}</span>}
-              </button>
-            );
-          })}
-        </nav>
+        {/* Clinical Snapshot (vitals) renders first -- 2026-09-25 owner
+            direction: "Do not bury vitals beneath evidence sections."
+            Vitals are continuous clinical context and must lead the
+            screen, not trail the AI/evidence review content below. */}
+        <section className="rnica-screen__inline-vitals" aria-label="Vitals & measurements">
+          {renderWorkspaceSections(["vitals"])}
+        </section>
         <EvidenceIntakeAlertBanner
           errorKeys={errorKeys}
           warningKeys={warningKeys}
           routeForRequirement={routeForRequirement}
           onNavigate={(key) => select(key, "evidence_intake_banner")}
         />
-        {renderWorkspaceSections()}
+        <EvidenceIntakeOverview
+          patientId={patient.id}
+          intelligence={intelligence}
+          onNavigate={(key) => select(key, "evidence_intake_overview")}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "hopeAdministrativeReview") {
+    // HOPE Administrative Review is its own standalone RNICA screen --
+    // positioned after Evidence & Intake (2026-09-25 owner-direction
+    // reorder -- was previously screen 2, ahead of Evidence & Intake; moved
+    // behind it because Evidence & Intake is the screen the nurse wants
+    // first). It is NOT a duplicate Face Sheet and NOT part of Evidence &
+    // Intake or Psychosocial. It renders the CMS Section A administrative
+    // items (A1005/A1010/A1110 x2/A1905/A1910) via HopeAdministrativeReview,
+    // reading/writing the same `formData.demographics` /
+    // `formData.livingSituation` state as before -- no new persistence
+    // path, no schema change.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="hopeAdministrativeReview"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+      >
+        <HopeAdministrativeReview
+          value={patient.administrativeDemographics}
+          onUpdateField={onUpdateField}
+          locked={locked}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "painSymptomBurden") {
+    // Pain & Symptom Burden is its own standalone RNICA screen (owner
+    // direction 2026-09-25: "render for review" using what is already
+    // wired -- do not add fields). This reuses the existing, fully wired
+    // `pain` (HOPE J0900/J0915, pain intensity, characteristics,
+    // FLACC/PAINAD, management plan) and `symptomImpact` (HOPE J2051 A-H)
+    // legacy modules verbatim via the same renderWorkspaceSections prop
+    // already used for `vitals` in the evidenceIntake screen above --
+    // same persistence, same CMS-controlled values, no new UI, no new
+    // fields, no sample data.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="painSymptomBurden"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+      >
+        {renderWorkspaceSections(["pain", "symptomImpact"])}
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
           <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>

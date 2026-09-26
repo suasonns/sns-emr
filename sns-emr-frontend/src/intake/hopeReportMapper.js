@@ -652,7 +652,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
           { code: "A0900", label: "Birth Date", entries: [{ label: "Date", value: formatDate(demographics.dob || patient.dob) }] },
           { code: "A1005", label: "Ethnicity", entries: [{ label: "Selection", value: arrayText(demographics.ethnicity) }] },
           { code: "A1010", label: "Race", entries: [{ label: "Selection", value: arrayText(demographics.race) }] },
-          { code: "A1110", label: "Language", entries: [{ label: "A. Preferred language", value: valueText(demographics.preferredLanguage) }, { label: "B. Need interpreter", value: boolCode(Boolean(demographics.needsInterpreter)).description }] },
+          { code: "A1110", label: "Language", entries: [{ label: "A. Preferred language", value: valueText(demographics.preferredLanguage) }, { label: "B. Need interpreter", value: demographics.needsInterpreter === null ? "Unable to determine" : boolCode(Boolean(demographics.needsInterpreter)).description }] },
           { code: "A1400", label: "Payer Information", entries: [{ label: "Payer source(s)", value: payerInformation.text }] },
           { code: "A1805", label: "Admitted From", entries: [{ label: "Code + description", value: `${admittedFrom.code} - ${admittedFrom.description}` }] },
           { code: "A1905", label: "Living Arrangements", entries: [{ label: "Code + description", value: `${livingArrangement.code} - ${livingArrangement.description}` }] },

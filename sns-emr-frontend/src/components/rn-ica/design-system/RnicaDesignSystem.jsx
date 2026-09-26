@@ -216,11 +216,16 @@ export function RnicaPageHeader({ crumbs = [], title, actions }) {
 
 /**
  * Persistent patient-context header (MRN / primary diagnosis / admission /
- * attending physician / current PPS / assessment-stage badge). Every field
- * is read-only and sourced from data already owned by another screen
- * (demographics, diagnoses, functional status) -- see the `patient` object
- * assembled in RNICA.jsx. Renders "NOT YET DOCUMENTED" for anything absent
- * rather than fabricating a value.
+ * attending physician / current PPS / assessment-stage badge / vitals /
+ * allergies / recent decline / benefit period / recert & F2F due dates).
+ * Every field is read-only and sourced from data already owned by another
+ * screen (demographics, diagnoses, functional status, vitals, Face Sheet)
+ * -- see the `patient` object assembled in RNICA.jsx. Renders "NOT YET
+ * DOCUMENTED" for anything absent rather than fabricating a value. Shown on
+ * every RNICA screen per owner direction: the RN needs constant visibility
+ * of certification/benefit-period context (which recert, what dates, what
+ * benefit period) and clinical context (diagnosis, allergies, vitals,
+ * decline) without navigating away from the current screen.
  */
 export function RnicaPatientHeader({ patient = {}, actions }) {
   const {
@@ -229,11 +234,36 @@ export function RnicaPatientHeader({ patient = {}, actions }) {
     sex,
     mrn,
     primaryDiagnosis,
+    secondaryDiagnoses,
     admissionDate,
     attendingPhysician,
     currentPps,
     assessmentStage,
+    benefitPeriodNumber,
+    benefitPeriodStart,
+    benefitPeriodEnd,
+    recertDueDate,
+    faceToFaceDueDate,
+    allergiesText,
+    hasAllergies,
+    functionalDeclineNarrative,
+    vitals,
   } = patient;
+
+  const allergiesDisplay = hasAllergies === false
+    ? "NKA (No Known Allergies)"
+    : allergiesText || (hasAllergies === true ? "Allergies present (see Face Sheet)" : null);
+
+  const vitalsSummary = vitals && (vitals.temperature || vitals.pulse || vitals.respirations || vitals.bpSystolic || vitals.oxygenSaturation || vitals.weight)
+    ? [
+      vitals.temperature ? `Temp ${vitals.temperature}\u00b0${vitals.temperatureUnit || "F"}` : null,
+      vitals.pulse ? `Pulse ${vitals.pulse}` : null,
+      vitals.respirations ? `Resp ${vitals.respirations}` : null,
+      (vitals.bpSystolic && vitals.bpDiastolic) ? `BP ${vitals.bpSystolic}/${vitals.bpDiastolic}` : null,
+      vitals.oxygenSaturation ? `O2 Sat ${vitals.oxygenSaturation}%` : null,
+      vitals.weight ? `Weight ${vitals.weight} lbs` : null,
+    ].filter(Boolean).join(" \u00b7 ")
+    : null;
 
   return (
     <header className="rnica-ds-patient-header" aria-label="Patient context">
@@ -261,12 +291,42 @@ export function RnicaPatientHeader({ patient = {}, actions }) {
           <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={primaryDiagnosis} /></span>
         </div>
         <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Secondary Diagnoses</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={secondaryDiagnoses} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Allergies</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={allergiesDisplay} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
           <span className="rnica-ds-patient-header__fact-label">Hospice Admission</span>
           <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={admissionDate} /></span>
         </div>
         <div className="rnica-ds-patient-header__fact">
           <span className="rnica-ds-patient-header__fact-label">Attending Physician</span>
           <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={attendingPhysician} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Benefit Period</span>
+          <span className="rnica-ds-patient-header__fact-value">
+            <DocumentedValue value={benefitPeriodNumber ? `#${benefitPeriodNumber}` : null} />
+          </span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Benefit Period Start</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={benefitPeriodStart} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Benefit Period End</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={benefitPeriodEnd} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Recert Due</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={recertDueDate} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">F2F Due</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={faceToFaceDueDate} /></span>
         </div>
         <div className="rnica-ds-patient-header__fact">
           <span className="rnica-ds-patient-header__fact-label">Current PPS</span>
@@ -280,6 +340,14 @@ export function RnicaPatientHeader({ patient = {}, actions }) {
               </>
             )}
           </span>
+        </div>
+        <div className="rnica-ds-patient-header__fact">
+          <span className="rnica-ds-patient-header__fact-label">Recent Decline</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={functionalDeclineNarrative} /></span>
+        </div>
+        <div className="rnica-ds-patient-header__fact rnica-ds-patient-header__fact--wide">
+          <span className="rnica-ds-patient-header__fact-label">Vitals</span>
+          <span className="rnica-ds-patient-header__fact-value"><DocumentedValue value={vitalsSummary} /></span>
         </div>
       </div>
     </header>
