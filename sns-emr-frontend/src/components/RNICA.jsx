@@ -135,6 +135,7 @@ import {
 } from "../intake/clinicalNarrativeBuilder";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
+import { formatIcd10Code } from "../utils/formatIcd10";
 import MedicationNameInput from "./MedicationNameInput";
 import Icd10DiagnosisInput from "./Icd10DiagnosisInput";
 import VisitRecorderCard from "./VisitRecorderCard";
@@ -2251,7 +2252,7 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
 // without violating the rules of hooks across a dynamic-length list.
 function SecondaryDiagnosisSearchRow({ row, idx, updateRow, removeRow, styles, COLORS }) {
   const [searchText, setSearchText] = useState(() => (
-    row.description ? `${row.description}${row.icd10 ? ` (${row.icd10})` : ""}` : (row.icd10 || "")
+    row.description ? `${row.description}${row.icd10 ? ` (${formatIcd10Code(row.icd10)})` : ""}` : formatIcd10Code(row.icd10 || "")
   ));
 
   const handleSelectSuggestion = (suggestion) => {
@@ -2721,8 +2722,8 @@ function PrimaryTerminalDiagnosisCard({ diagnosesData, updateField, styles, COLO
   const primary = diagnosesData?.primaryDiagnosis || {};
   const [searchText, setSearchText] = useState(() => (
     primary.description
-      ? `${primary.description}${primary.icd10 ? ` (${primary.icd10})` : ""}`
-      : (primary.icd10 || "")
+      ? `${primary.description}${primary.icd10 ? ` (${formatIcd10Code(primary.icd10)})` : ""}`
+      : formatIcd10Code(primary.icd10 || "")
   ));
 
   const setPrimary = (field, value) => updateField(`primaryDiagnosis.${field}`, value);
@@ -2758,7 +2759,7 @@ function PrimaryTerminalDiagnosisCard({ diagnosesData, updateField, styles, COLO
         <div className={workspacePilot ? "rnica-primary-dx__summary" : undefined} style={{ ...styles.infoBox, marginTop: 8, marginBottom: 12 }}>
           <div style={{ fontWeight: 700, fontSize: 13, color: COLORS.dark }}>{primary.description || "Description not documented"}</div>
           <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 2 }}>
-            {primary.icd10 && <span>ICD-10: {primary.icd10}</span>}
+            {primary.icd10 && <span>ICD-10: {formatIcd10Code(primary.icd10)}</span>}
             {primary.icd10 && summaryLabel && <span> · </span>}
             {summaryLabel && <span>HOPE: {summaryLabel}</span>}
           </div>
@@ -2954,7 +2955,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
         <HopeTag code="I8005" />
         {uncategorizedSecondary.length > 0 && (
           <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
-            Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${dx.icd10} ${dx.description || ""}`.trim()).join("; ")}
+            Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${formatIcd10Code(dx.icd10)} ${dx.description || ""}`.trim()).join("; ")}
           </div>
         )}
       </div>
@@ -12588,7 +12589,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
   if (workspacePilot) {
     const ownSecondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
-      .map((diagnosis) => `${diagnosis.description || diagnosis.icd10 || ""}`.trim())
+      .map((diagnosis) => `${diagnosis.description || formatIcd10Code(diagnosis.icd10) || ""}`.trim())
       .filter(Boolean)
       .join(", ");
     // Fallback to the Face Sheet's already-documented secondary diagnoses

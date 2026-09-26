@@ -8,6 +8,7 @@ import { listPhysicians } from '../api/physicians';
 import PhysicianDirectoryModal from '../components/PhysicianDirectoryModal';
 import Icd10DiagnosisInput from '../components/Icd10DiagnosisInput';
 import { useThemeMode } from '../theme/theme';
+import { formatIcd10Code } from '../utils/formatIcd10';
 
 const fetchCodeStatusHistory = async (patientId) => {
   const response = await api.get(`/patients/${patientId}/code-status`);
@@ -1672,11 +1673,11 @@ const DiagnosisReferenceList = ({ title, items, colors }) => {
         return (
           <div key={item.id || `${title}-${item.display_name || item.diagnosis_description}`} style={{ border: `1px solid ${colors.border}`, borderRadius: 8, padding: '8px 10px', marginBottom: 6, backgroundColor: colors.bg }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <div style={{ color: colors.white, fontSize: 11.5, fontWeight: 600, flex: 1, minWidth: 0 }}>{item.display_name || item.diagnosis_description || item.icd10_code || 'Diagnosis'}</div>
+              <div style={{ color: colors.white, fontSize: 11.5, fontWeight: 600, flex: 1, minWidth: 0 }}>{item.display_name || item.diagnosis_description || formatIcd10Code(item.icd10_code) || 'Diagnosis'}</div>
               {badge ? <Badge variant={DIAGNOSIS_CLASSIFICATION_VARIANT[badge]} colors={colors}>{badge}</Badge> : null}
             </div>
             <div style={{ color: colors.label, fontSize: 10.5, marginTop: 3 }}>
-              {item.icd10_code || 'No ICD-10'}
+              {formatIcd10Code(item.icd10_code) || 'No ICD-10'}
             </div>
           </div>
         );
