@@ -136,6 +136,7 @@ import {
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
 import MedicationNameInput from "./MedicationNameInput";
+import Icd10DiagnosisInput from "./Icd10DiagnosisInput";
 import VisitRecorderCard from "./VisitRecorderCard";
 import RNICACommandWorkspace from "./rn-ica/RNICACommandWorkspace";
 // getRnicaColors/getRnicaStyles live in ../theme/clinicalDesign — the single shared
@@ -1954,9 +1955,13 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
       {orderedGroupSummaries.map(({ group, met, unmet, unknown }) => {
         const groupResult = groupResults.find((item) => item.group_id === group.group_id);
         const needsReview = unmet + unknown > 0;
-        const groupOpen = !workspacePilot
-          || expandedGroups.has(group.group_id)
-          || (needsReview && !collapsedGroups.has(group.group_id));
+        // FR-007: LCD groups are collapsed by default in the pilot
+        // workspace -- expand only on explicit RN toggle. (Previously a
+        // group needing review auto-expanded; the owner directive is
+        // explicit that collapsed-by-default applies unconditionally, so
+        // the RN reviews the met/unmet/unknown counts first and opens a
+        // group deliberately.)
+        const groupOpen = !workspacePilot || expandedGroups.has(group.group_id);
         const groupBadges = (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {workspacePilot && <span className="rnica-lcd-group__count">{met} met · {unmet} unmet · {unknown} unknown</span>}
@@ -2630,10 +2635,155 @@ function diagnosesIncludeCategory(diagnosesData, categoryKey) {
   );
 }
 
+// ── RNICA Diagnosis & LCD Workspace Optimization (owner-approved
+// implementation directive, GitHub issue "RNICA Diagnosis & LCD Workspace
+// Optimization") ──────────────────────────────────────────────────────
+// HOPE I0010 Principal Diagnosis Category options -- unchanged CMS
+// response set (01-09, 99), now shared by the merged diagnosis-search
+// card below instead of living inline on the removed "Primary Diagnosis"
+// field config.
+const HOPE_PRINCIPAL_DIAGNOSIS_CATEGORY_OPTIONS = [
+  { value: "01", label: "01 — Cancer" },
+  { value: "02", label: "02 — Dementia (including Alzheimer's disease)" },
+  { value: "03", label: "03 — Neurological Condition (e.g., Parkinson's disease, MS, ALS)" },
+  { value: "04", label: "04 — Stroke" },
+  { value: "05", label: "05 — Chronic Obstructive Pulmonary Disease (COPD)" },
+  { value: "06", label: "06 — Cardiovascular (excluding heart failure)" },
+  { value: "07", label: "07 — Heart Failure" },
+  { value: "08", label: "08 — Liver Disease" },
+  { value: "09", label: "09 — Renal Disease" },
+  { value: "99", label: "99 — None of the above" },
+];
+
+// Maps the same ICD-10 category regexes already used for HOPE comorbidity
+// detection (HOPE_COMORBIDITY_CATEGORIES/categorizeIcd10 above) to the
+// distinct I0010 Principal Diagnosis Category code set. Reuses existing
+// categorization instead of duplicating regexes (only the categories that
+// have a direct I0010 equivalent are mapped; anything else is left for the
+// RN to pick manually rather than guessing "99").
+const I0010_CATEGORY_BY_COMORBIDITY_KEY = {
+  cancer: "01",
+  dementia: "02",
+  neurologicalConditions: "03",
+  stroke: "04",
+  copd: "05",
+  cardiovascularExclHF: "06",
+  heartFailure: "07",
+  liverDisease: "08",
+  renalDisease: "09",
+};
+
+function deriveHopeDiagnosisCategory(icd10) {
+  const category = categorizeIcd10(icd10);
+  if (!category) return "";
+  return I0010_CATEGORY_BY_COMORBIDITY_KEY[category.key] || "";
+}
+
+// FR-003/FR-004: replaces the separate "Primary Diagnosis" (ICD-10 Code +
+// Description + HOPE Category fields) and "Terminal Prognosis" cards with
+// one compact, single-source-of-truth container. A diagnosis/ICD-10 search
+// control (reusing the same Icd10DiagnosisInput/searchIcd10Diagnoses
+// typeahead already used on the Face Sheet) fills ICD-10 + Description in
+// one action; HOPE Category is auto-suggested from the selected code (via
+// the existing categorization regexes) but is always RN-editable and is
+// never overwritten once a value is on file. LCD Pathway is not a field
+// here -- it is already auto-detected from primaryDiagnosis.icd10/
+// description by LcdEligibilityCard's existing effect the moment this
+// card's search fills those fields, so no new logic is introduced for it.
+// Terminal Prognosis (6 months or less / More than 6 months /
+// Undetermined) remains a plain RN-selected field, embedded in this same
+// container instead of a separate card -- it is a clinical judgment, not a
+// fact of the diagnosis, so it is intentionally never auto-filled.
+function PrimaryTerminalDiagnosisCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
+  const primary = diagnosesData?.primaryDiagnosis || {};
+  const [searchText, setSearchText] = useState(() => (
+    primary.description
+      ? `${primary.description}${primary.icd10 ? ` (${primary.icd10})` : ""}`
+      : (primary.icd10 || "")
+  ));
+
+  const setPrimary = (field, value) => updateField(`primaryDiagnosis.${field}`, value);
+
+  const handleSelectSuggestion = (suggestion) => {
+    setPrimary("icd10", suggestion.icd10_code);
+    setPrimary("description", suggestion.diagnosis_description);
+    // Auto-suggest HOPE category from the selected code, but never
+    // silently overwrite a category the RN already documented.
+    if (!primary.hopeDiagnosisCategory) {
+      const derived = deriveHopeDiagnosisCategory(suggestion.icd10_code);
+      if (derived) setPrimary("hopeDiagnosisCategory", derived);
+    }
+  };
+
+  const summaryLabel = HOPE_PRINCIPAL_DIAGNOSIS_CATEGORY_OPTIONS.find((o) => o.value === primary.hopeDiagnosisCategory)?.label;
+
+  return (
+    <div className={workspacePilot ? "rnica-primary-dx" : undefined}>
+      <div style={styles.formGroup}>
+        <label style={styles.label}>Search Diagnosis or ICD-10</label>
+        <Icd10DiagnosisInput
+          value={searchText}
+          onChange={setSearchText}
+          onSelectSuggestion={handleSelectSuggestion}
+          colors={{ cardBg: COLORS.white, border: COLORS.border, label: COLORS.gray, white: COLORS.dark }}
+          inputStyle={styles.input}
+          placeholder="e.g. Metastatic Breast Cancer, Lung Cancer, C50.919, CHF, ALS, COPD…"
+        />
+      </div>
+
+      {(primary.description || primary.icd10) && (
+        <div className={workspacePilot ? "rnica-primary-dx__summary" : undefined} style={{ ...styles.infoBox, marginTop: 8, marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: COLORS.dark }}>{primary.description || "Description not documented"}</div>
+          <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 2 }}>
+            {primary.icd10 && <span>ICD-10: {primary.icd10}</span>}
+            {primary.icd10 && summaryLabel && <span> · </span>}
+            {summaryLabel && <span>HOPE: {summaryLabel}</span>}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        <FormInput
+          label="Onset Date"
+          type="date"
+          value={primary.onsetDate || ""}
+          onChange={(v) => setPrimary("onsetDate", v)}
+        />
+        <FormSelect
+          label="HOPE Principal Diagnosis Category (I0010)"
+          required
+          value={primary.hopeDiagnosisCategory || ""}
+          onChange={(v) => setPrimary("hopeDiagnosisCategory", v)}
+          options={HOPE_PRINCIPAL_DIAGNOSIS_CATEGORY_OPTIONS}
+        />
+        <FormSelect
+          label="Terminal Prognosis"
+          hopeCode="J0050"
+          value={diagnosesData?.terminalPrognosis || ""}
+          onChange={(v) => updateField("terminalPrognosis", v)}
+          options={["6 months or less", "More than 6 months", "Undetermined"]}
+        />
+      </div>
+    </div>
+  );
+}
+
 function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
   const hope = diagnosesData?.hopeComorbidities || {};
+  // FR-009: collapsed by default (RN toggles open); a group with any
+  // checked condition is always shown expanded regardless of toggle state
+  // so documented HOPE content is never hidden. Pilot-only -- legacy mode
+  // keeps every group always expanded, unchanged.
+  const [expandedGroups, setExpandedGroups] = useState(() => new Set());
+  const toggleGroupOpen = (group) => {
+    setExpandedGroups((current) => {
+      const next = new Set(current);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  };
 
   const principalCategory = useMemo(() => categorizeIcd10(primaryIcd10), [primaryIcd10]);
 
@@ -2660,6 +2810,17 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
       .filter((g) => g.categories.length);
   }, []);
 
+  // Whether a category is checked (accounting for the Principal Diagnosis
+  // exclusion/cancer carve-out) -- shared by the checked-count badge and
+  // each category row below so both agree on what "checked" means.
+  const isCategoryChecked = (cat) => {
+    const isPrincipal = principalCategory?.key === cat.key;
+    const detected = autoDetected.has(cat.key);
+    const cancerException = cat.key === "cancer" && isPrincipal && detected;
+    const excluded = isPrincipal && !cancerException;
+    return excluded ? false : Boolean(hope[cat.key]);
+  };
+
   return (
     <div className={workspacePilot ? "rnica-comorbidity-panel" : undefined}>
       <div className={workspacePilot ? "rnica-comorbidity-guidance" : undefined} style={styles.infoBox}>
@@ -2669,11 +2830,32 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
       </div>
 
       <div className={workspacePilot ? "rnica-comorbidity-grid" : undefined}>
-      {groups.map(({ group, categories }) => (
+      {groups.map(({ group, categories }) => {
+        const checkedCount = categories.filter(isCategoryChecked).length;
+        const groupOpen = !workspacePilot || checkedCount > 0 || expandedGroups.has(group);
+        return (
         <div key={group} className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 14 }}>
+          {workspacePilot ? (
+            <button
+              type="button"
+              className="rnica-comorbidity-group__toggle"
+              aria-expanded={groupOpen}
+              onClick={() => toggleGroupOpen(group)}
+              style={{
+                display: "flex", alignItems: "center", gap: 6, width: "100%", textAlign: "left",
+                background: "none", border: "none", padding: 0, cursor: "pointer",
+                fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6,
+              }}
+            >
+              <span>{groupOpen ? "▾" : "▸"} {group}</span>
+              <span style={{ fontWeight: 700, textTransform: "none", letterSpacing: 0 }}>({checkedCount})</span>
+            </button>
+          ) : (
           <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
             {group}
           </div>
+          )}
+          {groupOpen && (
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {categories.map((cat) => {
               const isPrincipal = principalCategory?.key === cat.key;
@@ -2723,8 +2905,10 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
               );
             })}
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
       </div>
 
       <div style={{ marginBottom: 8 }}>
@@ -9106,6 +9290,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
 
+        if (sectionKey === "diagnoses" && card.customRenderer === "primaryTerminalDiagnosis") {
+          return (
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <PrimaryTerminalDiagnosisCard
+                diagnosesData={data}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+                workspacePilot={workspacePilot}
+              />
+            </Card>
+          );
+        }
+
         if (sectionKey === "diagnoses" && card.customRenderer === "lcdEligibility") {
           return (
             <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -9870,46 +10068,33 @@ const SECTION_CONFIGS = {
     title: "Diagnoses",
     subtitle: "Primary/Secondary Dx, comorbidities, disease trajectory, and LCD eligibility",
     cards: [
+      // RNICA Diagnosis & LCD Workspace Optimization (owner-approved
+      // directive): Primary Diagnosis + Terminal Prognosis merged into one
+      // compact search-driven container (FR-003/FR-004); LCD moved
+      // immediately after diagnosis, with its supporting-evidence card
+      // directly below it, ahead of Secondary Diagnoses/HOPE Comorbidities
+      // (FR-006/FR-010) -- see PrimaryTerminalDiagnosisCard above for the
+      // auto-populate logic and the customRenderer dispatch above for how
+      // each of these renders.
       {
-        title: "Primary Diagnosis", hopeCode: "I0010", fields: [
-          { type: "input", label: "ICD-10 Code", path: "primaryDiagnosis.icd10", required: true },
-          { type: "input", label: "Description", path: "primaryDiagnosis.description", required: true },
-          { type: "input", label: "Onset Date", path: "primaryDiagnosis.onsetDate", inputType: "date" },
-          { type: "select", label: "HOPE Principal Diagnosis Category (I0010)", path: "primaryDiagnosis.hopeDiagnosisCategory", required: true, hopeCode: "I0010", options: [
-            { value: "01", label: "01 — Cancer" },
-            { value: "02", label: "02 — Dementia (including Alzheimer's disease)" },
-            { value: "03", label: "03 — Neurological Condition (e.g., Parkinson's disease, MS, ALS)" },
-            { value: "04", label: "04 — Stroke" },
-            { value: "05", label: "05 — Chronic Obstructive Pulmonary Disease (COPD)" },
-            { value: "06", label: "06 — Cardiovascular (excluding heart failure)" },
-            { value: "07", label: "07 — Heart Failure" },
-            { value: "08", label: "08 — Liver Disease" },
-            { value: "09", label: "09 — Renal Disease" },
-            { value: "99", label: "99 — None of the above" },
-          ] },
-        ],
-      },
-      {
-        title: "Terminal Prognosis", hopeCode: "J0050", fields: [
-          { type: "select", label: "Terminal Prognosis", path: "terminalPrognosis", hopeCode: "J0050", options: ["6 months or less", "More than 6 months", "Undetermined"] },
-        ],
-      },
-      {
-        title: "Secondary Diagnoses",
-        customRenderer: "secondaryDiagnoses",
+        title: "Primary Terminal Diagnosis", hopeCode: "I0010", customRenderer: "primaryTerminalDiagnosis",
       },
       {
         title: "LCD Eligibility",
         customRenderer: "lcdEligibility",
       },
       {
+        title: "LCD Supporting Evidence",
+        customRenderer: "lcdSupportingEvidence",
+      },
+      {
+        title: "Secondary Diagnoses",
+        customRenderer: "secondaryDiagnoses",
+      },
+      {
         title: "Comorbidities and Co-existing Conditions",
         hopeCode: "I0100-I8005",
         customRenderer: "hopeComorbidities",
-      },
-      {
-        title: "LCD Supporting Evidence",
-        customRenderer: "lcdSupportingEvidence",
       },
     ],
   },

@@ -396,6 +396,7 @@ export default function RNICACommandWorkspace({
     setViewMode("screen");
     onSelect(screen.landingModuleKey);
     emitRnIcaTelemetry({ name: "section_jump", section: screen.landingModuleKey, source: `screen:${screen.key}` });
+    if (screen.railTarget === "validation") setValidationOpen(true);
     requestAnimationFrame(() => {
       document.querySelector(`[data-rnica-rail-target="${screen.railTarget}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -445,6 +446,22 @@ export default function RNICACommandWorkspace({
       emitRnIcaTelemetry({ name: "section_find", elapsedMs: Math.round(performance.now() - (searchStartedAt || performance.now())), resultCount });
     }
   };
+
+  // RNICA Diagnosis & LCD Workspace Optimization (owner directive FR-002):
+  // global workspace toolbar. "Voice Documentation" toggles the Visit
+  // Recording drawer (previously rendered permanently at the top of every
+  // screen -- see visitRecorderOpen below); "AI Assist" and "HOPE Report"
+  // reuse the existing cross-cutting screen navigation to the real
+  // AI Action Center / Compliance & Readiness rail panels (no new
+  // panels/data -- those are the only working surfaces for this content);
+  // "Classic View" reuses the existing exitPilot confirm-and-switch flow.
+  const [visitRecorderOpen, setVisitRecorderOpen] = useState(false);
+  // FR-011: the persistent Validation drawer is collapsed by default so
+  // it doesn't dominate the rail; the RN expands it deliberately, same
+  // pattern as the LCD groups and HOPE Comorbidities category groups.
+  const [validationOpen, setValidationOpen] = useState(false);
+  const aiActionCenterScreen = RNICA_THIRTEEN_SCREENS.find((screen) => screen.key === "aiActionCenter");
+  const complianceReadinessScreen = RNICA_THIRTEEN_SCREENS.find((screen) => screen.key === "complianceReadiness");
 
   const exitPilot = () => {
     if (window.confirm("Switch to the classic RN ICA view? Save or finish any open tool drafts before switching presentations.")) {
@@ -658,9 +675,40 @@ export default function RNICACommandWorkspace({
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
           <span>{completedSections.length}/{routes.length} sections</span>
           {activeScreenIndex >= 0 && <span>Screen {activeScreenIndex + 1} of {RNICA_THIRTEEN_SCREENS.length}</span>}
-          <button type="button" onClick={exitPilot}>Use classic view</button>
         </div>
       </ClinicalCommandHeader>
+
+      {/* RNICA Workspace toolbar (owner directive FR-002) -- global, so it
+          applies to every screen using this shared layout, not only
+          Diagnosis & LCD. Each button reuses existing, already-working
+          surfaces; nothing here is a new panel or data source. */}
+      <div className="rnica-command-toolbar" role="toolbar" aria-label="RNICA Workspace">
+        <button
+          type="button"
+          className={`rnica-command-toolbar__btn ${visitRecorderOpen ? "is-active" : ""}`}
+          aria-pressed={visitRecorderOpen}
+          onClick={() => setVisitRecorderOpen((current) => !current)}
+        >
+          Voice Documentation
+        </button>
+        <button
+          type="button"
+          className="rnica-command-toolbar__btn"
+          onClick={() => aiActionCenterScreen && selectCrossCuttingScreen(aiActionCenterScreen)}
+        >
+          AI Assist
+        </button>
+        <button
+          type="button"
+          className="rnica-command-toolbar__btn"
+          onClick={() => complianceReadinessScreen && selectCrossCuttingScreen(complianceReadinessScreen)}
+        >
+          HOPE Report
+        </button>
+        <button type="button" className="rnica-command-toolbar__btn" onClick={exitPilot}>
+          Classic View
+        </button>
+      </div>
 
       <ClinicalCommandContextBar className="rnica-command-prep" ariaLabel="Before visit patient context">
         <div><span>Primary</span><strong>{patient.primaryDiagnosis || "Not documented"}</strong></div>
@@ -751,7 +799,14 @@ export default function RNICACommandWorkspace({
 
         <ScrollRegion name="detail" className="rnica-command-detail">
           <>
-              {visitRecorder}
+              {/* FR-002/FR-005: Visit Recording is no longer a permanent
+                  card -- it renders only inside the toolbar-controlled
+                  drawer, same VisitRecorderCard/props as before. */}
+              {visitRecorderOpen && (
+                <div className="rnica-command-voice-drawer" data-rnica-rail-target="voice-documentation">
+                  {visitRecorder}
+                </div>
+              )}
               {alerts}
               {activeScreen?.key === "evidenceIntake" && (
                 <EvidenceIntakeAlertBanner
@@ -805,20 +860,32 @@ export default function RNICACommandWorkspace({
             Narrative &amp; final review
           </button>
           <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
-              <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
-              {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
-              {errorKeys.slice(0, 5).map((key) => (
-                <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
-                  select(routeForRequirement(key)?.key || "finalization", "requirement");
-                }}>
-                  <strong>Required</strong><span>{validation.errors[key]}</span>
-                </button>
-              ))}
-              {warningKeys.slice(0, 3).map((key) => (
-                <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
-                  <strong>Review</strong><span>{validation.warnings[key]}</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                className="rnica-command-card__heading rnica-command-card__heading--toggle"
+                aria-expanded={validationOpen}
+                onClick={() => setValidationOpen((current) => !current)}
+              >
+                <h2>{validationOpen ? "▾" : "▸"} Validation</h2>
+                <span>{errorKeys.length + warningKeys.length} items</span>
+              </button>
+              {validationOpen && (
+                <>
+                  {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
+                  {errorKeys.slice(0, 5).map((key) => (
+                    <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
+                      select(routeForRequirement(key)?.key || "finalization", "requirement");
+                    }}>
+                      <strong>Required</strong><span>{validation.errors[key]}</span>
+                    </button>
+                  ))}
+                  {warningKeys.slice(0, 3).map((key) => (
+                    <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
+                      <strong>Review</strong><span>{validation.warnings[key]}</span>
+                    </button>
+                  ))}
+                </>
+              )}
             </section>
           <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
               <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>

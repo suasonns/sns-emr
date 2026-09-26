@@ -73,6 +73,36 @@
 .rnica-command-prep span { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; }
 .rnica-command-prep strong { margin-top: 0.15rem; }
 
+/* RNICA Workspace toolbar (owner directive FR-002) -- global, above the
+   context bar, so it's available regardless of active screen. */
+.rnica-command-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-bgAlt);
+}
+.rnica-command-toolbar__btn.is-active { border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); }
+
+/* Voice Documentation drawer -- shown only while the toolbar toggle is
+   active (FR-005: Visit Recording is no longer a permanent card). */
+.rnica-command-voice-drawer { margin-bottom: var(--cw-gap, 1rem); }
+
+/* Collapsible rail card headings (Validation drawer, FR-011) -- reset
+   button chrome so the toggle reads like the existing static heading. */
+.rnica-command-card__heading--toggle {
+  width: 100%;
+  min-height: unset;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.rnica-command-card__heading--toggle h2 { margin: 0; }
+
 .rnica-command-layout { display: grid; grid-template-columns: 270px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
 .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
 .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 720px; }
