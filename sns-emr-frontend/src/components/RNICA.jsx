@@ -8774,17 +8774,17 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // unchanged -- see RNICA_SCREEN_AUTHORITY_MATRIX.md.
         const cardDataSection = card.dataSection || sectionKey;
         const cardData = card.dataSection ? (fullFormData?.[card.dataSection] || {}) : data;
-        const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
+        const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics & Body Map";
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
         const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
-        const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics" && painAssessmentMode === "verbal";
+        const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics & Body Map" && painAssessmentMode === "verbal";
         const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
         const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
 
         if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "Pain Characteristics" && !shouldRenderPainCharacteristicsCard) {
+        if (sectionKey === "pain" && card.title === "Pain Characteristics & Body Map" && !shouldRenderPainCharacteristicsCard) {
           return null;
         }
         if (sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && !shouldRenderPainadCard) {
@@ -9065,8 +9065,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             hopeCode={card.hopeCode}
             sfv={card.sfv}
             cms={card.cms}
-            collapsible={sectionKey === "pain" && card.title === "Pain Assessment Tool"}
-            defaultCollapsed={sectionKey === "pain" && card.title === "Pain Assessment Tool"}
+            collapsible={sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")}
+            defaultCollapsed={sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")}
           >
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
@@ -9373,7 +9373,12 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Pain Characteristics", fields: [
+        // [OWNER REVIEW -- 2026-09-26] Pain Characteristics & Body Map must
+        // default to collapsed: the body map/checkbox grid consumes
+        // significant vertical space the nurse doesn't need to keep in view
+        // while reviewing Pain Management/treatment response above. Current
+        // Pain Assessment (Pain Screening) and Pain Management stay open.
+        title: "Pain Characteristics & Body Map", fields: [
           { type: "checkboxGroup", label: "Pain location", path: "painLocation", options: ["Head", "Neck", "Chest", "Abdomen", "Back", "Upper extremities", "Lower extremities", "Generalized"] },
           { type: "checkboxGroup", label: "Pain character", path: "painCharacter", options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
           { type: "checkboxGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
