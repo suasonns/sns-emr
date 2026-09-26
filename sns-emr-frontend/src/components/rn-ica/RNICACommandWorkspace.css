@@ -112,7 +112,7 @@
 
 .rnica-command-screens { display: flex; flex-direction: column; gap: 0.3rem; }
 .rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.15rem; }
-.rnica-command-screen-group__header {
+button.rnica-command-screen-group__header {
   display: flex; align-items: center; gap: 0.3rem; width: 100%;
   min-height: 24px; padding: 0.18rem 0.4rem; text-align: left;
   background: var(--sns-bgAlt); font-weight: 500; font-size: var(--cw-nav-size);
@@ -449,11 +449,22 @@
   min-height: 0;
 }
 
+/* [OWNER REVIEW -- 2026-09-25] "Does the outer navigation bar match the
+   RNICA navigation bar? Really?" -- this rail is the nav rendered for the
+   4 dedicated-shell screens (Patient Story, Evidence & Intake, HOPE
+   Administrative Review, Pain & Symptom Burden) and had NOT received the
+   chart-nav typography/footprint pass applied to `.rnica-command-matrix`
+   below -- it still used the pre-refinement 15.5rem width, 0.78rem/600
+   weight labels, and large (1.3rem) numbered circles. Brought in line:
+   same 176px width and ~11px/400-500 weight type as the outer chart nav
+   sidebar, smaller index circles, and a quieter, smaller status badge.
+   Color progress indicators (index circle color, status badge color)
+   are kept, only their size/weight is reduced. */
 .rnica-rail {
   display: flex;
   flex-direction: column;
-  flex: 0 0 15.5rem;
-  width: 15.5rem;
+  flex: 0 0 176px;
+  width: 176px;
   border-right: 1px solid var(--sns-border);
   background: var(--sns-bgNav);
 }
@@ -462,9 +473,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 0.85rem 0.4rem;
-  font: 800 0.72rem Inter, sans-serif;
-  letter-spacing: 0.04em;
+  padding: 0.5rem 0.6rem 0.3rem;
+  font: 700 0.62rem Inter, sans-serif;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--sns-muted);
 }
@@ -472,8 +483,8 @@
 .rnica-rail__progress-text { color: var(--sns-teal); }
 
 .rnica-rail__progress-track {
-  height: 0.3rem;
-  margin: 0 0.85rem 0.6rem;
+  height: 0.25rem;
+  margin: 0 0.6rem 0.45rem;
   border-radius: 999px;
   background: var(--sns-border);
   overflow: hidden;
@@ -488,13 +499,13 @@
 .rnica-rail__scroll {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 0 0.5rem 0.75rem;
+  padding: 0 0.4rem 0.5rem;
 }
 
 .rnica-rail__list {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -503,14 +514,14 @@
 .rnica-rail__item {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.4rem;
   width: 100%;
-  padding: 0.45rem 0.55rem;
+  padding: 0.22rem 0.4rem;
   border: 1px solid transparent;
-  border-radius: 0.5rem;
+  border-radius: 0.4rem;
   background: transparent;
   color: var(--sns-dim);
-  font: 600 0.78rem Inter, sans-serif;
+  font: 400 0.72rem Inter, sans-serif;
   text-align: left;
   cursor: pointer;
 }
@@ -526,8 +537,9 @@
 .rnica-rail__item.is-active {
   border-color: var(--sns-borderSelected);
   border-left: 3px solid var(--sns-teal);
-  padding-left: calc(0.55rem - 2px);
+  padding-left: calc(0.4rem - 2px);
   color: var(--sns-white);
+  font-weight: 500;
   background: var(--sns-selectedSurface);
   box-shadow: 0 0 0 1px var(--sns-tealSoftBorder), 0 4px 12px var(--sns-shadow);
 }
@@ -537,12 +549,12 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1rem;
+  height: 1rem;
   border-radius: 999px;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.65rem;
+  font-size: 0.58rem;
 }
 
 /* ACTIVE: number circle = primary teal, number text = inverse text */
@@ -563,11 +575,18 @@
 .rnica-rail__item--attention:not(.is-active) { color: var(--sns-white); }
 .rnica-rail__item--caution:not(.is-active) { color: var(--sns-white); }
 
-.rnica-rail__label { flex: 1 1 auto; min-width: 0; }
+.rnica-rail__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .rnica-rail__status { flex: 0 0 auto; }
 
-.rnica-rail__status-badge { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rnica-rail__status-badge {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  padding: 0.03rem 0.32rem !important;
+  font-size: 9px !important;
+  font-weight: 600 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
 
 .rnica-rail__status-dot {
   display: inline-flex;
