@@ -34,6 +34,10 @@ import { LANGUAGE_OPTIONS, ETHNICITY_OPTIONS, RACE_OPTIONS } from "./rn-ica/hope
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as ShadcnCardTitle, CardContent as ShadcnCardContent } from "./ui/card";
+import { Badge as ShadcnBadge } from "./ui/badge";
+import { Progress as ShadcnProgress } from "./ui/progress";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { listSfvRequirements } from "../api/sfv";
@@ -2656,6 +2660,230 @@ function diagnosesIncludeCategory(diagnosesData, categoryKey) {
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
   return secondaryDx.some(
     (dx) => matchesCategory(dx?.icd10, category.regex) || matchesCategoryText(dx?.description, categoryKey),
+  );
+}
+
+// Explains WHY a disease-specific scale is currently visible, reusing the
+// exact same category regex/text match already used by
+// diagnosesIncludeCategory above (never re-derives its own matching rule).
+// Returns null when nothing matched (scale hidden) so callers can skip the
+// explanatory line entirely.
+function describeScaleTrigger(diagnosesData, categoryKey) {
+  const category = HOPE_COMORBIDITY_CATEGORIES.find((cat) => cat.key === categoryKey);
+  if (!category) return null;
+  const primary = diagnosesData?.primaryDiagnosis;
+  if (matchesCategory(primary?.icd10, category.regex) || matchesCategoryText(primary?.description, categoryKey)) {
+    return `Primary diagnosis: ${primary?.description || formatIcd10Code(primary?.icd10) || category.label}`;
+  }
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  const match = secondaryDx.find(
+    (dx) => matchesCategory(dx?.icd10, category.regex) || matchesCategoryText(dx?.description, categoryKey),
+  );
+  if (match) {
+    return `Secondary diagnosis: ${match.description || formatIcd10Code(match.icd10) || category.label}`;
+  }
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════
+// FUNCTIONAL STATUS — diagnosis-aware scale layout (owner directive:
+// "RNICA Functional Status Context-Aware Scale Visibility", finalized by
+// the owner's "NOT APPROVED YET" layout revision). PPS/KPS are core
+// hospice scales (always shown, unchanged); ECOG/FAST/NYHA remain gated
+// by the existing diagnosesIncludeCategory logic above — nothing about
+// that gating changes here, only how the visible scales are presented
+// (compact shadcn/ui cards instead of one full-width card per scale) and
+// how the RN is told WHY a scale is/isn't showing. Pilot-mode only —
+// legacy (workspacePilot=false) keeps rendering every card through the
+// original card.fields generic renderer, completely untouched.
+// ════════════════════════════════════════════════════════════════
+const PERFORMANCE_SCALE_META = {
+  pps: { isPercent: true },
+  kps: { isPercent: true },
+  ecog: { isPercent: false, hint: "cancer" },
+  fast: { isPercent: false, hint: "dementia" },
+  nyha: { isPercent: false, hint: "heartFailure" },
+};
+
+const PERFORMANCE_SCALE_TITLES = {
+  "Palliative Performance Scale (PPS)": "pps",
+  "Karnofsky Performance Scale (KPS)": "kps",
+  "ECOG Performance Status": "ecog",
+  "FAST Scale (Dementia)": "fast",
+  "NYHA Classification (Heart Failure)": "nyha",
+};
+
+// One compact card per scale: score dropdown + single-row justification
+// instead of the old full-width stacked layout, plus (for disease-specific
+// scales) a one-line explanation of which diagnosis made it visible.
+function PerformanceScaleCard({ scaleKey, card, data, update, diagnosesData }) {
+  const meta = PERFORMANCE_SCALE_META[scaleKey] || {};
+  const [scoreField, justificationField] = card.fields;
+  const scoreValue = getNestedValue(data, scoreField.path);
+  const justificationValue = getNestedValue(data, justificationField.path);
+  const scoreOption = (scoreField.options || []).find((opt) => (typeof opt === "string" ? opt : opt.value) === scoreValue);
+  const scoreLabel = scoreOption ? (typeof scoreOption === "string" ? null : scoreOption.label) : null;
+  const percent = meta.isPercent && scoreValue ? parseInt(scoreValue, 10) : null;
+  const trigger = meta.hint ? describeScaleTrigger(diagnosesData, meta.hint) : null;
+
+  return (
+    <ShadcnCard className="rnica-scale-card">
+      <ShadcnCardHeader>
+        <ShadcnCardTitle>
+          {card.title}
+          {card.hopeCode && <HopeTag code={card.hopeCode} />}
+        </ShadcnCardTitle>
+        <ShadcnBadge variant={scoreValue ? "teal" : "neutral"}>{scoreValue || "Not documented"}</ShadcnBadge>
+      </ShadcnCardHeader>
+      <ShadcnCardContent>
+        {trigger && <div className="rnica-scale-card__trigger">Shown because of — {trigger}</div>}
+        {percent !== null && <ShadcnProgress value={percent} className="rnica-scale-card__progress" />}
+        {scoreLabel && <div className="rnica-scale-card__meaning">{scoreLabel}</div>}
+        <div className="rnica-scale-card__row">
+          <FormSelect
+            label={scoreField.label}
+            value={scoreValue}
+            onChange={(v) => update(scoreField.path, v)}
+            options={scoreField.options}
+          />
+          {justificationField.type === "textarea" ? (
+            <FormTextarea
+              label={justificationField.label}
+              value={justificationValue}
+              onChange={(v) => update(justificationField.path, v)}
+              rows={1}
+            />
+          ) : (
+            <FormInput
+              label={justificationField.label}
+              value={justificationValue}
+              onChange={(v) => update(justificationField.path, v)}
+            />
+          )}
+        </div>
+      </ShadcnCardContent>
+    </ShadcnCard>
+  );
+}
+
+// Top-of-screen transparency banner: shows the diagnoses driving scale
+// visibility and which scales are currently active, so the RN never has to
+// wonder why FAST/ECOG/NYHA did or didn't appear (owner: "The screen
+// should explain itself").
+function FunctionalStatusSummaryCard({ diagnosesData, showEcog, showFast, showNyha }) {
+  const primary = diagnosesData?.primaryDiagnosis;
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  const primaryLabel = primary?.description || (primary?.icd10 ? formatIcd10Code(primary.icd10) : "") || "Not documented";
+  const secondaryLabel = secondaryDx.length
+    ? secondaryDx.map((dx) => dx.description || (dx.icd10 ? formatIcd10Code(dx.icd10) : "")).filter(Boolean).join(", ") || "Not documented"
+    : "None documented";
+  const activeScales = ["PPS", "KPS", showEcog && "ECOG", showFast && "FAST", showNyha && "NYHA"].filter(Boolean);
+
+  return (
+    <ShadcnCard className="rnica-functional-summary">
+      <ShadcnCardHeader><ShadcnCardTitle>Functional Status Summary</ShadcnCardTitle></ShadcnCardHeader>
+      <ShadcnCardContent>
+        <div className="rnica-functional-summary__grid">
+          <div>
+            <div className="rnica-functional-summary__label">Primary Diagnosis</div>
+            <div className="rnica-functional-summary__value">{primaryLabel}</div>
+          </div>
+          <div>
+            <div className="rnica-functional-summary__label">Secondary Diagnosis</div>
+            <div className="rnica-functional-summary__value">{secondaryLabel}</div>
+          </div>
+          <div>
+            <div className="rnica-functional-summary__label">Active Scales</div>
+            <div className="rnica-functional-summary__badges">
+              {activeScales.map((scale) => <ShadcnBadge key={scale} variant="teal">{scale}</ShadcnBadge>)}
+            </div>
+          </div>
+        </div>
+      </ShadcnCardContent>
+    </ShadcnCard>
+  );
+}
+
+// Compact single-row ADL grid (replaces the old one-select-per-row stack)
+// plus a plain, non-AI, selection-derived summary sentence -- built only
+// from the RN's own documented scores, per owner: "No AI interpretation
+// required." Reads/writes the same adl.* fields via `update` (dataSection
+// still resolves to musculoskeletal, unchanged storage/ownership).
+const ADL_SUMMARY_PHRASES = {
+  bathing: "bathing", dressing: "dressing", toileting: "toileting",
+  transferring: "transfers", eating: "eating", grooming: "grooming",
+};
+
+function buildAdlSummaryText(data) {
+  const adl = data?.adl || {};
+  const scored = Object.entries(ADL_SUMMARY_PHRASES)
+    .map(([key, phrase]) => ({ phrase, score: adl[key] !== undefined && adl[key] !== "" ? parseInt(adl[key], 10) : null }))
+    .filter((item) => Number.isFinite(item.score));
+  if (!scored.length) return "";
+  const extensive = scored.filter((item) => item.score >= 4).map((item) => item.phrase);
+  const independent = scored.filter((item) => item.score === 0).map((item) => item.phrase);
+  const parts = [];
+  if (extensive.length) parts.push(`Patient requires extensive assistance with ${extensive.join(", ")}.`);
+  if (independent.length) parts.push(`Patient remains independent with ${independent.join(", ")}.`);
+  return parts.join(" ");
+}
+
+function AdlSummaryGrid({ card, data, update }) {
+  const summary = buildAdlSummaryText(data);
+  return (
+    <>
+      <div className="rnica-adl-grid">
+        {card.fields.map((field) => (
+          <div key={field.path} className="rnica-adl-grid__item">
+            <FormSelect
+              label={field.label}
+              value={getNestedValue(data, field.path)}
+              onChange={(v) => update(field.path, v)}
+              options={field.options}
+            />
+          </div>
+        ))}
+      </div>
+      {summary && <div className="rnica-adl-grid__summary"><strong>ADL Summary — </strong>{summary}</div>}
+    </>
+  );
+}
+
+// Read-only reference card: Mobility/Transfer is documented on the
+// Musculoskeletal (Body Systems) screen (musculoskeletal.mobility.*), not
+// duplicated here as an editable field -- this only surfaces it inside
+// Functional Status for context, per the owner's approved page structure.
+// Never writes back into formData; a pure display of already-owned data.
+function MobilityTransferSummaryCard({ fullFormData }) {
+  const mobility = fullFormData?.musculoskeletal?.mobility || {};
+  const hasAny = mobility.ambulatoryStatus || mobility.transferAbility || mobility.endurance;
+  return (
+    <ShadcnCard className="rnica-functional-summary">
+      <ShadcnCardHeader><ShadcnCardTitle>Mobility &amp; Transfer</ShadcnCardTitle></ShadcnCardHeader>
+      <ShadcnCardContent>
+        {hasAny ? (
+          <div className="rnica-functional-summary__grid">
+            <div>
+              <div className="rnica-functional-summary__label">Ambulatory Status</div>
+              <div className="rnica-functional-summary__value">{mobility.ambulatoryStatus || "—"}</div>
+            </div>
+            <div>
+              <div className="rnica-functional-summary__label">Transfer Ability</div>
+              <div className="rnica-functional-summary__value">{mobility.transferAbility || "—"}</div>
+            </div>
+            <div>
+              <div className="rnica-functional-summary__label">Endurance</div>
+              <div className="rnica-functional-summary__value">{mobility.endurance || "—"}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="rnica-info-note">Not yet documented on Body Systems → Musculoskeletal.</div>
+        )}
+        <div className="rnica-info-note" style={{ marginTop: 8 }}>
+          Documented on Body Systems → Musculoskeletal; shown here for context only.
+        </div>
+      </ShadcnCardContent>
+    </ShadcnCard>
   );
 }
 
@@ -9267,7 +9495,11 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           u("sfvDate", completedAt || "");
         }} styles={styles} COLORS={COLORS} />
       )}
-      <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
+      <div className={
+        workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid"
+        : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
+        : undefined
+      }>
         {resolvedCards.map((card, ci) => {
         // [PRESENTATION-ONLY RELOCATION] A card may declare `dataSection` to
         // render under a different screen/section than the one that owns its
@@ -9322,6 +9554,50 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
         if (sectionKey === "performanceStatus" && card.title === "ECOG Performance Status" && !showEcog) {
           return null;
+        }
+        // Pilot-only cards (summary banner / group labels / mobility
+        // reference) are hidden entirely in legacy mode -- legacy keeps
+        // exactly the original card list/order it always had.
+        if (sectionKey === "performanceStatus" && !workspacePilot && ["functionalStatusSummary", "scaleGroupLabel", "mobilityTransferSummary"].includes(card.customRenderer)) {
+          return null;
+        }
+        if (sectionKey === "performanceStatus" && card.customRenderer === "scaleGroupLabel") {
+          const groupHasVisibleScale = card.title === "Specialized Diagnosis-Specific Scales" ? (showEcog || showFast || showNyha) : true;
+          if (!groupHasVisibleScale) return null;
+          return <div key={ci} className="rnica-performance-group-label">{card.title}</div>;
+        }
+        if (sectionKey === "performanceStatus" && card.customRenderer === "functionalStatusSummary") {
+          return (
+            <FunctionalStatusSummaryCard
+              key={ci}
+              diagnosesData={fullFormData?.diagnoses}
+              showEcog={showEcog}
+              showFast={showFast}
+              showNyha={showNyha}
+            />
+          );
+        }
+        if (sectionKey === "performanceStatus" && card.customRenderer === "mobilityTransferSummary") {
+          return <MobilityTransferSummaryCard key={ci} fullFormData={fullFormData} />;
+        }
+        if (sectionKey === "performanceStatus" && workspacePilot && PERFORMANCE_SCALE_TITLES[card.title]) {
+          return (
+            <PerformanceScaleCard
+              key={ci}
+              scaleKey={PERFORMANCE_SCALE_TITLES[card.title]}
+              card={card}
+              data={cardData}
+              update={(path, v) => update(cardDataSection, path, v)}
+              diagnosesData={fullFormData?.diagnoses}
+            />
+          );
+        }
+        if (sectionKey === "performanceStatus" && workspacePilot && card.customRenderer === "adlSummaryGrid") {
+          return (
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <AdlSummaryGrid card={card} data={cardData} update={(path, v) => update(cardDataSection, path, v)} />
+            </Card>
+          );
         }
 
         if (sectionKey === "diagnoses" && card.customRenderer === "primaryTerminalDiagnosis") {
@@ -9398,17 +9674,34 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
 
         if (sectionKey === "performanceStatus" && card.customRenderer === "declineTracker") {
+          const declineTrackerBody = (
+            <DeclineTrackerCard
+              patientId={patientId}
+              assessmentId={assessmentId}
+              performanceData={data}
+              weight={fullFormData?.vitals?.weight}
+              updateField={u}
+              styles={styles}
+              COLORS={COLORS}
+            />
+          );
+          // Collapsed by default in pilot mode -- most admissions have "no
+          // prior assessment available" here, so it shouldn't occupy space
+          // above the actual scales. Legacy mode is untouched (always
+          // expanded, plain Card wrapper).
+          if (workspacePilot) {
+            return (
+              <Accordion key={ci} type="single" collapsible className="rnica-decline-accordion">
+                <AccordionItem value="decline">
+                  <AccordionTrigger>{card.title}</AccordionTrigger>
+                  <AccordionContent>{declineTrackerBody}</AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            );
+          }
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <DeclineTrackerCard
-                patientId={patientId}
-                assessmentId={assessmentId}
-                performanceData={data}
-                weight={fullFormData?.vitals?.weight}
-                updateField={u}
-                styles={styles}
-                COLORS={COLORS}
-              />
+              {declineTrackerBody}
             </Card>
           );
         }
@@ -10137,9 +10430,16 @@ const SECTION_CONFIGS = {
     title: "Performance Status",
     subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications, and ADL assessment",
     cards: [
+      // Pilot-only cards below (functionalStatusSummary/scaleGroupLabel/
+      // mobilityTransferSummary) are hidden entirely in legacy mode -- see
+      // the sectionKey === "performanceStatus" guards in the renderer.
       {
-        title: "Change Since Last Assessment",
-        customRenderer: "declineTracker",
+        title: "Functional Status Summary",
+        customRenderer: "functionalStatusSummary",
+      },
+      {
+        title: "Core Hospice Functional Scales",
+        customRenderer: "scaleGroupLabel",
       },
       {
         title: "Palliative Performance Scale (PPS)", hopeCode: "M1190", fields: [
@@ -10152,6 +10452,10 @@ const SECTION_CONFIGS = {
           { type: "select", label: "KPS Score", path: "kps", options: ["100","90","80","70","60","50","40","30","20","10","0"] },
           { type: "textarea", label: "KPS Justification", path: "kpsJustification" },
         ],
+      },
+      {
+        title: "Specialized Diagnosis-Specific Scales",
+        customRenderer: "scaleGroupLabel",
       },
       {
         title: "ECOG Performance Status", fields: [
@@ -10179,7 +10483,7 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Functional Decline", fields: [
+        title: "Functional Decline", id: "rnica-functional-decline-card", fields: [
           { type: "textarea", label: "Functional Decline Notes", path: "functionalDeclineNotes", rows: 4 },
         ],
       },
@@ -10188,7 +10492,7 @@ const SECTION_CONFIGS = {
       // storage, validation, LCD facts, and POC ownership remain with
       // `musculoskeletal` (Body Systems) via `dataSection` -- see
       // RNICA_SCREEN_AUTHORITY_MATRIX.md.
-      { title: "ADL Assessment (0=Independent, 5=Dependent)", dataSection: "musculoskeletal", fields: [
+      { title: "ADL Assessment (0=Independent, 5=Dependent)", id: "rnica-adl-assessment-card", dataSection: "musculoskeletal", customRenderer: "adlSummaryGrid", fields: [
         { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
         { type: "select", label: "Dressing", path: "adl.dressing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
         { type: "select", label: "Toileting", path: "adl.toileting", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
@@ -10196,6 +10500,14 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Eating", path: "adl.eating", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
         { type: "select", label: "Grooming", path: "adl.grooming", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
       ]},
+      {
+        title: "Mobility & Transfer",
+        customRenderer: "mobilityTransferSummary",
+      },
+      {
+        title: "Change Since Last Assessment",
+        customRenderer: "declineTracker",
+      },
     ],
   },
 

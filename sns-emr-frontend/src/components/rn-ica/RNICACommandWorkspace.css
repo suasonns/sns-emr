@@ -259,6 +259,36 @@
 .rnica-comorbidity-option { min-height: 1.9rem; padding: 0.1rem 0; border-top: 0; }
 .rnica-comorbidity-option:first-child { border-top: 0; }
 
+/* [OWNER DIRECTIVE -- Functional Status Context-Aware Scale Visibility,
+   finalized layout revision] Compact diagnosis-aware Functional Status
+   layout: summary banner + group labels span the full grid width; PPS/
+   KPS/ECOG/FAST/NYHA render as compact 2-up shadcn/ui cards instead of one
+   full-width card per scale. Existing gating logic (showEcog/showFast/
+   showNyha) is unchanged -- this only restyles what's already shown/
+   hidden. Legacy (non-pilot) mode is untouched. */
+.rnica-performance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cw-gap); align-items: start; }
+.rnica-performance-grid > .rnica-functional-summary,
+.rnica-performance-grid > .rnica-performance-group-label,
+.rnica-performance-grid > .rnica-decline-accordion,
+.rnica-performance-grid #rnica-functional-decline-card,
+.rnica-performance-grid #rnica-adl-assessment-card { grid-column: 1 / -1; }
+.rnica-performance-group-label { padding-top: 0.4rem; font-size: var(--cw-meta-size, 0.75rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sns-muted); }
+.rnica-scale-card { padding-bottom: 0.6rem; }
+.rnica-scale-card__trigger { margin-bottom: 0.4rem; padding: 0.35rem 0.55rem; border-radius: 0.35rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); }
+.rnica-scale-card__meaning { margin-bottom: 0.4rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); line-height: 1.35; }
+.rnica-scale-card__progress { margin-bottom: 0.5rem; }
+.rnica-scale-card__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; align-items: end; }
+.rnica-scale-card__row .rnica-form-card { padding: 0 !important; }
+.rnica-functional-summary__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
+.rnica-functional-summary__label { margin-bottom: 0.15rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.75rem); text-transform: uppercase; letter-spacing: 0.04em; }
+.rnica-functional-summary__value { color: var(--sns-white); font-size: var(--cw-body-size); font-weight: 500; }
+.rnica-functional-summary__badges { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.rnica-adl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; }
+.rnica-adl-grid__summary { margin-top: 0.6rem; padding: 0.5rem 0.65rem; border-radius: 0.4rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
+.rnica-adl-grid__summary strong { color: var(--sns-white); }
+.rnica-decline-accordion { padding: 0 0.85rem; border: 1px solid var(--sns-border); border-radius: 0.5rem; background: var(--sns-card); }
+.rnica-info-note { color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); font-style: italic; }
+
 .rnica-command-card { padding: var(--cw-pad); margin-bottom: var(--cw-gap); }
 .rnica-command-rail h2 { font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-rail strong,
@@ -316,6 +346,7 @@
   .rnica-diagnosis-ledger__related, .rnica-diagnosis-ledger__row > div:last-child { min-height: 2.5rem; }
   .rnica-diagnosis-ledger__actions { align-items: stretch; flex-direction: column; }
   .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+  .rnica-performance-grid { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 701px) and (max-height: 800px) {
@@ -349,6 +380,7 @@
   .rnica-lcd-criterion { grid-template-columns: minmax(0, 1fr) !important; }
   .rnica-lcd-criterion > div:last-child { min-width: 0 !important; }
   .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+  .rnica-performance-grid { grid-template-columns: 1fr; }
 }
 
 @container clinical-command-workspace (max-width: 520px) {
