@@ -782,6 +782,9 @@ const INITIAL_FORM = {
     skinConditionsPresent: false,
     skinStatus: [], skinTurgor: "",
     skinBodySites: [],
+    skinMoisture: "", skinTemperature: "", skinColorFinding: "",
+    skinEdema: { severity: "", location: "" },
+    additionalSkinFindings: [],
     braden: {
       sensoryPerception: "", moisture: "", activity: "",
       mobility: "", nutrition: "", frictionShear: "", total: "",
@@ -10938,6 +10941,25 @@ const SECTION_CONFIGS = {
         { type: "checkboxGroup", label: "Skin Status", path: "skinStatus", options: ["Intact", "Dry", "Fragile", "Edematous", "Bruising", "Rash", "Jaundice", "Cyanotic", "Mottled"] },
         { type: "radio", label: "Skin Turgor", path: "skinTurgor", options: ["Good", "Fair", "Poor", "Tenting"] },
       ]},
+      // Owner directive (skin assessment parity with HospiceMD): additional
+      // discrete integumentary characteristics, stored under their own
+      // "skin.*" paths (separate from cardiovascular's circulatory
+      // edema/skinColor findings). These feed the same Integumentary
+      // findings pool as the rest of this section, so HOPE/SFV consumers
+      // that already read from "skin" pick these up with no new mapping
+      // or duplicate documentation elsewhere.
+      { title: "Skin Moisture, Temperature & Color", fields: [
+        { type: "radio", label: "Skin Moisture", path: "skinMoisture", options: ["Dry", "Moist", "Diaphoretic"] },
+        { type: "radio", label: "Skin Temperature", path: "skinTemperature", options: ["Warm", "Cool", "Hot"] },
+        { type: "radio", label: "Skin Color", path: "skinColorFinding", options: ["Normal", "Pale", "Cyanotic", "Jaundiced", "Mottled", "Flushed"] },
+      ]},
+      { title: "Edema (Skin/Wound-Related)", fields: [
+        { type: "radio", label: "Edema", path: "skinEdema.severity", options: ["None", "1+", "2+", "3+", "4+"] },
+        { type: "input", label: "Edema Location", path: "skinEdema.location" },
+      ]},
+      { title: "Additional Skin Findings", fields: [
+        { type: "checkboxGroup", label: "Findings", path: "additionalSkinFindings", options: ["Bruising", "Skin Tears", "Excoriation", "Pruritus", "Dry Scaling", "None"] },
+      ]},
       { title: "Braden Scale", fields: [
         { type: "select", label: "Sensory Perception", path: "braden.sensoryPerception", options: [{ value: "1", label: "1 — Completely limited" }, { value: "2", label: "2 — Very limited" }, { value: "3", label: "3 — Slightly limited" }, { value: "4", label: "4 — No impairment" }] },
         { type: "select", label: "Moisture", path: "braden.moisture", options: [{ value: "1", label: "1 — Constantly moist" }, { value: "2", label: "2 — Very moist" }, { value: "3", label: "3 — Occasionally moist" }, { value: "4", label: "4 — Rarely moist" }] },
@@ -13057,6 +13079,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     if ((skin.wounds || []).length > 0) {
       findings.push(`${skin.wounds.length} active wound${skin.wounds.length === 1 ? "" : "s"} documented — ongoing wound care oversight required.`);
     }
+    if (skin.skinColorFinding && skin.skinColorFinding !== "Normal") findings.push(`Skin color: ${skin.skinColorFinding}.`);
+    if (skin.skinTemperature && !["Warm", ""].includes(skin.skinTemperature)) findings.push(`Skin temperature: ${skin.skinTemperature}.`);
+    if (skin.skinMoisture && skin.skinMoisture !== "Dry") findings.push(`Skin moisture: ${skin.skinMoisture}.`);
+    if (skin.skinEdema?.severity && skin.skinEdema.severity !== "None") {
+      findings.push(`Skin edema: ${skin.skinEdema.severity}${skin.skinEdema.location ? ` (${skin.skinEdema.location})` : ""}.`);
+    }
+    const additionalSkinFindings = (skin.additionalSkinFindings || []).filter((f) => f && f !== "None");
+    if (additionalSkinFindings.length > 0) findings.push(`Additional skin findings: ${additionalSkinFindings.join(", ")}.`);
     const gi = formData?.gastrointestinal || {};
     if (gi.ostomy?.present) findings.push(`Ostomy present (${gi.ostomy.type || "type not specified"}).`);
     if (gi.feedingTube?.present) findings.push(`Feeding tube present (${gi.feedingTube.type || "type not specified"}).`);
