@@ -8334,19 +8334,43 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  // [OWNER REVIEW -- 2026-09-25] Pain Assessment Tool must default to
+  // collapsed: the 0-10 scale/protocol reference consumes excessive
+  // screen space and most RNs already know how to use it. Generic
+  // `collapsible` support on Card so any card can opt into this pattern
+  // without a bespoke wrapper.
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
+  const titleRow = (
+    <div
+      className="rnica-form-card__title"
+      style={{
+        ...styles.cardTitle,
+        display: "flex",
+        alignItems: "center",
+        gap: 8,
+        cursor: collapsible ? "pointer" : undefined,
+      }}
+      onClick={collapsible ? () => setCollapsed((c) => !c) : undefined}
+      role={collapsible ? "button" : undefined}
+      tabIndex={collapsible ? 0 : undefined}
+      aria-expanded={collapsible ? !collapsed : undefined}
+      onKeyDown={collapsible ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCollapsed((c) => !c); } } : undefined}
+    >
+      {collapsible && <span aria-hidden="true" style={{ fontSize: 11, color: COLORS.label || COLORS.gray }}>{collapsed ? "►" : "▾"}</span>}
+      {title}
+      {hopeCode && <HopeTag code={hopeCode} />}
+      {sfv && <SfvTag />}
+      {cms && <CmsTag label={cms} />}
+    </div>
+  );
   return (
     <div className="rnica-form-card" style={styles.card} id={id}>
-      <div className="rnica-form-card__title" style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
-        {title}
-        {hopeCode && <HopeTag code={hopeCode} />}
-        {sfv && <SfvTag />}
-        {cms && <CmsTag label={cms} />}
-      </div>
-      {children}
+      {titleRow}
+      {(!collapsible || !collapsed) && children}
     </div>
   );
 }
@@ -9034,7 +9058,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
 
         return (
-          <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+          <Card
+            key={ci}
+            id={card.id}
+            title={card.title}
+            hopeCode={card.hopeCode}
+            sfv={card.sfv}
+            cms={card.cms}
+            collapsible={sectionKey === "pain" && card.title === "Pain Assessment Tool"}
+            defaultCollapsed={sectionKey === "pain" && card.title === "Pain Assessment Tool"}
+          >
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
                 value={data.painIntensity?.current !== undefined && data.painIntensity?.current !== "" ? Number(data.painIntensity.current) : null}

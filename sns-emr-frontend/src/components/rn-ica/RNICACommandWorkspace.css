@@ -7,8 +7,11 @@
   --cw-meta-size: var(--ccw-meta-size);
   --cw-section-size: var(--ccw-section-size);
   --cw-patient-size: var(--ccw-patient-size);
-  --cw-nav-size: var(--ccw-nav-size);
-  --cw-nav-meta-size: var(--ccw-nav-meta-size);
+  /* [OWNER REVIEW -- 2026-09-25] RNICA workflow nav should read like the
+     outer chart nav (Facesheet/Care Overview sidebar), not the larger
+     clinical-command body/detail typography -- smaller, lighter, quieter. */
+  --cw-nav-size: 11px;
+  --cw-nav-meta-size: 9.5px;
   --cw-button-size: var(--ccw-button-size);
   --cw-control-height: var(--ccw-control-height);
   min-height: 100%;
@@ -67,10 +70,10 @@
 .rnica-command-prep span { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; }
 .rnica-command-prep strong { margin-top: 0.15rem; }
 
-.rnica-command-layout { display: grid; grid-template-columns: 196px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
+.rnica-command-layout { display: grid; grid-template-columns: 176px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
 .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
 .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 720px; }
-.rnica-command-nav { padding: 0.5rem; border-right: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
+.rnica-command-nav { padding: 0.4rem; border-right: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
 .rnica-command-detail { padding: var(--cw-pad); }
 .rnica-command-rail { padding: var(--cw-pad); border-left: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
 .rnica-command .visit-recorder-card { margin-bottom: var(--cw-gap) !important; border-color: var(--sns-border) !important; border-radius: 8px !important; background: var(--sns-card); }
@@ -102,16 +105,16 @@
    removed the Open/Risk/Changed/HOPE/CDPH metadata badges in favor of a
    single small completion dot -- patient information, not navigation,
    should dominate the screen. */
-.rnica-command-matrix > button { display: flex; align-items: center; gap: 0.4rem; width: 100%; min-height: 28px; padding: 0.25rem 0.5rem; text-align: left; background: var(--sns-card); font-size: var(--cw-nav-size); font-weight: 400; }
+.rnica-command-matrix > button { display: flex; align-items: center; gap: 0.35rem; width: 100%; min-height: 24px; padding: 0.18rem 0.45rem; text-align: left; background: var(--sns-card); font-size: var(--cw-nav-size); font-weight: 400; }
 .rnica-command-matrix > button.is-active { border-color: var(--sns-teal); box-shadow: inset 0.18rem 0 var(--sns-teal); }
 .rnica-command-matrix > button.is-complete::before { content: ""; flex: 0 0 auto; width: 5px; height: 5px; border-radius: 999px; background: var(--sns-teal); }
 .rnica-command-matrix__title { min-width: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.rnica-command-screens { display: flex; flex-direction: column; gap: 0.35rem; }
-.rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.2rem; }
+.rnica-command-screens { display: flex; flex-direction: column; gap: 0.3rem; }
+.rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.15rem; }
 .rnica-command-screen-group__header {
-  display: flex; align-items: center; gap: 0.35rem; width: 100%;
-  min-height: 26px; padding: 0.2rem 0.45rem; text-align: left;
+  display: flex; align-items: center; gap: 0.3rem; width: 100%;
+  min-height: 24px; padding: 0.18rem 0.4rem; text-align: left;
   background: var(--sns-bgAlt); font-weight: 500; font-size: var(--cw-nav-size);
   text-transform: none; letter-spacing: normal;
 }
@@ -307,7 +310,7 @@
 
 @container clinical-command-workspace (max-width: 1000px) {
   .rnica-command { height: auto; min-height: 100%; overflow: visible; }
-  .rnica-command-layout { grid-template-columns: 210px minmax(0, 1fr); height: auto; }
+  .rnica-command-layout { grid-template-columns: 176px minmax(0, 1fr); height: auto; }
   .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { overflow: visible; }
   .rnica-command-rail { position: static; grid-column: 1 / -1; width: auto; max-height: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--cw-gap); border-top: 1px solid var(--sns-border); border-left: 0; box-shadow: none; }
   .rnica-command-rail > * { margin-bottom: 0; }
