@@ -6531,20 +6531,19 @@ function PainAssessmentSummaryCard({ data, styles }) {
     rows.push(<SummaryRow key="control" label="Control Status" value={data?.controlStatus} />);
   }
 
-  const managementDocumented = data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1" || data?.painManagementPlan || (data?.nonPharmInterventions || []).length;
-  rows.push(
-    <SummaryRow
-      key="mgmt-status"
-      label="Pain Management Status"
-      value={managementDocumented
-        ? [
-            data?.routinePainMedicationPresent === "1" && `Routine pain medication: ${data?.painMedicationType || "documented"}${(data?.painMedicationRoute || []).length ? ` (${joinList(data.painMedicationRoute)})` : ""}`,
-            data?.breakthroughPainMedication === "1" && "Breakthrough medication: Yes",
-            data?.painEffectivenessRating && `Effectiveness: ${data.painEffectivenessRating}`,
-          ].filter(Boolean).join(" · ")
-        : (currentPain === "0" && chronicHistory !== "1" ? "No active pain-management plan documented." : "")}
-    />
-  );
+  // Pain Management findings -- structured rows, each independently
+  // omitted when undocumented (Current Pain Summary displays what the RN
+  // documented; it is not the AI Pain Analysis, which is a separate,
+  // deferred component -- see AiPainAnalysisCard below).
+  rows.push(<SummaryRow key="routine-med" label="Routine Pain Medication" value={{ "1": "Yes", "0": "No", "9": "Unknown" }[data?.routinePainMedicationPresent] || ""} />);
+  if (data?.routinePainMedicationPresent === "1") {
+    rows.push(<SummaryRow key="med-type" label="Medication Type" value={data?.painMedicationType} />);
+    rows.push(<SummaryRow key="med-route" label="Route" value={joinList(data?.painMedicationRoute)} />);
+  }
+  rows.push(<SummaryRow key="breakthrough-med" label="Breakthrough Pain Medication" value={{ "1": "Yes", "0": "No", "9": "Unknown" }[data?.breakthroughPainMedication] || ""} />);
+  rows.push(<SummaryRow key="non-pharm" label="Non-Pharmacological Interventions" value={joinList(data?.nonPharmInterventions)} />);
+  rows.push(<SummaryRow key="effectiveness" label="Effectiveness" value={data?.painEffectivenessRating} />);
+  rows.push(<SummaryRow key="mgmt-notes" label="Pain Management Notes" value={data?.painManagementPlan} />);
 
   return <div>{rows}</div>;
 }
