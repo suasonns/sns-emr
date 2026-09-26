@@ -364,7 +364,6 @@ export default function RNICACommandWorkspace({
   const [query, setQuery] = useState("");
   const [density, setDensity] = useState(storedDensity);
   const [searchStartedAt, setSearchStartedAt] = useState(0);
-  const [showAllQuickAccess, setShowAllQuickAccess] = useState(false);
   const [collapsedScreens, setCollapsedScreens] = useState({});
   const [viewMode, setViewMode] = useState("screen");
   const filteredRoutes = useMemo(() => {
@@ -708,6 +707,19 @@ export default function RNICACommandWorkspace({
         <button type="button" className="rnica-command-toolbar__btn" onClick={exitPilot}>
           Classic View
         </button>
+        {/* Compact "Jump To" replacement for the removed Bedside Quick
+            Access / Assessment Modules panel (owner directive
+            2026-09-26): RNICA Workflow Navigation (left navigator) remains
+            the single source of workflow navigation -- this is a
+            secondary, space-neutral shortcut, not a second nav system. */}
+        <label className="rnica-command-toolbar__jump">
+          <span>Jump to</span>
+          <select value={activeSection} onChange={(event) => select(event.target.value, "jump_to")}>
+            {routes.map((route) => (
+              <option key={route.key} value={route.key}>{route.label}</option>
+            ))}
+          </select>
+        </label>
       </div>
 
       <ClinicalCommandContextBar className="rnica-command-prep" ariaLabel="Before visit patient context">
@@ -816,28 +828,6 @@ export default function RNICACommandWorkspace({
                   onNavigate={(key) => select(key, "evidence_intake_banner")}
                 />
               )}
-              <section className="clinical-command-card rnica-command-sticky-note" aria-labelledby="quick-capture-title">
-                <div>
-                  <span className="rnica-command-eyebrow">Bedside quick access</span>
-                  <h2 id="quick-capture-title">Assessment modules</h2>
-                  <p>Use the same ordered RN workflow as the navigator. Missing documentation is never treated as a negative finding.</p>
-                </div>
-                <div className="rnica-command-quick-grid" aria-label="Ordered assessment module shortcuts">
-                  {(showAllQuickAccess ? routes : routes.slice(0, 16)).map((route, index) => (
-                    <button type="button" key={route.key} onClick={() => select(route.key, "quick_capture")}>
-                      <span>{index + 1}</span> {route.label}
-                    </button>
-                  ))}
-                </div>
-                {routes.length > 16 && (
-                  <button type="button" className="rnica-command-quick-toggle" onClick={() => setShowAllQuickAccess((current) => !current)}>
-                    {showAllQuickAccess ? "Show first 16 modules" : `Show all ${routes.length} modules`}
-                  </button>
-                )}
-                <div className="rnica-command-provenance" aria-label="Finding provenance">
-                  <span>Observed / tapped</span><span>Spoken / extracted</span><span>Carried forward / verified</span>
-                </div>
-              </section>
               <section className="clinical-command-card rnica-command-active" aria-live="polite">
                 {activeSection === "finalization" && (
                   <NarrativeFinalReviewPanel

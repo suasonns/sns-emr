@@ -86,6 +86,22 @@
 }
 .rnica-command-toolbar__btn.is-active { border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); }
 
+/* Compact "Jump To" shortcut (owner directive 2026-09-26) -- replaces the
+   removed Bedside Quick Access / Assessment Modules panel. RNICA Workflow
+   Navigation (left navigator) remains the single source of navigation;
+   this is a secondary, space-neutral shortcut in the toolbar row. */
+.rnica-command-toolbar__jump { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: var(--cw-meta-size); color: var(--sns-muted); }
+.rnica-command-toolbar__jump select {
+  min-height: var(--cw-control-height);
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font-size: var(--cw-button-size);
+  max-width: 14rem;
+}
+
 /* Voice Documentation drawer -- shown only while the toolbar toggle is
    active (FR-005: Visit Recording is no longer a permanent card). */
 .rnica-command-voice-drawer { margin-bottom: var(--cw-gap, 1rem); }
@@ -172,25 +188,16 @@ button.rnica-command-screen-group__header {
 .rnica-command-evidence-alert__list { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .rnica-command-evidence-alert__list button { width: 100%; text-align: left; padding: 0.4rem 0.6rem; }
 
-.rnica-command-sticky-note, .rnica-command-card, .rnica-command-active {
+.rnica-command-card, .rnica-command-active {
   border: 1px solid var(--sns-border);
   border-radius: 0.6rem;
   background: var(--sns-card);
 }
-.rnica-command-sticky-note { display: grid; grid-template-columns: minmax(12rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--cw-gap); padding: var(--cw-pad); margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-yellow); }
-.rnica-command-sticky-note h2, .rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); font-weight: 600; color: var(--sns-white); }
-.rnica-command-sticky-note p, .rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
+.rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); font-weight: 600; color: var(--sns-white); }
+.rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
 .rnica-command-capture-groups { display: grid; gap: 0.55rem; }
 .rnica-command-capture-groups > div { display: grid; gap: 0.25rem; }
 .rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; }
-.rnica-command-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
-.rnica-command-quick-grid button { min-width: 0; min-height: 2.25rem; padding: 0.3rem; overflow-wrap: anywhere; text-align: left; }
-.rnica-command-quick-grid button span { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; }
-.rnica-command-quick-grid--context { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.rnica-command-quick-grid--additional { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.rnica-command-quick-toggle { grid-column: 2; justify-self: start; }
-.rnica-command-provenance { grid-column: 1 / -1; flex-wrap: wrap; color: var(--sns-muted); font-size: var(--cw-meta-size); }
-.rnica-command-provenance span::before { content: "•"; margin-right: 0.3rem; color: var(--sns-teal); }
 .rnica-command-active { padding: var(--cw-pad); overflow: hidden; }
 .rnica-command-active [style*="font-size"] { font-size: var(--cw-body-size) !important; }
 .rnica-command-active div[style*="padding"] { padding: var(--cw-pad) !important; }
@@ -318,9 +325,6 @@ button.rnica-command-screen-group__header {
   .rnica-command-rail { position: static; width: auto; max-height: none; padding: 0.6rem; border-left: 0; box-shadow: none; }
   .rnica-command-final-shortcut--mobile { display: block; margin: 0.4rem 0 0; }
   .rnica-command-final-shortcut--desktop { display: none; }
-  .rnica-command-sticky-note { display: block; }
-  .rnica-command-quick-grid { grid-template-columns: repeat(2, 1fr); margin-top: 0.6rem; }
-  .rnica-command-quick-toggle { margin-top: 0.4rem; }
   .rnica-command-active { max-height: none; overflow: visible; }
   .rnica-command-stepnav { position: sticky; bottom: 0.3rem; z-index: 10; padding: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.6rem; background: var(--sns-card); }
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
@@ -375,8 +379,6 @@ button.rnica-command-screen-group__header {
   .rnica-command-patientbar__identity > span:last-child, .rnica-command-patientbar__status > span:not(.rnica-command-badge) { display: none; }
   .rnica-command-prep { display: flex; overflow-x: auto; }
   .rnica-command-prep > div { min-width: 12rem; }
-  .rnica-command-sticky-note { display: block; }
-  .rnica-command-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0.6rem; }
   .rnica-command-rail { grid-template-columns: 1fr; }
   .rnica-lcd-group__toggle { align-items: flex-start; flex-direction: column; }
   .rnica-diagnosis-ledger__header { display: none; }
