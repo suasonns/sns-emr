@@ -6531,13 +6531,17 @@ function PainAssessmentSummaryCard({ data, styles }) {
     rows.push(<SummaryRow key="control" label="Control Status" value={data?.controlStatus} />);
   }
 
-  const managementDocumented = data?.scheduledRegimen || data?.breakthroughRegimen || data?.painManagementPlan || (data?.nonPharmInterventions || []).length;
+  const managementDocumented = data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1" || data?.painManagementPlan || (data?.nonPharmInterventions || []).length;
   rows.push(
     <SummaryRow
       key="mgmt-status"
       label="Pain Management Status"
       value={managementDocumented
-        ? [data?.scheduledRegimen && `Scheduled: ${data.scheduledRegimen}`, data?.breakthroughRegimen && `Breakthrough: ${data.breakthroughRegimen}`, data?.painEffectivenessRating && `Effectiveness: ${data.painEffectivenessRating}`].filter(Boolean).join(" · ")
+        ? [
+            data?.routinePainMedicationPresent === "1" && `Routine pain medication: ${data?.painMedicationType || "documented"}${(data?.painMedicationRoute || []).length ? ` (${joinList(data.painMedicationRoute)})` : ""}`,
+            data?.breakthroughPainMedication === "1" && "Breakthrough medication: Yes",
+            data?.painEffectivenessRating && `Effectiveness: ${data.painEffectivenessRating}`,
+          ].filter(Boolean).join(" · ")
         : (currentPain === "0" && chronicHistory !== "1" ? "No active pain-management plan documented." : "")}
     />
   );
@@ -6558,7 +6562,7 @@ function computeAiPainNotes(data) {
   const worst = Number(data?.painIntensity?.worst);
   const hasCurrent = currentPain === "1" && data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "";
   const hasWorst = currentPain === "1" && data?.painIntensity?.worst !== undefined && data?.painIntensity?.worst !== "";
-  const managementDocumented = Boolean(data?.scheduledRegimen || data?.breakthroughRegimen || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
+  const managementDocumented = Boolean(data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1" || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
 
   if (hasCurrent && current >= 7 && !managementDocumented) {
     notes.push({ text: `Current pain is severe (${current}/10) with no documented pain-management intervention.`, field: "Current Pain Intensity" });
@@ -6631,12 +6635,12 @@ function computePainOverdueAlerts(data, painAssessmentMode) {
     const complete = ["face", "legs", "activity", "cry", "consolability"].every((k) => data?.flacc?.[k] !== undefined && data?.flacc?.[k] !== "");
     if (!complete) alerts.push("Required FLACC Scale incomplete.");
   }
-  const managementDocumented = Boolean(data?.scheduledRegimen || data?.breakthroughRegimen || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
+  const managementDocumented = Boolean(data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1" || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
   if (data?.currentPain === "1" && Number(data?.painIntensity?.current) >= 7 && !managementDocumented) {
     alerts.push("Current pain is severe without documented intervention.");
   }
-  if (data?.breakthroughRegimen && !data?.painEffectivenessRating) {
-    alerts.push("Breakthrough regimen documented without an effectiveness assessment.");
+  if (data?.breakthroughPainMedication === "1" && !data?.painEffectivenessRating) {
+    alerts.push("Breakthrough pain medication documented without an effectiveness assessment.");
   }
   if (data?.painActiveProblem === "1" && !managementDocumented) {
     alerts.push("Active pain problem documented without a pain-management plan.");
@@ -6656,6 +6660,98 @@ function PainOverdueAlertsCard({ data, painAssessmentMode, styles }) {
   );
 }
 
+// ── Pain Management medication harvesting (owner request 2026-09-26)
+// ─────────────────────────────────────────────────────────────────────
+// "Harvest existing medication information first. RN verifies. RN
+// supplements. Do not force duplicate medication documentation." This
+// derives suggested defaults from the patient's active medication list
+// (same listMedications API/data as the Medications tab) and only ever
+// pre-fills a field that the RN has not already answered — it never
+// overwrites an RN correction, and the RN can always change any value.
+const PAIN_OPIOID_KEYWORDS = [...CHHA_OPIOID_KEYWORDS, "percocet", "vicodin", "norco", "codeine", "tramadol", "ultram", "tapentadol", "nucynta", "buprenorphine", "butrans", "belbuca"];
+const PAIN_NONOPIOID_KEYWORDS = ["acetaminophen", "tylenol", "ibuprofen", "advil", "motrin", "naproxen", "aleve", "aspirin", "celecoxib", "celebrex", "ketorolac", "toradol", "gabapentin", "neurontin", "pregabalin", "lyrica", "duloxetine", "cymbalta", "lidocaine", "lidoderm", "diclofenac", "voltaren"];
+const PAIN_ROUTE_OPTIONS = ["Oral", "Patch", "Topical", "Pump", "Sublingual", "Rectal", "Other"];
+
+function classifyPainMedicationRoute(routeText) {
+  const r = (routeText || "").toLowerCase();
+  if (r.includes("patch")) return "Patch";
+  if (r.includes("topical") || r.includes("cream") || r.includes("gel") || r.includes("ointment")) return "Topical";
+  if (r.includes("pump") || r.includes("iv") || r.includes("infusion")) return "Pump";
+  if (r.includes("sublingual") || r === "sl") return "Sublingual";
+  if (r.includes("rectal") || r === "pr") return "Rectal";
+  if (r.includes("oral") || r === "po") return "Oral";
+  return r ? "Other" : "";
+}
+
+function isBreakthroughFrequency(frequencyText) {
+  const f = (frequencyText || "").toLowerCase();
+  return f.includes("prn") || f.includes("as needed") || f.includes("breakthrough");
+}
+
+// Returns null when the medication list itself hasn't loaded/isn't
+// documented yet (never guess "No" from an empty/unloaded list).
+function harvestPainMedications(medications) {
+  if (!Array.isArray(medications)) return null;
+  const active = medications.filter((m) => !m.status || m.status === "active");
+  const painMeds = active.filter((m) => {
+    const name = (m.medication_name || "").toLowerCase();
+    return chhaTextIncludesAny(name, PAIN_OPIOID_KEYWORDS) || chhaTextIncludesAny(name, PAIN_NONOPIOID_KEYWORDS);
+  });
+  const hasOpioid = painMeds.some((m) => chhaTextIncludesAny((m.medication_name || "").toLowerCase(), PAIN_OPIOID_KEYWORDS));
+  const hasNonOpioid = painMeds.some((m) => chhaTextIncludesAny((m.medication_name || "").toLowerCase(), PAIN_NONOPIOID_KEYWORDS));
+  const routes = [...new Set(painMeds.map((m) => classifyPainMedicationRoute(m.route)).filter(Boolean))];
+  const breakthrough = painMeds.some((m) => isBreakthroughFrequency(m.frequency));
+  return {
+    documented: active.length > 0,
+    present: painMeds.length > 0,
+    type: hasOpioid && hasNonOpioid ? "Both" : hasOpioid ? "Opioid" : hasNonOpioid ? "Non-Opioid" : "",
+    routes,
+    breakthrough,
+    sourceMeds: painMeds.map((m) => `${m.medication_name}${m.route ? ` (${m.route})` : ""}${m.frequency ? ` — ${m.frequency}` : ""}`),
+  };
+}
+
+function PainMedicationHarvestBanner({ patientId, data, onApply, styles, COLORS }) {
+  const [meds, setMeds] = useState(null);
+  const applied = useRef(false);
+
+  useEffect(() => {
+    if (!patientId) return;
+    listMedications(patientId).then(setMeds).catch(() => setMeds([]));
+  }, [patientId]);
+
+  const harvest = meds ? harvestPainMedications(meds) : null;
+
+  useEffect(() => {
+    if (!harvest || applied.current) return;
+    applied.current = true;
+    if (!harvest.documented) return; // nothing to harvest from yet
+    const patch = {};
+    // Never overwrite a value the RN has already documented.
+    if (data?.routinePainMedicationPresent === undefined || data?.routinePainMedicationPresent === "") {
+      patch.routinePainMedicationPresent = harvest.present ? "1" : "0";
+    }
+    if (harvest.present && (data?.painMedicationType === undefined || data?.painMedicationType === "") && harvest.type) {
+      patch.painMedicationType = harvest.type;
+    }
+    if (harvest.present && (!data?.painMedicationRoute || data.painMedicationRoute.length === 0) && harvest.routes.length) {
+      patch.painMedicationRoute = harvest.routes;
+    }
+    if (harvest.present && (data?.breakthroughPainMedication === undefined || data?.breakthroughPainMedication === "")) {
+      patch.breakthroughPainMedication = harvest.breakthrough ? "1" : "0";
+    }
+    if (Object.keys(patch).length) onApply(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harvest]);
+
+  if (!harvest || !harvest.documented || !harvest.present) return null;
+  return (
+    <div style={{ ...styles.infoBox, marginBottom: 12, fontSize: 11.5 }}>
+      <strong>Harvested from medication list:</strong> {harvest.sourceMeds.join("; ")}.
+      Values below were pre-filled from this — verify and correct as needed.
+    </div>
+  );
+}
 
 const SEVERITY_COLORS = {
   CONTRAINDICATED: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
@@ -9374,6 +9470,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               />
             )}
 
+            {sectionKey === "pain" && card.title === "Pain Management" && (
+              <PainMedicationHarvestBanner
+                patientId={patientId}
+                data={cardData}
+                onApply={(patch) => Object.entries(patch).forEach(([k, v]) => u(k, v))}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )}
+
             <div style={styles.fieldsGrid}>
             {card.fields.map((field, fi) => {
               if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
@@ -9710,22 +9816,30 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        // Section 14: Pain Management stays open (RN documentation). RN is
-        // a valid source for Scheduled/Breakthrough/Adjuvant/Last dose --
-        // Current Medications is the *preferred* source when a reliable
-        // linked medication record exists, but that linkage is not yet
-        // implemented (tracked separately; do not block this layout on it).
+        // Section 14 (simplified 2026-09-26 per owner request): harvest
+        // from the medication list first (see PainMedicationHarvestBanner
+        // above the fields grid) -- Type/Route/Breakthrough are
+        // auto-detected from active medications when possible, RN
+        // verifies/corrects. Detailed regimen text, last-breakthrough-dose,
+        // and administration-history fields were removed from the primary
+        // admission workflow (better suited to medication management /
+        // follow-up visits, not admission documentation burden).
         title: "Pain Management", fields: [
-          { type: "checkboxGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
-          { type: "textarea", label: "Pain Management Plan", path: "painManagementPlan" },
-          { type: "input", label: "Scheduled regimen (prefer Current Medications when linked; verify/supplement here)", path: "scheduledRegimen" },
-          { type: "input", label: "Breakthrough regimen (prefer Current Medications when linked; verify/supplement here)", path: "breakthroughRegimen" },
-          { type: "input", label: "Adjuvant therapy (prefer Current Medications when linked; verify/supplement here)", path: "adjuvantTherapy" },
-          { type: "input", label: "Last breakthrough dose (date, time, medication, dose, administered by, response — or \"Unknown\")", path: "lastBreakthroughDose" },
-          { type: "radio", label: "Effectiveness", path: "painEffectivenessRating", options: [
-            { value: "Effective", label: "Effective" }, { value: "Partially effective", label: "Partially effective" }, { value: "Ineffective", label: "Ineffective" }, { value: "Not yet evaluated", label: "Not yet evaluated" }, { value: "Unable to determine", label: "Unable to determine" }
+          { type: "radio", label: "Routine pain medication present?", path: "routinePainMedicationPresent", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
           ]},
-          { type: "textarea", label: "Response to intervention", path: "responseToIntervention" },
+          { type: "radio", label: "Pain medication type", path: "painMedicationType", options: [
+            { value: "Opioid", label: "Opioid" }, { value: "Non-Opioid", label: "Non-Opioid" }, { value: "Both", label: "Both" }
+          ]},
+          { type: "checkboxGroup", label: "Route", path: "painMedicationRoute", options: PAIN_ROUTE_OPTIONS },
+          { type: "radio", label: "Breakthrough pain medication present?", path: "breakthroughPainMedication", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
+          ]},
+          { type: "checkboxGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
+          { type: "radio", label: "Effectiveness", path: "painEffectivenessRating", options: [
+            { value: "Effective", label: "Effective" }, { value: "Partially Effective", label: "Partially Effective" }, { value: "Ineffective", label: "Ineffective" }, { value: "Unable To Determine", label: "Unable To Determine" }
+          ]},
+          { type: "textarea", label: "Pain Management Notes (optional)", path: "painManagementPlan" },
         ],
       },
       // Section 1 approved page structure: three derived/read-only cards
