@@ -9838,6 +9838,22 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <WoundListCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+              {/* Owner directive: compress Pressure Relief Measures into an
+                  inline checklist within Wound Documentation rather than a
+                  separate "Wound Documentation & Notes" card. Same fields/
+                  paths as before (woundImpairment, pressureReliefMeasures,
+                  repositioningPlan, notes) -- no data model change. */}
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}`, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+                <FormCheckboxGroup label="Pressure-Relief Measures" values={data.pressureReliefMeasures || []}
+                  onChange={(v) => u("pressureReliefMeasures", v)}
+                  options={["Pressure-relief mattress", "Heel protectors/floating heels", "Cushioned wheelchair seat", "Foam/gel positioning devices", "Frequent position changes", "None in place"]} />
+                <FormInput label="Repositioning Plan" value={data.repositioningPlan} onChange={(v) => u("repositioningPlan", v)}
+                  placeholder="e.g., Reposition every 2 hours, alternate sides" />
+              </div>
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+                <FormTextarea label="Wound Impairment" rows={2} value={data.woundImpairment} onChange={(v) => u("woundImpairment", v)} />
+                <FormTextarea label="Skin Notes" rows={2} value={data.notes} onChange={(v) => u("notes", v)} />
+              </div>
               <SkinTreatmentSummary assessmentId={assessmentId} patientId={patientId} styles={styles} COLORS={COLORS} />
             </Card>
           );
@@ -10936,29 +10952,24 @@ const SECTION_CONFIGS = {
     title: "Skin / Wounds",
     subtitle: "Integumentary assessment, Braden Scale, wound documentation (M1190)",
     cards: [
+      // Owner directive: one consolidated Integumentary assessment
+      // container instead of a separate card per finding group. Body Map
+      // (shouldRenderSkinMap) already injects into this same card by
+      // title match ("Skin Assessment"), so Skin Integrity, Status,
+      // Turgor, Temperature, Moisture, Color, Edema, and Additional
+      // Findings all live together with it in one workspace. Field paths
+      // are unchanged from the prior per-field cards -- no data model or
+      // HOPE/SFV mapping change, presentation-only consolidation.
       { title: "Skin Assessment", hopeCode: "M1190", fields: [
         { type: "checkbox", label: "Skin Conditions Present", path: "skinConditionsPresent" },
         { type: "checkboxGroup", label: "Skin Status", path: "skinStatus", options: ["Intact", "Dry", "Fragile", "Edematous", "Bruising", "Rash", "Jaundice", "Cyanotic", "Mottled"] },
         { type: "radio", label: "Skin Turgor", path: "skinTurgor", options: ["Good", "Fair", "Poor", "Tenting"] },
-      ]},
-      // Owner directive (skin assessment parity with HospiceMD): additional
-      // discrete integumentary characteristics, stored under their own
-      // "skin.*" paths (separate from cardiovascular's circulatory
-      // edema/skinColor findings). These feed the same Integumentary
-      // findings pool as the rest of this section, so HOPE/SFV consumers
-      // that already read from "skin" pick these up with no new mapping
-      // or duplicate documentation elsewhere.
-      { title: "Skin Moisture, Temperature & Color", fields: [
         { type: "radio", label: "Skin Moisture", path: "skinMoisture", options: ["Dry", "Moist", "Diaphoretic"] },
         { type: "radio", label: "Skin Temperature", path: "skinTemperature", options: ["Warm", "Cool", "Hot"] },
         { type: "radio", label: "Skin Color", path: "skinColorFinding", options: ["Normal", "Pale", "Cyanotic", "Jaundiced", "Mottled", "Flushed"] },
-      ]},
-      { title: "Edema (Skin/Wound-Related)", fields: [
         { type: "radio", label: "Edema", path: "skinEdema.severity", options: ["None", "1+", "2+", "3+", "4+"] },
         { type: "input", label: "Edema Location", path: "skinEdema.location" },
-      ]},
-      { title: "Additional Skin Findings", fields: [
-        { type: "checkboxGroup", label: "Findings", path: "additionalSkinFindings", options: ["Bruising", "Skin Tears", "Excoriation", "Pruritus", "Dry Scaling", "None"] },
+        { type: "checkboxGroup", label: "Additional Skin Findings", path: "additionalSkinFindings", options: ["Bruising", "Skin Tears", "Excoriation", "Pruritus", "Dry Scaling", "None"] },
       ]},
       { title: "Braden Scale", fields: [
         { type: "select", label: "Sensory Perception", path: "braden.sensoryPerception", options: [{ value: "1", label: "1 — Completely limited" }, { value: "2", label: "2 — Very limited" }, { value: "3", label: "3 — Slightly limited" }, { value: "4", label: "4 — No impairment" }] },
@@ -10973,12 +10984,6 @@ const SECTION_CONFIGS = {
         title: "Wound Documentation (Structured)",
         customRenderer: "woundList",
       },
-      { title: "Wound Documentation & Notes", fields: [
-        { type: "textarea", label: "Wound Impairment", path: "woundImpairment" },
-        { type: "checkboxGroup", label: "Pressure-Relief Measures", path: "pressureReliefMeasures", options: ["Pressure-relief mattress", "Heel protectors/floating heels", "Cushioned wheelchair seat", "Foam/gel positioning devices", "Frequent position changes", "None in place"] },
-        { type: "input", label: "Repositioning Plan", path: "repositioningPlan", placeholder: "e.g., Reposition every 2 hours, alternate sides" },
-        { type: "textarea", label: "Skin Notes", path: "notes", rows: 4 },
-      ]},
     ],
   },
 
