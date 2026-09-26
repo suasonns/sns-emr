@@ -131,12 +131,19 @@ for RNICA's own existing scores (Braden, ADL, functional scales)."
    IV access, with a "No IVs" fast-path checkbox. No equivalent panel was found anywhere in RNICA.
    For a hospice population with occasional IV/subQ access needs, this is a real, if likely
    low-frequency, documentation gap.
-4. **Disaster Triage.** Already identified by the owner earlier this session as missing and
-   directed to be built under Safety — confirmed still absent from the codebase (no match anywhere
-   for "disaster triage"). The reference system's version is a genuinely well-designed compact
-   decision tool: three fixed levels, each with concrete, checkable criteria (confined to bed,
-   dependent on walker, lives above ground floor, requires electricity for medical equipment) that
-   drive the level selection rather than a free-text judgment call.
+4. **Disaster Triage — CORRECTION (post-publication):** this item originally claimed Disaster
+   Triage was "confirmed still absent from the codebase." **That was incorrect.** A full Disaster
+   Triage card already exists in the `safety` section of `RNICA.jsx` (`disasterLevel`,
+   `disasterLevelOneConditions`, `disasterLevelTwoConditions`, `disasterLevelThreeConditions`) using
+   the same three-level, criteria-driven pattern described below — bed/chair-confined, dependent on
+   walker/cane, lives above ground floor, requires electricity for medical equipment. The original
+   grep result set that produced this claim was misread. See
+   `RNICA_DISASTER_TRIAGE_FIELD_CLASSIFICATION.md` for the verified, field-level inventory of what
+   already exists versus what is genuinely new (contact/escalation workflow, backup-caregiver
+   detail, facility verification, electricity-dependence flags). The reference system's version
+   remains a useful comparison for the same reason: three fixed levels, each with concrete,
+   checkable criteria driving the level selection rather than a free-text judgment call — RNICA's
+   existing implementation already follows this pattern.
 5. **A single, compact "Personal Care & Support Needs" instrument.** The reference system captures
    Hospice Aide / Volunteer / Community Support needs (each with a fixed small option set) in three
    tight rows. RNICA has a `personalCare` module per the screen authority matrix, but its detailed
@@ -163,7 +170,7 @@ for RNICA's own existing scores (Braden, ADL, functional scales)."
 |---|---|---|---|---|---|---|---|
 | 1 | **High** | Add a quantified ADL dependence score (6-item, 0-3 scale, auto-total) to Functional Status | Medium | High | High | Low | High |
 | 2 | **High** | Add itemized in-visit DME device-need checklist, wired to trigger the existing ordering workflow rather than duplicating it | High | High | High | Low | High |
-| 3 | **High** | Build Disaster Triage under Safety (already directed; still open) using the reference system's 3-level, criteria-driven pattern rather than free text | Medium | High | Medium | Low | Medium |
+| 3 | **High** | ~~Build Disaster Triage under Safety~~ — CORRECTED: already exists (`safety.disasterLevel*`, criteria-driven 3-level pattern). Remaining work is de-duplicating its 4 policy-factor checkboxes against existing Mobility/Musculoskeletal fields — see `RNICA_DISASTER_TRIAGE_FIELD_CLASSIFICATION.md` | Low | Medium | Medium | Low | Low |
 | 4 | **High** | Add inline descriptive helper text for KPS/PPS/FAST/NYHA score meanings next to each dropdown | Low | Medium | Medium | High | Low |
 | 5 | **High** | Resolve the Musculoskeletal/Falls duplicate-field conflict identified in this session's inventory (`fallHistory.*` inside Musculoskeletal) before it causes conflicting-source documentation | Low | High | High | Low | Medium |
 | 6 | **Medium** | Add a compact, single-instrument "Mobility" presentation (Ambulatory vs. Non-Ambulatory exclusive branch, device + endurance in one place) instead of scattering mobility fields across Musculoskeletal | Medium | Medium | Medium | Medium | High |
