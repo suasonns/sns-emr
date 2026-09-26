@@ -9,12 +9,12 @@
 .clinical-command {
   --ccw-gap: 0.5rem;
   --ccw-pad: 0.625rem;
-  --ccw-body-size: 12px;
-  --ccw-input-size: 12px;
+  --ccw-body-size: 11px;
+  --ccw-input-size: 11px;
   --ccw-label-size: 10px;
-  --ccw-meta-size: 9.5px;
+  --ccw-meta-size: 10px;
   --ccw-section-size: 13px;
-  --ccw-patient-size: 15.5px;
+  --ccw-patient-size: 16px;
   --ccw-nav-size: var(--ccw-body-size);
   --ccw-nav-meta-size: var(--ccw-meta-size);
   --ccw-button-size: var(--ccw-body-size);
@@ -26,6 +26,7 @@
   background: var(--sns-bg);
   font-family: Inter, sans-serif;
   font-size: var(--ccw-body-size);
+  font-weight: 400;
 }
 
 .clinical-command--comfortable {
@@ -76,7 +77,7 @@
   background: var(--sns-card);
   box-shadow: 0 1px 2px var(--sns-shadow), 0 6px 20px rgba(0, 0, 0, 0.22);
 }
-.clinical-command-status { border-radius: 999px; font-size: var(--ccw-meta-size); font-weight: 800; text-transform: uppercase; }
+.clinical-command-status { border-radius: 999px; font-size: var(--ccw-meta-size); font-weight: 400; text-transform: uppercase; }
 
 @media (pointer: coarse) {
   .clinical-command button,

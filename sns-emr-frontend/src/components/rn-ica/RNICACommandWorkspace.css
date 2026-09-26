@@ -7,11 +7,14 @@
   --cw-meta-size: var(--ccw-meta-size);
   --cw-section-size: var(--ccw-section-size);
   --cw-patient-size: var(--ccw-patient-size);
-  /* [OWNER REVIEW -- 2026-09-25] RNICA workflow nav should read like the
-     outer chart nav (Facesheet/Care Overview sidebar), not the larger
-     clinical-command body/detail typography -- smaller, lighter, quieter. */
+  /* [OWNER REVIEW -- 2026-09-25] Formal SNS RNICA typography scale (see
+     ClinicalCommandWorkspace.css header comment for the 4-tier spec).
+     Nav rows are "Size 3: Normal Chart Content" (11px/400); the small
+     progress/count text is "Size 4: Metadata" (10px/400). Column width
+     is intentionally not widened further -- rely on the approved scale
+     plus label wrapping (not ellipsis) to avoid clipping. */
   --cw-nav-size: 11px;
-  --cw-nav-meta-size: 9.5px;
+  --cw-nav-meta-size: 10px;
   --cw-button-size: var(--ccw-button-size);
   --cw-control-height: var(--ccw-control-height);
   min-height: 100%;
@@ -53,8 +56,8 @@
 }
 .rnica-command button:hover { border-color: var(--sns-teal); }
 .rnica-command button:disabled { cursor: not-allowed; opacity: 0.55; }
-.rnica-command-eyebrow { color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.rnica-command-badge { border-radius: 999px; padding: 0.25rem 0.5rem; font-size: var(--cw-meta-size); font-weight: 800; text-transform: uppercase; }
+.rnica-command-eyebrow { color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+.rnica-command-badge { border-radius: 999px; padding: 0.25rem 0.5rem; font-size: var(--cw-meta-size); font-weight: 400; text-transform: uppercase; }
 .rnica-command-badge.is-active { background: var(--sns-cardSoft); color: var(--sns-orange); }
 .rnica-command-badge.is-complete { background: var(--sns-cardSoft); color: var(--sns-green); }
 
@@ -93,7 +96,7 @@
 .rnica-command .visit-recorder-card__stop { border-color: var(--sns-red) !important; background: var(--sns-red) !important; color: var(--sns-bg) !important; }
 .rnica-command .visit-recorder-card button { min-height: var(--cw-control-height); padding: 0.35rem 0.6rem !important; font-size: var(--cw-body-size) !important; }
 
-.rnica-command-search span { display: block; margin-bottom: 0.25rem; color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 700; }
+.rnica-command-search span { display: block; margin-bottom: 0.25rem; color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 400; }
 .rnica-command-search input { width: 100%; min-height: var(--cw-control-height); padding: 0.4rem 0.55rem; border: 1px solid var(--sns-border); border-radius: 0.45rem; background: var(--sns-card); color: var(--sns-white); font-size: var(--cw-input-size); }
 .rnica-command-density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0.6rem 0; }
 .rnica-command-density button { min-height: var(--cw-control-height); padding: 0.25rem; font-size: var(--cw-nav-size); }
@@ -115,7 +118,7 @@
 button.rnica-command-screen-group__header {
   display: flex; align-items: center; gap: 0.3rem; width: 100%;
   min-height: 24px; padding: 0.18rem 0.4rem; text-align: left;
-  background: var(--sns-bgAlt); font-weight: 500; font-size: var(--cw-nav-size);
+  background: var(--sns-bgAlt); font-weight: 400; font-size: var(--cw-nav-size);
   text-transform: none; letter-spacing: normal;
 }
 .rnica-command-screen-group__header.is-active { border-color: var(--sns-teal); color: var(--sns-teal); }
@@ -129,9 +132,9 @@ button.rnica-command-screen-group__header {
 .rnica-command-not-documented { color: var(--sns-muted); font-style: italic; font-weight: 400; }
 .rnica-command-story-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 0.6rem 0; }
 .rnica-command-story-card { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.5rem 0.6rem; text-align: left; }
-.rnica-command-story-card__label { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; font-weight: 800; }
+.rnica-command-story-card__label { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; font-weight: 400; }
 .rnica-command-story-section { margin-top: 0.8rem; }
-.rnica-command-story-section h3 { margin: 0 0 0.4rem; font-size: var(--cw-section-size); }
+.rnica-command-story-section h3 { margin: 0 0 0.4rem; font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-story-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%; text-align: left; margin-bottom: 0.3rem; }
 .rnica-command-story-footnote { margin-top: 0.8rem; color: var(--sns-muted); font-size: var(--cw-meta-size); }
 
@@ -145,14 +148,14 @@ button.rnica-command-screen-group__header {
   background: var(--sns-card);
 }
 .rnica-command-sticky-note { display: grid; grid-template-columns: minmax(12rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--cw-gap); padding: var(--cw-pad); margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-yellow); }
-.rnica-command-sticky-note h2, .rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); color: var(--sns-white); }
+.rnica-command-sticky-note h2, .rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); font-weight: 600; color: var(--sns-white); }
 .rnica-command-sticky-note p, .rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
 .rnica-command-capture-groups { display: grid; gap: 0.55rem; }
 .rnica-command-capture-groups > div { display: grid; gap: 0.25rem; }
-.rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); letter-spacing: 0.02em; text-transform: uppercase; }
+.rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; }
 .rnica-command-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
 .rnica-command-quick-grid button { min-width: 0; min-height: 2.25rem; padding: 0.3rem; overflow-wrap: anywhere; text-align: left; }
-.rnica-command-quick-grid button span { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; }
+.rnica-command-quick-grid button span { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; }
 .rnica-command-quick-grid--context { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .rnica-command-quick-grid--additional { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .rnica-command-quick-toggle { grid-column: 2; justify-self: start; }
@@ -205,14 +208,14 @@ button.rnica-command-screen-group__header {
 .rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
 .rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; overflow: hidden; }
 .rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(7rem, 0.7fr) minmax(14rem, 2fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
-.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; }
 .rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
 .rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
-.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 700; white-space: nowrap; }
+.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 500; white-space: nowrap; }
 .rnica-diagnosis-ledger__related input { width: 1.15rem; height: 1.15rem; }
 .rnica-diagnosis-ledger__remove { min-height: 2.5rem !important; padding: 0.3rem 0.55rem !important; color: var(--sns-red) !important; }
 .rnica-diagnosis-ledger__actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
-.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
+.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
 .rnica-lcd-summary__counts { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem; }
 .rnica-lcd-summary__counts span { padding: 0.25rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 999px; background: var(--sns-card); color: var(--sns-muted); }
 .rnica-lcd-summary__counts strong { color: var(--sns-white); }
@@ -220,7 +223,7 @@ button.rnica-command-screen-group__header {
 .rnica-lcd-group.needs-review { border-left: 0.25rem solid var(--sns-orange) !important; }
 .rnica-lcd-group.is-satisfied { border-left: 0.25rem solid var(--sns-green) !important; }
 .rnica-lcd-group__toggle { width: 100%; min-height: 2.75rem !important; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.4rem 0.65rem !important; border: 0 !important; border-radius: 0 !important; background: var(--sns-cardSoft) !important; text-align: left; }
-.rnica-lcd-group__toggle > span:first-child { font-weight: 800; }
+.rnica-lcd-group__toggle > span:first-child { font-weight: 500; }
 .rnica-lcd-group__count { color: var(--sns-muted); font-size: var(--cw-meta-size); white-space: nowrap; }
 .rnica-lcd-criteria { gap: 0 !important; }
 .rnica-lcd-criterion { min-height: 2.75rem; padding: 0.4rem 0.6rem !important; border: 0 !important; border-top: 1px solid var(--sns-border) !important; border-radius: 0 !important; background: var(--sns-card) !important; }
@@ -233,7 +236,7 @@ button.rnica-command-screen-group__header {
 .rnica-comorbidity-option:first-child { border-top: 0; }
 
 .rnica-command-card { padding: var(--cw-pad); margin-bottom: var(--cw-gap); }
-.rnica-command-rail h2 { font-size: var(--cw-section-size); }
+.rnica-command-rail h2 { font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-rail strong,
 .rnica-command-rail p,
 .rnica-command-rail button { font-size: var(--cw-body-size); }
@@ -245,14 +248,14 @@ button.rnica-command-screen-group__header {
 .rnica-command-card__heading { justify-content: space-between; margin-bottom: 0.45rem; }
 .rnica-command-card__heading > span { color: var(--sns-muted); }
 .rnica-command-check { display: flex; align-items: center; gap: 0.45rem; min-height: 2.5rem; }
-.rnica-command-state { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; text-transform: uppercase; }
+.rnica-command-state { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; text-transform: uppercase; }
 .rnica-command-state--recording { color: var(--sns-red); }
 .rnica-command-state--paused { color: var(--sns-orange); }
 .rnica-command-review, .rnica-command-signal, .rnica-command-requirement { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem; margin-top: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
 .rnica-command-review span, .rnica-command-signal span, .rnica-command-requirement span { color: var(--sns-muted); font-size: var(--cw-meta-size); line-height: 1.35; }
 .rnica-command-narrative { margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-teal); }
-.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
-.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 800; }
+.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
+.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 500; }
 .rnica-command-final-shortcut--desktop { position: sticky; top: 0; z-index: 2; }
 .rnica-command-final-shortcut--mobile { display: none; }
 .rnica-command-requirement { width: 100%; min-height: unset !important; text-align: left; }
@@ -261,7 +264,7 @@ button.rnica-command-screen-group__header {
 .rnica-command-save { position: sticky; bottom: 0; box-shadow: 0 -0.4rem 1.2rem var(--sns-shadow); }
 .rnica-command-save > div { display: flex; justify-content: space-between; margin-bottom: 0.55rem; }
 .rnica-command-save > div span { color: var(--sns-muted); }
-.rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 800; }
+.rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 500; }
 .rnica-command-save > button.is-secondary { background: var(--sns-cardSoft); color: var(--sns-white); }
 
 @media (max-width: 1100px) {
@@ -382,7 +385,7 @@ button.rnica-command-screen-group__header {
   flex-wrap: wrap;
 }
 
-.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); }
+.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); font-weight: 600; }
 .rnica-screen__identity > span:last-child { color: var(--sns-muted); }
 
 .rnica-screen__admission-facts {
@@ -390,7 +393,8 @@ button.rnica-command-screen-group__header {
   align-items: center;
   flex-wrap: wrap;
   gap: 0;
-  font-size: 0.78rem;
+  font-size: 11px;
+  font-weight: 400;
   color: var(--sns-muted);
   row-gap: 0.15rem;
 }
@@ -402,10 +406,10 @@ button.rnica-command-screen-group__header {
 .rnica-screen__admission-facts > span:last-child { border-right: none; }
 .rnica-screen__admission-facts em {
   font-style: normal;
-  font-weight: 600;
+  font-weight: 400;
   text-transform: uppercase;
   letter-spacing: 0.03em;
-  font-size: 0.65rem;
+  font-size: 10px;
   color: var(--sns-dim, var(--sns-muted));
   margin-right: 0.3rem;
 }
@@ -474,7 +478,7 @@ button.rnica-command-screen-group__header {
   align-items: center;
   justify-content: space-between;
   padding: 0.5rem 0.6rem 0.3rem;
-  font: 700 0.62rem Inter, sans-serif;
+  font: 400 10px Inter, sans-serif;
   letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--sns-muted);
@@ -521,7 +525,7 @@ button.rnica-command-screen-group__header {
   border-radius: 0.4rem;
   background: transparent;
   color: var(--sns-dim);
-  font: 400 0.8rem Inter, sans-serif;
+  font: 400 11px Inter, sans-serif;
   text-align: left;
   cursor: pointer;
 }
@@ -554,7 +558,7 @@ button.rnica-command-screen-group__header {
   border-radius: 999px;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.58rem;
+  font-size: 10px;
 }
 
 /* ACTIVE: number circle = primary teal, number text = inverse text */
@@ -582,8 +586,8 @@ button.rnica-command-screen-group__header {
 .rnica-rail__status-badge {
   display: inline-flex; align-items: center; gap: 0.2rem;
   padding: 0.03rem 0.32rem !important;
-  font-size: 9px !important;
-  font-weight: 600 !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
   text-transform: none !important;
   letter-spacing: normal !important;
 }
@@ -595,7 +599,7 @@ button.rnica-command-screen-group__header {
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 999px;
-  font-size: 0.6rem;
+  font-size: 10px;
   line-height: 1;
 }
 .rnica-rail__status-dot--done { background: var(--sns-green); color: var(--sns-textInverse); }
@@ -639,7 +643,7 @@ button.rnica-command-screen-group__header {
   justify-content: space-between;
   padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--sns-border);
-  font: 800 0.8rem Inter, sans-serif;
+  font: 600 13px Inter, sans-serif;
   color: var(--sns-white);
 }
 
@@ -659,7 +663,7 @@ button.rnica-command-screen-group__header {
 
 .rnica-rail-sheet .rnica-rail__item {
   padding: 0.6rem 0.65rem;
-  font-size: 0.85rem;
+  font-size: 11px;
 }
 
 .rnica-screen__subnav {
@@ -679,7 +683,7 @@ button.rnica-command-screen-group__header {
   border-radius: 0.4rem;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font: 700 0.78rem Inter, sans-serif;
+  font: 500 11px Inter, sans-serif;
   cursor: pointer;
 }
 
@@ -699,7 +703,7 @@ button.rnica-command-screen-group__header {
   border-radius: 999px;
   background: var(--sns-red);
   color: #fff;
-  font-size: 0.65rem;
+  font-size: 10px;
 }
 
 .rnica-screen__stepnav {
@@ -726,7 +730,7 @@ button.rnica-command-screen-group__header {
   border-top: 1px solid var(--sns-border);
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.8rem;
+  font-size: 10px;
   position: sticky;
   bottom: 0;
 }
@@ -743,7 +747,7 @@ button.rnica-command-screen-group__header {
   border-radius: 0.45rem;
   background: var(--sns-teal);
   color: var(--sns-bg);
-  font: 800 0.8rem Inter, sans-serif;
+  font: 500 11px Inter, sans-serif;
   cursor: pointer;
 }
 
