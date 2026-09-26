@@ -9591,29 +9591,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
   const isBodySystemWorkspace = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
 
-  return (
-    <>
-      {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
-      {sectionKey === "sfv" && (
-        <SfvStatusCard patientId={patientId} onNavigateToSection={onNavigateToSection} onSyncCompletionStatus={(completed, completedAt) => {
-          u("inPersonSfvCompleted", completed);
-          u("sfvDate", completedAt || "");
-        }} styles={styles} COLORS={COLORS} />
-      )}
-      <div className={
-        workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid"
-        : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
-        // Body Systems architectural correction: one workspace container
-        // per system (not a card grid of N separate boxes) -- generic
-        // fallback cards render `bare` (see isBodySystemPilotCard below)
-        // so they read as inline groups inside this single box. Widgets
-        // with their own customRenderer (wound list, DME status, ADL grid,
-        // etc.) still render as their own Card -- those are distinct
-        // structured components, not generic field subsections.
-        : isBodySystemWorkspace ? "rnica-bodysystem-workspace"
-        : undefined
-      }>
-        {resolvedCards.map((card, ci) => {
+  const cardsContent = resolvedCards.map((card, ci) => {
         // [PRESENTATION-ONLY RELOCATION] A card may declare `dataSection` to
         // render under a different screen/section than the one that owns its
         // data (e.g. the ADL Assessment card visually relocated to Functional
@@ -9821,7 +9799,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "nutrition" && card.customRenderer === "nutritionAnthropometricReference") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <NutritionAnthropometricReferenceCard fullFormData={fullFormData} styles={styles} COLORS={COLORS} />
             </Card>
           );
@@ -9829,7 +9807,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "nutrition" && card.customRenderer === "weightLossAutoCalc") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <WeightLossAutoCalcCard
                 patientId={patientId}
                 assessmentId={assessmentId}
@@ -9861,7 +9839,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "skin" && card.customRenderer === "woundList") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <WoundListCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
               {/* Owner directive: compress Pressure Relief Measures into an
                   inline checklist within Wound Documentation rather than a
@@ -9931,7 +9909,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "gastrointestinal" && card.customRenderer === "constipationAutoAssess") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <ConstipationAutoAssessCard
                 lastBM={data?.lastBM}
                 diarrhea={data?.diarrhea}
@@ -9978,7 +9956,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} />
             </Card>
           );
@@ -10274,8 +10252,50 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             )}
           </Card>
         );
-        })}
-      </div>
+  });
+
+  return (
+    <>
+      {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
+      {sectionKey === "sfv" && (
+        <SfvStatusCard patientId={patientId} onNavigateToSection={onNavigateToSection} onSyncCompletionStatus={(completed, completedAt) => {
+          u("inPersonSfvCompleted", completed);
+          u("sfvDate", completedAt || "");
+        }} styles={styles} COLORS={COLORS} />
+      )}
+      {isBodySystemWorkspace ? (
+        // Body Systems architectural correction: the AccordionTrigger in
+        // RNICACommandWorkspace.jsx already shows the system name/status,
+        // so this single outer shadcn Card renders content only (no
+        // CardHeader/title -- avoids a duplicate heading). Generic
+        // fallback cards and customRenderer widgets inside it render
+        // `bare` so they read as inline groups within this one box
+        // instead of N separate bordered cards, and the section gets ONE
+        // consolidated Add/View/Update/Resolve POC control instead of one
+        // per sub-card.
+        <ShadcnCard className="rnica-bodysystem-workspace">
+          <ShadcnCardContent className="rnica-bodysystem-workspace__content">
+            {cardsContent}
+            {POC_ENABLED_SECTIONS.has(sectionKey) && (
+              <PocSectionControls
+                assessmentId={assessmentId}
+                sectionKey={sectionKey}
+                cardTitle={title}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )}
+          </ShadcnCardContent>
+        </ShadcnCard>
+      ) : (
+        <div className={
+          workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid"
+          : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
+          : undefined
+        }>
+          {cardsContent}
+        </div>
+      )}
     </>
   );
 }

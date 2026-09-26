@@ -975,20 +975,32 @@
    footprint; the card grows automatically once real findings exist. */
 .rnica-bodysystems__findings-empty { max-height: 80px; }
 
-/* Clinical Review Grid (owner directive 2026-09-26): a body system's own
-   sub-cards (Mental Status, BIMS, Communication & Sensory, Skin Integrity,
-   Pressure Injury, Wounds, ...) pack into a responsive 2-3 column grid
-   instead of stacking one-per-row, and each defaults to collapsed (see
-   the `collapsible`/`defaultCollapsed` props on the Card component in
-   RNICA.jsx) -- only expanded cards claim real vertical space. */
-.rnica-bodysystem-cardgrid {
+/* Body Systems architectural correction (owner directive, 2026-09-27):
+   supersedes the earlier "clinical review grid" of N separate bordered
+   sub-cards. Each of the 10 body systems is now ONE shadcn Card
+   (.rnica-bodysystem-workspace, applied to the Card root in RNICA.jsx)
+   containing bare inline groups (.rnica-bodysystem-workspace__group --
+   title row + fields only, no box/border) packed into a responsive
+   2-3 column grid so nothing is hidden behind a click and nothing is
+   fragmented into its own card shell. Widgets with their own
+   customRenderer (wound list, allergies, constipation auto-assess, ...)
+   also render `bare` inside this same box. */
+.rnica-bodysystem-workspace {
+  margin-bottom: 0;
+}
+
+.rnica-bodysystem-workspace__content {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 0.5rem;
+  gap: 0.6rem 1rem;
   align-items: start;
 }
 
-.rnica-bodysystem-cardgrid .rnica-form-card { margin-bottom: 0; }
+.rnica-bodysystem-workspace__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
 
 @media (max-width: 1100px) {
   .rnica-bodysystems { grid-template-columns: 1fr; }
@@ -996,5 +1008,5 @@
 }
 
 @media (max-width: 700px) {
-  .rnica-bodysystem-cardgrid { grid-template-columns: 1fr; }
+  .rnica-bodysystem-workspace__content { grid-template-columns: 1fr; }
 }
