@@ -214,7 +214,7 @@ export function getRnicaStyles(COLORS) {
       boxSizing: "border-box",
       boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
     },
-    radioGroup: { display: "flex", gap: 8, flexWrap: "wrap" },
+    radioGroup: { display: "flex", flexDirection: "row", gap: "3px 10px", flexWrap: "wrap" },
     radioLabel: { display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, cursor: "pointer", color: COLORS.dark },
     checkboxGroup: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "3px 10px" },
     checkboxLabel: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, cursor: "pointer", color: COLORS.dark },
