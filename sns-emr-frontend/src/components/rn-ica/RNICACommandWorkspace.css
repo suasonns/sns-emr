@@ -219,7 +219,7 @@
 .rnica-diagnosis-ledger__summary strong { flex: 0 0 auto; color: var(--sns-teal); }
 .rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
 .rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; overflow: hidden; }
-.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(7rem, 0.7fr) minmax(14rem, 2fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
+.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
 .rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; }
 .rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
 .rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
@@ -311,7 +311,7 @@
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
   .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
   .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(10rem, 1.5fr); padding: 0.4rem; }
+  .rnica-diagnosis-ledger__row { grid-template-columns: 1fr; padding: 0.4rem; }
   .rnica-diagnosis-ledger__related, .rnica-diagnosis-ledger__row > div:last-child { min-height: 2.5rem; }
   .rnica-diagnosis-ledger__actions { align-items: stretch; flex-direction: column; }
   .rnica-comorbidity-grid { grid-template-columns: 1fr; }
@@ -358,7 +358,7 @@
   .rnica-command-rail { grid-template-columns: 1fr; }
   .rnica-lcd-group__toggle { align-items: flex-start; flex-direction: column; }
   .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(0, 1.5fr); padding: 0.4rem; }
+  .rnica-diagnosis-ledger__row { grid-template-columns: 1fr; padding: 0.4rem; }
 }
 
 /* Standalone RNICA screen shell (Patient Story and future rebuilt

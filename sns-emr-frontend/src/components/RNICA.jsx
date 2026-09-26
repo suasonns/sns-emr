@@ -2242,6 +2242,52 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
   );
 }
 
+// A single secondary-diagnosis row's search box, mirroring
+// PrimaryTerminalDiagnosisCard's merged "Search Diagnosis or ICD-10"
+// control -- one Icd10DiagnosisInput fills both icd10 + description in
+// one action instead of two separate manually-typed fields. Extracted to
+// its own component (rather than inline in the rows.map below) so each
+// row can hold its own local "what the RN is currently typing" state
+// without violating the rules of hooks across a dynamic-length list.
+function SecondaryDiagnosisSearchRow({ row, idx, updateRow, removeRow, styles, COLORS }) {
+  const [searchText, setSearchText] = useState(() => (
+    row.description ? `${row.description}${row.icd10 ? ` (${row.icd10})` : ""}` : (row.icd10 || "")
+  ));
+
+  const handleSelectSuggestion = (suggestion) => {
+    updateRow(idx, "icd10", suggestion.icd10_code);
+    updateRow(idx, "description", suggestion.diagnosis_description);
+  };
+
+  return (
+    <div className="rnica-diagnosis-ledger__row" role="row">
+      <div role="cell">
+        <Icd10DiagnosisInput
+          value={searchText}
+          onChange={setSearchText}
+          onSelectSuggestion={handleSelectSuggestion}
+          colors={{ cardBg: COLORS.white, border: COLORS.border, label: COLORS.gray, white: COLORS.dark }}
+          inputStyle={styles.input}
+          placeholder="Search diagnosis or ICD-10…"
+        />
+      </div>
+      <label role="cell" className="rnica-diagnosis-ledger__related">
+        <input
+          type="checkbox"
+          checked={row.relatedToTerminal !== false}
+          onChange={(event) => updateRow(idx, "relatedToTerminal", event.target.checked)}
+        />
+        <span>{row.relatedToTerminal !== false ? "Related" : "Not related"}</span>
+      </label>
+      <div role="cell">
+        <button type="button" className="rnica-diagnosis-ledger__remove" onClick={() => removeRow(idx)}>
+          Remove
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // SECONDARY DIAGNOSES — add/edit/remove list (feeds HOPE comorbidity
 // auto-detection below and hopeReportMapper.js diagnosisEntries()).
@@ -2278,43 +2324,20 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
         ) : (
           <div className="rnica-diagnosis-ledger__table" role="table" aria-label="Secondary diagnoses">
             <div className="rnica-diagnosis-ledger__header" role="row">
-              <span role="columnheader">ICD-10</span>
-              <span role="columnheader">Description</span>
+              <span role="columnheader">Diagnosis</span>
               <span role="columnheader">Terminal related</span>
               <span role="columnheader">Action</span>
             </div>
             {visibleRows.map((row, idx) => (
-              <div className="rnica-diagnosis-ledger__row" role="row" key={idx}>
-                <div role="cell">
-                  <input
-                    aria-label={`Secondary diagnosis ${idx + 1} ICD-10 code`}
-                    placeholder="ICD-10"
-                    value={row.icd10 || ""}
-                    onChange={(event) => updateRow(idx, "icd10", event.target.value)}
-                  />
-                </div>
-                <div role="cell">
-                  <input
-                    aria-label={`Secondary diagnosis ${idx + 1} description`}
-                    placeholder="Description"
-                    value={row.description || ""}
-                    onChange={(event) => updateRow(idx, "description", event.target.value)}
-                  />
-                </div>
-                <label role="cell" className="rnica-diagnosis-ledger__related">
-                  <input
-                    type="checkbox"
-                    checked={row.relatedToTerminal !== false}
-                    onChange={(event) => updateRow(idx, "relatedToTerminal", event.target.checked)}
-                  />
-                  <span>{row.relatedToTerminal !== false ? "Related" : "Not related"}</span>
-                </label>
-                <div role="cell">
-                  <button type="button" className="rnica-diagnosis-ledger__remove" onClick={() => removeRow(idx)}>
-                    Remove
-                  </button>
-                </div>
-              </div>
+              <SecondaryDiagnosisSearchRow
+                key={idx}
+                row={row}
+                idx={idx}
+                updateRow={updateRow}
+                removeRow={removeRow}
+                styles={styles}
+                COLORS={COLORS}
+              />
             ))}
           </div>
         )}
