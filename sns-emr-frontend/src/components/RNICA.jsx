@@ -9517,6 +9517,86 @@ const BODY_SYSTEM_FORM_SECTIONS = new Set(
   RNICA_BODY_SYSTEM_MODULES.map((module) => module.formSection),
 );
 
+// Deterministic, plain-language restatement of ALREADY-DOCUMENTED fields
+// for a single body system (owner directive: "only include findings
+// already documented... do not generate/infer/create findings"). Every
+// line reads one specific, already-existing field and only appears when
+// that field has a real charted value -- no new fields, nothing derived
+// or predicted. Shared by the per-system "Summary" strip (Body Systems
+// clinical-workflow layout) and the combined cross-system Structured
+// Findings panel so the two never drift out of sync.
+function computeBodySystemFindings(sectionKey, sectionData) {
+  const findings = [];
+  const d = sectionData || {};
+  switch (sectionKey) {
+    case "neurological": {
+      if (d.cognition) findings.push(`Cognitive status: ${d.cognition}.`);
+      const bimsFields = [d?.hopeItems?.n0500, d?.hopeItems?.n0510, d?.hopeItems?.n0520];
+      if (bimsFields.every((v) => v !== "" && v !== undefined && v !== null)) {
+        const bimsSum = bimsFields.reduce((sum, v) => sum + parseInt(v, 10), 0);
+        findings.push(`BIMS score: ${bimsSum}/9.`);
+      }
+      break;
+    }
+    case "respiratory": {
+      if (d.oxygenTherapy?.inUse) {
+        const detail = [d.oxygenTherapy.litersPerMinute && `${d.oxygenTherapy.litersPerMinute} L/min`, d.oxygenTherapy.deliveryMode].filter(Boolean).join(", ");
+        findings.push(`Continuous oxygen therapy in use${detail ? ` (${detail})` : ""}.`);
+      }
+      break;
+    }
+    case "cardiovascular": {
+      if (d.edema?.present === "Yes") {
+        findings.push(`${d.edema.severity || "Edema"} documented${d.edema.location?.length ? ` (${d.edema.location.join(", ")})` : ""}.`);
+      }
+      break;
+    }
+    case "skin": {
+      if ((d.wounds || []).length > 0) {
+        findings.push(`${d.wounds.length} active wound${d.wounds.length === 1 ? "" : "s"} documented — ongoing wound care oversight required.`);
+      }
+      if (d.skinColorFinding && d.skinColorFinding !== "Normal") findings.push(`Skin color: ${d.skinColorFinding}.`);
+      if (d.skinTemperature && !["Warm", ""].includes(d.skinTemperature)) findings.push(`Skin temperature: ${d.skinTemperature}.`);
+      if (d.skinMoisture && d.skinMoisture !== "Dry") findings.push(`Skin moisture: ${d.skinMoisture}.`);
+      if (d.skinEdema?.severity && d.skinEdema.severity !== "None") {
+        findings.push(`Skin edema: ${d.skinEdema.severity}${d.skinEdema.location ? ` (${d.skinEdema.location})` : ""}.`);
+      }
+      const additionalSkinFindings = (d.additionalSkinFindings || []).filter((f) => f && f !== "None");
+      if (additionalSkinFindings.length > 0) findings.push(`Additional skin findings: ${additionalSkinFindings.join(", ")}.`);
+      break;
+    }
+    case "gastrointestinal": {
+      if (d.ostomy?.present) findings.push(`Ostomy present (${d.ostomy.type || "type not specified"}).`);
+      if (d.feedingTube?.present) findings.push(`Feeding tube present (${d.feedingTube.type || "type not specified"}).`);
+      break;
+    }
+    case "genitourinary": {
+      if (d.catheter?.present) findings.push(`Urinary catheter present (${d.catheter.type || "type not specified"}).`);
+      break;
+    }
+    case "nutrition": {
+      if (d.weightLossPastSixMonths && !/^(none|no)$/i.test(d.weightLossPastSixMonths)) {
+        findings.push(`Weight loss documented: ${d.weightLossPastSixMonths}.`);
+      }
+      break;
+    }
+    case "endocrine": {
+      if (d.diabetes?.type && !["Not diabetic", "Unknown"].includes(d.diabetes.type)) {
+        findings.push(`Diabetes (${d.diabetes.type})${d.diabetes.insulinType ? `, on insulin` : ""}.`);
+      }
+      break;
+    }
+    case "infection": {
+      const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
+      if (activeInfections.length > 0) findings.push(`Active infection: ${activeInfections.join(", ")}.`);
+      break;
+    }
+    default:
+      break;
+  }
+  return findings;
+}
+
 function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
@@ -13111,52 +13191,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // field and only appears when that field has a real charted value; none
   // of these paths are new fields, and nothing is derived/predicted.
   const bodySystemsStructuredFindings = useMemo(() => {
-    const findings = [];
-    const neuro = formData?.neurological || {};
-    if (neuro.cognition) findings.push(`Cognitive status: ${neuro.cognition}.`);
-    const bimsFields = [neuro?.hopeItems?.n0500, neuro?.hopeItems?.n0510, neuro?.hopeItems?.n0520];
-    if (bimsFields.every((v) => v !== "" && v !== undefined && v !== null)) {
-      const bimsSum = bimsFields.reduce((sum, v) => sum + parseInt(v, 10), 0);
-      findings.push(`BIMS score: ${bimsSum}/9.`);
-    }
-    const resp = formData?.respiratory || {};
-    if (resp.oxygenTherapy?.inUse) {
-      const detail = [resp.oxygenTherapy.litersPerMinute && `${resp.oxygenTherapy.litersPerMinute} L/min`, resp.oxygenTherapy.deliveryMode].filter(Boolean).join(", ");
-      findings.push(`Continuous oxygen therapy in use${detail ? ` (${detail})` : ""}.`);
-    }
-    const cv = formData?.cardiovascular || {};
-    if (cv.edema?.present === "Yes") {
-      findings.push(`${cv.edema.severity || "Edema"} documented${cv.edema.location?.length ? ` (${cv.edema.location.join(", ")})` : ""}.`);
-    }
-    const skin = formData?.skin || {};
-    if ((skin.wounds || []).length > 0) {
-      findings.push(`${skin.wounds.length} active wound${skin.wounds.length === 1 ? "" : "s"} documented — ongoing wound care oversight required.`);
-    }
-    if (skin.skinColorFinding && skin.skinColorFinding !== "Normal") findings.push(`Skin color: ${skin.skinColorFinding}.`);
-    if (skin.skinTemperature && !["Warm", ""].includes(skin.skinTemperature)) findings.push(`Skin temperature: ${skin.skinTemperature}.`);
-    if (skin.skinMoisture && skin.skinMoisture !== "Dry") findings.push(`Skin moisture: ${skin.skinMoisture}.`);
-    if (skin.skinEdema?.severity && skin.skinEdema.severity !== "None") {
-      findings.push(`Skin edema: ${skin.skinEdema.severity}${skin.skinEdema.location ? ` (${skin.skinEdema.location})` : ""}.`);
-    }
-    const additionalSkinFindings = (skin.additionalSkinFindings || []).filter((f) => f && f !== "None");
-    if (additionalSkinFindings.length > 0) findings.push(`Additional skin findings: ${additionalSkinFindings.join(", ")}.`);
-    const gi = formData?.gastrointestinal || {};
-    if (gi.ostomy?.present) findings.push(`Ostomy present (${gi.ostomy.type || "type not specified"}).`);
-    if (gi.feedingTube?.present) findings.push(`Feeding tube present (${gi.feedingTube.type || "type not specified"}).`);
-    const gu = formData?.genitourinary || {};
-    if (gu.catheter?.present) findings.push(`Urinary catheter present (${gu.catheter.type || "type not specified"}).`);
-    const nutrition = formData?.nutrition || {};
-    if (nutrition.weightLossPastSixMonths && !/^(none|no)$/i.test(nutrition.weightLossPastSixMonths)) {
-      findings.push(`Weight loss documented: ${nutrition.weightLossPastSixMonths}.`);
-    }
-    const endocrine = formData?.endocrine || {};
-    if (endocrine.diabetes?.type && !["Not diabetic", "Unknown"].includes(endocrine.diabetes.type)) {
-      findings.push(`Diabetes (${endocrine.diabetes.type})${endocrine.diabetes.insulinType ? `, on insulin` : ""}.`);
-    }
-    const infection = formData?.infection || {};
-    const activeInfections = (infection.currentInfections || []).filter((i) => i && i !== "None");
-    if (activeInfections.length > 0) findings.push(`Active infection: ${activeInfections.join(", ")}.`);
-    return findings;
+    return [
+      "neurological", "respiratory", "cardiovascular", "skin",
+      "gastrointestinal", "genitourinary", "nutrition", "endocrine", "infection",
+    ].flatMap((key) => computeBodySystemFindings(key, formData?.[key]));
   }, [formData]);
 
   if (workspacePilot) {
