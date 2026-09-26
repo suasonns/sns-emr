@@ -13,8 +13,8 @@
   --ccw-input-size: 12px;
   --ccw-label-size: 10px;
   --ccw-meta-size: 9.5px;
-  --ccw-section-size: 14.5px;
-  --ccw-patient-size: 18px;
+  --ccw-section-size: 13px;
+  --ccw-patient-size: 15.5px;
   --ccw-nav-size: var(--ccw-body-size);
   --ccw-nav-meta-size: var(--ccw-meta-size);
   --ccw-button-size: var(--ccw-body-size);
