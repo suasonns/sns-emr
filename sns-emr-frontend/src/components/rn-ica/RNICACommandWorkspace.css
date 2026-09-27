@@ -1018,22 +1018,22 @@
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  break-inside: avoid;
-  margin-bottom: 12px;
 }
 
-/* Same masonry fix applied one level down, inside a single sub-section's
-   own field list (e.g. Mental Status's Symptoms/Consciousness/Orientation
-   checkboxes vs. a lone text input) -- prevents the identical dead-space
-   defect from reappearing inside each group. */
+/* Fields within a single sub-section (e.g. Mental Status's Consciousness/
+   Orientation/Communication rows) use a real left-to-right CSS Grid, not
+   newspaper-style `columns`. `columns` reads top-to-bottom-then-jump-to-
+   next-column, which is not how a nurse scans a form and is what made a
+   dense system like Neurological confusing to read (owner-reported
+   2026-09-27). `auto-fit`/`minmax` still avoids the CSS Grid dead-space
+   problem the original masonry was written to fix: a lone field grows to
+   fill the row via the `1fr` term instead of leaving the rest of the row
+   blank, while multiple fields wrap left-to-right in natural order. */
 .rnica-bodysystem-workspace__fields {
-  columns: 2 200px;
-  column-gap: 12px;
-}
-
-.rnica-bodysystem-workspace__fields > * {
-  break-inside: avoid;
-  margin-bottom: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 12px;
+  align-items: start;
 }
 
 /* Owner directive (Body Systems 9-part structure): every system follows
@@ -1059,13 +1059,17 @@
   color: var(--sns-muted);
 }
 
-/* Cards within a single named group keep the same masonry packing the
-   old flat layout used, just scoped to that group instead of the whole
-   system, so short and tall sub-cards inside one clinical section still
-   pack tightly with no dead space. */
+/* Cards within a single named group use the same auto-fit/minmax grid as
+   the field-level fix above (2026-09-27): a lone card in a category (very
+   common -- e.g. Cardiovascular's "Symptom Impact" is usually one card)
+   now grows to fill the full row instead of being stuck in a single
+   ~260px newspaper column with the rest of the row left blank. Multiple
+   cards in one category wrap left-to-right in natural reading order. */
 .rnica-bodysystem-group__cards {
-  columns: 3 260px;
-  column-gap: 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
 }
 
 /* Computed Summary panel (owner directive: Summary is the first thing a
@@ -1120,7 +1124,7 @@
 @media (max-width: 700px) {
   .rnica-bodysystem-workspace__fields,
   .rnica-bodysystem-group__cards {
-    columns: 1;
+    grid-template-columns: 1fr;
   }
 }
 

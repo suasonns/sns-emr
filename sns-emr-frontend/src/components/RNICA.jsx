@@ -644,6 +644,7 @@ const INITIAL_FORM = {
     skinColor: "", pacemaker: false, internalDefibrillator: false,
     varicoseVeins: false, centralVenousLine: false,
     coolExtremities: false, stasisUlcer: false,
+    fatigue: "", dizziness: "", syncope: "", cardiacDyspnea: false,
     // Objective heart-failure finding drafted from evidence text (H&P,
     // referral, uploaded documents, or transcript) via the shared
     // StructuredFinding contract's CV_HEART_FAILURE_* concepts. Deliberately
@@ -9567,12 +9568,19 @@ function computeBodySystemFindings(sectionKey, sectionData) {
   const d = sectionData || {};
   switch (sectionKey) {
     case "neurological": {
+      if (d.consciousness && !["Alert", "Awake"].includes(d.consciousness)) {
+        findings.push(`Level of consciousness: ${d.consciousness}.`);
+      }
+      if (d.orientation?.disoriented) findings.push(`Disoriented.`);
       if (d.cognition) findings.push(`Cognitive status: ${d.cognition}.`);
       const bimsFields = [d?.hopeItems?.n0500, d?.hopeItems?.n0510, d?.hopeItems?.n0520];
       if (bimsFields.every((v) => v !== "" && v !== undefined && v !== null)) {
         const bimsSum = bimsFields.reduce((sum, v) => sum + parseInt(v, 10), 0);
         findings.push(`BIMS score: ${bimsSum}/9.`);
       }
+      if (d.delirium) findings.push(`Delirium present.`);
+      if (d.motorDeficit) findings.push(`Motor deficit present${d.affectedSide ? ` (${d.affectedSide})` : ""}.`);
+      if (d.balance && !["Steady", "Normal"].includes(d.balance)) findings.push(`Balance: ${d.balance}.`);
       break;
     }
     case "respiratory": {
@@ -9583,9 +9591,16 @@ function computeBodySystemFindings(sectionKey, sectionData) {
       break;
     }
     case "cardiovascular": {
+      if (d.chestPain?.present === "Yes") {
+        findings.push(`Chest pain present${d.chestPain.type ? ` (${d.chestPain.type})` : ""}.`);
+      }
       if (d.edema?.present === "Yes") {
         findings.push(`${d.edema.severity || "Edema"} documented${d.edema.location?.length ? ` (${d.edema.location.join(", ")})` : ""}.`);
       }
+      if (d.syncope === "Yes") findings.push(`Syncope (fainting episodes) documented.`);
+      if (d.dizziness && d.dizziness !== "None") findings.push(`Dizziness: ${d.dizziness}.`);
+      if (d.fatigue && d.fatigue !== "None") findings.push(`Fatigue: ${d.fatigue}.`);
+      if (d.heartFailurePresent) findings.push(`Heart failure signs present.`);
       break;
     }
     case "skin": {
@@ -10864,37 +10879,28 @@ const SECTION_CONFIGS = {
     title: "Neurological / Mental / Sensory",
     subtitle: "Consciousness, orientation, cognition, BIMS (N0500-N0520), sleep/rest",
     cards: [
+      // Owner directive (2026-09-27): rebuilt for rapid hospice symptom
+      // review, not a hospital-style neuro exam. Order: Cognitive Status ->
+      // Emotional/Behavioral Symptoms -> Dementia Findings -> Neuromuscular
+      // Function -> Sensory Function -> Symptom Impact -> Notes. No fields
+      // were removed or renamed at the data layer -- only regrouped and
+      // relabeled for readability (Balance moved from the old "Communication
+      // & Sensory" card into Neuromuscular Function since it is a motor/
+      // coordination finding, not a sensory one).
       {
-        title: "Mental Status", category: "core", hopeCode: "N0500", fields: [
-          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+        title: "Cognitive Status", category: "core", hopeCode: "N0500", fields: [
           { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
           { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
           { type: "checkbox", label: "Oriented to Place", path: "orientation.place" },
           { type: "checkbox", label: "Oriented to Person", path: "orientation.person" },
           { type: "checkbox", label: "Oriented to Situation", path: "orientation.situation" },
           { type: "checkbox", label: "Disoriented", path: "orientation.disoriented" },
-        ],
-      },
-      {
-        title: "BIMS (Brief Interview for Mental Status)", category: "core", hopeCode: "N0500-N0520", fields: [
-          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
-          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
-          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
-        ],
-      },
-      {
-        title: "Communication & Sensory", category: "core", fields: [
-          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
-          { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
-          { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
-          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Normal", "Impaired"] },
-          { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
-          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
-        ],
-      },
-      {
-        title: "Psychiatric / Cognitive", category: "symptoms", fields: [
           { type: "input", label: "Cognition Assessment", path: "cognition" },
+        ],
+      },
+      {
+        title: "Emotional / Behavioral Symptoms", category: "symptoms", fields: [
+          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           { type: "checkbox", label: "Delirium", path: "delirium" },
           { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
           { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
@@ -10902,7 +10908,34 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Sleep / Rest", category: "symptoms", fields: [
+        // BIMS is the CMS-standard cognitive-impairment screen; kept as the
+        // one "Dementia Findings" card so staging (FAST, under Performance
+        // Status) is not duplicated as a second source of truth here.
+        title: "Dementia Findings (BIMS Cognitive Screen)", category: "disease", hopeCode: "N0500-N0520", fields: [
+          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
+          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
+          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+        ],
+      },
+      {
+        title: "Neuromuscular Function", category: "functional", fields: [
+          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
+          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
+          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
+          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Normal", "Impaired"] },
+        ],
+      },
+      {
+        title: "Sensory Function", category: "core", fields: [
+          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
+          { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
+          { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
+          { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
+        ],
+      },
+      {
+        title: "Symptom Impact (Sleep & Rest)", category: "symptoms", fields: [
           { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "Somnolence", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
           { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
@@ -10910,13 +10943,6 @@ const SECTION_CONFIGS = {
           { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
           { type: "radio", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
           { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes" },
-        ],
-      },
-      {
-        title: "Motor Deficit", category: "functional", fields: [
-          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
-          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
-          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
         ],
       },
       {
@@ -10950,14 +10976,27 @@ const SECTION_CONFIGS = {
         { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
         { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
       ]},
+      // Owner directive (2026-09-27): Cardiovascular must stay symptom- and
+      // function-focused, not a disease-specific cardiology workup.
+      // Chest pain, edema/perfusion (Circulation & Perfusion card above), BP
+      // abnormalities, fatigue, dizziness, syncope, and cardiac-related
+      // dyspnea are the prioritized findings a hospice RN documents here.
       { title: "Cardiovascular Symptoms", category: "symptoms", fields: [
-        { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
         { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
         { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
-      ]},
-      { title: "Heart Failure", category: "disease", fields: [
+        { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
+        { type: "radio", label: "Fatigue", path: "fatigue", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "radio", label: "Dizziness", path: "dizziness", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "triState", label: "Syncope (Fainting Episodes)", path: "syncope" },
+        { type: "checkbox", label: "Dyspnea Related to Cardiac Condition", path: "cardiacDyspnea" },
+        // Demoted from a standalone "Disease-Specific Findings / Heart
+        // Failure" card to a general symptom-level flag -- Heart Failure
+        // Type (Systolic/Diastolic) is kept only as a StructuredFinding-
+        // harvested detail, not a disease classification RNICA leads with.
+        // See the default-data comment above for the HOPE I0600 distinction
+        // and applyStructuredFindings.test.js coverage this field preserves.
         { type: "checkbox", label: "Heart Failure Present", path: "heartFailurePresent" },
-        { type: "checkboxGroup", label: "Heart Failure Type", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
+        { type: "checkboxGroup", label: "Heart Failure Type (if known)", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
       ]},
       { title: "Cardiac Devices", category: "treatments", fields: [
         { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
