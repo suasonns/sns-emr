@@ -630,6 +630,7 @@ const INITIAL_FORM = {
     },
     hopeItems: { n0500: "", n0510: "", n0520: "" },
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 8. CARDIOVASCULAR ────────────────────────────
@@ -653,6 +654,7 @@ const INITIAL_FORM = {
     heartFailurePresent: false,
     heartFailureType: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 9. RESPIRATORY ───────────────────────────────
@@ -673,6 +675,7 @@ const INITIAL_FORM = {
       tracheostomyType: "", tracheostomySize: "",
     },
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 10. INFECTION ────────────────────────────────
@@ -689,6 +692,7 @@ const INITIAL_FORM = {
     infectionHistory: "",
     precautions: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 11. GASTROINTESTINAL ─────────────────────────
@@ -701,6 +705,7 @@ const INITIAL_FORM = {
     feedingTube: { present: false, type: "", site: "" },
     ostomy: { present: false, type: "", condition: "" },
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 12. NUTRITION ────────────────────────────────
@@ -712,6 +717,7 @@ const INITIAL_FORM = {
     nutritionalSupplements: "",
     npoStatus: "", artificialFeeding: [], oralCavityFindings: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 13. ENDOCRINE ────────────────────────────────
@@ -728,6 +734,7 @@ const INITIAL_FORM = {
     symptomSeverity: {},
     currentEndocrineMeds: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 14. GENITOURINARY ────────────────────────────
@@ -745,6 +752,7 @@ const INITIAL_FORM = {
     reproductive: { concerns: [], notes: "" },
     bladderManagement: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 15. MUSCULOSKELETAL ──────────────────────────
@@ -777,6 +785,7 @@ const INITIAL_FORM = {
       transferring: "", eating: "", grooming: "",
     },
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 16. SKIN ─────────────────────────────────────
@@ -796,6 +805,7 @@ const INITIAL_FORM = {
     woundImpairment: "",
     pressureReliefMeasures: [], repositioningPlan: "",
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 17. IMMINENT DEATH ───────────────────────────
@@ -2532,6 +2542,15 @@ function WoundListCard({ data, updateField, styles, COLORS }) {
 const DME_ITEMS_WITH_SPECIFY = new Set(["Commode", "Other"]);
 
 const DME_STATUS_OPTIONS = ["", "Has", "Needs", "Ordered", "Delivered", "Declined", "N/A"];
+
+// Body Systems 9-part structure: shared "Clinical Status Change" options
+// used by every body system's Clinical Status Change card. Hospice-oriented
+// symptom-management/progression language -- NOT a disease-treatment
+// response workflow. Reflects nursing judgment of stability, improvement,
+// or decline in this system's symptoms/function since the prior
+// assessment. "Not Applicable" is included deliberately so nurses are
+// never forced to miscode when there is nothing to compare or manage.
+const CLINICAL_STATUS_CHANGE_OPTIONS = ["Stable / No Change", "Improving", "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment", "Not Applicable"];
 
 function DmeStatusCard({ data, updateField, styles, COLORS }) {
   const items = data?.dmeItems || [];
@@ -9517,6 +9536,24 @@ const BODY_SYSTEM_FORM_SECTIONS = new Set(
   RNICA_BODY_SYSTEM_MODULES.map((module) => module.formSection),
 );
 
+// Body Systems 9-part nursing-workflow structure (owner directive: every
+// system follows identical navigation so a nurse always knows where to
+// look). Cards are tagged with one of these `category` values; a card
+// with no explicit category defaults to "core" (see resolvedCards.map
+// below) so nothing can silently fall out of the workspace. "summary" is
+// synthetic (computed, not a real card) and "poc" is handled by the
+// pre-existing PocSectionControls component, so neither appears here.
+const BODY_SYSTEM_CATEGORY_ORDER = ["core", "symptoms", "functional", "disease", "treatments", "response", "observation"];
+const BODY_SYSTEM_CATEGORY_LABELS = {
+  core: "Core Findings",
+  symptoms: "Symptom Impact",
+  functional: "Functional Impact",
+  disease: "Disease-Specific Findings",
+  treatments: "Current Management",
+  response: "Clinical Status Change",
+  observation: "Nurse Observation",
+};
+
 // Deterministic, plain-language restatement of ALREADY-DOCUMENTED fields
 // for a single body system (owner directive: "only include findings
 // already documented... do not generate/infer/create findings"). Every
@@ -9591,10 +9628,45 @@ function computeBodySystemFindings(sectionKey, sectionData) {
       if (activeInfections.length > 0) findings.push(`Active infection: ${activeInfections.join(", ")}.`);
       break;
     }
+    case "musculoskeletal": {
+      if (d.weakness && d.weakness !== "None") findings.push(`Weakness: ${d.weakness}.`);
+      if (d.paralysis && d.paralysis !== "None") findings.push(`Disability: ${d.paralysis}.`);
+      if (d.contractures && d.contractures !== "None") {
+        findings.push(`Contractures: ${d.contractures}${d.contracturesLocation?.length ? ` (${d.contracturesLocation.join(", ")})` : ""}.`);
+      } else if (d.contracturesPresent) {
+        findings.push(`Contractures present${d.contracturesLocation?.length ? ` (${d.contracturesLocation.join(", ")})` : ""}.`);
+      }
+      if (d.rigidity && d.rigidity !== "None") findings.push(`Rigidity: ${d.rigidity}.`);
+      else if (d.rigidityPresent) findings.push(`Rigidity present.`);
+      const fallsCount = parseInt(d.fallHistory?.fallsLast90Days, 10);
+      if (Number.isFinite(fallsCount) && fallsCount > 0) {
+        findings.push(`${fallsCount} fall${fallsCount === 1 ? "" : "s"} in last 90 days${d.fallHistory?.fallInjuries ? ` (${d.fallHistory.fallInjuries})` : ""}.`);
+      }
+      break;
+    }
     default:
       break;
   }
   return findings;
+}
+
+// Computed Summary panel for the Body Systems 9-part structure. Reuses
+// computeBodySystemFindings (the same deterministic, already-documented-
+// only findings list used elsewhere) so the Summary never introduces a
+// second, drifting source of truth. Deliberately does NOT include a
+// "Changes Since Prior" line -- no prior-assessment/longitudinal-diff
+// infrastructure exists yet anywhere in RNICA (confirmed: no
+// priorAssessment/sincePrior/priorVisit concept in this file), so that
+// would have to be guessed or fabricated. Omitted here pending real
+// longitudinal infrastructure, not silently dropped -- see the Body
+// Systems completion summary of work.
+function computeBodySystemSummary(sectionKey, sectionData) {
+  const primaryIssues = computeBodySystemFindings(sectionKey, sectionData);
+  return {
+    status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
+    primaryIssues,
+    requiresFollowUp: primaryIssues.length > 0,
+  };
 }
 
 function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
@@ -10334,6 +10406,30 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         );
   });
 
+  // Body Systems 9-part structure: group the already-rendered cardsContent
+  // (post all conditional-null filters above -- pain/skin custom-renderer
+  // suppression, spiritual field filtering, etc. are untouched) by each
+  // card's declared `category`, defaulting to "core" so an untagged card is
+  // never silently dropped from the workspace. Purely a final-assembly
+  // reorder; no field, data shape, HOPE mapping, or POC control changes.
+  const bodySystemSummary = isBodySystemWorkspace ? computeBodySystemSummary(sectionKey, data) : null;
+
+  const bodySystemGroupedContent = isBodySystemWorkspace
+    ? BODY_SYSTEM_CATEGORY_ORDER.map((category) => {
+        const items = resolvedCards
+          .map((card, ci) => ({ ci, category: card.category || "core" }))
+          .filter((entry) => entry.category === category && cardsContent[entry.ci] != null)
+          .map((entry) => cardsContent[entry.ci]);
+        if (items.length === 0) return null;
+        return (
+          <div key={category} className="rnica-bodysystem-group" data-category={category}>
+            <h4 className="rnica-bodysystem-group__heading">{BODY_SYSTEM_CATEGORY_LABELS[category]}</h4>
+            <div className="rnica-bodysystem-group__cards">{items}</div>
+          </div>
+        );
+      })
+    : null;
+
   return (
     <>
       {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
@@ -10355,7 +10451,21 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // per sub-card.
         <ShadcnCard className="rnica-bodysystem-workspace">
           <ShadcnCardContent className="rnica-bodysystem-workspace__content">
-            {cardsContent}
+            {bodySystemSummary && (
+              <div className="rnica-bodysystem-summary" data-requires-follow-up={bodySystemSummary.requiresFollowUp}>
+                <h4 className="rnica-bodysystem-summary__heading">Summary</h4>
+                <p className="rnica-bodysystem-summary__status">{bodySystemSummary.status}</p>
+                {bodySystemSummary.primaryIssues.length > 0 && (
+                  <ul className="rnica-bodysystem-summary__issues">
+                    {bodySystemSummary.primaryIssues.map((issue, ii) => <li key={ii}>{issue}</li>)}
+                  </ul>
+                )}
+                {bodySystemSummary.requiresFollowUp && (
+                  <p className="rnica-bodysystem-summary__flag">Requires Follow-Up</p>
+                )}
+              </div>
+            )}
+            {bodySystemGroupedContent}
             {POC_ENABLED_SECTIONS.has(sectionKey) && (
               <PocSectionControls
                 assessmentId={assessmentId}
@@ -10755,7 +10865,7 @@ const SECTION_CONFIGS = {
     subtitle: "Consciousness, orientation, cognition, BIMS (N0500-N0520), sleep/rest",
     cards: [
       {
-        title: "Mental Status", hopeCode: "N0500", fields: [
+        title: "Mental Status", category: "core", hopeCode: "N0500", fields: [
           { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
           { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
@@ -10766,14 +10876,14 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "BIMS (Brief Interview for Mental Status)", hopeCode: "N0500-N0520", fields: [
+        title: "BIMS (Brief Interview for Mental Status)", category: "core", hopeCode: "N0500-N0520", fields: [
           { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
           { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
           { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
         ],
       },
       {
-        title: "Communication & Sensory", fields: [
+        title: "Communication & Sensory", category: "core", fields: [
           { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
           { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
           { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
@@ -10783,7 +10893,7 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Psychiatric / Cognitive", fields: [
+        title: "Psychiatric / Cognitive", category: "symptoms", fields: [
           { type: "input", label: "Cognition Assessment", path: "cognition" },
           { type: "checkbox", label: "Delirium", path: "delirium" },
           { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
@@ -10792,7 +10902,7 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Sleep / Rest", fields: [
+        title: "Sleep / Rest", category: "symptoms", fields: [
           { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "Somnolence", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
           { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
@@ -10803,14 +10913,19 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Motor Deficit", fields: [
+        title: "Motor Deficit", category: "functional", fields: [
           { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
           { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
           { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
         ],
       },
       {
-        title: "Notes", fields: [
+        title: "Clinical Status Change", category: "response", fields: [
+          { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+        ],
+      },
+      {
+        title: "Notes", category: "observation", fields: [
           { type: "textarea", label: "Neurological Notes", path: "notes", rows: 4 },
         ],
       },
@@ -10821,27 +10936,38 @@ const SECTION_CONFIGS = {
     title: "Cardiovascular",
     subtitle: "Blood pressure, pulse, edema, chest pain, circulation",
     cards: [
-      { title: "Cardiovascular Assessment", fields: [
-        { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
+      { title: "Circulation & Perfusion", category: "core", fields: [
         { type: "checkboxGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
         { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Regular", "Strong", "Weak", "Thready", "Bounding", "Irregular", "Tachycardia", "Bradycardia", "Absent"] },
-        { type: "triState", label: "Edema Present", path: "edema.present" },
-        { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
-        { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
-        { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
-        { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
         { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
         { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
         { type: "input", label: "Skin Color", path: "skinColor" },
-        { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
-        { type: "checkbox", label: "Internal Defibrillator", path: "internalDefibrillator" },
-        { type: "checkbox", label: "Varicose Veins", path: "varicoseVeins" },
-        { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
         { type: "checkbox", label: "Cool Extremities", path: "coolExtremities" },
+        { type: "checkbox", label: "Varicose Veins", path: "varicoseVeins" },
         { type: "checkbox", label: "Stasis Ulcer", path: "stasisUlcer" },
+        { type: "triState", label: "Edema Present", path: "edema.present" },
+        { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
+        { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
+      ]},
+      { title: "Cardiovascular Symptoms", category: "symptoms", fields: [
+        { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
+        { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
+        { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
+      ]},
+      { title: "Heart Failure", category: "disease", fields: [
         { type: "checkbox", label: "Heart Failure Present", path: "heartFailurePresent" },
         { type: "checkboxGroup", label: "Heart Failure Type", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
+      ]},
+      { title: "Cardiac Devices", category: "treatments", fields: [
+        { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
+        { type: "checkbox", label: "Internal Defibrillator", path: "internalDefibrillator" },
+        { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Cardiovascular Notes", category: "observation", fields: [
         { type: "textarea", label: "Cardiovascular Notes", path: "notes" },
       ]},
     ],
@@ -10851,7 +10977,7 @@ const SECTION_CONFIGS = {
     title: "Respiratory",
     subtitle: "SOB (J2051B), lung sounds, oxygen therapy, cough assessment",
     cards: [
-      { title: "Respiratory Assessment", fields: [
+      { title: "Respiratory Assessment", category: "core", fields: [
         { type: "radio", label: "SOB Severity", path: "sobSeverity", sfv: true, options: ["None", "Mild", "Moderate", "Severe", "At rest"] },
         { type: "checkbox", label: "Treatment Declined (when applicable)", path: "treatmentDeclined" },
         { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion", "With speech", "Push of speech", "Pursed-lip breathing", "Other"] },
@@ -10864,7 +10990,7 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis", "Barrel chest"] },
         { type: "input", label: "Sputum Character", path: "sputumCharacter" },
       ]},
-      { title: "Oxygen Therapy", fields: [
+      { title: "Oxygen Therapy", category: "treatments", fields: [
         { type: "checkbox", label: "Oxygen in Use", path: "oxygenTherapy.inUse" },
         { type: "select", label: "Delivery Type", path: "oxygenTherapy.type", options: ["Nasal cannula", "Simple mask", "Non-rebreather", "Venturi mask", "High flow"] },
         { type: "input", label: "Liters/Minute", path: "oxygenTherapy.litersPerMinute", inputType: "number" },
@@ -10873,14 +10999,17 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "On Room Air", path: "oxygenTherapy.onRoomAir" },
         { type: "input", label: "SpO2 on O2", path: "oxygenTherapy.satOnO2", inputType: "number" },
       ]},
-      { title: "Ventilator / Airway Support", fields: [
+      { title: "Ventilator / Airway Support", category: "treatments", fields: [
         { type: "checkbox", label: "Short-Term Ventilator", path: "ventilator.shortTermVentilator" },
         { type: "checkbox", label: "Long-Term Ventilator", path: "ventilator.longTermVentilator" },
         { type: "input", label: "Ventilator Type and Settings", path: "ventilator.ventilatorTypeAndSettings" },
         { type: "input", label: "Tracheostomy Type", path: "ventilator.tracheostomyType" },
         { type: "input", label: "Tracheostomy Size", path: "ventilator.tracheostomySize" },
       ]},
-      { title: "Notes", fields: [
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Respiratory Notes", path: "notes" },
       ]},
     ],
@@ -10890,21 +11019,28 @@ const SECTION_CONFIGS = {
     title: "Immunological / Infection",
     subtitle: "Allergies, current infections, resistant-organism history, precautions",
     cards: [
-      { title: "Allergies", customRenderer: "patientAllergies", fields: [] },
-      { title: "Immune Status", fields: [
+      { title: "Allergies", category: "core", customRenderer: "patientAllergies", fields: [] },
+      { title: "Immune Status", category: "core", fields: [
         { type: "checkbox", label: "Immunosuppressed", path: "immunosuppressed" },
         { type: "checkboxGroup", label: "Precautions", path: "precautions", options: ["Standard", "Contact", "Droplet", "Airborne"] },
       ]},
-      { title: "Infection Assessment", fields: [
+      { title: "Infection Assessment", category: "disease", fields: [
         { type: "checkboxGroup", label: "Antibiotic-Resistant Infection (current)", path: "antibioticResistantInfection", options: ["None", "MRSA", "C. difficile", "Other"] },
         { type: "checkboxGroup", label: "History of Resistant Infection", path: "historyOfResistantInfections", options: ["None", "MRSA", "C. difficile", "Other"] },
         { type: "checkboxGroup", label: "Current Active Infection", path: "currentInfections", options: ["None", "Sepsis", "UTI", "Respiratory tract", "IV site", "Wound", "HIV-related", "Pressure area", "Other"] },
       ]},
-      { title: "Additional Findings", fields: [
-        { type: "checkbox", label: "Antibiotic Use", path: "antibioticUse" },
+      { title: "Infection Symptoms", category: "symptoms", fields: [
         { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "°F" },
         { type: "checkbox", label: "Recurrent Infection", path: "recurrentInfection" },
         { type: "textarea", label: "Infection History", path: "infectionHistory" },
+      ]},
+      { title: "Antibiotic Treatment", category: "treatments", fields: [
+        { type: "checkbox", label: "Antibiotic Use", path: "antibioticUse" },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Other Observations / Notes", path: "notes", placeholder: "List active infections..." },
       ]},
     ],
@@ -10914,15 +11050,15 @@ const SECTION_CONFIGS = {
     title: "Gastrointestinal",
     subtitle: "J2051D-G (Nausea, Vomiting, Diarrhea, Constipation), bowel, feeding devices",
     cards: [
-      { title: "Constipation — Auto-Suggested from Last BM Date", customRenderer: "constipationAutoAssess" },
-      { title: "GI Symptoms", fields: [
+      { title: "Constipation — Auto-Suggested from Last BM Date", category: "core", customRenderer: "constipationAutoAssess" },
+      { title: "GI Symptoms", category: "symptoms", fields: [
         { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
         { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
-      { title: "Abdominal / Bowel Assessment", fields: [
+      { title: "Abdominal / Bowel Assessment", category: "core", fields: [
         { type: "radio", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
         { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
         { type: "checkbox", label: "Ascites", path: "ascites" },
@@ -10933,11 +11069,16 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
         { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
-      { title: "Feeding Devices", fields: [
+      { title: "Feeding Devices", category: "treatments", fields: [
         { type: "checkbox", label: "Feeding Tube Present", path: "feedingTube.present" },
         { type: "select", label: "Tube Type", path: "feedingTube.type", options: ["NG", "PEG", "PEJ", "G-tube", "J-tube"] },
         { type: "checkbox", label: "Ostomy Present", path: "ostomy.present" },
         { type: "select", label: "Ostomy Type", path: "ostomy.type", options: ["Colostomy", "Ileostomy", "Urostomy"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "GI Notes", path: "notes" },
       ]},
     ],
@@ -10949,30 +11090,41 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Anthropometric & Metabolic Reference",
+        category: "core",
         customRenderer: "nutritionAnthropometricReference",
       },
       {
         title: "Weight Loss Auto-Calculation",
+        category: "core",
         customRenderer: "weightLossAutoCalc",
       },
-      { title: "Nutritional Assessment", fields: [
+      { title: "Nutritional Assessment", category: "core", fields: [
         { type: "input", label: "Weight Loss (past 6 months)", path: "weightLossPastSixMonths", placeholder: "lbs or %" },
         { type: "radio", label: "Appetite", path: "appetite", options: ["Good", "Fair", "Poor", "Anorexic"] },
         { type: "input", label: "Diet Type", path: "dietType" },
         { type: "radio", label: "Fluid Intake", path: "fluidIntake", options: ["Adequate", "Decreased", "Minimal"] },
+      ]},
+      { title: "Nutrition Symptoms", category: "symptoms", fields: [
         { type: "checkboxGroup", label: "Swallowing Issues", path: "swallowingIssues", options: ["Dysphagia", "Aspiration risk", "Pocketing", "Coughing with swallowing", "None"] },
         { type: "input", label: "Oral Mucosa", path: "oralMucosa" },
         { type: "checkbox", label: "Upper Dentures", path: "dentures.upper" },
         { type: "checkbox", label: "Lower Dentures", path: "dentures.lower" },
-        { type: "input", label: "Nutritional Supplements", path: "nutritionalSupplements" },
-        { type: "textarea", label: "Nutrition Notes", path: "notes" },
       ]},
-      { title: "NPO / Artificial Feeding", fields: [
+      { title: "Nutrition Support", category: "treatments", fields: [
+        { type: "input", label: "Nutritional Supplements", path: "nutritionalSupplements" },
+      ]},
+      { title: "NPO / Artificial Feeding", category: "treatments", fields: [
         { type: "radio", label: "NPO Status", path: "npoStatus", options: ["Not NPO", "NPO", "NPO except meds", "Modified/thickened liquids only"] },
         { type: "checkboxGroup", label: "Artificial Feeding / Access Devices", path: "artificialFeeding", options: ["PEG", "NG", "J-tube", "Pump", "TPN", "None"] },
       ]},
-      { title: "Oral Cavity", fields: [
+      { title: "Oral Cavity", category: "core", fields: [
         { type: "checkboxGroup", label: "Oral Cavity Findings", path: "oralCavityFindings", options: ["Edentulous", "Stomatitis", "Thrush", "Poor dentition", "Normal"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Nutrition Notes", category: "observation", fields: [
+        { type: "textarea", label: "Nutrition Notes", path: "notes" },
       ]},
     ],
   },
@@ -10980,14 +11132,14 @@ const SECTION_CONFIGS = {
     title: "Endocrine",
     subtitle: "Impairment, thyroid, diabetes management, endocrine symptoms",
     cards: [
-      { title: "Endocrine Impairment", fields: [
+      { title: "Endocrine Impairment", category: "core", fields: [
         { type: "checkboxGroup", label: "Impairment", path: "endocrineImpairment", options: ["Thyroid", "Parathyroid", "Pituitary", "Adrenal", "Pancreas", "None"] },
       ]},
-      { title: "Thyroid Assessment", fields: [
+      { title: "Thyroid Assessment", category: "core", fields: [
         { type: "radio", label: "Thyroid", path: "thyroid.assessment", options: ["Normal", "Enlarged", "Tender", "Nodular", "Not assessed"] },
         { type: "textarea", label: "Thyroid Notes", path: "thyroid.notes" },
       ]},
-      { title: "Diabetes Management", fields: [
+      { title: "Diabetes Management", category: "disease", fields: [
         { type: "radio", label: "Diabetes Type", path: "diabetes.type", options: ["Type 1", "Type 2", "Not diabetic", "Unknown"] },
         { type: "radio", label: "Diabetes Dependency", path: "diabetes.dependency", options: ["Insulin-dependent", "Non-insulin-dependent", "Glucose-management concern", "Not applicable"] },
         { type: "select", label: "Glucose Monitoring Frequency", path: "diabetes.glucoseMonitoring", options: ["None", "Daily", "BID", "TID", "QID", "Weekly"] },
@@ -10997,9 +11149,16 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Insulin Dose", path: "diabetes.insulinDose" },
         { type: "checkboxGroup", label: "Oral Hypoglycemics", path: "diabetes.oralHypoglycemics", options: ["Metformin", "Sulfonylurea", "DPP-4 inhibitor", "SGLT2 inhibitor", "None"] },
       ]},
-      { title: "Endocrine Symptoms & Treatment", fields: [
+      { title: "Endocrine Symptoms", category: "symptoms", fields: [
         { type: "checkboxGroup", label: "Symptoms Present", path: "endocrineSymptoms", options: ["Fatigue", "Weight changes", "Temperature intolerance", "Hair/skin changes", "Polydipsia", "Polyuria", "Tremors"] },
+      ]},
+      { title: "Endocrine Treatment", category: "treatments", fields: [
         { type: "checkboxGroup", label: "Current Treatment", path: "currentEndocrineMeds", options: ["Levothyroxine", "Insulin", "Oral hypoglycemics", "Corticosteroid replacement", "Other endocrine medication", "None"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Other Observations / Notes", path: "notes" },
       ]},
     ],
@@ -11009,13 +11168,13 @@ const SECTION_CONFIGS = {
     title: "Genitourinary / Reproductive",
     subtitle: "Urinary status, catheter, urine output, reproductive concerns",
     cards: [
-      { title: "Urinary Status", fields: [
+      { title: "Urinary Status", category: "core", fields: [
         { type: "radio", label: "Continence", path: "urinaryStatus", options: ["Continent", "Stress incontinence", "Urge incontinence", "Functional incontinence", "Total incontinence", "Catheterized", "Bladder program", "Urostomy", "Retention", "Painful urination", "Nocturia"] },
         { type: "input", label: "Frequency", path: "frequency" },
         { type: "checkboxGroup", label: "Urine", path: "urineCharacteristics", options: ["Clear", "Cloudy", "Pale", "Blood", "Odor"] },
         { type: "input", label: "Urine Color", path: "urineColor" },
       ]},
-      { title: "Catheter Assessment", fields: [
+      { title: "Catheter Assessment", category: "treatments", fields: [
         { type: "checkbox", label: "Catheter Present", path: "catheter.present" },
         { type: "select", label: "Type", path: "catheter.type", options: ["None", "Foley", "Suprapubic", "Condom", "Intermittent", "Urostomy"] },
         { type: "input", label: "Size", path: "catheter.size" },
@@ -11028,16 +11187,21 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Irrigation Duration", path: "catheter.irrigation.duration" },
         { type: "textarea", label: "Catheter Care", path: "catheterCare" },
       ]},
-      { title: "Urine Output", fields: [
+      { title: "Urine Output", category: "core", fields: [
         { type: "radio", label: "Output", path: "urineOutput", options: ["Adequate", "Decreased", "Anuria", "Polyuria"] },
         { type: "input", label: "24-Hour Volume (if measured)", path: "twentyFourHourVolume", inputType: "number" },
       ]},
-      { title: "Reproductive Concerns", fields: [
+      { title: "Reproductive Concerns", category: "symptoms", fields: [
         { type: "checkboxGroup", label: "Concerns", path: "reproductive.concerns", options: ["Vaginal bleeding", "Vaginal discharge", "Penile discharge", "Scrotal edema", "Testicular mass"] },
         { type: "textarea", label: "Reproductive Notes", path: "reproductive.notes" },
       ]},
-      { title: "Bladder Management", fields: [
+      { title: "Bladder Management", category: "treatments", fields: [
         { type: "checkboxGroup", label: "Interventions", path: "bladderManagement", options: ["Bladder training", "Scheduled toileting", "Pelvic floor exercises", "External collection device"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "GU Notes", category: "observation", fields: [
         { type: "textarea", label: "GU Notes", path: "notes" },
       ]},
     ],
@@ -11047,7 +11211,7 @@ const SECTION_CONFIGS = {
     title: "Musculoskeletal",
     subtitle: "Weakness, ROM, gait, mobility status (ADL assessment presents under Functional Status)",
     cards: [
-      { title: "Musculoskeletal Assessment", fields: [
+      { title: "Musculoskeletal Assessment", category: "core", fields: [
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
         { type: "radio", label: "Rigidity", path: "rigidity", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "checkbox", label: "Rigidity Present (severity not documented)", path: "rigidityPresent" },
@@ -11060,7 +11224,7 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Gait", path: "gait", options: ["Normal", "Unsteady", "Shuffling", "Unable"] },
         { type: "checkboxGroup", label: "Assistive Devices", path: "assistiveDevices", options: ["Walker", "Wheelchair", "Cane", "Crutches", "Hospital bed", "Hoyer lift", "None"] },
       ]},
-      { title: "Mobility Assessment", fields: [
+      { title: "Mobility Assessment", category: "functional", fields: [
         { type: "radio", label: "Ambulatory Status", path: "mobility.ambulatoryStatus", options: ["Independent", "Supervised", "Assisted", "Dependent", "Bedbound"] },
         { type: "radio", label: "Endurance", path: "mobility.endurance", options: ["Good", "Fair", "Poor"] },
         { type: "radio", label: "Transfer Ability", path: "mobility.transferAbility", options: ["Independent", "Standby assist", "1-person assist", "2-person assist", "Hoyer lift"] },
@@ -11068,7 +11232,10 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Balance", path: "balance", options: ["Normal", "Impaired"] },
         { type: "radio", label: "Pain with Movement", path: "painWithMovement", options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
-      { title: "Fall History & Notes", fields: [
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Fall History & Notes", category: "observation", fields: [
         { type: "input", label: "Falls in Last 90 Days", path: "fallHistory.fallsLast90Days", inputType: "number" },
         { type: "input", label: "Fall Injuries", path: "fallHistory.fallInjuries" },
         { type: "textarea", label: "Musculoskeletal Notes", path: "notes" },
@@ -11088,7 +11255,7 @@ const SECTION_CONFIGS = {
       // Findings all live together with it in one workspace. Field paths
       // are unchanged from the prior per-field cards -- no data model or
       // HOPE/SFV mapping change, presentation-only consolidation.
-      { title: "Skin Assessment", hopeCode: "M1190", fields: [
+      { title: "Skin Assessment", category: "core", hopeCode: "M1190", fields: [
         { type: "checkbox", label: "Skin Conditions Present", path: "skinConditionsPresent" },
         { type: "checkboxGroup", label: "Skin Status", path: "skinStatus", options: ["Intact", "Dry", "Fragile", "Edematous", "Bruising", "Rash", "Jaundice", "Cyanotic", "Mottled"] },
         { type: "radio", label: "Skin Turgor", path: "skinTurgor", options: ["Good", "Fair", "Poor", "Tenting"] },
@@ -11099,7 +11266,7 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Edema Location", path: "skinEdema.location" },
         { type: "checkboxGroup", label: "Additional Skin Findings", path: "additionalSkinFindings", options: ["Bruising", "Skin Tears", "Excoriation", "Pruritus", "Dry Scaling", "None"] },
       ]},
-      { title: "Braden Scale", fields: [
+      { title: "Braden Scale", category: "core", fields: [
         { type: "select", label: "Sensory Perception", path: "braden.sensoryPerception", options: [{ value: "1", label: "1 — Completely limited" }, { value: "2", label: "2 — Very limited" }, { value: "3", label: "3 — Slightly limited" }, { value: "4", label: "4 — No impairment" }] },
         { type: "select", label: "Moisture", path: "braden.moisture", options: [{ value: "1", label: "1 — Constantly moist" }, { value: "2", label: "2 — Very moist" }, { value: "3", label: "3 — Occasionally moist" }, { value: "4", label: "4 — Rarely moist" }] },
         { type: "select", label: "Activity", path: "braden.activity", options: [{ value: "1", label: "1 — Bedfast" }, { value: "2", label: "2 — Chairfast" }, { value: "3", label: "3 — Walks occasionally" }, { value: "4", label: "4 — Walks frequently" }] },
@@ -11110,8 +11277,12 @@ const SECTION_CONFIGS = {
       ]},
       {
         title: "Wound Documentation (Structured)",
+        category: "disease",
         customRenderer: "woundList",
       },
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
     ],
   },
 

@@ -996,9 +996,22 @@
    independently of its neighbors' height, so short and tall groups pack
    tightly with no dead space, while `break-inside: avoid` keeps a whole
    group (title + its fields) from being split across two columns. */
+/* Multi-column (masonry-style) flow instead of CSS Grid: a CSS Grid row's
+   height is set by its tallest cell, which left large empty gaps under
+   every shorter sub-section sharing that row (owner-reported "disorganized"
+   defect, 2026-09-26). `columns` flows each group down a column
+   independently of its neighbors' height, so short and tall groups pack
+   tightly with no dead space, while `break-inside: avoid` keeps a whole
+   group (title + its fields) from being split across two columns.
+   The masonry now lives one level down, per BODY_SYSTEM_CATEGORY_ORDER
+   section (.rnica-bodysystem-group__cards) -- this top-level content
+   area is a stacked, fixed-order list of Summary + those named clinical
+   sections (Core Findings, Symptom Impact, ...), not raw cards, so it no
+   longer masonry-flows itself. */
 .rnica-bodysystem-workspace__content {
-  columns: 3 260px;
-  column-gap: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .rnica-bodysystem-workspace__group {
@@ -1023,9 +1036,90 @@
   margin-bottom: 8px;
 }
 
+/* Owner directive (Body Systems 9-part structure): every system follows
+   Summary -> Core Findings -> Symptom Impact -> Functional Impact ->
+   Disease-Specific Findings -> Current Management -> Clinical Status
+   Change -> Nurse Observation -> Plan of Care Impact, so a nurse always
+   knows where to look. Cards render already-tagged into these named
+   groups (BODY_SYSTEM_CATEGORY_ORDER/LABELS in RNICA.jsx); only groups
+   with at least one real card render a heading. */
+.rnica-bodysystem-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.rnica-bodysystem-group__heading {
+  margin: 0 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sns-border);
+  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sns-muted);
+}
+
+/* Cards within a single named group keep the same masonry packing the
+   old flat layout used, just scoped to that group instead of the whole
+   system, so short and tall sub-cards inside one clinical section still
+   pack tightly with no dead space. */
+.rnica-bodysystem-group__cards {
+  columns: 3 260px;
+  column-gap: 16px;
+}
+
+/* Computed Summary panel (owner directive: Summary is the first thing a
+   nurse sees). Reuses computeBodySystemFindings so it can never drift
+   from the same already-documented findings shown elsewhere. Does not
+   include "Changes Since Prior" -- no longitudinal-diff infrastructure
+   exists yet; see RNICA_CLINICAL_DOCUMENTATION_INTELLIGENCE_GAP_MAP.md. */
+.rnica-bodysystem-summary {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.4rem;
+  background: var(--sns-cardSoft);
+}
+
+.rnica-bodysystem-summary[data-requires-follow-up="true"] {
+  border-left: 3px solid var(--sns-orange);
+}
+
+.rnica-bodysystem-summary__heading {
+  margin: 0 0 4px;
+  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sns-muted);
+}
+
+.rnica-bodysystem-summary__status {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--sns-white);
+}
+
+.rnica-bodysystem-summary__issues {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  color: var(--sns-muted);
+  font-size: var(--cw-body-size);
+  line-height: 1.4;
+}
+
+.rnica-bodysystem-summary__flag {
+  margin: 0;
+  color: var(--sns-orange);
+  font-weight: 700;
+  font-size: var(--cw-meta-size, 0.78rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
 @media (max-width: 700px) {
-  .rnica-bodysystem-workspace__content,
-  .rnica-bodysystem-workspace__fields {
+  .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-group__cards {
     columns: 1;
   }
 }
