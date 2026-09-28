@@ -9851,7 +9851,7 @@ function computeBodySystemFindings(sectionKey, sectionData) {
       if (d.syncope === "Yes") findings.push(`Syncope (fainting episodes) documented.`);
       if (d.dizziness && d.dizziness !== "None") findings.push(`Dizziness: ${d.dizziness}.`);
       if (d.fatigue && d.fatigue !== "None") findings.push(`Fatigue: ${d.fatigue}.`);
-      if (d.heartFailurePresent) findings.push(`Heart failure signs present.`);
+      if (d.heartFailurePresent) findings.push(`Heart failure documented.`);
       break;
     }
     case "skin": {
@@ -10249,6 +10249,37 @@ export function cardiovascularHasActionablePocFinding(d) {
   return false;
 }
 
+// FIX (2026-09-28, live-UI audit): "No Current Cardiovascular Concern"
+// must not be confirmable while an abnormal finding is already stored on
+// the record (e.g. a legacy/preserved chest pain, edema, or heart
+// failure value from before this Overview Gate existed). Confirming "no
+// concern" over an unreviewed abnormal finding is a genuine contradiction
+// -- the record cannot simultaneously assert "no current concern" and
+// carry an unresolved abnormal finding. This never clears or rewrites
+// those preserved values; it only blocks the No-Concern path from
+// reaching Ready for Review until the clinician reviews/resolves them
+// (by switching path, editing the finding, etc.).
+export function cardiovascularHasPreservedAbnormalFinding(d) {
+  if (d.chestPain?.present === "Yes") return true;
+  if (d.edema?.present === "Yes") return true;
+  if (d.heartFailurePresent === true) return true;
+  if (d.syncope === "Yes") return true;
+  if (d.cardiacDyspnea === true) return true;
+  if (d.dizziness && d.dizziness !== "None") return true;
+  if (resolveBpLegacyDisplay(d).reviewRequired) return true;
+  const abnormalBp = resolveBpStatusDisplay(d);
+  if (abnormalBp && abnormalBp !== "Normal" && abnormalBp !== "Unable to assess") return true;
+  const abnormalPulse = [
+    resolvePulseDimensionDisplay(d, "pulseRhythm"),
+    resolvePulseDimensionDisplay(d, "pulseRate"),
+    resolvePulseDimensionDisplay(d, "pulseStrength"),
+  ];
+  if (abnormalPulse.includes("Irregular")) return true;
+  if (["Tachycardic", "Bradycardic"].includes(abnormalPulse[1])) return true;
+  if (["Weak", "Thready", "Bounding", "Absent"].includes(abnormalPulse[2])) return true;
+  return false;
+}
+
 // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 --
 // Cardiovascular counterpart to computeNeurologicalWorkflowStatus.
 //
@@ -10280,6 +10311,25 @@ export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
       ? { code: "review_required", label: "Review Required", variant: "warning" }
       : { code: "ready_for_review", label: "Ready for Review", variant: "success" };
   }
+  // FIX (2026-09-28, live-UI audit): "No Current Cardiovascular Concern"
+  // has its own required-field set (Pulse Rhythm/Rate/Strength +
+  // Clinical Status Change) and its own conflict rule -- it must never
+  // fall through to the generic "any documented value => ready" rule
+  // below, which would let an unrelated preserved abnormal finding (or
+  // even the Path 1 fields themselves) silently mark it Ready for
+  // Review while contradicting findings sit unresolved.
+  if (overview === "No Current Cardiovascular Concern") {
+    if (cardiovascularHasPreservedAbnormalFinding(d)) {
+      return { code: "review_required", label: "Review Required", variant: "warning" };
+    }
+    const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
+    const rate = resolvePulseDimensionDisplay(d, "pulseRate");
+    const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
+    const complete = Boolean(rhythm && rate && strength && d.clinicalStatusChange);
+    return complete
+      ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+      : { code: "in_progress", label: "In Progress", variant: "neutral" };
+  }
   const { cardiovascularOverview: _o, ...rest } = d;
   return hasAnyDocumentedValue(rest)
     ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
@@ -10303,6 +10353,13 @@ export function computeCardiovascularNarrative(d) {
   }
 
   if (overview === "No Current Cardiovascular Concern") {
+    // FIX (2026-09-28, live-UI audit): surface the conflict explicitly
+    // instead of falling through to the generic "Findings Present"
+    // fallback, which incorrectly implied the section had assessed and
+    // found abnormal cardiovascular findings under a "no concern" path.
+    if (cardiovascularHasPreservedAbnormalFinding(d)) {
+      return "Stored cardiovascular findings require review before No Current Cardiovascular Concern can be confirmed.";
+    }
     const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
     const rate = resolvePulseDimensionDisplay(d, "pulseRate");
     const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
@@ -10357,7 +10414,7 @@ export function computeCardiovascularNarrative(d) {
     if (d.fatigue && d.fatigue !== "None") clauses.push(`Fatigue: ${d.fatigue.toLowerCase()}.`);
     if (d.syncope === "Yes") clauses.push("Syncope documented.");
     if (d.cardiacDyspnea === true) clauses.push("Dyspnea attributed to cardiac condition.");
-    if (d.heartFailurePresent === true) clauses.push("Heart failure signs present.");
+    if (d.heartFailurePresent === true) clauses.push("Heart failure documented.");
   }
 
   if (bpLegacy.reviewRequired) {

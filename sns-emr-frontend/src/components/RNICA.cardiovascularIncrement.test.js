@@ -3,6 +3,7 @@ import {
   computeCardiovascularNarrative,
   computeCardiovascularWorkflowStatus,
   cardiovascularHasActionablePocFinding,
+  cardiovascularHasPreservedAbnormalFinding,
   resolvePulseDimensionDisplay,
   resolveBpStatusDisplay,
   resolveOrthostaticFindingDisplay,
@@ -89,7 +90,7 @@ describe("computeCardiovascularWorkflowStatus", () => {
 
   it("reports Ready for Review once a non-Unable-to-Assess path has documented findings", () => {
     const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "No Current Cardiovascular Concern",
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
       pulseRhythm: "Regular",
     });
     expect(status.code).toBe("ready_for_review");
@@ -97,6 +98,68 @@ describe("computeCardiovascularWorkflowStatus", () => {
 
   it("reports In Progress for a chosen path with nothing else documented yet", () => {
     expect(computeCardiovascularWorkflowStatus({ cardiovascularOverview: "Existing Cardiovascular Findings Review" }).code).toBe("in_progress");
+  });
+
+  // FIX (2026-09-28, live-UI audit): reproduces the exact defect observed
+  // in the running app on a real record -- selecting "No Current
+  // Cardiovascular Concern" while chest pain / edema / heart failure /
+  // other abnormal findings remain stored must never reach Ready for
+  // Review, and completing Path 1's own required fields (with no
+  // conflict) must reach Ready for Review on its own, independent of any
+  // unrelated documented value.
+  describe("No Current Cardiovascular Concern (Path 1) status resolution", () => {
+    it("stays In Progress until Rhythm, Rate, Strength, and Clinical Status Change are all deliberately completed", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "No Current Cardiovascular Concern",
+        pulseRhythm: "Regular",
+      });
+      expect(status.code).toBe("in_progress");
+    });
+
+    it("reaches Ready for Review once every required Path 1 field is complete and no conflict exists", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "No Current Cardiovascular Concern",
+        pulseRhythm: "Regular",
+        pulseRate: "Normal",
+        pulseStrength: "Strong",
+        clinicalStatusChange: "Stable / No Change",
+      });
+      expect(status.code).toBe("ready_for_review");
+    });
+
+    it("reproduction: preserved chest pain + edema + heart failure blocks Ready for Review", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "No Current Cardiovascular Concern",
+        chestPain: { present: "Yes" },
+        edema: { present: "Yes" },
+        heartFailurePresent: true,
+      });
+      expect(status.code).toBe("review_required");
+    });
+
+    it.each([
+      ["chest pain", { chestPain: { present: "Yes" } }],
+      ["edema", { edema: { present: "Yes" } }],
+      ["heart failure", { heartFailurePresent: true }],
+      ["syncope", { syncope: "Yes" }],
+      ["cardiac dyspnea attribution", { cardiacDyspnea: true }],
+      ["dizziness", { dizziness: "Mild" }],
+      ["conflicting legacy BP", { bpSymptoms: ["Normal", "Hypertensive"] }],
+      ["abnormal BP status", { bpStatus: "Hypertensive" }],
+      ["irregular pulse rhythm", { pulseRhythm: "Irregular" }],
+      ["abnormal pulse rate", { pulseRate: "Tachycardic" }],
+      ["abnormal pulse strength", { pulseStrength: "Thready" }],
+    ])("%s alone forces Review Required, even with Path 1 selected", (_label, findings) => {
+      const status = computeCardiovascularWorkflowStatus({ cardiovascularOverview: "No Current Cardiovascular Concern", ...findings });
+      expect(status.code).toBe("review_required");
+    });
+
+    it("never deletes or clears the preserved abnormal finding while flagging the conflict", () => {
+      const d = { cardiovascularOverview: "No Current Cardiovascular Concern", chestPain: { present: "Yes" }, edema: { present: "Yes" } };
+      computeCardiovascularWorkflowStatus(d);
+      expect(d.chestPain.present).toBe("Yes");
+      expect(d.edema.present).toBe("Yes");
+    });
   });
 });
 
@@ -385,7 +448,7 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
     expect(narrative).toContain("Pulse irregular, tachycardic, weak.");
     expect(narrative).toContain("Chest pain present: pressure-like.");
     expect(narrative).toContain("Syncope documented.");
-    expect(narrative).toContain("Heart failure signs present.");
+    expect(narrative).toContain("Heart failure documented.");
     expect(narrative).toContain("Dyspnea attributed to cardiac condition.");
   });
 
