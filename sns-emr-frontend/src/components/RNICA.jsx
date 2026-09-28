@@ -9925,6 +9925,17 @@ function hasAnyDocumentedValue(value) {
 // untouched.
 const NEURO_CONSCIOUSNESS_ALIASES = { Awake: "Alert", Coma: "Comatose" };
 
+// OWNER DIRECTIVE (2026-09-28) "Clinical Blocker -- Consciousness Model" --
+// Awake and Alert are distinct neurological concepts (a patient may be
+// awake but not alert, e.g. dementia/delirium/encephalopathy/end-of-life
+// decline). The stored canonical value stays "Alert" (no schema/migration
+// change, no historical rewrite), but display text -- both the option
+// label and every narrative clause -- now reads "Awake" only. The
+// narrative must never assert "Alert" unless Alertness is independently
+// documented, and no separate Alertness field exists yet, so "Alert" is
+// never emitted.
+const NEURO_CONSCIOUSNESS_DISPLAY = { Alert: "Awake" };
+
 // GitHub Directive (2026-09-28) "Neurological Review -- Average Sleep
 // Hours, Clinical Relevance, and Final Density Refinement" Issue #2 --
 // "Overall Change" must always resolve to an explicit clinical sentence
@@ -9961,8 +9972,9 @@ export function computeNeurologicalNarrative(d) {
       : "Neurological assessment unable to complete.";
   }
 
-  const consciousness = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
-  if (consciousness) clauses.push(`${consciousness}.`);
+  const consciousnessCanonical = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
+  const consciousnessDisplay = NEURO_CONSCIOUSNESS_DISPLAY[consciousnessCanonical] || consciousnessCanonical;
+  if (consciousnessDisplay) clauses.push(`${consciousnessDisplay}.`);
 
   const o = d.orientation || {};
   if (o.disoriented) {
@@ -11674,8 +11686,15 @@ const SECTION_CONFIGS = {
             // list value nor the backend NEURO_CONSCIOUSNESS_* concept
             // registry (only ever mapped Alert/Lethargic/Obtunded/
             // Stuporous/Comatose) is changed.
+            //
+            // OWNER DIRECTIVE (2026-09-28) Clinical Blocker -- Awake and
+            // Alert are distinct neurological concepts and must not be
+            // presented as equivalent. The stored canonical value stays
+            // "Alert" (no schema/migration change), but the label now
+            // reads "Awake" only; no Alertness field exists, so nothing
+            // in this UI or its narrative asserts "Alert".
             options: [
-              { value: "Alert", label: "Awake / Alert" },
+              { value: "Alert", label: "Awake" },
               "Lethargic", "Obtunded", "Stuporous",
               { value: "Minimally responsive", label: "Min. Responsive" },
               "Comatose",
