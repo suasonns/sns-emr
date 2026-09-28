@@ -11677,6 +11677,26 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 case "triState":
                   rendered = <FormTriState label={fieldForRender.label} value={value} onChange={onChange} hopeCode={fieldForRender.hopeCode} />;
                   break;
+                // Cardiovascular Execution Plan (2026-09-28) Child Issue 2 --
+                // "no editable Cardiovascular field displays the legacy
+                // square checkbox... tri-state fields use the existing
+                // Neurological assessment-state primitive." Reuses
+                // FormSegmented (already Neurological's pill/segmented
+                // control) with the same fixed Not Assessed/No/Yes option
+                // set and normalizeTriState value handling as FormTriState
+                // -- identical stored value contract ("" / "No" / "Yes"),
+                // purely a visual swap. FormTriState itself is untouched
+                // and keeps rendering for every other body system still
+                // using `type: "triState"`.
+                case "segmentedTriState":
+                  rendered = <FormSegmented label={fieldForRender.label} value={normalizeTriState(value)}
+                    onChange={onChange} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv}
+                    options={[
+                      { value: "", label: "Not Assessed" },
+                      { value: "No", label: "No" },
+                      { value: "Yes", label: "Yes" },
+                    ]} />;
+                  break;
                 case "checkbox":
                   rendered = <FormCheckbox label={fieldForRender.label} checked={value} onChange={onChange} />;
                   break;
@@ -12491,7 +12511,7 @@ const SECTION_CONFIGS = {
         ],
       },
       { title: "Circulation & Perfusion", category: "core", fields: [
-        { type: "checkboxGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
+        { type: "pillGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
         // OWNER-APPROVED "Pulse Redesign" (2026-09-28) -- Rhythm/Rate/
         // Strength are three independent clinical concepts (previously
         // one combined "Pulse Quality" radio, the Cardiovascular
@@ -12505,12 +12525,12 @@ const SECTION_CONFIGS = {
         { type: "segmented", label: "Pulse Strength", path: "pulseStrength", options: ["Strong", "Weak", "Thready", "Bounding", "Absent", "Unable to assess"] },
         { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
-        { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
+        { type: "segmentedTriState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
         { type: "input", label: "Skin Color", path: "skinColor" },
         { type: "booleanPill", label: "Cool Extremities", path: "coolExtremities" },
         { type: "booleanPill", label: "Varicose Veins", path: "varicoseVeins" },
         { type: "booleanPill", label: "Stasis Ulcer", path: "stasisUlcer" },
-        { type: "triState", label: "Edema Present", path: "edema.present" },
+        { type: "segmentedTriState", label: "Edema Present", path: "edema.present" },
         { type: "pillGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
         { type: "segmented", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
       ]},
@@ -12520,7 +12540,7 @@ const SECTION_CONFIGS = {
       // abnormalities, fatigue, dizziness, syncope, and cardiac-related
       // dyspnea are the prioritized findings a hospice RN documents here.
       { title: "Cardiovascular Symptoms", category: "symptoms", fields: [
-        { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
+        { type: "segmentedTriState", label: "Chest Pain Present", path: "chestPain.present" },
         { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
         // OWNER CORRECTION (2026-09-28 Contradiction 4) -- "Orthostatic"
         // is not the same dimension as Normal/Hypertensive/Hypotensive
@@ -12536,7 +12556,7 @@ const SECTION_CONFIGS = {
         { type: "segmented", label: "Orthostatic Finding", path: "orthostaticFinding", options: ["Not Present", "Present", "Unable to assess"] },
         { type: "segmented", label: "Fatigue", path: "fatigue", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "segmented", label: "Dizziness", path: "dizziness", options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "triState", label: "Syncope (Fainting Episodes)", path: "syncope" },
+        { type: "segmentedTriState", label: "Syncope (Fainting Episodes)", path: "syncope" },
         // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
         // Contradiction 5) -- Respiratory owns the symptom (sobSeverity);
         // Cardiovascular owns only the cardiac-cause attribution of an
