@@ -1505,7 +1505,14 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
             <button
               type="button" key={val} role="radio" aria-checked={selected}
               className="rnica-segment-btn"
-              onClick={() => onChange(val)}
+              // Owner directive (2026-09-28) "New Cardiovascular Defect --
+              // one-way segmented selections": clicking an already-selected
+              // option must let the user undo an accidental click / return
+              // to the unselected default, not just re-fire the same value.
+              // "" is already every one of these fields' pre-selection
+              // default (see initial state literals throughout this file),
+              // so clearing to "" never invents a new state.
+              onClick={() => onChange(selected ? "" : val)}
               style={{
                 padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
                 cursor: "pointer", border: `1px solid ${selected ? COLORS.teal : COLORS.border}`,
