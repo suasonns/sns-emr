@@ -2756,6 +2756,16 @@ const CLINICAL_STATUS_CHANGE_OPTIONS = ["Stable / No Change", "Improving", "Symp
 // Neurological's field config points at this new constant.
 const NEURO_OVERALL_CHANGE_OPTIONS = ["Initial Assessment", "No Significant Change", "Improved", "Gradual Decline", "New or Worsening Concern", "Fluctuating", "Unable to Compare"];
 
+// GitHub Directive (2026-09-28) "Cardiovascular Control-Model Correction"
+// Section 4 -- Cardiovascular's own approved Clinical Status Change list,
+// following the same NEURO_OVERALL_CHANGE_OPTIONS precedent: a dedicated
+// constant so this change never touches the shared CLINICAL_STATUS_CHANGE_OPTIONS
+// still used by the other ~9 still-paused body systems. A record charted
+// under the OLD shared options (e.g. "Stable / No Change") is never
+// rewritten -- FormSegmented's existing "Previously recorded" chip
+// preserves and displays it read-only when it no longer matches this list.
+const CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS = ["Initial Assessment", "No Significant Change", "Improved", "Declining", "New or Worsening Finding", "Fluctuating", "Unable to Compare"];
+
 function DmeStatusCard({ data, updateField, styles, COLORS }) {
   const items = data?.dmeItems || [];
 
@@ -10242,7 +10252,11 @@ export function cardiovascularHasActionablePocFinding(d) {
   if (d.cardiovascularOverview === "New/Worsening Cardiovascular Findings") return true;
   if (d.chestPain?.present === "Yes") return true;
   if (d.syncope === "Yes") return true;
-  if (["Declining", "New Symptom Since Prior Assessment"].includes(d.clinicalStatusChange)) return true;
+  // Both the legacy shared-option string ("New Symptom Since Prior
+  // Assessment") and the new Cardiovascular-approved string ("New or
+  // Worsening Finding") must trigger this -- a record charted under
+  // either option set is never treated as less actionable than the other.
+  if (["Declining", "New Symptom Since Prior Assessment", "New or Worsening Finding"].includes(d.clinicalStatusChange)) return true;
   if (d.edema?.present === "Yes" && ["3+", "4+"].includes(d.edema?.severity)) return true;
   if (["Thready", "Absent"].includes(resolvePulseDimensionDisplay(d, "pulseStrength"))) return true;
   if (d.cardiacDyspnea === true) return true;
@@ -10330,6 +10344,17 @@ export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
       ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
       : { code: "in_progress", label: "In Progress", variant: "neutral" };
   }
+  // Directive (2026-09-28) Section 11 "Path 3 plus No Significant
+  // Change": documenting New/Worsening Cardiovascular Findings while
+  // Clinical Status Change simultaneously claims stability is an
+  // internal contradiction that must surface for review, not silently
+  // pass through as Ready for Review.
+  if (
+    overview === "New/Worsening Cardiovascular Findings" &&
+    ["Stable / No Change", "No Significant Change"].includes(d.clinicalStatusChange)
+  ) {
+    return { code: "review_required", label: "Review Required", variant: "warning" };
+  }
   const { cardiovascularOverview: _o, ...rest } = d;
   return hasAnyDocumentedValue(rest)
     ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
@@ -10378,7 +10403,10 @@ export function computeCardiovascularNarrative(d) {
   const bpLegacy = resolveBpLegacyDisplay(d);
 
   if (overview === "Existing Cardiovascular Findings Review") {
-    if (d.clinicalStatusChange === "Stable / No Change") {
+    // Accept both the legacy shared option and the new Cardiovascular-
+    // approved option -- a record charted under either renders the same
+    // stability language; neither string is rewritten.
+    if (["Stable / No Change", "No Significant Change"].includes(d.clinicalStatusChange)) {
       clauses.push("Cardiovascular findings documented as stable/no significant change.");
     } else {
       clauses.push("Cardiovascular findings documented.");
@@ -12360,12 +12388,12 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
         { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
         { type: "input", label: "Skin Color", path: "skinColor" },
-        { type: "checkbox", label: "Cool Extremities", path: "coolExtremities" },
-        { type: "checkbox", label: "Varicose Veins", path: "varicoseVeins" },
-        { type: "checkbox", label: "Stasis Ulcer", path: "stasisUlcer" },
+        { type: "booleanPill", label: "Cool Extremities", path: "coolExtremities" },
+        { type: "booleanPill", label: "Varicose Veins", path: "varicoseVeins" },
+        { type: "booleanPill", label: "Stasis Ulcer", path: "stasisUlcer" },
         { type: "triState", label: "Edema Present", path: "edema.present" },
-        { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
-        { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
+        { type: "pillGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
+        { type: "segmented", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
       ]},
       // Owner directive (2026-09-27): Cardiovascular must stay symptom- and
       // function-focused, not a disease-specific cardiology workup.
@@ -12387,8 +12415,8 @@ const SECTION_CONFIGS = {
         // computeCardiovascularNarrative).
         { type: "segmented", label: "BP Status", path: "bpStatus", options: ["Normal", "Hypertensive", "Hypotensive", "Unable to assess"] },
         { type: "segmented", label: "Orthostatic Finding", path: "orthostaticFinding", options: ["Not Present", "Present", "Unable to assess"] },
-        { type: "radio", label: "Fatigue", path: "fatigue", options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "radio", label: "Dizziness", path: "dizziness", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Fatigue", path: "fatigue", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Dizziness", path: "dizziness", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "triState", label: "Syncope (Fainting Episodes)", path: "syncope" },
         // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
         // Contradiction 5) -- Respiratory owns the symptom (sobSeverity);
@@ -12408,16 +12436,16 @@ const SECTION_CONFIGS = {
         // harvested detail, not a disease classification RNICA leads with.
         // See the default-data comment above for the HOPE I0600 distinction
         // and applyStructuredFindings.test.js coverage this field preserves.
-        { type: "checkbox", label: "Heart Failure Present", path: "heartFailurePresent" },
-        { type: "checkboxGroup", label: "Heart Failure Type (if known)", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
+        { type: "booleanPill", label: "Heart Failure Present", path: "heartFailurePresent" },
+        { type: "pillGroup", label: "Heart Failure Type (if known)", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
       ]},
       { title: "Cardiac Devices", category: "treatments", fields: [
-        { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
-        { type: "checkbox", label: "Internal Defibrillator", path: "internalDefibrillator" },
-        { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
+        { type: "booleanPill", label: "Pacemaker", path: "pacemaker" },
+        { type: "booleanPill", label: "Internal Defibrillator", path: "internalDefibrillator" },
+        { type: "booleanPill", label: "Central Venous Line", path: "centralVenousLine" },
       ]},
       { title: "Clinical Status Change", category: "response", fields: [
-        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS },
       ]},
       { title: "Cardiovascular Notes", category: "observation", fields: [
         { type: "textarea", label: "Cardiovascular Notes", path: "notes" },

@@ -472,3 +472,57 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
     expect(narrative).toMatch(/Legacy BP values on record \(Normal, Hypertensive\) -- review required\./);
   });
 });
+
+// Control-Model Correction directive (2026-09-28) Section 4/11 --
+// Cardiovascular's own Clinical Status Change list must not affect the
+// shared CLINICAL_STATUS_CHANGE_OPTIONS used by other body systems, and
+// a Path 3 record that simultaneously claims stability is an internal
+// contradiction that must surface for review.
+describe("Clinical Status Change -- Cardiovascular-specific list and legacy compatibility", () => {
+  it("treats both the legacy and new stability strings as equivalent for the Path 2 narrative", () => {
+    const legacy = computeCardiovascularNarrative({
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      clinicalStatusChange: "Stable / No Change",
+    });
+    const current = computeCardiovascularNarrative({
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      clinicalStatusChange: "No Significant Change",
+    });
+    expect(legacy).toBe(current);
+    expect(legacy).toMatch(/stable\/no significant change/);
+  });
+
+  it("treats both the legacy and new decline/worsening strings as POC-actionable", () => {
+    expect(cardiovascularHasActionablePocFinding({ clinicalStatusChange: "New Symptom Since Prior Assessment" })).toBe(true);
+    expect(cardiovascularHasActionablePocFinding({ clinicalStatusChange: "New or Worsening Finding" })).toBe(true);
+  });
+
+  it("forces Review Required when Path 3 (New/Worsening) is paired with a stability claim", () => {
+    const legacy = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      clinicalStatusChange: "Stable / No Change",
+    });
+    const current = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      clinicalStatusChange: "No Significant Change",
+    });
+    expect(legacy.code).toBe("review_required");
+    expect(current.code).toBe("review_required");
+  });
+
+  it("does not force Review Required for Path 3 with a genuine decline claim", () => {
+    const status = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      clinicalStatusChange: "Declining",
+      chestPain: { present: "Yes" },
+    });
+    expect(status.code).toBe("ready_for_review");
+  });
+
+  it("never rewrites a legacy Clinical Status Change value while computing status/narrative", () => {
+    const d = { cardiovascularOverview: "Existing Cardiovascular Findings Review", clinicalStatusChange: "Symptom Well-Managed" };
+    computeCardiovascularWorkflowStatus(d);
+    computeCardiovascularNarrative(d);
+    expect(d.clinicalStatusChange).toBe("Symptom Well-Managed");
+  });
+});
