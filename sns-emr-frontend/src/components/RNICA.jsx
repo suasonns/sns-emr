@@ -1539,6 +1539,35 @@ function FormCheckbox({ label, checked, onChange, disabled = false }) {
   );
 }
 
+// GitHub UI Directive (2026-09-28) -- "checkbox should never be larger
+// than the text it represents." Single yes/no findings (e.g. "Motor
+// Deficit Present") no longer render as a large square Checkbox next to
+// a separate label; they render as one compact toggle pill, same visual
+// language/size as FormSegmented/FormPillGroup. Same boolean value/
+// onChange(bool) contract as FormCheckbox -- no data shape change.
+function FormBooleanPill({ label, checked, onChange, disabled = false }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const isChecked = Boolean(checked);
+  return (
+    <button
+      type="button" aria-pressed={isChecked} disabled={disabled}
+      className="rnica-segment-btn"
+      onClick={() => onChange(!isChecked)}
+      style={{
+        padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1,
+        border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}`,
+        background: isChecked ? COLORS.teal : "transparent",
+        color: isChecked ? COLORS.textOnTeal : COLORS.dark,
+        fontWeight: isChecked ? 700 : 500, whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
 const LCD_AUTO_FACT_FIELDS = new Set([
   "pps",
   "kps",
@@ -10739,6 +10768,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 case "checkbox":
                   rendered = <FormCheckbox label={fieldForRender.label} checked={value} onChange={onChange} />;
                   break;
+                case "booleanPill":
+                  rendered = <FormBooleanPill label={fieldForRender.label} checked={value} onChange={onChange} />;
+                  break;
                 default:
                   rendered = null;
               }
@@ -11327,13 +11359,16 @@ const SECTION_CONFIGS = {
       {
         title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fields: [
           { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
-          { type: "checkbox", label: "Delirium", path: "delirium" },
-          { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
+          // GitHub UI Directive (2026-09-28): single yes/no findings use a
+          // compact toggle pill, not a large square checkbox. Same path/
+          // boolean value -- no data migration.
+          { type: "booleanPill", label: "Delirium", path: "delirium" },
+          { type: "booleanPill", label: "Seizure History", path: "seizureHistory" },
         ],
       },
       {
         title: "Motor / Balance", category: "functional", importance: "medium", fields: [
-          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
+          { type: "booleanPill", label: "Motor Deficit Present", path: "motorDeficit" },
           { type: "segmented", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
           { type: "pillGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
           // Finding #8: "Normal"/"Impaired" removed as duplicate/overlapping
