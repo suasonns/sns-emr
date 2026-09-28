@@ -10251,7 +10251,18 @@ export function cardiovascularHasActionablePocFinding(d) {
 
 // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 --
 // Cardiovascular counterpart to computeNeurologicalWorkflowStatus.
-export function computeCardiovascularWorkflowStatus(d) {
+//
+// CORRECTION (2026-09-28, audit): "Unable to Assess" is Review Required
+// only while genuinely UNRESOLVED -- no reason selected, "Other" selected
+// without an explanation, or a preserved legacy value that conflicts with
+// the path (BP contradiction, or a legacy cardiac-dyspnea attribution the
+// current Respiratory state no longer supports). A completed Unable To
+// Assess path (approved reason, or Other + explanation, with no
+// conflict) reaches Ready for Review like every other path -- it must
+// never be forced to Review Required by the path selection alone.
+// `respiratoryData` is optional (undefined when the caller has no access
+// to the sibling section) and only affects the dyspnea-conflict check.
+export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
   const overview = d.cardiovascularOverview;
   if (!overview) {
     return hasAnyDocumentedValue(d)
@@ -10259,7 +10270,15 @@ export function computeCardiovascularWorkflowStatus(d) {
       : { code: "not_started", label: "Not Started", variant: "neutral" };
   }
   if (overview === "Unable to Assess") {
-    return { code: "review_required", label: "Review Required", variant: "warning" };
+    const reason = d.cardiovascularUnableToAssessReason;
+    const unresolved =
+      !reason ||
+      (reason === "Other" && !d.cardiovascularUnableToAssessOther) ||
+      resolveBpLegacyDisplay(d).reviewRequired ||
+      resolveCardiacDyspneaGate(d, respiratoryData).reviewRequired;
+    return unresolved
+      ? { code: "review_required", label: "Review Required", variant: "warning" }
+      : { code: "ready_for_review", label: "Ready for Review", variant: "success" };
   }
   const { cardiovascularOverview: _o, ...rest } = d;
   return hasAnyDocumentedValue(rest)
@@ -14728,7 +14747,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       const sectionData = formData[route.formSection];
       const meta = sidebarConfigItems.find((s) => s.key === module.key);
       const neuroStatus = module.key === "neurological" ? computeNeurologicalWorkflowStatus(sectionData || {}) : null;
-      const cardiovascularStatus = module.key === "cardiovascular" ? computeCardiovascularWorkflowStatus(sectionData || {}) : null;
+      const cardiovascularStatus = module.key === "cardiovascular" ? computeCardiovascularWorkflowStatus(sectionData || {}, formData.respiratory) : null;
       const workflowStatus = neuroStatus || cardiovascularStatus;
       return {
         key: module.key,

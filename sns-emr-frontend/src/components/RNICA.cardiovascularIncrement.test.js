@@ -23,13 +23,68 @@ describe("computeCardiovascularWorkflowStatus", () => {
     expect(computeCardiovascularWorkflowStatus({ fatigue: "Mild" }).code).toBe("in_progress");
   });
 
-  it("never reports Reviewed/Ready for Unable to Assess, even with a complete reason", () => {
-    const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "Unable to Assess",
-      cardiovascularUnableToAssessReason: "Patient unresponsive",
+  // CORRECTION (2026-09-28, audit): a completed Unable to Assess path is
+  // not automatically unresolved -- Review Required applies only while a
+  // genuine blocker exists (no reason, incomplete Other, or a preserved
+  // conflict). These 8 cases mirror the corrected directive's required
+  // Unable-to-Assess status matrix exactly.
+  describe("Unable to Assess status resolution", () => {
+    it("1. no reason selected -> Review Required", () => {
+      const status = computeCardiovascularWorkflowStatus({ cardiovascularOverview: "Unable to Assess" });
+      expect(status.code).toBe("review_required");
     });
-    expect(status.code).toBe("review_required");
-    expect(status.variant).toBe("warning");
+
+    it("2. Other selected with no explanation -> Review Required", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "Unable to Assess",
+        cardiovascularUnableToAssessReason: "Other",
+        cardiovascularUnableToAssessOther: "",
+      });
+      expect(status.code).toBe("review_required");
+    });
+
+    it("4. approved non-Other reason, no conflict -> Ready for Review", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "Unable to Assess",
+        cardiovascularUnableToAssessReason: "Patient unresponsive",
+      });
+      expect(status.code).toBe("ready_for_review");
+      expect(status.variant).toBe("success");
+    });
+
+    it("5. Other reason with explanation, no conflict -> Ready for Review", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "Unable to Assess",
+        cardiovascularUnableToAssessReason: "Other",
+        cardiovascularUnableToAssessOther: "Patient declined visit today.",
+      });
+      expect(status.code).toBe("ready_for_review");
+    });
+
+    it("6a. preserved conflicting legacy BP values -> Review Required", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "Unable to Assess",
+        cardiovascularUnableToAssessReason: "Patient unresponsive",
+        bpSymptoms: ["Normal", "Hypertensive"],
+      });
+      expect(status.code).toBe("review_required");
+    });
+
+    it("6b. preserved legacy cardiac-dyspnea attribution with blank Respiratory -> Review Required", () => {
+      const status = computeCardiovascularWorkflowStatus(
+        {
+          cardiovascularOverview: "Unable to Assess",
+          cardiovascularUnableToAssessReason: "Patient unresponsive",
+          cardiacDyspnea: true,
+        },
+        undefined,
+      );
+      expect(status.code).toBe("review_required");
+    });
+
+    it("8. Unable to Assess alone never suggests POC, regardless of status resolution", () => {
+      expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "Unable to Assess", chestPain: { present: "Yes" } })).toBe(false);
+    });
   });
 
   it("reports Ready for Review once a non-Unable-to-Assess path has documented findings", () => {
@@ -74,6 +129,55 @@ describe("resolvePulseDimensionDisplay - legacy pulseQuality aliasing", () => {
     expect(resolvePulseDimensionDisplay(d, "pulseRhythm")).toBe("Irregular");
     expect(resolvePulseDimensionDisplay(d, "pulseRate")).toBe("Bradycardic");
     expect(resolvePulseDimensionDisplay(d, "pulseStrength")).toBe("Bounding");
+  });
+
+  // Explicit negative assertions requested by the 2026-09-28 audit --
+  // resolvePulseDimensionDisplay is a pure, read-only function of its
+  // input object: it is called fresh on every render from whatever
+  // `formData.cardiovascular` currently holds, so "opening/closing a
+  // record", "editing Notes", and "editing Neurological" cannot add a
+  // pulse dimension -- there is no code path by which any of those
+  // actions could mutate `pulseRhythm`/`pulseRate`/`pulseStrength`, since
+  // they never touch the cardiovascular section object at all. A failed
+  // save is a network-layer no-op for this pure function: it has no
+  // memory of prior calls, so re-invoking it with the same unsaved `d`
+  // after a rejected PUT returns byte-identical output.
+  it("Regular does not create Pulse Rate = Normal", () => {
+    const d = { pulseQuality: "Regular" };
+    expect(resolvePulseDimensionDisplay(d, "pulseRate")).toBe("");
+  });
+
+  it("Regular does not create Pulse Strength = Strong", () => {
+    const d = { pulseQuality: "Regular" };
+    expect(resolvePulseDimensionDisplay(d, "pulseStrength")).toBe("");
+  });
+
+  it("Strong does not create Pulse Rhythm = Regular", () => {
+    const d = { pulseQuality: "Strong" };
+    expect(resolvePulseDimensionDisplay(d, "pulseRhythm")).toBe("");
+  });
+
+  it("Strong does not create Pulse Rate = Normal", () => {
+    const d = { pulseQuality: "Strong" };
+    expect(resolvePulseDimensionDisplay(d, "pulseRate")).toBe("");
+  });
+
+  it("Tachycardia does not create a Pulse Rhythm value", () => {
+    const d = { pulseQuality: "Tachycardia" };
+    expect(resolvePulseDimensionDisplay(d, "pulseRhythm")).toBe("");
+  });
+
+  it("Tachycardia does not create a Pulse Strength value", () => {
+    const d = { pulseQuality: "Tachycardia" };
+    expect(resolvePulseDimensionDisplay(d, "pulseStrength")).toBe("");
+  });
+
+  it("re-invoking with an identical (e.g. post-failed-save) object is idempotent -- no accumulated/derived state", () => {
+    const d = { pulseQuality: "Weak", pulseRhythm: "", pulseRate: "", pulseStrength: "" };
+    const first = ["pulseRhythm", "pulseRate", "pulseStrength"].map((dim) => resolvePulseDimensionDisplay(d, dim));
+    const second = ["pulseRhythm", "pulseRate", "pulseStrength"].map((dim) => resolvePulseDimensionDisplay(d, dim));
+    expect(second).toEqual(first);
+    expect(second).toEqual(["", "", "Weak"]);
   });
 });
 
