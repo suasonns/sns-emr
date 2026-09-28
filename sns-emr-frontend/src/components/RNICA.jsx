@@ -1341,10 +1341,10 @@ function FormGatedRadio({ label, value, onChange, primaryOptions, normalValues, 
   const showDetail = isDetailValue || primaryValue === primaryOptions[1];
   return (
     <div>
-      <FormRadioGroup label={label} value={primaryValue} onChange={onChange} options={primaryOptions} hopeCode={hopeCode} />
+      <FormSegmented label={label} value={primaryValue} onChange={onChange} options={primaryOptions} hopeCode={hopeCode} />
       {showDetail && (
         <div style={{ marginTop: 4, marginLeft: 12, paddingLeft: 8, borderLeft: "2px solid var(--rnica-border, #d0d5dd)" }}>
-          <FormRadioGroup label={`${label} — Detail`} value={isDetailValue ? value : undefined} onChange={onChange} options={detailOptions} />
+          <FormSegmented label={`${label} — Detail`} value={isDetailValue ? value : undefined} onChange={onChange} options={detailOptions} />
         </div>
       )}
     </div>
@@ -1427,6 +1427,97 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
               <Checkbox checked={values.includes(val)} onCheckedChange={() => toggle(val)} />
               <span>{lbl}</span>
             </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// GitHub UI Directive (2026-09-28) -- compact segmented-control replacement
+// for FormRadioGroup's larger circular-radio rows, opt-in only via
+// `type: "segmented"` on a field config (FormRadioGroup itself is
+// untouched and keeps rendering exactly as before everywhere it is still
+// used, so no other Body System or assessment screen changes visually).
+// Same single-value/onChange contract as FormRadioGroup -- no data shape
+// change. Optional `aliases` lets a legacy/duplicate stored value (e.g.
+// "Awake") render as an already-existing canonical option (e.g. "Alert")
+// selected, without ever writing the alias again and without removing the
+// legacy value from the option list or backend concept registry.
+function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  const displayValue = (aliases && aliases[value]) || value;
+  return (
+    <div style={styles.formGroup}>
+      <label style={styles.label}>
+        {label}
+        {hopeCode && <> <HopeTag code={hopeCode} /></>}
+        {sfv && <> <SfvTag /></>}
+      </label>
+      <div role="radiogroup" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+        {options.map((opt) => {
+          const val = typeof opt === "string" ? opt : opt.value;
+          const lbl = typeof opt === "string" ? opt : opt.label;
+          const selected = displayValue === val;
+          return (
+            <button
+              type="button" key={val} role="radio" aria-checked={selected}
+              onClick={() => onChange(val)}
+              style={{
+                padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+                cursor: "pointer", border: `1px solid ${selected ? COLORS.teal : COLORS.border}`,
+                background: selected ? COLORS.teal : "transparent",
+                color: selected ? COLORS.textOnTeal : COLORS.dark,
+                fontWeight: selected ? 700 : 500, whiteSpace: "nowrap",
+              }}
+            >
+              {lbl}
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// Compact multi-select pill row, opt-in via `type: "pillGroup"`. Same
+// array-value/onChange contract as FormCheckboxGroup (untouched, still
+// used everywhere else) -- purely a denser visual for Body Systems.
+function FormPillGroup({ label, values = [], onChange, options, hopeCode }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  const toggle = (val) => {
+    const next = values.includes(val) ? values.filter((v) => v !== val) : [...values, val];
+    onChange(next);
+  };
+  return (
+    <div style={styles.formGroup}>
+      <label style={styles.label}>
+        {label}
+        {hopeCode && <> <HopeTag code={hopeCode} /></>}
+      </label>
+      <div role="group" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+        {options.map((opt) => {
+          const val = typeof opt === "string" ? opt : opt.value;
+          const lbl = typeof opt === "string" ? opt : opt.label;
+          const selected = values.includes(val);
+          return (
+            <button
+              type="button" key={val} aria-pressed={selected}
+              onClick={() => toggle(val)}
+              style={{
+                padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+                cursor: "pointer", border: `1px solid ${selected ? COLORS.teal : COLORS.border}`,
+                background: selected ? COLORS.teal : "transparent",
+                color: selected ? COLORS.textOnTeal : COLORS.dark,
+                fontWeight: selected ? 700 : 500, whiteSpace: "nowrap",
+              }}
+            >
+              {lbl}
+            </button>
           );
         })}
       </div>
@@ -9602,6 +9693,20 @@ function computeBodySystemFindings(sectionKey, sectionData) {
         findings.push(`Level of consciousness: ${d.consciousness}.`);
       }
       if (d.orientation?.disoriented) findings.push(`Disoriented.`);
+      // GitHub Review Major Issue #6 -- Sleep/Responsiveness and
+      // Communication/Behavioral findings weren't surfacing in the
+      // Structured Findings rail, making Neurological's own findings look
+      // thin next to other systems. Neurological is already first in the
+      // panel's fixed section order (see bodySystemsStructuredFindings);
+      // this only enriches what that first section actually shows.
+      if (d?.sleepRest?.changeSincePrior && d.sleepRest.changeSincePrior !== "No Change") {
+        findings.push(`Sleep/responsiveness change: ${d.sleepRest.changeSincePrior}.`);
+      } else if (d?.sleepRest?.responsiveness && !["Easily Aroused", ""].includes(d.sleepRest.responsiveness)) {
+        findings.push(`Responsiveness: ${d.sleepRest.responsiveness}.`);
+      }
+      if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
+        findings.push(`Communication: ${d.communication}.`);
+      }
       if (d.cognition) findings.push(`Cognitive status: ${d.cognition}.`);
       const bimsFields = [d?.hopeItems?.n0500, d?.hopeItems?.n0510, d?.hopeItems?.n0520];
       if (bimsFields.every((v) => v !== "" && v !== undefined && v !== null)) {
@@ -9609,6 +9714,8 @@ function computeBodySystemFindings(sectionKey, sectionData) {
         findings.push(`BIMS score: ${bimsSum}/9.`);
       }
       if (d.delirium) findings.push(`Delirium present.`);
+      const behavioral = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+      if (behavioral.length > 0) findings.push(`Behavioral: ${behavioral.join(", ")}.`);
       if (d.motorDeficit) findings.push(`Motor deficit present${d.affectedSide ? ` (${d.affectedSide})` : ""}.`);
       if (d.balance && !["Steady", "Normal"].includes(d.balance)) findings.push(`Balance: ${d.balance}.`);
       break;
@@ -9712,6 +9819,71 @@ function hasAnyDocumentedValue(value) {
   return false;
 }
 
+// GitHub Review Major Issue #5 -- the generic "Findings Present" Summary
+// status reads as a warning banner, not a clinical picture. For
+// Neurological only, composes a short, plain-language narrative from
+// fields the nurse has actually already selected (consciousness,
+// orientation, sleep/responsiveness change, communication, motor deficit,
+// behavioral symptoms, overall clinical status change) -- every clause
+// reads one existing field and is omitted when that field is blank; never
+// infers, predicts, or compares against a prior visit beyond the nurse's
+// own "Change Since Prior" selection. Scoped to sectionKey ===
+// "neurological" only so every other Body System's Summary behavior is
+// untouched.
+const NEURO_CONSCIOUSNESS_ALIASES = { Awake: "Alert", Coma: "Comatose" };
+
+function computeNeurologicalNarrative(d) {
+  const clauses = [];
+  const consciousness = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
+  if (consciousness) clauses.push(`${consciousness}.`);
+
+  const o = d.orientation || {};
+  if (o.disoriented) {
+    clauses.push("Disoriented.");
+  } else {
+    const orientedTo = [o.person && "person", o.place && "place", o.time && "time", o.situation && "situation"].filter(Boolean);
+    if (orientedTo.length === 4) clauses.push("Oriented x4.");
+    else if (orientedTo.length > 0) clauses.push(`Oriented to ${orientedTo.join(", ")}.`);
+  }
+
+  const sleep = d.sleepRest || {};
+  const sleepChangeText = {
+    "Sleeping More": "Sleeping more than prior assessment.",
+    "Increased Somnolence": "Increased somnolence since prior assessment.",
+    "More Difficult To Arouse": "More difficult to arouse since prior assessment.",
+    "New Unresponsiveness": "New unresponsiveness since prior assessment.",
+  };
+  if (sleep.changeSincePrior && sleepChangeText[sleep.changeSincePrior]) {
+    clauses.push(sleepChangeText[sleep.changeSincePrior]);
+  } else if (sleep.sleepPattern && sleep.sleepPattern !== "Normal") {
+    clauses.push(`Sleep pattern: ${sleep.sleepPattern}.`);
+  }
+  if (sleep.responsiveness && sleep.responsiveness !== "Easily Aroused") {
+    clauses.push(`Responsiveness: ${sleep.responsiveness}.`);
+  }
+
+  if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
+    clauses.push("Communication limited.");
+  }
+
+  if (d.motorDeficit) {
+    clauses.push(`Motor deficit present${d.affectedSide ? ` (${d.affectedSide})` : ""}.`);
+  }
+
+  const behavioral = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+  if (behavioral.length > 0) {
+    clauses.push(`Behavioral: ${behavioral.join(", ")}.`);
+  } else if (clauses.length > 0) {
+    clauses.push("No new behavioral concerns.");
+  }
+
+  if (d.clinicalStatusChange && d.clinicalStatusChange !== "Stable / No Change") {
+    clauses.push(`Overall status: ${d.clinicalStatusChange}.`);
+  }
+
+  return clauses.join(" ");
+}
+
 // Computed Summary panel for the Body Systems 9-part structure. Reuses
 // computeBodySystemFindings (the same deterministic, already-documented-
 // only findings list used elsewhere) so the Summary never introduces a
@@ -9721,7 +9893,10 @@ function hasAnyDocumentedValue(value) {
 // priorAssessment/sincePrior/priorVisit concept in this file), so that
 // would have to be guessed or fabricated. Omitted here pending real
 // longitudinal infrastructure, not silently dropped -- see the Body
-// Systems completion summary of work.
+// Systems completion summary of work. Neurological is the one exception:
+// its "Change Since Prior" fields (sleepRest.changeSincePrior,
+// clinicalStatusChange) are nurse-selected charted values, not a computed
+// diff, so computeNeurologicalNarrative may read them directly.
 function computeBodySystemSummary(sectionKey, sectionData) {
   const primaryIssues = computeBodySystemFindings(sectionKey, sectionData);
   if (!hasAnyDocumentedValue(sectionData)) {
@@ -9730,6 +9905,14 @@ function computeBodySystemSummary(sectionKey, sectionData) {
       status: `${label} Assessment Not Yet Documented`,
       primaryIssues,
       requiresFollowUp: false,
+    };
+  }
+  if (sectionKey === "neurological") {
+    const narrative = computeNeurologicalNarrative(sectionData || {});
+    return {
+      status: narrative || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
+      primaryIssues,
+      requiresFollowUp: primaryIssues.length > 0,
     };
   }
   return {
@@ -10492,6 +10675,61 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   rendered = <FormCheckboxGroup label={fieldForRender.label} values={value || []} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} />;
                   break;
+                case "segmented":
+                  rendered = <FormSegmented label={fieldForRender.label} value={value} onChange={onChange}
+                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} aliases={fieldForRender.aliases} />;
+                  break;
+                case "pillGroup":
+                  rendered = <FormPillGroup label={fieldForRender.label} values={value || []} onChange={onChange}
+                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} />;
+                  break;
+                case "booleanPillRow": {
+                  // Compact multi-path boolean row (e.g. Orientation's 5
+                  // independent time/place/person/situation/disoriented
+                  // booleans) rendered as one line of toggle pills instead
+                  // of a vertical checkbox stack. Each pill still reads and
+                  // writes its own existing path via the same update()
+                  // used everywhere else -- no data shape change -- and
+                  // re-applies the same section-specific mutual-exclusivity
+                  // rule the generic per-path onChange interceptor above
+                  // already applies to individual "checkbox" fields.
+                  rendered = (
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>{fieldForRender.label}</label>
+                      <div role="group" aria-label={fieldForRender.label} style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                        {fieldForRender.items.map((item) => {
+                          const itemChecked = Boolean(getNestedValue(cardData, item.path));
+                          const handleToggle = () => {
+                            const next = !itemChecked;
+                            update(cardDataSection, item.path, next);
+                            if (sectionKey === "neurological" && item.path === "orientation.disoriented" && next) {
+                              ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].forEach((p) => update(cardDataSection, p, false));
+                            }
+                            if (sectionKey === "neurological" && ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].includes(item.path) && next) {
+                              update(cardDataSection, "orientation.disoriented", false);
+                            }
+                          };
+                          return (
+                            <button
+                              type="button" key={item.path} aria-pressed={itemChecked}
+                              onClick={handleToggle}
+                              style={{
+                                padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+                                cursor: "pointer", border: `1px solid ${itemChecked ? COLORS.teal : COLORS.border}`,
+                                background: itemChecked ? COLORS.teal : "transparent",
+                                color: itemChecked ? COLORS.textOnTeal : COLORS.dark,
+                                fontWeight: itemChecked ? 700 : 500, whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                  break;
+                }
                 case "triState":
                   rendered = <FormTriState label={fieldForRender.label} value={value} onChange={onChange} hopeCode={fieldForRender.hopeCode} />;
                   break;
@@ -10617,13 +10855,13 @@ function getFieldSpan(field) {
     // short single-line-ish notes fields can share a row with a neighbor.
     return (field.rows || 3) >= 4 ? "full" : 3;
   }
-  if (field.type === "radio") {
+  if (field.type === "radio" || field.type === "segmented") {
     if (options.length <= 2) return 1;
     if (options.length <= 4 && maxLabelLen <= 20) return 2;
     if (options.length <= 6) return 3;
     return "full";
   }
-  if (field.type === "checkboxGroup") {
+  if (field.type === "checkboxGroup" || field.type === "pillGroup") {
     // Now rendered as a horizontal wrapping row of pills, so it behaves
     // like a radio group: give it enough columns for its options to flow
     // across 1-2 lines instead of one cramped narrow column.
@@ -10632,11 +10870,21 @@ function getFieldSpan(field) {
     if (options.length <= 6) return 3;
     return "full";
   }
+  if (field.type === "booleanPillRow") {
+    // One compact toggle-pill row spanning several boolean paths (e.g.
+    // Orientation) -- give it the same room a multi-option pill/radio row
+    // gets so it doesn't wrap onto a cramped single column.
+    const items = field.items || [];
+    const maxItemLabelLen = items.reduce((m, it) => Math.max(m, String(it.label).length), 0);
+    if (items.length <= 4 && maxItemLabelLen <= 20) return 2;
+    return 3;
+  }
   return 1;
 }
 
 // Utility to get/set nested values
 function getNestedValue(obj, path) {
+  if (!path) return undefined;
   return path.split(".").reduce((curr, key) => curr?.[key], obj);
 }
 
@@ -10988,34 +11236,66 @@ const SECTION_CONFIGS = {
       // assess"); no HOPE/SFV mapping touched.
       {
         title: "Consciousness", category: "core", importance: "high", fields: [
-          { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
+          {
+            type: "segmented", label: "Level of Consciousness", path: "consciousness",
+            // GitHub Review Major Issue #2 -- Awake/Alert and Coma/Comatose
+            // are equivalent workflow states; consolidated to 6 visible
+            // segments so they stop visually competing with each other.
+            // Legacy stored "Awake"/"Coma" still display correctly via
+            // aliases (resolved to Alert/Comatose) -- neither the option
+            // list value nor the backend NEURO_CONSCIOUSNESS_* concept
+            // registry (only ever mapped Alert/Lethargic/Obtunded/
+            // Stuporous/Comatose) is changed.
+            options: [
+              { value: "Alert", label: "Awake / Alert" },
+              "Lethargic", "Obtunded", "Stuporous",
+              { value: "Minimally responsive", label: "Min. Responsive" },
+              "Comatose",
+            ],
+            aliases: { Awake: "Alert", Coma: "Comatose" },
+          },
           { type: "input", label: "Cognition Assessment", path: "cognition" },
         ],
       },
       {
         title: "Orientation", category: "core", importance: "high", fields: [
-          { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
-          { type: "checkbox", label: "Oriented to Place", path: "orientation.place" },
-          { type: "checkbox", label: "Oriented to Person", path: "orientation.person" },
-          { type: "checkbox", label: "Oriented to Situation", path: "orientation.situation" },
-          { type: "checkbox", label: "Disoriented", path: "orientation.disoriented" },
+          {
+            type: "booleanPillRow", label: "Orientation", items: [
+              { label: "Time", path: "orientation.time" },
+              { label: "Place", path: "orientation.place" },
+              { label: "Person", path: "orientation.person" },
+              { label: "Situation", path: "orientation.situation" },
+              { label: "Disoriented", path: "orientation.disoriented" },
+            ],
+          },
         ],
       },
       {
         // One of the strongest hospice decline indicators (Finding #1/#6)
-        // -- kept as its own major, high-importance section rather than a
-        // "Symptom Impact" subsection so QA/case-manager/IDG/recert review
-        // can spot it immediately.
-        title: "Sleep / Responsiveness", category: "symptoms", importance: "high", fields: [
-          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia"] },
-          { type: "radio", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive"] },
-          { type: "radio", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
+        // -- kept as its own major, high-importance section, and now
+        // grouped into "core" (Major Issue #3) so Consciousness ->
+        // Orientation -> Sleep/Responsiveness render together with no
+        // heading break between them, telling the decline story as one
+        // visual unit.
+        title: "Sleep / Responsiveness", category: "core", importance: "high", fields: [
+          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia"] },
+          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive"] },
+          { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
           { type: "input", label: "Average Sleep Hours (optional)", path: "sleepRest.averageSleepHours", inputType: "number" },
-          { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
-          { type: "checkboxGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
+          { type: "pillGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
           { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
-          { type: "radio", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
+          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
           { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes" },
+        ],
+      },
+      {
+        // GitHub Review Major Issue #10 -- "Change Since Prior" moved
+        // higher: right after Sleep/Responsiveness, before Communication.
+        // Category "core" keeps it in the same decline-story bucket run
+        // (no heading break); importance raised to "high" to match.
+        title: "Change Since Prior Assessment", category: "core", importance: "high", fields: [
+          { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
         ],
       },
       {
@@ -11035,15 +11315,15 @@ const SECTION_CONFIGS = {
             normalValues: ["Normal", "Clear"],
             detailOptions: ["Unable", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"],
           },
-          { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
-          { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
-          { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
-          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
+          { type: "segmented", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
+          { type: "segmented", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
+          { type: "pillGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          { type: "pillGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
         ],
       },
       {
         title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fields: [
-          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+          { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           { type: "checkbox", label: "Delirium", path: "delirium" },
           { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
         ],
@@ -11051,12 +11331,12 @@ const SECTION_CONFIGS = {
       {
         title: "Motor / Balance", category: "functional", importance: "medium", fields: [
           { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
-          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
-          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
+          { type: "segmented", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
+          { type: "pillGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
           // Finding #8: "Normal"/"Impaired" removed as duplicate/overlapping
           // concepts -- Steady/Unsteady/Unable to stand already cover them;
           // "Unable to assess" added as the one legitimate missing state.
-          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Unable to assess"] },
+          { type: "segmented", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Unable to assess"] },
         ],
       },
       {
@@ -11066,7 +11346,7 @@ const SECTION_CONFIGS = {
         // after Motor / Balance within that bucket, matching the required
         // 10-group order (position 7, right after Motor/Balance).
         title: "Psychiatric History", category: "functional", importance: "low", collapsedByDefault: true, fields: [
-          { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
+          { type: "pillGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
           { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
         ],
       },
@@ -11079,11 +11359,6 @@ const SECTION_CONFIGS = {
           { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
           { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
           { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
-        ],
-      },
-      {
-        title: "Change Since Prior Assessment", category: "response", importance: "medium", fields: [
-          { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
         ],
       },
       {
