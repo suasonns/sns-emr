@@ -10341,12 +10341,48 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               if (sectionKey === "pain" && ["painOnsetProgression", "painDurationFrequency", "effectOnFunction"].includes(field.path) && card.title === "Pain Characteristics & Body Map" && cardData.currentPain === "0" && cardData.chronicPainHistory !== "1") {
                 return null;
               }
+              // [RNICA_NEURO_CARDIO_WORKFLOW_CORRECTION.md -- Category A,
+              // presentation-only, no new fields/values] Reveal a follow-up
+              // field only once its trigger field establishes it applies,
+              // and preserve all existing stored data/paths/HOPE mappings.
+              if (sectionKey === "neurological" && field.path === "affectedSide" && !cardData.motorDeficit) {
+                return null;
+              }
+              if (sectionKey === "neurological" && field.path === "deficitType" && !cardData.motorDeficit) {
+                return null;
+              }
+              if (sectionKey === "neurological" && field.path === "psychiatricHistory" && !(cardData.psychiatricHistoryType || []).length) {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "chestPain.type" && cardData.chestPain?.present !== "Yes") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "edema.location" && cardData.edema?.present !== "Yes") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "edema.severity" && cardData.edema?.present !== "Yes") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "heartFailureType" && !cardData.heartFailurePresent) {
+                return null;
+              }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
               const value = getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
                 update(cardDataSection, fieldForRender.path, v);
+                // [Control Conflict Report #1] Orientation vs. Disoriented
+                // are mutually exclusive findings, not independent
+                // checkboxes -- checking one now clears the other so a
+                // record can never store both simultaneously. No field
+                // removed/renamed; both paths keep their existing booleans.
+                if (sectionKey === "neurological" && fieldForRender.path === "orientation.disoriented" && v) {
+                  ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].forEach((p) => u(p, false));
+                }
+                if (sectionKey === "neurological" && ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].includes(fieldForRender.path) && v) {
+                  u("orientation.disoriented", false);
+                }
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
                   // Auto-select the correct pain scale from the patient's
                   // communication status + age so only one tool is ever shown:
