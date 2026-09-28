@@ -10261,6 +10261,18 @@ export function resolveCardiacDyspneaGate(cardiovascularData, respiratoryData) {
   return { visible: false, reviewRequired: false, guidance: "" };
 }
 
+// Owner directive (2026-09-28) "Correct the Overview Label" -- the
+// approved exact wording is "New or Worsening Cardiovascular Findings"
+// (not the slash-joined "New/Worsening..."). Historical records already
+// saved with the old slash wording are never rewritten; every place that
+// compares against this option normalizes through this helper first so
+// both spellings are always treated identically.
+const CV_OVERVIEW_NEW_OR_WORSENING = "New or Worsening Cardiovascular Findings";
+const CV_OVERVIEW_NEW_OR_WORSENING_LEGACY = "New/Worsening Cardiovascular Findings";
+function normalizeCardiovascularOverview(value) {
+  return value === CV_OVERVIEW_NEW_OR_WORSENING_LEGACY ? CV_OVERVIEW_NEW_OR_WORSENING : value;
+}
+
 // Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 --
 // Cardiovascular counterpart to neurologicalHasActionablePocFinding.
 // OWNER CORRECTION (Contradiction 7): a chronic/stable finding (e.g.
@@ -10269,8 +10281,9 @@ export function resolveCardiacDyspneaGate(cardiovascularData, respiratoryData) {
 // always-actionable list, clinically-significant thresholds, and the
 // New/Worsening path itself do.
 export function cardiovascularHasActionablePocFinding(d) {
-  if (d.cardiovascularOverview === "Unable to Assess") return false;
-  if (d.cardiovascularOverview === "New/Worsening Cardiovascular Findings") return true;
+  const overview = normalizeCardiovascularOverview(d.cardiovascularOverview);
+  if (overview === "Unable to Assess") return false;
+  if (overview === CV_OVERVIEW_NEW_OR_WORSENING) return true;
   if (d.chestPain?.present === "Yes") return true;
   if (d.syncope === "Yes") return true;
   // Both the legacy shared-option string ("New Symptom Since Prior
@@ -10357,7 +10370,7 @@ export function resolveHeartFailureTypeSelection(prevArray, nextArray) {
 // `respiratoryData` is optional (undefined when the caller has no access
 // to the sibling section) and only affects the dyspnea-conflict check.
 export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
-  const overview = d.cardiovascularOverview;
+  const overview = normalizeCardiovascularOverview(d.cardiovascularOverview);
   if (!overview) {
     return hasAnyDocumentedValue(d)
       ? { code: "in_progress", label: "In Progress", variant: "neutral" }
@@ -10399,7 +10412,7 @@ export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
   // internal contradiction that must surface for review, not silently
   // pass through as Ready for Review.
   if (
-    overview === "New/Worsening Cardiovascular Findings" &&
+    overview === CV_OVERVIEW_NEW_OR_WORSENING &&
     ["Stable / No Change", "No Significant Change"].includes(d.clinicalStatusChange)
   ) {
     return { code: "review_required", label: "Review Required", variant: "warning" };
@@ -10427,7 +10440,7 @@ export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
 // existing generic fallback take over -- never infers a diagnosis,
 // normal finding, or stability from the Overview selection alone.
 export function computeCardiovascularNarrative(d) {
-  const overview = d.cardiovascularOverview;
+  const overview = normalizeCardiovascularOverview(d.cardiovascularOverview);
   if (!overview) return "";
 
   if (overview === "Unable to Assess") {
@@ -10473,7 +10486,7 @@ export function computeCardiovascularNarrative(d) {
     }
   }
 
-  if (overview === "New/Worsening Cardiovascular Findings") {
+  if (overview === CV_OVERVIEW_NEW_OR_WORSENING) {
     const pulseDims = [];
     const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
     const rate = resolvePulseDimensionDisplay(d, "pulseRate");
@@ -12532,13 +12545,23 @@ const SECTION_CONFIGS = {
             // only ever asserted via an explicit current Clinical Status
             // Change = "Stable / No Change" selection (see
             // computeCardiovascularNarrative).
+            // Owner directive (2026-09-28) "Correct the Overview Label" --
+            // exact approved wording is "New or Worsening Cardiovascular
+            // Findings". A record already saved with the old slash-joined
+            // "New/Worsening Cardiovascular Findings" is never rewritten;
+            // `aliases` makes that legacy stored value render selected
+            // under the new label instead of appearing unselected, and
+            // every business-logic comparison goes through
+            // normalizeCardiovascularOverview() so both spellings behave
+            // identically.
             type: "segmented", label: "Cardiovascular Overview", path: "cardiovascularOverview",
             options: [
               "No Current Cardiovascular Concern",
               "Existing Cardiovascular Findings Review",
-              "New/Worsening Cardiovascular Findings",
+              "New or Worsening Cardiovascular Findings",
               "Unable to Assess",
             ],
+            aliases: { "New/Worsening Cardiovascular Findings": "New or Worsening Cardiovascular Findings" },
           },
           {
             type: "segmented", label: "Reason Unable to Assess", path: "cardiovascularUnableToAssessReason",

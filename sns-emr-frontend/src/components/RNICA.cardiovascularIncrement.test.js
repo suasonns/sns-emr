@@ -370,7 +370,7 @@ describe("cardiovascularHasActionablePocFinding", () => {
   });
 
   it("is true whenever the New/Worsening path is selected", () => {
-    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "New/Worsening Cardiovascular Findings" })).toBe(true);
+    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "New or Worsening Cardiovascular Findings" })).toBe(true);
   });
 
   it("is true for Declining or New Symptom Since Prior clinical status change", () => {
@@ -458,7 +458,7 @@ describe("computeCardiovascularNarrative - Unable to Assess wording", () => {
 describe("computeCardiovascularNarrative - New/Worsening findings", () => {
   it("generates one concise clause per confirmed finding only", () => {
     const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       pulseRhythm: "Irregular",
       pulseRate: "Tachycardic",
       pulseStrength: "Weak",
@@ -482,7 +482,7 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
 
   it("omits pulse/BP clauses entirely when every dimension is normal", () => {
     const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       pulseRhythm: "Regular",
       pulseRate: "Normal",
       pulseStrength: "Strong",
@@ -494,7 +494,7 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
 
   it("surfaces a contradictory legacy BP array as a review-required note", () => {
     const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       bpSymptoms: ["Normal", "Hypertensive"],
     });
     expect(narrative).toMatch(/Legacy BP values on record \(Normal, Hypertensive\) -- review required\./);
@@ -527,11 +527,11 @@ describe("Clinical Status Change -- Cardiovascular-specific list and legacy comp
 
   it("forces Review Required when Path 3 (New/Worsening) is paired with a stability claim", () => {
     const legacy = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       clinicalStatusChange: "Stable / No Change",
     });
     const current = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       clinicalStatusChange: "No Significant Change",
     });
     expect(legacy.code).toBe("review_required");
@@ -540,7 +540,7 @@ describe("Clinical Status Change -- Cardiovascular-specific list and legacy comp
 
   it("does not force Review Required for Path 3 with a genuine decline claim", () => {
     const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "New/Worsening Cardiovascular Findings",
+      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       clinicalStatusChange: "Declining",
       chestPain: { present: "Yes" },
     });
@@ -552,6 +552,43 @@ describe("Clinical Status Change -- Cardiovascular-specific list and legacy comp
     computeCardiovascularWorkflowStatus(d);
     computeCardiovascularNarrative(d);
     expect(d.clinicalStatusChange).toBe("Symptom Well-Managed");
+  });
+});
+
+// Owner directive (2026-09-28) "Correct the Overview Label" -- exact
+// approved wording is "New or Worsening Cardiovascular Findings", not the
+// slash-joined "New/Worsening Cardiovascular Findings". A record already
+// saved with the old slash wording must never be rewritten and must
+// still behave identically to the corrected label everywhere.
+describe("Cardiovascular Overview label correction -- legacy slash-joined value compatibility", () => {
+  const legacyOverview = "New/Worsening Cardiovascular Findings";
+
+  it("still treats a stored legacy value as POC-actionable", () => {
+    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: legacyOverview })).toBe(true);
+  });
+
+  it("produces the identical narrative for the legacy and corrected labels", () => {
+    const base = {
+      pulseRhythm: "Irregular",
+      chestPain: { present: "Yes", type: "pressure-like" },
+    };
+    const legacy = computeCardiovascularNarrative({ ...base, cardiovascularOverview: legacyOverview });
+    const current = computeCardiovascularNarrative({ ...base, cardiovascularOverview: "New or Worsening Cardiovascular Findings" });
+    expect(legacy).toBe(current);
+  });
+
+  it("produces the identical workflow status for the legacy and corrected labels", () => {
+    const base = { chestPain: { present: "Yes" } };
+    const legacy = computeCardiovascularWorkflowStatus({ ...base, cardiovascularOverview: legacyOverview });
+    const current = computeCardiovascularWorkflowStatus({ ...base, cardiovascularOverview: "New or Worsening Cardiovascular Findings" });
+    expect(legacy).toEqual(current);
+  });
+
+  it("never rewrites the legacy stored value while computing status/narrative", () => {
+    const d = { cardiovascularOverview: legacyOverview };
+    computeCardiovascularWorkflowStatus(d);
+    computeCardiovascularNarrative(d);
+    expect(d.cardiovascularOverview).toBe(legacyOverview);
   });
 });
 
