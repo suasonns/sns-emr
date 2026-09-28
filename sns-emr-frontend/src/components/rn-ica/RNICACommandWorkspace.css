@@ -1057,8 +1057,16 @@
 .rnica-bodysystem-workspace .rnica-form-card [role="group"] {
   gap: 2px 8px !important;
 }
-.rnica-bodysystem-workspace button[role="radio"],
-.rnica-bodysystem-workspace button[role="checkbox"] {
+/* Excludes .rnica-segment-btn: the compact segmented/pill controls
+   (FormSegmented/FormPillGroup, added 2026-09-28 GitHub UI Directive) are
+   also plain <button role="radio">/... elements, but unlike a Radix
+   RadioGroupItem/Checkbox indicator dot -- a separate small circle sitting
+   next to its own label text -- these buttons ARE the label (the option
+   text renders inside the button itself). Squashing them to 14x14px here
+   caused every segment's label to overflow and visually overlap its
+   neighbors. */
+.rnica-bodysystem-workspace button[role="radio"]:not(.rnica-segment-btn),
+.rnica-bodysystem-workspace button[role="checkbox"]:not(.rnica-segment-btn) {
   height: 14px !important;
   width: 14px !important;
 }

@@ -1464,6 +1464,7 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
           return (
             <button
               type="button" key={val} role="radio" aria-checked={selected}
+              className="rnica-segment-btn"
               onClick={() => onChange(val)}
               style={{
                 padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
@@ -1507,6 +1508,7 @@ function FormPillGroup({ label, values = [], onChange, options, hopeCode }) {
           return (
             <button
               type="button" key={val} aria-pressed={selected}
+              className="rnica-segment-btn"
               onClick={() => toggle(val)}
               style={{
                 padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
@@ -10712,6 +10714,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                           return (
                             <button
                               type="button" key={item.path} aria-pressed={itemChecked}
+                              className="rnica-segment-btn"
                               onClick={handleToggle}
                               style={{
                                 padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
