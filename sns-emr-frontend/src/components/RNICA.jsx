@@ -1449,6 +1449,13 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   const displayValue = (aliases && aliases[value]) || value;
+  // GitHub Directive (2026-09-28) Section 37/40 guardrail -- an option can
+  // be retired from the visible control (e.g. duplicate concepts like
+  // "Hearing aid" moving to Sensory Aids) without ever deleting a
+  // patient's previously stored value. When the stored value no longer
+  // matches any current option, show a small review chip instead of
+  // silently rendering "nothing selected" -- the raw value is untouched.
+  const hasLegacyValue = Boolean(displayValue) && !options.some((opt) => (typeof opt === "string" ? opt : opt.value) === displayValue);
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>
@@ -1456,7 +1463,7 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
         {sfv && <> <SfvTag /></>}
       </label>
-      <div role="radiogroup" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+      <div role="radiogroup" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
         {options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
           const lbl = typeof opt === "string" ? opt : opt.label;
@@ -1478,6 +1485,18 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
             </button>
           );
         })}
+        {hasLegacyValue && (
+          <span
+            title="This value was previously recorded but is no longer offered as an option. The stored value has not been changed."
+            style={{
+              padding: "2px 8px", fontSize: 10, lineHeight: 1.6, borderRadius: 999,
+              border: `1px dashed ${COLORS.amber || "#b45309"}`, color: COLORS.amber || "#b45309",
+              fontWeight: 600, whiteSpace: "nowrap",
+            }}
+          >
+            ⚠ Previously recorded: “{displayValue}”
+          </span>
+        )}
       </div>
     </div>
   );
@@ -2698,6 +2717,17 @@ const DME_STATUS_OPTIONS = ["", "Has", "Needs", "Ordered", "Delivered", "Decline
 // assessment. "Not Applicable" is included deliberately so nurses are
 // never forced to miscode when there is nothing to compare or manage.
 const CLINICAL_STATUS_CHANGE_OPTIONS = ["Stable / No Change", "Improving", "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment", "Not Applicable"];
+
+// GitHub Directive (2026-09-28) "Final Neurological Density and
+// Space-Utilization Plan" Section 10 -- Neurological's "Overall Change
+// Since Prior Assessment" needs its own, more granular option set
+// (Initial Assessment / trajectory language) distinct from the shared
+// CLINICAL_STATUS_CHANGE_OPTIONS above, which is reused by ~10 other
+// still-paused body systems (Cardiovascular, Respiratory, etc.) and must
+// not be edited in place. Same `clinicalStatusChange` path (each body
+// system has its own independent data namespace, so no collision), only
+// Neurological's field config points at this new constant.
+const NEURO_OVERALL_CHANGE_OPTIONS = ["Initial Assessment", "No Significant Change", "Improved", "Gradual Decline", "New or Worsening Concern", "Fluctuating", "Unable to Compare"];
 
 function DmeStatusCard({ data, updateField, styles, COLORS }) {
   const items = data?.dmeItems || [];
@@ -9307,7 +9337,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -9346,9 +9376,16 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
   // instead of every section competing equally. Purely a CSS hook -- no
   // behavior change when omitted.
   const importanceClass = importance ? ` rnica-form-card--${importance}` : "";
+  // GitHub Directive (2026-09-28) "Final Neurological Density and
+  // Space-Utilization Plan" Section 11/21 -- some sub-sections (e.g.
+  // Sleep/Responsiveness, the merged Communication and Sensory card) must
+  // span the full workspace width instead of being squeezed into one
+  // column of the surrounding auto-fit grid alongside much shorter
+  // sub-sections (the "uneven column height" defect). Pure CSS hook.
+  const fullWidthClass = fullWidth ? " rnica-bodysystem-workspace__group--full" : "";
   if (bare) {
     return (
-      <div className={`rnica-bodysystem-workspace__group${importanceClass}`} id={id}>
+      <div className={`rnica-bodysystem-workspace__group${importanceClass}${fullWidthClass}`} id={id}>
         <div {...titleRowProps}>{titleRowContent}</div>
         {(!collapsible || !collapsed) && children}
       </div>
@@ -10475,8 +10512,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             cms={card.cms}
             bare={isBodySystemPilotCard}
             importance={card.importance}
-            collapsible={!isBodySystemPilotCard && ((sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault)}
-            defaultCollapsed={!isBodySystemPilotCard && ((sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault)}
+            fullWidth={Boolean(card.fullWidth)}
+            // Bug fix: Psychiatric History's `collapsedByDefault` (and
+            // any other card's) had no effect while Body Systems' pilot
+            // "bare" grouping was active, because this excluded
+            // isBodySystemPilotCard entirely -- Section 28's "keep
+            // collapsed by default" requirement was silently not applying.
+            // The bare-card render branch already respects
+            // collapsible/collapsed correctly; only this gate was wrong.
+            collapsible={(sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault}
+            defaultCollapsed={(sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault}
           >
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
@@ -11259,16 +11304,17 @@ const SECTION_CONFIGS = {
     title: "Neurological / Mental / Sensory",
     subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, BIMS (N0500-N0520)",
     cards: [
-      // GitHub Directive (2026-09-28, consolidated) -- Approved Neurological
-      // Order: Consciousness -> Orientation -> Sleep/Responsiveness ->
-      // Communication -> Cognitive/Behavioral Findings -> Motor/Balance ->
-      // Psychiatric History (collapsed) -> HOPE Cognitive Assessment ->
-      // Change Since Prior Assessment -> Notes. Consciousness/Orientation/
-      // Sleep-Responsiveness are the "decline story" and stay adjacent
-      // (Finding #13). Presentation/grouping only -- no field renamed,
-      // removed, or added beyond the explicitly directed new controls
-      // (Responsiveness, expanded Change Since Prior, Balance "Unable to
-      // assess"); no HOPE/SFV mapping touched.
+      // GitHub Directive (2026-09-28) "Final Neurological Density and
+      // Space-Utilization Plan" Section 5 -- required order: Consciousness
+      // / Orientation / Overall Change render as a 3-column "status" row
+      // (all category "core", none full-width, so the existing auto-fit
+      // grid packs them side by side); Sleep/Responsiveness then takes its
+      // own full-width row (Section 11/21 -- previously squeezed into one
+      // of 3 equal columns, making it look abnormally tall/imbalanced);
+      // Communication and Sensory (merged) takes the next full-width row;
+      // then Cognitive/Behavioral, Motor/Balance + Psychiatric (row), HOPE,
+      // Notes. Presentation/grouping only -- no field removed, no path
+      // renamed, no HOPE/SFV mapping touched.
       {
         title: "Consciousness", category: "core", importance: "high", fields: [
           {
@@ -11286,10 +11332,10 @@ const SECTION_CONFIGS = {
               "Lethargic", "Obtunded", "Stuporous",
               { value: "Minimally responsive", label: "Min. Responsive" },
               "Comatose",
+              "Unable to assess",
             ],
             aliases: { Awake: "Alert", Coma: "Comatose" },
           },
-          { type: "input", label: "Cognition Assessment", path: "cognition" },
         ],
       },
       {
@@ -11306,41 +11352,56 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        // Section 10 -- Neurological uses its own more granular option set
+        // (NEURO_OVERALL_CHANGE_OPTIONS, not the shared CLINICAL_STATUS_
+        // CHANGE_OPTIONS other paused systems reuse) and sits directly
+        // beside Consciousness/Orientation as the third card of the
+        // "status row" -- hospice is about progression, and this is the
+        // fastest way to answer "is this patient declining?" without
+        // scrolling. Same `clinicalStatusChange` path as before; only the
+        // option list and title changed.
+        title: "Overall Change Since Prior Assessment", category: "core", importance: "high", fields: [
+          { type: "segmented", label: "Overall Change", path: "clinicalStatusChange", options: NEURO_OVERALL_CHANGE_OPTIONS },
+        ],
+      },
+      {
         // One of the strongest hospice decline indicators (Finding #1/#6)
-        // -- kept as its own major, high-importance section, and now
-        // grouped into "core" (Major Issue #3) so Consciousness ->
-        // Orientation -> Sleep/Responsiveness render together with no
-        // heading break between them, telling the decline story as one
-        // visual unit.
-        title: "Sleep / Responsiveness", category: "core", importance: "high", fields: [
-          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia"] },
-          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive"] },
+        // -- kept as its own major, high-importance section. `fullWidth`
+        // (Section 11/21) gives it the entire workspace row instead of
+        // being squeezed into one of 3 equal columns alongside the much
+        // shorter Consciousness/Orientation/Overall Change cards, which
+        // was the reported "uneven, abnormally tall column" defect.
+        title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, fields: [
+          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
+          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
           { type: "input", label: "Average Sleep Hours (optional)", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
-          { type: "pillGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
-          { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
-          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
-          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes" },
+          // Section 17 rename: "Interventions" reframed as comfort measures
+          // (hospice language) -- same path/values, label only.
+          { type: "pillGroup", label: "Sleep Aids / Current Comfort Measures", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          // Section 18 -- replaced the free-text "Response to Interventions"
+          // with a constrained single-select so it can actually be scanned
+          // at a glance. Added as a NEW field/path rather than repurposing
+          // the old free-text one, so no historical narrative answer is
+          // silently reinterpreted as one of these 4 fixed values (Section
+          // 40 guardrail); the old field is kept, demoted to an optional
+          // comment for any nurse who needs to add nuance.
+          { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
+          { type: "input", label: "Additional Comment (optional)", path: "sleepRest.response" },
+          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate", "Unable to Determine"] },
+          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 2 },
         ],
       },
       {
-        // GitHub Review Major Issue #10 -- "Change Since Prior" moved
-        // higher: right after Sleep/Responsiveness, before Communication.
-        // Category "core" keeps it in the same decline-story bucket run
-        // (no heading break); importance raised to "high" to match.
-        title: "Change Since Prior Assessment", category: "core", importance: "high", fields: [
-          { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
-        ],
-      },
-      {
-        // Category is "symptoms" (not "core") so this card renders in the
-        // shared Body-Systems bucket-grouping mechanism (BODY_SYSTEM_
-        // CATEGORY_ORDER, see ~line 9577) AFTER Sleep/Responsiveness and
-        // BEFORE Cognitive/Behavioral Findings within that bucket -- the
-        // required 10-group order in the consolidated GitHub Directive.
-        // Bucket order within a category preserves this array's order.
-        title: "Communication", category: "symptoms", importance: "medium", fields: [
+        // Section 5/8/16 -- Communication merged with Hearing/Vision/
+        // Sensory Deficits/Sensory Aids into one "Communication and
+        // Sensory" full-width card so related sensory-input concepts read
+        // together instead of being scattered as separate same-height
+        // boxes. Category stays "symptoms" so it renders in the required
+        // bucket position (after Sleep/Responsiveness, before Cognitive/
+        // Behavioral Findings).
+        title: "Communication and Sensory", category: "symptoms", importance: "medium", fullWidth: true, fields: [
           // Finding #5: progressive disclosure -- Normal/Impaired first,
           // detail (Aphasia/Slurred speech/Unable/Other) revealed only when
           // Impaired. Same field/path/values as before; no data migrated.
@@ -11350,14 +11411,28 @@ const SECTION_CONFIGS = {
             normalValues: ["Normal", "Clear"],
             detailOptions: ["Unable", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"],
           },
-          { type: "segmented", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
-          { type: "segmented", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
+          // Section 16 -- "Hearing aid"/"Corrective lenses" removed as
+          // duplicate concepts (they belong under Sensory Aids, not as a
+          // hearing/vision *status*); "Unable to assess" added. Any
+          // patient with these exact legacy stored values still sees them
+          // via FormSegmented's new "Previously recorded" review chip --
+          // the value itself is never deleted or rewritten.
+          { type: "segmented", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Unable to assess"] },
+          { type: "segmented", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Unable to assess"] },
           { type: "pillGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
-          { type: "pillGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
+          // Section 16 -- clarified labels (display only, via {value,label}
+          // so stored values "Glasses"/"Hearing aids" are unchanged) since
+          // this is now the one place hearing/vision aids are documented.
+          { type: "pillGroup", label: "Sensory Aids", path: "sensoryAids", options: [{ value: "Glasses", label: "Glasses / Corrective Lenses" }, { value: "Hearing aids", label: "Hearing Aid" }, "Other"] },
         ],
       },
       {
         title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fields: [
+          // Relocated from Consciousness (Section 8) -- cognition belongs
+          // with the other cognitive/behavioral findings, not competing
+          // with the compact Level of Consciousness control. Same path,
+          // same input type -- no data change.
+          { type: "input", label: "Cognition Assessment", path: "cognition" },
           { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           // GitHub UI Directive (2026-09-28): single yes/no findings use a
           // compact toggle pill, not a large square checkbox. Same path/
@@ -11372,20 +11447,24 @@ const SECTION_CONFIGS = {
           { type: "segmented", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
           { type: "pillGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
           // Finding #8: "Normal"/"Impaired" removed as duplicate/overlapping
-          // concepts -- Steady/Unsteady/Unable to stand already cover them;
-          // "Unable to assess" added as the one legitimate missing state.
-          { type: "segmented", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Unable to assess"] },
+          // concepts -- Steady/Unsteady/Unable to stand already cover them.
+          // Section 27 adds the one remaining legitimate missing state: a
+          // non-ambulatory patient for whom "balance" doesn't apply at all.
+          { type: "segmented", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Unable to assess", "Not Assessed — Patient Does Not Ambulate"] },
         ],
       },
       {
         // Finding #9: historical diagnoses shouldn't compete with active
-        // findings -- collapsed by default, same fields/paths/values.
+        // findings -- collapsed by default, same fields/paths/values. (A
+        // prior version of the Card component had a bug where this
+        // `collapsedByDefault` had no effect at all while Body Systems'
+        // pilot rendering was active -- fixed alongside this change.)
         // Category "functional" (not "symptoms") so this renders directly
         // after Motor / Balance within that bucket, matching the required
-        // 10-group order (position 7, right after Motor/Balance).
+        // 10-group order.
         title: "Psychiatric History", category: "functional", importance: "low", collapsedByDefault: true, fields: [
           { type: "pillGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
-          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
+          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory", rows: 2 },
         ],
       },
       {
@@ -11401,7 +11480,8 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Notes", category: "observation", importance: "low", fields: [
-          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 4 },
+          // Section 20/30 -- reduced textarea footprint (4 rows -> 2).
+          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 2 },
         ],
       },
     ],

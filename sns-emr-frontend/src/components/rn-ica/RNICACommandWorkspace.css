@@ -975,6 +975,58 @@
    footprint; the card grows automatically once real findings exist. */
 .rnica-bodysystems__findings-empty { max-height: 80px; }
 
+/* GitHub Directive (2026-09-28) "Final Neurological Density and
+   Space-Utilization Plan" Section 4/32/41 -- collapse the rail to a
+   narrow strip when Structured Findings has nothing to show, and let the
+   central workspace reclaim that width instead of reserving a fixed
+   18rem column for an empty card. */
+.rnica-bodysystems--rail-collapsed { grid-template-columns: minmax(0, 1fr) 2.25rem; }
+
+.rnica-bodysystems__findings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.rnica-bodysystems__rail-toggle {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-teal);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__rail-collapsed-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.3rem;
+  width: 2.25rem;
+  padding: 0.5rem 0.2rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+  cursor: pointer;
+}
+
+.rnica-bodysystems__rail-collapsed-count {
+  font: 700 12px Inter, sans-serif;
+  color: var(--sns-teal);
+}
+
+.rnica-bodysystems__rail-collapsed-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 600 10px Inter, sans-serif;
+  color: var(--sns-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
 /* Body Systems architectural correction (owner directive, 2026-09-27):
    supersedes the earlier "clinical review grid" of N separate bordered
    sub-cards. Each of the 10 body systems is now ONE shadcn Card
@@ -1131,6 +1183,17 @@
   align-items: start;
 }
 
+/* GitHub Directive (2026-09-28) "Final Neurological Density and
+   Space-Utilization Plan" Section 11/21 -- force a sub-section to always
+   span the entire row instead of auto-fit squeezing it into one ~260px
+   column beside much shorter neighbors (the reported "Sleep/Responsiveness
+   is much taller... producing a highly imbalanced first row" defect).
+   The card's own fields still use their normal auto-fit grid, which now
+   gets the full workspace width to flow 2-3 fields per row instead of 1. */
+.rnica-bodysystem-workspace__group--full {
+  grid-column: 1 / -1;
+}
+
 /* Computed Summary panel (owner directive: Summary is the first thing a
    nurse sees). Reuses computeBodySystemFindings so it can never drift
    from the same already-documented findings shown elsewhere. Does not
@@ -1189,5 +1252,13 @@
 
 @media (max-width: 1100px) {
   .rnica-bodysystems { grid-template-columns: 1fr; }
+  .rnica-bodysystems--rail-collapsed { grid-template-columns: 1fr; }
   .rnica-bodysystems__rail { order: -1; }
+  .rnica-bodysystems__rail-collapsed-toggle {
+    order: -1;
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+  }
+  .rnica-bodysystems__rail-collapsed-label { writing-mode: horizontal-tb; transform: none; }
 }

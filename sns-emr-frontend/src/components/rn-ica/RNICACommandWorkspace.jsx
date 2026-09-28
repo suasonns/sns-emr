@@ -372,6 +372,14 @@ export default function RNICACommandWorkspace({
   const [density, setDensity] = useState(storedDensity);
   const [viewMode, setViewMode] = useState("screen");
   const [genericNavOpen, setGenericNavOpen] = useState(false);
+  // GitHub Directive (2026-09-28) "Final Neurological Density and
+  // Space-Utilization Plan" Section 4/32/41 -- Structured Findings must
+  // collapse to a compact rail (reclaiming width for the central
+  // workspace) whenever it has no findings, and remain user-expandable at
+  // any time. `null` means "no explicit user choice yet" so the rail
+  // auto-tracks whether findings exist; once the user manually toggles it
+  // that explicit choice is respected until they toggle again.
+  const [findingsRailExpanded, setFindingsRailExpanded] = useState(null);
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
@@ -671,6 +679,12 @@ export default function RNICACommandWorkspace({
     // since it is already its own module with its own field depth.
     const reviewedCount = (bodySystemsAccordionItems || []).filter((item) => item.reviewed).length;
     const totalSystems = (bodySystemsAccordionItems || []).length;
+    const findingsCount = (bodySystemsStructuredFindings || []).length;
+    // Auto-collapse when empty unless the user has explicitly expanded it;
+    // once findings appear, auto-expand unless the user explicitly
+    // collapsed it. `findingsRailExpanded` (state) is the explicit
+    // override; `null` defers to this auto behavior.
+    const railExpanded = findingsRailExpanded === null ? findingsCount > 0 : findingsRailExpanded;
     return (
       <RnicaScreenShell
         patient={patientWithAdmissionFacts}
@@ -689,7 +703,7 @@ export default function RNICACommandWorkspace({
         density={density}
         onChangeDensity={changeDensity}
       >
-        <div className="rnica-bodysystems">
+        <div className={`rnica-bodysystems${railExpanded ? "" : " rnica-bodysystems--rail-collapsed"}`}>
           <div className="rnica-bodysystems__main">
             <div className="rnica-bodysystems__status">
               <span className="rnica-bodysystems__status-label">System Assessment Status</span>
@@ -715,27 +729,52 @@ export default function RNICACommandWorkspace({
               ))}
             </Accordion>
           </div>
-          <aside className="rnica-bodysystems__rail">
-            <ShadcnCard className="rnica-bodysystems__findings">
-              <ShadcnCardHeader>
-                <ShadcnCardTitle>Structured Findings</ShadcnCardTitle>
-              </ShadcnCardHeader>
-              <ShadcnCardContent>
-                {/* Deterministic restatement of already-charted fields only
-                    -- never generated/inferred/predicted. See
-                    bodySystemsStructuredFindings in RNICA.jsx. */}
-                {(bodySystemsStructuredFindings || []).length ? (
-                  <ul className="rnica-bodysystems__findings-list">
-                    {bodySystemsStructuredFindings.map((finding, idx) => (
-                      <li key={idx}>{finding}</li>
-                    ))}
-                  </ul>
-                ) : (
-                  <p className="rnica-bodysystems__findings-empty">No structured findings documented yet.</p>
-                )}
-              </ShadcnCardContent>
-            </ShadcnCard>
-          </aside>
+          {/* GitHub Directive (2026-09-28) Section 4/32 -- when empty,
+              collapse to a narrow rail with a compact count instead of
+              reserving a large blank card; reclaim that width for the
+              central workspace. Always user-expandable/collapsible. */}
+          {railExpanded ? (
+            <aside className="rnica-bodysystems__rail">
+              <ShadcnCard className="rnica-bodysystems__findings">
+                <ShadcnCardHeader className="rnica-bodysystems__findings-header">
+                  <ShadcnCardTitle>Structured Findings</ShadcnCardTitle>
+                  <button
+                    type="button"
+                    className="rnica-bodysystems__rail-toggle"
+                    onClick={() => setFindingsRailExpanded(false)}
+                    aria-label="Collapse Structured Findings panel"
+                  >
+                    Collapse
+                  </button>
+                </ShadcnCardHeader>
+                <ShadcnCardContent>
+                  {/* Deterministic restatement of already-charted fields only
+                      -- never generated/inferred/predicted. See
+                      bodySystemsStructuredFindings in RNICA.jsx. */}
+                  {(bodySystemsStructuredFindings || []).length ? (
+                    <ul className="rnica-bodysystems__findings-list">
+                      {bodySystemsStructuredFindings.map((finding, idx) => (
+                        <li key={idx}>{finding}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="rnica-bodysystems__findings-empty">No structured findings documented yet.</p>
+                  )}
+                </ShadcnCardContent>
+              </ShadcnCard>
+            </aside>
+          ) : (
+            <button
+              type="button"
+              className="rnica-bodysystems__rail-collapsed-toggle"
+              onClick={() => setFindingsRailExpanded(true)}
+              aria-label="Expand Structured Findings panel"
+              title="Structured Findings"
+            >
+              <span className="rnica-bodysystems__rail-collapsed-count">{findingsCount}</span>
+              <span className="rnica-bodysystems__rail-collapsed-label">Structured Findings</span>
+            </button>
+          )}
         </div>
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
