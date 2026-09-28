@@ -9770,7 +9770,11 @@ function computeBodySystemFindings(sectionKey, sectionData) {
       if (d?.sleepRest?.changeSincePrior && d.sleepRest.changeSincePrior !== "No Change") {
         findings.push(`Sleep/responsiveness change: ${d.sleepRest.changeSincePrior}.`);
       } else if (d?.sleepRest?.responsiveness && !["Easily Aroused", ""].includes(d.sleepRest.responsiveness)) {
-        findings.push(`Responsiveness: ${d.sleepRest.responsiveness}.`);
+        // Display the clinical-finding noun ("Somnolence"), not the stored
+        // legacy adjective value ("Somnolent") -- GitHub Directive
+        // (2026-09-28) Major Concern #1/#2.
+        const responsivenessDisplay = d.sleepRest.responsiveness === "Somnolent" ? "Somnolence" : d.sleepRest.responsiveness;
+        findings.push(`Responsiveness: ${responsivenessDisplay}.`);
       }
       if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
         findings.push(`Communication: ${d.communication}.`);
@@ -9919,6 +9923,18 @@ const NEURO_OVERALL_CHANGE_NARRATIVE = {
 
 function computeNeurologicalNarrative(d) {
   const clauses = [];
+
+  // GitHub Directive (2026-09-28) "Neurological Overview Gate" Path 4 --
+  // when the nurse can't complete the assessment, the summary should say
+  // exactly that (plus the controlled reason) instead of describing
+  // individual findings that were never actually observed.
+  if (d.neuroOverview === "Unable to Assess") {
+    const reason = d.neuroUnableToAssessReason === "Other" && d.neuroUnableToAssessOther
+      ? d.neuroUnableToAssessOther
+      : d.neuroUnableToAssessReason;
+    return reason ? `Neurological assessment unable to complete (${reason}).` : "Neurological assessment unable to complete.";
+  }
+
   const consciousness = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
   if (consciousness) clauses.push(`${consciousness}.`);
 
@@ -9967,6 +9983,11 @@ function computeNeurologicalNarrative(d) {
 
   if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
     clauses.push("Communication limited.");
+  } else if (d.communication === "Normal" || d.communication === "Clear") {
+    // GitHub Directive (2026-09-28) "Neurological Overview Gate" Section
+    // 18 example -- only say "no concern" when the nurse deliberately
+    // selected the no-concern value, never inferred from a blank field.
+    clauses.push("No current communication concern identified.");
   }
   if (d.hearing && d.hearing !== "Adequate") {
     clauses.push(`Hearing: ${d.hearing}.`);
@@ -9990,6 +10011,10 @@ function computeNeurologicalNarrative(d) {
     clauses.push("Motor status unable to assess.");
   } else if (d.motorStatus === "None Identified") {
     clauses.push("No motor deficit identified.");
+  } else if (d.motorBalanceStatus === "No New Concern") {
+    clauses.push("No new motor or balance concern identified.");
+  } else if (d.motorBalanceStatus === "Patient Does Not Ambulate") {
+    clauses.push("Patient does not ambulate.");
   }
 
   // Issue #2 -- "reflect only documented items": a never-touched field
@@ -10002,6 +10027,8 @@ function computeNeurologicalNarrative(d) {
   if (behavioralAll.length > 0) {
     const concerns = behavioralAll.filter((s) => s !== "Peaceful");
     clauses.push(concerns.length > 0 ? `Behavioral: ${concerns.join(", ")}.` : "Peaceful / calm mood documented.");
+  } else if (d.behavioralStatus === "No Current Concern") {
+    clauses.push("No behavioral concern identified.");
   }
 
   if (d.clinicalStatusChange && NEURO_OVERALL_CHANGE_NARRATIVE[d.clinicalStatusChange]) {
@@ -10167,6 +10194,39 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // exclusivity: J2052B/J2053 only apply when J2052A = Yes).
         if (sectionKey === "sfv" && card.title === "SFV Symptom Impact" && !cardData.inPersonSfvCompleted) {
           return null;
+        }
+
+        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+        // the audit confirmed the normal-patient path required ~22 visible
+        // decisions against a 5-10 target. Everything below the new
+        // "Neurological Overview" card is now gated on that single
+        // up-front triage answer; nothing is removed, renamed, or
+        // reinterpreted -- cards simply don't render until they're
+        // relevant to the path the nurse selected.
+        if (sectionKey === "neurological" && card.title !== "Neurological Overview") {
+          const overview = data.neuroOverview;
+          // Before the gate is answered, show ONLY the Overview card --
+          // this is the single biggest lever for cutting the initial
+          // decision count.
+          if (!overview) return null;
+          // "Unable to Assess": the reason control lives on the Overview
+          // card itself; nothing else applies.
+          if (overview === "Unable to Assess") return null;
+          if (overview === "No Current Neurological Concern") {
+            // Path 1 (fastest): Consciousness, Orientation, Sleep/
+            // Responsiveness (baseline only), Overall Change,
+            // Communication (primary only), Behavioral Status gate,
+            // Motor/Balance Status gate. HOPE and Notes stay visible --
+            // official/independent obligations are never gated behind an
+            // internal speed metric (mega-directive Section 17).
+            if (["Psychiatric History"].includes(card.title)) return null;
+          }
+          // "Existing Neurological Findings Stable" and "New/Worsening
+          // Neurological Findings" both render the full comprehensive
+          // card set unchanged (today's existing behavior) -- Stable's
+          // "confirm rather than re-enter prior values" flow is a
+          // separate, larger feature tracked for a future pass, not
+          // faked here.
         }
 
         if (sectionKey === "performanceStatus" && card.title === "NYHA Classification (Heart Failure)" && !showNyha) {
@@ -10719,11 +10779,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // presentation-only, no new fields/values] Reveal a follow-up
               // field only once its trigger field establishes it applies,
               // and preserve all existing stored data/paths/HOPE mappings.
-              if (sectionKey === "neurological" && field.path === "affectedSide" && !(cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true))) {
-                return null;
-              }
-              if (sectionKey === "neurological" && field.path === "deficitType" && !(cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true))) {
-                return null;
+              if (sectionKey === "neurological") {
+                const motorPresent = cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true);
+                const motorDetailVisible = cardData.neuroOverview !== "No Current Neurological Concern" || cardData.motorBalanceStatus === "Findings Present";
+                if (["affectedSide", "deficitType"].includes(field.path) && !(motorPresent && motorDetailVisible)) {
+                  return null;
+                }
               }
               if (sectionKey === "neurological" && field.path === "psychiatricHistory" && !(cardData.psychiatricHistoryType || []).length) {
                 return null;
@@ -10734,6 +10795,57 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // otherwise it's asking for a number nobody has.
               if (sectionKey === "neurological" && field.path === "sleepRest.averageSleepHours" && cardData.sleepRest?.sleepTrendKnown !== "Yes") {
                 return null;
+              }
+              // GitHub Directive (2026-09-28) "Neurological Overview Gate"
+              // -- Path 4 (Unable to Assess) reason control only applies
+              // once that path is selected; the free-text "Other" detail
+              // only applies once "Other" is the selected reason.
+              if (sectionKey === "neurological" && field.path === "neuroUnableToAssessReason" && cardData.neuroOverview !== "Unable to Assess") {
+                return null;
+              }
+              if (sectionKey === "neurological" && field.path === "neuroUnableToAssessOther" && (cardData.neuroOverview !== "Unable to Assess" || cardData.neuroUnableToAssessReason !== "Other")) {
+                return null;
+              }
+              if (sectionKey === "neurological") {
+                // The Overview gate's whole purpose: on the fastest path
+                // (patient has no current neurological concern), the
+                // "advanced" detail fields below don't earn their place on
+                // screen unless something actually turns out abnormal --
+                // they stay fully intact in stored data and reappear
+                // immediately if the nurse switches Overview to Stable or
+                // New/Worsening, or if the underlying value itself already
+                // indicates a concern (never hides a documented abnormal
+                // finding).
+                const neuroNormalPathActive = cardData.neuroOverview === "No Current Neurological Concern";
+                const sleepAbnormal = (cardData.sleepRest?.sleepPattern && cardData.sleepRest.sleepPattern !== "Normal")
+                  || (cardData.sleepRest?.responsiveness && cardData.sleepRest.responsiveness !== "Easily Aroused")
+                  || (cardData.sleepRest?.changeSincePrior && cardData.sleepRest.changeSincePrior !== "No Change");
+                const advancedSleepFields = ["sleepRest.changeSincePrior", "sleepRest.sleepTrendKnown", "sleepRest.nighttimeSymptoms", "sleepRest.sleepAids", "sleepRest.effectOnComfort", "sleepRest.response", "sleepRest.restfulness", "sleepRest.notes"];
+                if (advancedSleepFields.includes(field.path) && neuroNormalPathActive && !sleepAbnormal) {
+                  return null;
+                }
+                if (["hearing", "vision", "sensoryDeficits", "sensoryAids"].includes(field.path) && neuroNormalPathActive) {
+                  return null;
+                }
+                // New gate fields (`behavioralStatus`/`motorBalanceStatus`)
+                // only exist to keep the fast path fast -- they're hidden
+                // once the nurse is off that path, where the full detail
+                // renders unconditionally exactly as it did before this
+                // directive.
+                if (field.path === "behavioralStatus" && !neuroNormalPathActive) {
+                  return null;
+                }
+                if (field.path === "motorBalanceStatus" && !neuroNormalPathActive) {
+                  return null;
+                }
+                const behavioralDetailVisible = !neuroNormalPathActive || cardData.behavioralStatus === "Findings Present";
+                if (["cognition", "symptomsDemeanor", "delirium", "seizureHistory"].includes(field.path) && !behavioralDetailVisible) {
+                  return null;
+                }
+                const motorDetailVisible = !neuroNormalPathActive || cardData.motorBalanceStatus === "Findings Present";
+                if (["motorStatus", "balance"].includes(field.path) && !motorDetailVisible) {
+                  return null;
+                }
               }
               if (sectionKey === "cardiovascular" && field.path === "chestPain.type" && cardData.chestPain?.present !== "Yes") {
                 return null;
@@ -11393,6 +11505,34 @@ const SECTION_CONFIGS = {
     title: "Neurological / Mental / Sensory",
     subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, BIMS (N0500-N0520)",
     cards: [
+      {
+        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+        // this single up-front triage question determines everything
+        // else that renders below it (see the card-level guard next to
+        // `resolvedCards.map`). It is deliberately its own card, first,
+        // full-width, high-importance: the nurse must answer it before
+        // any other Neurological control appears. New path (`neuroOverview`)
+        // -- no existing field/value is touched.
+        title: "Neurological Overview", category: "core", importance: "high", fullWidth: true, fields: [
+          {
+            type: "segmented", label: "Neurological Overview", path: "neuroOverview",
+            options: [
+              "No Current Neurological Concern",
+              "Existing Neurological Findings Stable",
+              "New/Worsening Neurological Findings",
+              "Unable to Assess",
+            ],
+          },
+          // Path 4 -- require a controlled reason instead of silently
+          // skipping the whole system (same pattern as Pain's
+          // reasonNotAssessed). New path; gated in the render loop below.
+          {
+            type: "segmented", label: "Reason Unable to Assess", path: "neuroUnableToAssessReason",
+            options: ["Patient unable to participate", "Patient unresponsive", "Assessment interrupted", "Other"],
+          },
+          { type: "input", label: "Other Reason (if selected above)", path: "neuroUnableToAssessOther" },
+        ],
+      },
       // GitHub Directive (2026-09-28) "Final Neurological Density and
       // Space-Utilization Plan" Section 5 -- required order: Consciousness
       // / Orientation / Overall Change render as a 3-column "status" row
@@ -11531,6 +11671,13 @@ const SECTION_CONFIGS = {
         // stacking narrowly, regardless of what else is in this category
         // bucket.
         title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fullWidth: true, fields: [
+          // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+          // fast-path replacement for the full detail below. New path;
+          // only rendered/relevant when Neurological Overview = "No
+          // Current Neurological Concern" (see the render-loop guard).
+          // Selecting "Findings Present" reveals the existing detail
+          // fields unchanged; nothing here rewrites their values.
+          { type: "segmented", label: "Behavioral Status", path: "behavioralStatus", options: ["No Current Concern", "Findings Present", "Unable to Assess"] },
           // Relocated from Consciousness (Section 8); renamed (Issue #4) --
           // this is a narrative clarification field, not a duplicate of
           // Consciousness/Orientation/BIMS/Cognitive-Behavioral findings
@@ -11548,6 +11695,10 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Motor / Balance", category: "functional", importance: "medium", fields: [
+          // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+          // same fast-path pattern as Behavioral Status above. New path;
+          // gated the same way.
+          { type: "segmented", label: "Motor/Balance Status", path: "motorBalanceStatus", options: ["No New Concern", "Findings Present", "Patient Does Not Ambulate", "Unable to Assess"] },
           // Issue #7 (2026-09-28 follow-up review) -- "Motor Deficit
           // Present" was only a positive-state toggle with no way to
           // record "assessed, none identified" vs. "never assessed" as
