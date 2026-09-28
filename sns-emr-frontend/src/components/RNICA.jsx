@@ -1336,9 +1336,15 @@ function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
 // no option removed, so every existing stored value (including legacy
 // detail strings) round-trips exactly as before.
 function FormGatedRadio({ label, value, onChange, primaryOptions, normalValues, detailOptions, hopeCode }) {
-  const isDetailValue = Boolean(value) && !primaryOptions.includes(value) && !normalValues.includes(value);
-  const primaryValue = isDetailValue ? primaryOptions[1] : (normalValues.includes(value) ? primaryOptions[0] : value);
-  const showDetail = isDetailValue || primaryValue === primaryOptions[1];
+  // Bounded Compatibility Increment Section 13 -- primaryOptions may now
+  // contain {value,label} display-adapter entries (matching FormSegmented's
+  // existing convention, e.g. Communication's stored "Normal" displaying as
+  // "No Current Communication Concern"). Only VALUES drive the gating
+  // logic below; stored data and detail-reveal behavior are unchanged.
+  const primaryValues = primaryOptions.map((opt) => (typeof opt === "string" ? opt : opt.value));
+  const isDetailValue = Boolean(value) && !primaryValues.includes(value) && !normalValues.includes(value);
+  const primaryValue = isDetailValue ? primaryValues[1] : (normalValues.includes(value) ? primaryValues[0] : value);
+  const showDetail = isDetailValue || primaryValue === primaryValues[1];
   return (
     <div>
       <FormSegmented label={label} value={primaryValue} onChange={onChange} options={primaryOptions} hopeCode={hopeCode} />
@@ -3982,7 +3988,15 @@ function SkinTreatmentSummary({ assessmentId, patientId, styles, COLORS }) {
 // Care document API (via backend app/services/rnica_poc_adapter.py) — this
 // component holds no POC state of its own beyond what it fetches on demand,
 // and never writes into RnicaAssessment.form_data.
-function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS }) {
+//
+// Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 --
+// `canAdd` (default true, so every existing section behaves exactly as
+// before) lets a caller hide the generic "+ Add to POC" button when no
+// confirmed actionable finding exists yet. `suggestedFinding`, when set,
+// renders a small "POC Review Suggested" indicator instead of silently
+// changing the button's own label -- the clinician still explicitly
+// clicks Add; nothing is auto-created.
+function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS, canAdd = true, suggestedFinding = false }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showList, setShowList] = useState(false);
   const [problems, setProblems] = useState(null);
@@ -4077,14 +4091,21 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
 
   return (
     <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+      {suggestedFinding && canAdd && !hasProblems && (
+        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: COLORS.orange || "#b45309" }}>
+          POC Review Suggested
+        </p>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" onClick={() => setShowAdd((v) => !v)} style={{
-          fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
-          border: `1px solid ${COLORS.teal}`, background: showAdd ? COLORS.teal : "transparent",
-          color: showAdd ? COLORS.white : COLORS.teal, cursor: "pointer",
-        }}>
-          + Add to POC
-        </button>
+        {canAdd && (
+          <button type="button" onClick={() => setShowAdd((v) => !v)} style={{
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+            border: `1px solid ${COLORS.teal}`, background: showAdd ? COLORS.teal : "transparent",
+            color: showAdd ? COLORS.white : COLORS.teal, cursor: "pointer",
+          }}>
+            + Add to POC
+          </button>
+        )}
         {hasProblems && (
           <button type="button" onClick={handleToggleList} style={{
             fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
@@ -9921,18 +9942,23 @@ const NEURO_OVERALL_CHANGE_NARRATIVE = {
   "Unable to Compare": "Unable to compare to prior neurological assessment.",
 };
 
-function computeNeurologicalNarrative(d) {
+export function computeNeurologicalNarrative(d) {
   const clauses = [];
 
-  // GitHub Directive (2026-09-28) "Neurological Overview Gate" Path 4 --
-  // when the nurse can't complete the assessment, the summary should say
-  // exactly that (plus the controlled reason) instead of describing
-  // individual findings that were never actually observed.
+  // Bounded Compatibility Increment (2026-09-28) Section 7/AC-02 -- when
+  // the nurse can't complete the assessment, the summary must say ONLY
+  // that (plus the controlled reason) as two short sentences, and must
+  // never add an unrelated clinical clause (e.g. Communication) just
+  // because the Overview path was set to Unable to Assess. Independently
+  // documented findings on OTHER fields are not read here at all -- this
+  // is an intentional early return, not a filter.
   if (d.neuroOverview === "Unable to Assess") {
     const reason = d.neuroUnableToAssessReason === "Other" && d.neuroUnableToAssessOther
       ? d.neuroUnableToAssessOther
       : d.neuroUnableToAssessReason;
-    return reason ? `Neurological assessment unable to complete (${reason}).` : "Neurological assessment unable to complete.";
+    return reason
+      ? `Neurological assessment unable to complete. Reason: ${reason}.`
+      : "Neurological assessment unable to complete.";
   }
 
   const consciousness = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
@@ -9961,7 +9987,7 @@ function computeNeurologicalNarrative(d) {
   if (sleep.changeSincePrior && sleepChangeText[sleep.changeSincePrior]) {
     clauses.push(sleepChangeText[sleep.changeSincePrior]);
   } else if (sleep.sleepPattern) {
-    clauses.push(sleep.sleepPattern === "Normal" ? "Normal sleep pattern." : `Sleep pattern: ${sleep.sleepPattern}.`);
+    clauses.push(sleep.sleepPattern === "Normal" ? "Usual sleep pattern." : `Sleep pattern: ${sleep.sleepPattern}.`);
   }
   const responsivenessText = {
     "Easily Aroused": "Easily aroused.",
@@ -10038,9 +10064,54 @@ function computeNeurologicalNarrative(d) {
   return clauses.join(" ");
 }
 
-// Computed Summary panel for the Body Systems 9-part structure. Reuses
-// computeBodySystemFindings (the same deterministic, already-documented-
-// only findings list used elsewhere) so the Summary never introduces a
+// Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 -- a
+// deliberately conservative, deterministic proxy for "a confirmed
+// current actionable finding exists" so the always-visible generic
+// "+ Add to POC" button can become conditional without a new POC-
+// candidate engine. Every check below reads an already-documented,
+// explicitly-selected value; nothing here is inferred from blank data
+// or generated from the Overview Gate choice itself.
+export function neurologicalHasActionablePocFinding(d) {
+  const sleep = d.sleepRest || {};
+  if (["Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"].includes(sleep.changeSincePrior)) return true;
+  if (["Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive"].includes(sleep.responsiveness)) return true;
+  if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) return true;
+  const behavioralConcerns = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+  if (behavioralConcerns.length > 0) return true;
+  if (d.delirium === true || d.delirium === "Yes") return true;
+  if (d.seizureHistory && d.seizureHistory !== "None" && d.seizureHistory !== "") return true;
+  const motorPresent = d.motorStatus === "Present" || (d.motorStatus === undefined && d.motorDeficit === true);
+  if (motorPresent) return true;
+  if (["Gradual Decline", "New or Worsening Concern"].includes(d.clinicalStatusChange)) return true;
+  return false;
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 -- honest,
+// bounded workflow status for the Neurological accordion badge. Does NOT
+// attempt full "applicable required item" completeness validation (that
+// would require the official HOPE validation engine explicitly deferred
+// in Section 17/19) -- it only distinguishes the states this bounded
+// pass can actually determine: unset vs. Unable-to-Assess vs. "something
+// beyond the Overview answer itself has been documented."
+export function computeNeurologicalWorkflowStatus(d) {
+  const overview = d.neuroOverview;
+  if (!overview) {
+    return hasAnyDocumentedValue(d)
+      ? { code: "in_progress", label: "In Progress", variant: "neutral" }
+      : { code: "not_started", label: "Not Started", variant: "neutral" };
+  }
+  if (overview === "Unable to Assess") {
+    // An incomplete assessment always needs follow-up -- never "reviewed",
+    // regardless of whether the controlled reason itself is filled in yet.
+    return { code: "review_required", label: "Review Required", variant: "warning" };
+  }
+  const { neuroOverview: _o, ...rest } = d;
+  return hasAnyDocumentedValue(rest)
+    ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+    : { code: "in_progress", label: "In Progress", variant: "neutral" };
+}
+
+
 // second, drifting source of truth. Deliberately does NOT include a
 // "Changes Since Prior" line -- no prior-assessment/longitudinal-diff
 // infrastructure exists yet anywhere in RNICA (confirmed: no
@@ -10051,6 +10122,12 @@ function computeNeurologicalNarrative(d) {
 // its "Change Since Prior" fields (sleepRest.changeSincePrior,
 // clinicalStatusChange) are nurse-selected charted values, not a computed
 // diff, so computeNeurologicalNarrative may read them directly.
+//
+// (Comment continues from "Computed Summary panel for the Body Systems
+// 9-part structure. Reuses computeBodySystemFindings (the same
+// deterministic, already-documented-only findings list used elsewhere)
+// so the Summary never introduces a" -- split by an earlier edit that
+// inserted the Bounded Compatibility Increment helpers above.)
 function computeBodySystemSummary(sectionKey, sectionData) {
   const primaryIssues = computeBodySystemFindings(sectionKey, sectionData);
   if (!hasAnyDocumentedValue(sectionData)) {
@@ -10963,10 +11040,45 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   // re-applies the same section-specific mutual-exclusivity
                   // rule the generic per-path onChange interceptor above
                   // already applies to individual "checkbox" fields.
+                  // GitHub Directive (2026-09-28) "Bounded Compatibility
+                  // Increment" Section 10/AC-05 -- an optional data-driven
+                  // "quick action" convenience button (currently used only
+                  // for Orientation's "Mark Oriented x4") that sets/clears
+                  // a batch of the SAME already-existing boolean paths this
+                  // row already reads/writes. It stores no new field and
+                  // no "Oriented x4" value anywhere -- its pressed state is
+                  // derived each render from whether every setPath is true
+                  // and every clearPath is false, so manually clearing any
+                  // one dimension automatically un-highlights the shortcut
+                  // without any extra bookkeeping.
+                  const quickAction = fieldForRender.quickAction;
+                  const quickActionActive = quickAction
+                    ? quickAction.setPaths.every((p) => Boolean(getNestedValue(cardData, p)))
+                      && (quickAction.clearPaths || []).every((p) => !getNestedValue(cardData, p))
+                    : false;
                   rendered = (
                     <div style={styles.formGroup}>
                       <label style={styles.label}>{fieldForRender.label}</label>
-                      <div role="group" aria-label={fieldForRender.label} style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+                      <div role="group" aria-label={fieldForRender.label} style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
+                        {quickAction && (
+                          <button
+                            type="button"
+                            aria-pressed={quickActionActive}
+                            onClick={() => {
+                              quickAction.setPaths.forEach((p) => update(cardDataSection, p, true));
+                              (quickAction.clearPaths || []).forEach((p) => update(cardDataSection, p, false));
+                            }}
+                            style={{
+                              padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+                              cursor: "pointer", border: `1px solid ${quickActionActive ? COLORS.teal : COLORS.border}`,
+                              background: quickActionActive ? COLORS.teal : "transparent",
+                              color: quickActionActive ? COLORS.textOnTeal : COLORS.dark,
+                              fontWeight: 700, whiteSpace: "nowrap", fontStyle: "italic",
+                            }}
+                          >
+                            {quickAction.label}
+                          </button>
+                        )}
                         {fieldForRender.items.map((item) => {
                           const itemChecked = Boolean(getNestedValue(cardData, item.path));
                           const handleToggle = () => {
@@ -11097,6 +11209,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 cardTitle={title}
                 styles={styles}
                 COLORS={COLORS}
+                {...(sectionKey === "neurological"
+                  ? {
+                      canAdd: neurologicalHasActionablePocFinding(data || {}),
+                      suggestedFinding: neurologicalHasActionablePocFinding(data || {}),
+                    }
+                  : null)}
               />
             )}
           </ShadcnCardContent>
@@ -11577,6 +11695,13 @@ const SECTION_CONFIGS = {
               { label: "Situation", path: "orientation.situation" },
               { label: "Disoriented", path: "orientation.disoriented" },
             ],
+            // Section 10/AC-05 -- presentation-only convenience over the
+            // four existing authoritative fields; stores nothing new.
+            quickAction: {
+              label: "Mark Oriented x4",
+              setPaths: ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"],
+              clearPaths: ["orientation.disoriented"],
+            },
           },
         ],
       },
@@ -11601,7 +11726,7 @@ const SECTION_CONFIGS = {
         // shorter Consciousness/Orientation/Overall Change cards, which
         // was the reported "uneven, abnormally tall column" defect.
         title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, fields: [
-          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
+          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: [{ value: "Normal", label: "Usual / No Significant Concern" }, "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
           { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
           // GitHub Directive (2026-09-28) "Neurological Review -- Major
@@ -11645,7 +11770,7 @@ const SECTION_CONFIGS = {
           // of each claiming more grid width than their short controls need.
           {
             type: "gatedRadio", label: "Communication", path: "communication", fieldSpan: 2,
-            primaryOptions: ["Normal", "Impaired"],
+            primaryOptions: [{ value: "Normal", label: "No Current Communication Concern" }, "Impaired"],
             normalValues: ["Normal", "Clear"],
             detailOptions: ["Unable", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"],
           },
@@ -14175,6 +14300,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // config/sectionData/renderGenericSection call as every other route, so
   // fields, HOPE mappings, and Add/View POC controls are byte-for-byte the
   // same as legacy/non-grouped rendering. Presentation-only grouping.
+  // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 -- the
+  // shared `sectionHasDocumentedData` boolean above still drives the
+  // Reviewed/Not-started badge for every OTHER body system unchanged.
+  // Neurological alone gets a richer status because it now has an
+  // Overview Gate that can honestly report "review required" (Unable to
+  // Assess) instead of collapsing every state into the same two-value
+  // badge. This intentionally does not touch or generalize the shared
+  // helper -- Cardiovascular and the rest are untouched.
   const bodySystemsAccordionItems = useMemo(() => {
     return RNICA_BODY_SYSTEM_MODULES.map((module) => {
       const route = routes.find((r) => r.key === module.key);
@@ -14182,11 +14315,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       const config = SECTION_CONFIGS[route.formSection];
       const sectionData = formData[route.formSection];
       const meta = sidebarConfigItems.find((s) => s.key === module.key);
+      const neuroStatus = module.key === "neurological" ? computeNeurologicalWorkflowStatus(sectionData || {}) : null;
       return {
         key: module.key,
         label: meta?.label || module.label,
         icon: meta?.icon || "🩺",
-        reviewed: sectionHasDocumentedData(sectionData),
+        reviewed: neuroStatus ? neuroStatus.code === "ready_for_review" : sectionHasDocumentedData(sectionData),
+        statusLabel: neuroStatus?.label,
+        statusVariant: neuroStatus?.variant,
         content: config && sectionData
           ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
           : null,

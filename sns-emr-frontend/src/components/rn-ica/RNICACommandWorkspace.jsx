@@ -720,8 +720,15 @@ export default function RNICACommandWorkspace({
                     <span className="rnica-bodysystems__trigger-label">
                       <span aria-hidden="true">{item.icon}</span> {item.label}
                     </span>
-                    <ShadcnBadge variant={item.reviewed ? "success" : "neutral"}>
-                      {item.reviewed ? "Reviewed" : "Not started"}
+                    {/* Bounded Compatibility Increment (2026-09-28) Section 5 --
+                        Neurological supplies its own richer statusLabel/
+                        statusVariant (Not Started / In Progress / Review
+                        Required / Ready for Review) computed in RNICA.jsx's
+                        computeNeurologicalWorkflowStatus. Every other body
+                        system leaves these undefined and keeps the exact
+                        original Reviewed/Not-started boolean badge. */}
+                    <ShadcnBadge variant={item.statusVariant || (item.reviewed ? "success" : "neutral")}>
+                      {item.statusLabel || (item.reviewed ? "Reviewed" : "Not started")}
                     </ShadcnBadge>
                   </AccordionTrigger>
                   <AccordionContent className="rnica-bodysystems__content">{item.content}</AccordionContent>
