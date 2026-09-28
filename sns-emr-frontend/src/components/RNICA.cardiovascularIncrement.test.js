@@ -9,6 +9,7 @@ import {
   resolveOrthostaticFindingDisplay,
   resolveBpLegacyDisplay,
   resolveCardiacDyspneaGate,
+  resolveHeartFailureTypeSelection,
 } from "./RNICA.jsx";
 
 // Cardiovascular Overview Gate regression coverage (Final Owner Directive,
@@ -88,12 +89,18 @@ describe("computeCardiovascularWorkflowStatus", () => {
     });
   });
 
-  it("reports Ready for Review once a non-Unable-to-Assess path has documented findings", () => {
-    const status = computeCardiovascularWorkflowStatus({
+  it("Path 2 requires clinician confirmation plus Clinical Status Change to reach Ready for Review", () => {
+    const incomplete = computeCardiovascularWorkflowStatus({
       cardiovascularOverview: "Existing Cardiovascular Findings Review",
       pulseRhythm: "Regular",
     });
-    expect(status.code).toBe("ready_for_review");
+    expect(incomplete.code).toBe("in_progress");
+    const complete = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      cardiovascularFindingsConfirmedThisVisit: true,
+      clinicalStatusChange: "No Significant Change",
+    });
+    expect(complete.code).toBe("ready_for_review");
   });
 
   it("reports In Progress for a chosen path with nothing else documented yet", () => {
@@ -526,3 +533,68 @@ describe("Clinical Status Change -- Cardiovascular-specific list and legacy comp
     expect(d.clinicalStatusChange).toBe("Symptom Well-Managed");
   });
 });
+
+// Directive (2026-09-28) "Cardiovascular Layout Consolidation" Section 14
+// -- Heart Failure Type Unspecified/specific-type mutual exclusion.
+describe("resolveHeartFailureTypeSelection", () => {
+  it("selecting Unspecified clears any specific types already selected", () => {
+    expect(resolveHeartFailureTypeSelection(["Systolic"], ["Systolic", "Unspecified"])).toEqual(["Unspecified"]);
+  });
+
+  it("selecting a specific type while Unspecified is active removes Unspecified", () => {
+    expect(resolveHeartFailureTypeSelection(["Unspecified"], ["Unspecified", "Systolic"])).toEqual(["Systolic"]);
+  });
+
+  it("selecting both Systolic and Diastolic together is not corrected (never mutually exclusive with each other)", () => {
+    expect(resolveHeartFailureTypeSelection(["Systolic"], ["Systolic", "Diastolic"])).toBeNull();
+  });
+
+  it("returns null (no correction) for an ordinary toggle with no Unspecified involved", () => {
+    expect(resolveHeartFailureTypeSelection([], ["Diastolic"])).toBeNull();
+    expect(resolveHeartFailureTypeSelection(["Diastolic"], [])).toBeNull();
+  });
+
+  it("re-selecting Unspecified alone when it was already the only value is a no-op (no correction needed)", () => {
+    expect(resolveHeartFailureTypeSelection(["Unspecified"], ["Unspecified"])).toBeNull();
+  });
+});
+
+// Directive (2026-09-28) Section 13 -- Path 2 clinician confirmation.
+describe("Path 2 clinician confirmation gating", () => {
+  it("Path 2 with confirmation but no Clinical Status Change stays In Progress", () => {
+    const status = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      cardiovascularFindingsConfirmedThisVisit: true,
+    });
+    expect(status.code).toBe("in_progress");
+  });
+
+  it("Path 2 with Clinical Status Change but no confirmation stays In Progress", () => {
+    const status = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      clinicalStatusChange: "No Significant Change",
+    });
+    expect(status.code).toBe("in_progress");
+  });
+
+  it("Path 2 with both confirmation and Clinical Status Change reaches Ready for Review", () => {
+    const status = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      cardiovascularFindingsConfirmedThisVisit: true,
+      clinicalStatusChange: "No Significant Change",
+    });
+    expect(status.code).toBe("ready_for_review");
+  });
+
+  it("the confirmation control never rewrites a preserved abnormal finding while computing status", () => {
+    const d = {
+      cardiovascularOverview: "Existing Cardiovascular Findings Review",
+      cardiovascularFindingsConfirmedThisVisit: true,
+      clinicalStatusChange: "No Significant Change",
+      heartFailurePresent: true,
+    };
+    computeCardiovascularWorkflowStatus(d);
+    expect(d.heartFailurePresent).toBe(true);
+  });
+});
+

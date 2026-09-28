@@ -677,6 +677,12 @@ const INITIAL_FORM = {
     heartFailureType: [],
     notes: "",
     clinicalStatusChange: "",
+    // Directive (2026-09-28) "Cardiovascular Layout Consolidation" Section
+    // 13 -- Path 2 ("Existing Cardiovascular Findings Review") clinician
+    // confirmation. A new, independent boolean; never rewrites author or
+    // timestamp, never touches any existing finding, and is not required
+    // on any other Overview path.
+    cardiovascularFindingsConfirmedThisVisit: false,
   },
 
   // ─── 9. RESPIRATORY ───────────────────────────────
@@ -10294,6 +10300,28 @@ export function cardiovascularHasPreservedAbnormalFinding(d) {
   return false;
 }
 
+// Directive (2026-09-28) "Cardiovascular Layout Consolidation" Section 14
+// -- data inspection (SFV registry CV_HEART_FAILURE_SYSTOLIC/DIASTOLIC
+// both use `multi_add`, and mixed systolic+diastolic heart failure is a
+// real clinical presentation) confirms Heart Failure Type stays
+// multi-select. The only genuine contradiction is "Unspecified"
+// coexisting with a specific type, so selecting Unspecified clears the
+// specific types, and selecting a specific type clears Unspecified --
+// Systolic + Diastolic together are never mutually exclusive with each
+// other. `prevArray`/`nextArray` are the value before/after the raw
+// FormPillGroup toggle; returns the corrected array to write, or `null`
+// when no correction is needed (the raw toggle already stands).
+export function resolveHeartFailureTypeSelection(prevArray, nextArray) {
+  const prev = Array.isArray(prevArray) ? prevArray : [];
+  const next = Array.isArray(nextArray) ? nextArray : [];
+  const addedUnspecified = next.includes("Unspecified") && !prev.includes("Unspecified");
+  if (addedUnspecified) return ["Unspecified"];
+  if (next.includes("Unspecified") && (next.includes("Systolic") || next.includes("Diastolic"))) {
+    return next.filter((t) => t !== "Unspecified");
+  }
+  return null;
+}
+
 // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 --
 // Cardiovascular counterpart to computeNeurologicalWorkflowStatus.
 //
@@ -10354,6 +10382,17 @@ export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
     ["Stable / No Change", "No Significant Change"].includes(d.clinicalStatusChange)
   ) {
     return { code: "review_required", label: "Review Required", variant: "warning" };
+  }
+  // Directive (2026-09-28) Section 11/13: Path 2 ("Existing Cardiovascular
+  // Findings Review") requires the clinician confirmation plus a current
+  // Clinical Status Change selection before it can be Ready for Review --
+  // reviewing stored findings without acting on them is In Progress, not
+  // done.
+  if (overview === "Existing Cardiovascular Findings Review") {
+    const complete = Boolean(d.cardiovascularFindingsConfirmedThisVisit && d.clinicalStatusChange);
+    return complete
+      ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+      : { code: "in_progress", label: "In Progress", variant: "neutral" };
   }
   const { cardiovascularOverview: _o, ...rest } = d;
   return hasAnyDocumentedValue(rest)
@@ -11343,12 +11382,18 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 // verified prior-assessment comparison.
                 const CV_ALWAYS_VISIBLE_FIELDS = new Set([
                   "cardiovascularOverview", "cardiovascularUnableToAssessReason", "cardiovascularUnableToAssessOther",
-                  "clinicalStatusChange", "notes",
+                  "clinicalStatusChange", "notes", "cardiovascularFindingsConfirmedThisVisit",
                 ]);
                 if (cardData.cardiovascularOverview === "Existing Cardiovascular Findings Review" && !CV_ALWAYS_VISIBLE_FIELDS.has(field.path)) {
                   const existing = getNestedValue(cardData, field.path);
                   const documented = Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
                   if (!documented) return null;
+                }
+                // Directive (2026-09-28) Section 13 -- the confirmation
+                // control only makes sense on Path 2; every other path
+                // hides it (never deletes a previously-recorded value).
+                if (field.path === "cardiovascularFindingsConfirmedThisVisit" && cardData.cardiovascularOverview !== "Existing Cardiovascular Findings Review") {
+                  return null;
                 }
                 // Dyspnea Ownership Model (Contradiction 5): the checkbox
                 // and its guidance note are mutually exclusive, and both
@@ -11402,6 +11447,23 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 // reveal guards) keeps working unchanged.
                 if (sectionKey === "neurological" && fieldForRender.path === "motorStatus") {
                   u("motorDeficit", v === "Present");
+                }
+                // Directive (2026-09-28) "Cardiovascular Layout
+                // Consolidation" Section 14 -- data inspection (SFV
+                // registry CV_HEART_FAILURE_SYSTOLIC/DIASTOLIC both use
+                // `multi_add`, and mixed systolic+diastolic heart failure
+                // is a real clinical presentation) confirms Heart Failure
+                // Type stays multi-select. The only genuine contradiction
+                // is "Unspecified" coexisting with a specific type -- so
+                // selecting Unspecified clears the specific types, and
+                // selecting a specific type clears Unspecified, without
+                // ever preventing Systolic + Diastolic together.
+                if (sectionKey === "cardiovascular" && fieldForRender.path === "heartFailureType" && Array.isArray(v)) {
+                  const corrected = resolveHeartFailureTypeSelection(cardData.heartFailureType, v);
+                  if (corrected) {
+                    update(cardDataSection, fieldForRender.path, corrected);
+                    return;
+                  }
                 }
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
                   // Auto-select the correct pain scale from the patient's
@@ -12445,6 +12507,11 @@ const SECTION_CONFIGS = {
         { type: "booleanPill", label: "Central Venous Line", path: "centralVenousLine" },
       ]},
       { title: "Clinical Status Change", category: "response", fields: [
+        // Directive (2026-09-28) Section 13 -- Path 2 clinician
+        // confirmation, kept adjacent to the stored findings/Clinical
+        // Status Change/Notes it applies to (hidden on every other path
+        // via the render-loop guard below).
+        { type: "booleanPill", label: "Findings Reviewed and Confirmed This Visit", path: "cardiovascularFindingsConfirmedThisVisit" },
         { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS },
       ]},
       { title: "Cardiovascular Notes", category: "observation", fields: [
