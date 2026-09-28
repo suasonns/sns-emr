@@ -9867,7 +9867,15 @@ function computeBodySystemFindings(sectionKey, sectionData) {
       if (d.syncope === "Yes") findings.push(`Syncope (fainting episodes) documented.`);
       if (d.dizziness && d.dizziness !== "None") findings.push(`Dizziness: ${d.dizziness}.`);
       if (d.fatigue && d.fatigue !== "None") findings.push(`Fatigue: ${d.fatigue}.`);
-      if (d.heartFailurePresent) findings.push(`Heart failure documented.`);
+      // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+      // Correction" -- Cardiovascular documents current signs/symptoms/
+      // assessment findings, not disease/diagnosis conclusions. Heart
+      // Failure is a diagnosis (owned by the HOPE I0600 comorbidity
+      // workflow, auto-derived from coded Diagnosis, and by Diagnosis &
+      // LCD/certification), so `heartFailurePresent`/`heartFailureType`
+      // no longer drive Structured Findings. The raw fields are untouched
+      // (never deleted/nulled) and remain visible read-only on Path 2 --
+      // see the Path 2 legacy display block in the field-render loop.
       break;
     }
     case "skin": {
@@ -10282,7 +10290,13 @@ export function cardiovascularHasActionablePocFinding(d) {
 export function cardiovascularHasPreservedAbnormalFinding(d) {
   if (d.chestPain?.present === "Yes") return true;
   if (d.edema?.present === "Yes") return true;
-  if (d.heartFailurePresent === true) return true;
+  // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+  // Correction" -- hospice body-system assessments document current
+  // signs/symptoms/findings for comfort/symptom management, not disease
+  // conclusions. `heartFailurePresent` is a diagnosis flag, not a
+  // symptom, so it no longer drives this conflict check; the actual
+  // symptoms hospice cares about (edema, dyspnea attribution, chest
+  // pain, abnormal BP/pulse, syncope) already trigger it independently.
   if (d.syncope === "Yes") return true;
   if (d.cardiacDyspnea === true) return true;
   if (d.dizziness && d.dizziness !== "None") return true;
@@ -10481,7 +10495,11 @@ export function computeCardiovascularNarrative(d) {
     if (d.fatigue && d.fatigue !== "None") clauses.push(`Fatigue: ${d.fatigue.toLowerCase()}.`);
     if (d.syncope === "Yes") clauses.push("Syncope documented.");
     if (d.cardiacDyspnea === true) clauses.push("Dyspnea attributed to cardiac condition.");
-    if (d.heartFailurePresent === true) clauses.push("Heart failure documented.");
+    // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+    // Correction" -- Heart Failure is a diagnosis, not a current
+    // sign/symptom/assessment finding; it no longer drives the current
+    // narrative/summary. `heartFailurePresent` is preserved untouched and
+    // shown read-only on Path 2 only (see field-render loop).
   }
 
   if (bpLegacy.reviewRequired) {
@@ -11346,9 +11364,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               if (sectionKey === "cardiovascular" && field.path === "edema.severity" && cardData.edema?.present !== "Yes") {
                 return null;
               }
-              if (sectionKey === "cardiovascular" && field.path === "heartFailureType" && !cardData.heartFailurePresent) {
-                return null;
-              }
+              // (Heart Failure Type's "only if Heart Failure Present" gate
+              // is now folded into the Section-3/5/6/7 legacy-display
+              // guard below, since both fields are read-only legacy-only.)
               // OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28
               // Final Directive, Sections 2/3) -- the reason control lives
               // on the Overview card itself; nothing else applies once
@@ -11407,6 +11425,17 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 if (field.path === "cardiacDyspneaGuidanceNote" && (dyspneaGate.visible || !dyspneaGate.guidance)) {
                   return null;
                 }
+                // Owner directive (2026-09-28) "Cardiovascular
+                // Symptom-Focused Scope Correction" Sections 3/5/6/7 --
+                // Heart Failure is a diagnosis, not a current-entry
+                // symptom control, on every path except Path 2's
+                // read-only legacy display (which already hides these
+                // via the "only show already-documented findings" rule
+                // just above when nothing is stored). This guard is what
+                // actually removes them from Path 1/3/4.
+                if (["heartFailurePresent", "heartFailureType"].includes(field.path) && cardData.cardiovascularOverview !== "Existing Cardiovascular Findings Review") {
+                  return null;
+                }
               }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
@@ -11458,6 +11487,13 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 // selecting Unspecified clears the specific types, and
                 // selecting a specific type clears Unspecified, without
                 // ever preventing Systolic + Diastolic together.
+                // NOTE (2026-09-28, Scope Correction): `heartFailureType`
+                // is now rendered `legacyReadOnly` (no onChange wired), so
+                // this interceptor is currently dormant in the UI. Left in
+                // place (and still covered by resolveHeartFailureTypeSelection's
+                // own unit tests) in case a future, explicitly-approved
+                // change reintroduces an editable Heart Failure Type
+                // control; it does not affect current behavior.
                 if (sectionKey === "cardiovascular" && fieldForRender.path === "heartFailureType" && Array.isArray(v)) {
                   const corrected = resolveHeartFailureTypeSelection(cardData.heartFailureType, v);
                   if (corrected) {
@@ -11534,6 +11570,27 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   // never written to storage, never gates save.
                   rendered = <p style={{ fontSize: 12, fontStyle: "italic", color: COLORS.textMuted || "#6b7280", margin: "2px 0" }}>{fieldForRender.label}</p>;
                   break;
+                case "legacyReadOnly": {
+                  // Owner directive (2026-09-28) "Cardiovascular
+                  // Symptom-Focused Scope Correction" Section 5 -- a
+                  // stored legacy value that must remain visible (never
+                  // deleted/nulled/rewritten) but must not be presented as
+                  // an editable current-entry control. Renders whatever
+                  // string the field's own `legacyFormat` produces; never
+                  // calls onChange, so it cannot write to the record.
+                  const legacyText = typeof fieldForRender.legacyFormat === "function"
+                    ? fieldForRender.legacyFormat(value)
+                    : (Array.isArray(value) ? value.join(", ") : String(value ?? ""));
+                  rendered = (
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>{fieldForRender.label}</label>
+                      <p style={{ fontSize: 13, color: COLORS.dark, margin: "2px 0", fontStyle: "italic" }} data-legacy-readonly="true">
+                        {legacyText}
+                      </p>
+                    </div>
+                  );
+                  break;
+                }
                 case "booleanPillRow": {
                   // Compact multi-path boolean row (e.g. Orientation's 5
                   // independent time/place/person/situation/disoriented
@@ -12492,14 +12549,30 @@ const SECTION_CONFIGS = {
         // preserved and never auto-hidden).
         { type: "checkbox", label: "Dyspnea Attributed to Cardiac Condition", path: "cardiacDyspnea" },
         { type: "note", label: "Document dyspnea in Respiratory before assigning cardiac attribution.", path: "cardiacDyspneaGuidanceNote" },
-        // Demoted from a standalone "Disease-Specific Findings / Heart
-        // Failure" card to a general symptom-level flag -- Heart Failure
-        // Type (Systolic/Diastolic) is kept only as a StructuredFinding-
-        // harvested detail, not a disease classification RNICA leads with.
-        // See the default-data comment above for the HOPE I0600 distinction
-        // and applyStructuredFindings.test.js coverage this field preserves.
-        { type: "booleanPill", label: "Heart Failure Present", path: "heartFailurePresent" },
-        { type: "pillGroup", label: "Heart Failure Type (if known)", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
+        // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused
+        // Scope Correction" -- Heart Failure is a diagnosis/disease
+        // process, not a current sign/symptom/assessment finding, so it
+        // is no longer an editable current-entry control anywhere in
+        // Cardiovascular (Path 1/3/4 hide these two fields entirely --
+        // see the render-loop guard below). `heartFailurePresent`/
+        // `heartFailureType` are preserved untouched (never deleted,
+        // nulled, or rewritten) and surface only as read-only, clearly
+        // labeled "previously stored" information on Path 2 ("Existing
+        // Cardiovascular Findings Review"), and only when a value is
+        // already documented on the record (the existing Path 2 "only
+        // show already-documented findings" rule -- not a new mechanism).
+        // The diagnosis itself belongs to the HOPE I0600 comorbidity
+        // workflow (auto-derived from coded Diagnosis, see hopeComorbidities
+        // above) and to Diagnosis/Certification/LCD -- not to this
+        // symptom-focused body-system assessment.
+        {
+          type: "legacyReadOnly", label: "Previously Stored Cardiovascular Condition Information", path: "heartFailurePresent",
+          legacyFormat: (v) => (v === true ? "Heart failure documented." : "Not documented."),
+        },
+        {
+          type: "legacyReadOnly", label: "Historical Heart Failure Type", path: "heartFailureType",
+          legacyFormat: (v) => (Array.isArray(v) && v.length > 0 ? v.map((t) => `Historical Heart Failure type: ${t}.`).join(" ") : "Not documented."),
+        },
       ]},
       { title: "Cardiac Devices", category: "treatments", fields: [
         { type: "booleanPill", label: "Pacemaker", path: "pacemaker" },

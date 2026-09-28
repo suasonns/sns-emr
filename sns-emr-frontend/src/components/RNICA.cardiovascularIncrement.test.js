@@ -134,7 +134,7 @@ describe("computeCardiovascularWorkflowStatus", () => {
       expect(status.code).toBe("ready_for_review");
     });
 
-    it("reproduction: preserved chest pain + edema + heart failure blocks Ready for Review", () => {
+    it("reproduction: preserved chest pain + edema blocks Ready for Review", () => {
       const status = computeCardiovascularWorkflowStatus({
         cardiovascularOverview: "No Current Cardiovascular Concern",
         chestPain: { present: "Yes" },
@@ -147,7 +147,6 @@ describe("computeCardiovascularWorkflowStatus", () => {
     it.each([
       ["chest pain", { chestPain: { present: "Yes" } }],
       ["edema", { edema: { present: "Yes" } }],
-      ["heart failure", { heartFailurePresent: true }],
       ["syncope", { syncope: "Yes" }],
       ["cardiac dyspnea attribution", { cardiacDyspnea: true }],
       ["dizziness", { dizziness: "Mild" }],
@@ -159,6 +158,23 @@ describe("computeCardiovascularWorkflowStatus", () => {
     ])("%s alone forces Review Required, even with Path 1 selected", (_label, findings) => {
       const status = computeCardiovascularWorkflowStatus({ cardiovascularOverview: "No Current Cardiovascular Concern", ...findings });
       expect(status.code).toBe("review_required");
+    });
+
+    // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+    // Correction" -- Heart Failure is a diagnosis, not a current
+    // sign/symptom, so a legacy `heartFailurePresent` value alone must
+    // NOT block "No Current Cardiovascular Concern" from reaching Ready
+    // for Review (only actual current symptoms do).
+    it("legacy heart failure alone does NOT force Review Required on Path 1", () => {
+      const status = computeCardiovascularWorkflowStatus({
+        cardiovascularOverview: "No Current Cardiovascular Concern",
+        heartFailurePresent: true,
+        pulseRhythm: "Regular",
+        pulseRate: "Normal",
+        pulseStrength: "Strong",
+        clinicalStatusChange: "Stable / No Change",
+      });
+      expect(status.code).toBe("ready_for_review");
     });
 
     it("never deletes or clears the preserved abnormal finding while flagging the conflict", () => {
@@ -455,8 +471,13 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
     expect(narrative).toContain("Pulse irregular, tachycardic, weak.");
     expect(narrative).toContain("Chest pain present: pressure-like.");
     expect(narrative).toContain("Syncope documented.");
-    expect(narrative).toContain("Heart failure documented.");
     expect(narrative).toContain("Dyspnea attributed to cardiac condition.");
+    // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+    // Correction": Heart Failure is a diagnosis, not a current
+    // sign/symptom, and must never appear in the Structured
+    // Findings/summary narrative even when legacy `heartFailurePresent`
+    // data is present on the record.
+    expect(narrative).not.toContain("Heart failure documented.");
   });
 
   it("omits pulse/BP clauses entirely when every dimension is normal", () => {
