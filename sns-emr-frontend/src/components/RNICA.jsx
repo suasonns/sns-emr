@@ -9900,6 +9900,23 @@ function hasAnyDocumentedValue(value) {
 // untouched.
 const NEURO_CONSCIOUSNESS_ALIASES = { Awake: "Alert", Coma: "Comatose" };
 
+// GitHub Directive (2026-09-28) "Neurological Review -- Average Sleep
+// Hours, Clinical Relevance, and Final Density Refinement" Issue #2 --
+// "Overall Change" must always resolve to an explicit clinical sentence
+// (stable AND declining both need to say so), not be silently dropped
+// whenever it isn't the single "no change" baseline value. One phrase
+// per NEURO_OVERALL_CHANGE_OPTIONS value; kept next to that constant's
+// definition in spirit but colocated here where it's consumed.
+const NEURO_OVERALL_CHANGE_NARRATIVE = {
+  "Initial Assessment": "Initial neurological assessment; no prior comparison available.",
+  "No Significant Change": "No neurological decline documented.",
+  "Improved": "Neurological status improved since prior assessment.",
+  "Gradual Decline": "Gradual neurological decline documented.",
+  "New or Worsening Concern": "New or worsening neurological concern documented.",
+  "Fluctuating": "Neurological status fluctuating.",
+  "Unable to Compare": "Unable to compare to prior neurological assessment.",
+};
+
 function computeNeurologicalNarrative(d) {
   const clauses = [];
   const consciousness = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
@@ -9914,6 +9931,10 @@ function computeNeurologicalNarrative(d) {
     else if (orientedTo.length > 0) clauses.push(`Oriented to ${orientedTo.join(", ")}.`);
   }
 
+  // Issue #2/#10 -- Sleep/Responsiveness is the strongest section of the
+  // page and the summary must reflect it every time it's documented, not
+  // only when abnormal, so "Normal sleep pattern. Easily aroused." reads
+  // as clearly as any decline sentence.
   const sleep = d.sleepRest || {};
   const sleepChangeText = {
     "Sleeping More": "Sleeping more than prior assessment.",
@@ -9923,30 +9944,62 @@ function computeNeurologicalNarrative(d) {
   };
   if (sleep.changeSincePrior && sleepChangeText[sleep.changeSincePrior]) {
     clauses.push(sleepChangeText[sleep.changeSincePrior]);
-  } else if (sleep.sleepPattern && sleep.sleepPattern !== "Normal") {
-    clauses.push(`Sleep pattern: ${sleep.sleepPattern}.`);
+  } else if (sleep.sleepPattern) {
+    clauses.push(sleep.sleepPattern === "Normal" ? "Normal sleep pattern." : `Sleep pattern: ${sleep.sleepPattern}.`);
   }
-  if (sleep.responsiveness && sleep.responsiveness !== "Easily Aroused") {
-    clauses.push(`Responsiveness: ${sleep.responsiveness}.`);
+  const responsivenessText = {
+    "Easily Aroused": "Easily aroused.",
+    Somnolent: "Somnolent.",
+    "Difficult To Arouse": "Difficult to arouse.",
+    "Minimally Responsive": "Minimally responsive.",
+    Unresponsive: "Unresponsive.",
+    "Unable to assess": "Responsiveness unable to assess.",
+  };
+  if (sleep.responsiveness && responsivenessText[sleep.responsiveness]) {
+    clauses.push(responsivenessText[sleep.responsiveness]);
   }
 
   if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
     clauses.push("Communication limited.");
   }
+  if (d.hearing && d.hearing !== "Adequate") {
+    clauses.push(`Hearing: ${d.hearing}.`);
+  }
+  if (d.vision && d.vision !== "Adequate") {
+    clauses.push(`Vision: ${d.vision}.`);
+  }
+  const sensoryDeficits = (d.sensoryDeficits || []).filter(Boolean);
+  if (sensoryDeficits.length > 0) {
+    clauses.push(`Sensory deficits: ${sensoryDeficits.join(", ")}.`);
+  }
 
-  if (d.motorDeficit) {
+  // Issue #7 -- Motor Status is now a 3-state primary control (None
+  // Identified / Present / Unable to Assess). Legacy records that only
+  // ever set the boolean `motorDeficit` (never the new `motorStatus`
+  // path) still narrate correctly via the same fallback used for display.
+  const motorPresent = d.motorStatus === "Present" || (d.motorStatus === undefined && d.motorDeficit === true);
+  if (motorPresent) {
     clauses.push(`Motor deficit present${d.affectedSide ? ` (${d.affectedSide})` : ""}.`);
+  } else if (d.motorStatus === "Unable to Assess") {
+    clauses.push("Motor status unable to assess.");
+  } else if (d.motorStatus === "None Identified") {
+    clauses.push("No motor deficit identified.");
   }
 
-  const behavioral = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
-  if (behavioral.length > 0) {
-    clauses.push(`Behavioral: ${behavioral.join(", ")}.`);
-  } else if (clauses.length > 0) {
-    clauses.push("No new behavioral concerns.");
+  // Issue #2 -- "reflect only documented items": a never-touched field
+  // must not generate a fabricated "no concerns" sentence (that's an
+  // inferred-normal-from-blank-data error, not a documented finding). Only
+  // emit a clause when the nurse has actually selected something, and
+  // treat "Peaceful" as its own documented (reassuring) finding rather
+  // than silently discarding it.
+  const behavioralAll = (d.symptomsDemeanor || []).filter(Boolean);
+  if (behavioralAll.length > 0) {
+    const concerns = behavioralAll.filter((s) => s !== "Peaceful");
+    clauses.push(concerns.length > 0 ? `Behavioral: ${concerns.join(", ")}.` : "Peaceful / calm mood documented.");
   }
 
-  if (d.clinicalStatusChange && d.clinicalStatusChange !== "Stable / No Change") {
-    clauses.push(`Overall status: ${d.clinicalStatusChange}.`);
+  if (d.clinicalStatusChange && NEURO_OVERALL_CHANGE_NARRATIVE[d.clinicalStatusChange]) {
+    clauses.push(NEURO_OVERALL_CHANGE_NARRATIVE[d.clinicalStatusChange]);
   }
 
   return clauses.join(" ");
@@ -10660,13 +10713,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // presentation-only, no new fields/values] Reveal a follow-up
               // field only once its trigger field establishes it applies,
               // and preserve all existing stored data/paths/HOPE mappings.
-              if (sectionKey === "neurological" && field.path === "affectedSide" && !cardData.motorDeficit) {
+              if (sectionKey === "neurological" && field.path === "affectedSide" && !(cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true))) {
                 return null;
               }
-              if (sectionKey === "neurological" && field.path === "deficitType" && !cardData.motorDeficit) {
+              if (sectionKey === "neurological" && field.path === "deficitType" && !(cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true))) {
                 return null;
               }
               if (sectionKey === "neurological" && field.path === "psychiatricHistory" && !(cardData.psychiatricHistoryType || []).length) {
+                return null;
+              }
+              // GitHub Directive (2026-09-28) "Neurological Review --
+              // Average Sleep Hours..." Issue #1 -- only reveal the hours
+              // field once the nurse has said a trend is actually known;
+              // otherwise it's asking for a number nobody has.
+              if (sectionKey === "neurological" && field.path === "sleepRest.averageSleepHours" && cardData.sleepRest?.sleepTrendKnown !== "Yes") {
                 return null;
               }
               if (sectionKey === "cardiovascular" && field.path === "chestPain.type" && cardData.chestPain?.present !== "Yes") {
@@ -10684,7 +10744,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
-              const value = getNestedValue(cardData, fieldForRender.path);
+              // Issue #7 -- a legacy record that only ever set the old
+              // `motorDeficit` boolean (never touched the new `motorStatus`
+              // path) should still visually show "Present" here instead of
+              // appearing unanswered; nothing is written until the nurse
+              // actually interacts with the control.
+              const value = sectionKey === "neurological" && fieldForRender.path === "motorStatus" && cardData.motorStatus === undefined && cardData.motorDeficit === true
+                ? "Present"
+                : getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
                 update(cardDataSection, fieldForRender.path, v);
                 // [Control Conflict Report #1] Orientation vs. Disoriented
@@ -10697,6 +10764,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 }
                 if (sectionKey === "neurological" && ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].includes(fieldForRender.path) && v) {
                   u("orientation.disoriented", false);
+                }
+                // Issue #7 (2026-09-28 follow-up review) -- Motor Status is
+                // the new primary 3-state control; keep the legacy
+                // `motorDeficit` boolean in sync (true only for "Present")
+                // so every existing consumer of that boolean (Structured
+                // Findings, narrative Summary, affectedSide/deficitType
+                // reveal guards) keeps working unchanged.
+                if (sectionKey === "neurological" && fieldForRender.path === "motorStatus") {
+                  u("motorDeficit", v === "Present");
                 }
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
                   // Auto-select the correct pain scale from the patient's
@@ -10927,6 +11003,13 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 // several short controls onto the same row instead of stacking them one per
 // row with wasted space to the right.
 function getFieldSpan(field) {
+  // GitHub Directive (2026-09-28) "Neurological Review -- Average Sleep
+  // Hours, Clinical Relevance, and Final Density Refinement" Issue #5/#9 --
+  // an explicit per-field override so a card's author can hand-tune a
+  // tighter grid (e.g. Communication and Sensory, HOPE alignment) instead
+  // of relying only on the heuristics below. Optional; every existing
+  // field config omits it and falls through unchanged.
+  if (field.fieldSpan !== undefined) return field.fieldSpan;
   const options = field.options || [];
   const maxLabelLen = options.reduce((m, o) => Math.max(m, String(typeof o === "string" ? o : o.label).length), 0);
 
@@ -11375,7 +11458,16 @@ const SECTION_CONFIGS = {
           { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
           { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
-          { type: "input", label: "Average Sleep Hours (optional)", path: "sleepRest.averageSleepHours", inputType: "number" },
+          // GitHub Directive (2026-09-28) "Neurological Review -- Average
+          // Sleep Hours..." Issue #1/#11 -- "(optional)" wrongly implies
+          // the field is never clinically important; whether it matters
+          // depends on the patient's condition/decline pattern, not a
+          // fixed rule. Replaced with an explicit gate: the field itself
+          // is only revealed once the nurse says a sleep-hours trend is
+          // actually known, instead of being always-visible-but-labeled-
+          // skippable (forced guessing) or silently hidden.
+          { type: "segmented", label: "Sleep Trend Known?", path: "sleepRest.sleepTrendKnown", options: ["Yes", "No", "Unable to Determine"] },
+          { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
           // Section 17 rename: "Interventions" reframed as comfort measures
           // (hospice language) -- same path/values, label only.
@@ -11388,7 +11480,7 @@ const SECTION_CONFIGS = {
           // 40 guardrail); the old field is kept, demoted to an optional
           // comment for any nurse who needs to add nuance.
           { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
-          { type: "input", label: "Additional Comment (optional)", path: "sleepRest.response" },
+          { type: "input", label: "Additional Comment (if needed)", path: "sleepRest.response" },
           { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate", "Unable to Determine"] },
           { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 2 },
         ],
@@ -11405,8 +11497,11 @@ const SECTION_CONFIGS = {
           // Finding #5: progressive disclosure -- Normal/Impaired first,
           // detail (Aphasia/Slurred speech/Unable/Other) revealed only when
           // Impaired. Same field/path/values as before; no data migrated.
+          // Issue #5 (2026-09-28 follow-up review): explicit fieldSpan so
+          // Communication/Hearing/Vision pack onto one tighter row instead
+          // of each claiming more grid width than their short controls need.
           {
-            type: "gatedRadio", label: "Communication", path: "communication",
+            type: "gatedRadio", label: "Communication", path: "communication", fieldSpan: 2,
             primaryOptions: ["Normal", "Impaired"],
             normalValues: ["Normal", "Clear"],
             detailOptions: ["Unable", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"],
@@ -11417,23 +11512,30 @@ const SECTION_CONFIGS = {
           // patient with these exact legacy stored values still sees them
           // via FormSegmented's new "Previously recorded" review chip --
           // the value itself is never deleted or rewritten.
-          { type: "segmented", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Unable to assess"] },
-          { type: "segmented", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Unable to assess"] },
-          { type: "pillGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          { type: "segmented", label: "Hearing", path: "hearing", fieldSpan: 2, options: ["Adequate", "Impaired", "Deaf", "Unable to assess"] },
+          { type: "segmented", label: "Vision", path: "vision", fieldSpan: 2, options: ["Adequate", "Impaired", "Blind", "Unable to assess"] },
+          { type: "pillGroup", label: "Sensory Deficits", path: "sensoryDeficits", fieldSpan: 3, options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
           // Section 16 -- clarified labels (display only, via {value,label}
           // so stored values "Glasses"/"Hearing aids" are unchanged) since
           // this is now the one place hearing/vision aids are documented.
-          { type: "pillGroup", label: "Sensory Aids", path: "sensoryAids", options: [{ value: "Glasses", label: "Glasses / Corrective Lenses" }, { value: "Hearing aids", label: "Hearing Aid" }, "Other"] },
+          { type: "pillGroup", label: "Sensory Aids", path: "sensoryAids", fieldSpan: 3, options: [{ value: "Glasses", label: "Glasses / Corrective Lenses" }, { value: "Hearing aids", label: "Hearing Aid" }, "Other"] },
         ],
       },
       {
-        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fields: [
-          // Relocated from Consciousness (Section 8) -- cognition belongs
-          // with the other cognitive/behavioral findings, not competing
-          // with the compact Level of Consciousness control. Same path,
-          // same input type -- no data change.
-          { type: "input", label: "Cognition Assessment", path: "cognition" },
-          { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+        // Issue #6 (2026-09-28 follow-up review) -- explicit fullWidth so
+        // the Symptoms/Demeanor pill row always has the entire workspace
+        // width to wrap into a dense multi-per-line chip layout instead of
+        // stacking narrowly, regardless of what else is in this category
+        // bucket.
+        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fullWidth: true, fields: [
+          // Relocated from Consciousness (Section 8); renamed (Issue #4) --
+          // this is a narrative clarification field, not a duplicate of
+          // Consciousness/Orientation/BIMS/Cognitive-Behavioral findings
+          // (confirmed: its only other consumer is the read-only
+          // Structured Findings generator at path `cognition`), so it's
+          // now a small textarea instead of a wide single-line input.
+          { type: "textarea", label: "Additional Cognitive Observations", path: "cognition", rows: 2 },
+          { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", fieldSpan: "full", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           // GitHub UI Directive (2026-09-28): single yes/no findings use a
           // compact toggle pill, not a large square checkbox. Same path/
           // boolean value -- no data migration.
@@ -11443,7 +11545,18 @@ const SECTION_CONFIGS = {
       },
       {
         title: "Motor / Balance", category: "functional", importance: "medium", fields: [
-          { type: "booleanPill", label: "Motor Deficit Present", path: "motorDeficit" },
+          // Issue #7 (2026-09-28 follow-up review) -- "Motor Deficit
+          // Present" was only a positive-state toggle with no way to
+          // record "assessed, none identified" vs. "never assessed" as
+          // different facts. Motor Status is a true 3-state primary
+          // control on a NEW path (`motorStatus`); its onChange also
+          // writes the legacy `motorDeficit` boolean (true only for
+          // "Present") so every existing consumer of that boolean
+          // (Structured Findings, the narrative Summary) keeps working
+          // unchanged. A record that only ever has the legacy boolean set
+          // still displays correctly here (falls back to "Present" when
+          // motorDeficit is true and motorStatus was never touched).
+          { type: "segmented", label: "Motor Status", path: "motorStatus", options: ["None Identified", "Present", "Unable to Assess"] },
           { type: "segmented", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
           { type: "pillGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
           // Finding #8: "Normal"/"Impaired" removed as duplicate/overlapping
@@ -11473,9 +11586,13 @@ const SECTION_CONFIGS = {
         // Performance Status) is not duplicated as a second source of
         // truth here. Finding #10: visually separated, structure untouched.
         title: "HOPE Cognitive Assessment (BIMS Screen)", category: "disease", importance: "medium", hopeCode: "N0500-N0520", fields: [
-          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
-          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
-          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+          // Issue #9 (2026-09-28 follow-up review) -- explicit equal
+          // fieldSpan so the three BIMS selects align into one even row
+          // instead of drifting to uneven widths based on option-label
+          // length heuristics.
+          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
+          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
+          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", fieldSpan: 2, options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
         ],
       },
       {
