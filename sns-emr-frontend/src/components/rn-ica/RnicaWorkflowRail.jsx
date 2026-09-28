@@ -87,7 +87,9 @@ export function RnicaWorkflowRailList({ activeScreenKey, onSelectScreen, statusC
 }
 
 /** Desktop rail: fixed vertical column, always visible, no horizontal scroll. */
-export function RnicaWorkflowRail({ activeScreenKey, onSelectScreen, statusContext }) {
+const RAIL_DENSITIES = ["compact", "comfortable", "large"];
+
+export function RnicaWorkflowRail({ activeScreenKey, onSelectScreen, statusContext, density, onChangeDensity }) {
   const eligible = RNICA_THIRTEEN_SCREENS.filter((screen) => screen.moduleKeys.length > 0);
   const completeCount = eligible.filter((screen) => {
     const status = screenStatus(screen, statusContext);
@@ -101,6 +103,20 @@ export function RnicaWorkflowRail({ activeScreenKey, onSelectScreen, statusConte
         <span>RNICA Workflow</span>
         <span className="rnica-rail__progress-text">{completeCount}/{eligible.length}</span>
       </div>
+      {onChangeDensity && (
+        <div className="rnica-rail__density" role="group" aria-label="Workflow navigator text size">
+          {RAIL_DENSITIES.map((item) => (
+            <button
+              type="button"
+              key={item}
+              aria-pressed={density === item}
+              onClick={() => onChangeDensity(item)}
+            >
+              {item === "large" ? "Large text" : item[0].toUpperCase() + item.slice(1)}
+            </button>
+          ))}
+        </div>
+      )}
       <div
         className="rnica-rail__progress-track"
         role="progressbar"

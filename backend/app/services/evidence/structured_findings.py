@@ -349,6 +349,7 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "NEURO_ORIENTED_SITUATION": ConceptMapping("NEURO_ORIENTED_SITUATION", "neurological", "Oriented to situation", (_fw("orientation.situation", True),)),
     "NEURO_DISORIENTED": ConceptMapping("NEURO_DISORIENTED", "neurological", "Disoriented", (_fw("orientation.disoriented", True),)),
     "NEURO_COMMUNICATION_CLEAR": ConceptMapping("NEURO_COMMUNICATION_CLEAR", "neurological", "Communication clear", (_fw("communication", "Clear"),)),
+    "NEURO_COMMUNICATION_NORMAL": ConceptMapping("NEURO_COMMUNICATION_NORMAL", "neurological", "Communication normal", (_fw("communication", "Normal"),)),
     "NEURO_COMMUNICATION_IMPAIRED": ConceptMapping("NEURO_COMMUNICATION_IMPAIRED", "neurological", "Communication impaired", (_fw("communication", "Impaired"),)),
     "NEURO_COMMUNICATION_UNABLE": ConceptMapping("NEURO_COMMUNICATION_UNABLE", "neurological", "Unable to communicate", (_fw("communication", "Unable"),)),
     "NEURO_COMMUNICATION_APHASIA": ConceptMapping("NEURO_COMMUNICATION_APHASIA", "neurological", "Aphasia", (_fw("communication", "Aphasia"),)),
@@ -362,6 +363,7 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "NEURO_BALANCE_STEADY": ConceptMapping("NEURO_BALANCE_STEADY", "neurological", "Balance steady", (_fw("balance", "Steady"),)),
     "NEURO_BALANCE_UNSTEADY": ConceptMapping("NEURO_BALANCE_UNSTEADY", "neurological", "Balance unsteady", (_fw("balance", "Unsteady"),)),
     "NEURO_BALANCE_UNABLE_TO_STAND": ConceptMapping("NEURO_BALANCE_UNABLE_TO_STAND", "neurological", "Unable to stand", (_fw("balance", "Unable to stand"),)),
+    "NEURO_BALANCE_UNABLE_TO_ASSESS": ConceptMapping("NEURO_BALANCE_UNABLE_TO_ASSESS", "neurological", "Balance unable to assess", (_fw("balance", "Unable to assess"),)),
     "NEURO_SENSORY_NUMBNESS": ConceptMapping("NEURO_SENSORY_NUMBNESS", "neurological", "Numbness", (_fw("sensoryDeficits", "Numbness", op="multi_add"),)),
     "NEURO_SENSORY_TINGLING": ConceptMapping("NEURO_SENSORY_TINGLING", "neurological", "Tingling", (_fw("sensoryDeficits", "Tingling", op="multi_add"),)),
     "NEURO_SENSORY_DECREASED_SENSATION": ConceptMapping("NEURO_SENSORY_DECREASED_SENSATION", "neurological", "Decreased sensation", (_fw("sensoryDeficits", "Decreased sensation", op="multi_add"),)),
@@ -1293,25 +1295,71 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "NEURO_PSYCH_HX_DEPRESSION", "neurological", "Psychiatric history: Depression",
         (_fw("psychiatricHistoryType", "Depression", op="multi_add"),),
     ),
+    # Owner directive (2026-09-28, revised): Sleep Pattern and Responsiveness
+    # split into two separate closed-list fields per the GitHub Directive's
+    # Critical Finding #5 -- Sleep Pattern keeps generic sleep-quality terms
+    # (Insomnia/Fragmented Sleep restored) while arousal/decline is captured
+    # in a new, dedicated "Responsiveness" field so a somnolence/arousal
+    # finding is never conflated with a sleep-quality finding.
     "NEURO_SLEEP_PATTERN_NORMAL": ConceptMapping(
         "NEURO_SLEEP_PATTERN_NORMAL", "neurological", "Sleep pattern: normal",
         (_fw("sleepRest.sleepPattern", "Normal"),),
+    ),
+    "NEURO_SLEEP_PATTERN_INCREASED_SLEEPING": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_INCREASED_SLEEPING", "neurological", "Sleep pattern: increased sleeping",
+        (_fw("sleepRest.sleepPattern", "Increased Sleeping"),),
+    ),
+    "NEURO_SLEEP_PATTERN_EXCESSIVE_SLEEPING": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_EXCESSIVE_SLEEPING", "neurological", "Sleep pattern: excessive sleeping",
+        (_fw("sleepRest.sleepPattern", "Excessive Sleeping"),),
+    ),
+    "NEURO_SLEEP_PATTERN_FRAGMENTED_SLEEP": ConceptMapping(
+        "NEURO_SLEEP_PATTERN_FRAGMENTED_SLEEP", "neurological", "Sleep pattern: fragmented sleep",
+        (_fw("sleepRest.sleepPattern", "Fragmented Sleep"),),
     ),
     "NEURO_SLEEP_PATTERN_INSOMNIA": ConceptMapping(
         "NEURO_SLEEP_PATTERN_INSOMNIA", "neurological", "Sleep pattern: insomnia",
         (_fw("sleepRest.sleepPattern", "Insomnia"),),
     ),
-    "NEURO_SLEEP_PATTERN_HYPERSOMNIA": ConceptMapping(
-        "NEURO_SLEEP_PATTERN_HYPERSOMNIA", "neurological", "Sleep pattern: hypersomnia",
-        (_fw("sleepRest.sleepPattern", "Hypersomnia"),),
+    "NEURO_RESPONSIVENESS_EASILY_AROUSED": ConceptMapping(
+        "NEURO_RESPONSIVENESS_EASILY_AROUSED", "neurological", "Responsiveness: easily aroused",
+        (_fw("sleepRest.responsiveness", "Easily Aroused"),),
     ),
-    "NEURO_SLEEP_PATTERN_FRAGMENTED": ConceptMapping(
-        "NEURO_SLEEP_PATTERN_FRAGMENTED", "neurological", "Sleep pattern: fragmented",
-        (_fw("sleepRest.sleepPattern", "Fragmented"),),
+    "NEURO_RESPONSIVENESS_SOMNOLENT": ConceptMapping(
+        "NEURO_RESPONSIVENESS_SOMNOLENT", "neurological", "Responsiveness: somnolent",
+        (_fw("sleepRest.responsiveness", "Somnolent"),),
     ),
-    "NEURO_SLEEP_PATTERN_SOMNOLENCE": ConceptMapping(
-        "NEURO_SLEEP_PATTERN_SOMNOLENCE", "neurological", "Sleep pattern: somnolence",
-        (_fw("sleepRest.sleepPattern", "Somnolence"),),
+    "NEURO_RESPONSIVENESS_DIFFICULT_TO_AROUSE": ConceptMapping(
+        "NEURO_RESPONSIVENESS_DIFFICULT_TO_AROUSE", "neurological", "Responsiveness: difficult to arouse",
+        (_fw("sleepRest.responsiveness", "Difficult To Arouse"),),
+    ),
+    "NEURO_RESPONSIVENESS_MINIMALLY_RESPONSIVE": ConceptMapping(
+        "NEURO_RESPONSIVENESS_MINIMALLY_RESPONSIVE", "neurological", "Responsiveness: minimally responsive",
+        (_fw("sleepRest.responsiveness", "Minimally Responsive"),),
+    ),
+    "NEURO_RESPONSIVENESS_UNRESPONSIVE": ConceptMapping(
+        "NEURO_RESPONSIVENESS_UNRESPONSIVE", "neurological", "Responsiveness: unresponsive",
+        (_fw("sleepRest.responsiveness", "Unresponsive"),),
+    ),
+    "NEURO_SLEEP_CHANGE_NO_CHANGE": ConceptMapping(
+        "NEURO_SLEEP_CHANGE_NO_CHANGE", "neurological", "Sleep change since prior visit: no change",
+        (_fw("sleepRest.changeSincePrior", "No Change"),),
+    ),
+    "NEURO_SLEEP_CHANGE_SLEEPING_MORE": ConceptMapping(
+        "NEURO_SLEEP_CHANGE_SLEEPING_MORE", "neurological", "Sleep change since prior visit: sleeping more",
+        (_fw("sleepRest.changeSincePrior", "Sleeping More"),),
+    ),
+    "NEURO_SLEEP_CHANGE_INCREASED_SOMNOLENCE": ConceptMapping(
+        "NEURO_SLEEP_CHANGE_INCREASED_SOMNOLENCE", "neurological", "Sleep change since prior visit: increased somnolence",
+        (_fw("sleepRest.changeSincePrior", "Increased Somnolence"),),
+    ),
+    "NEURO_SLEEP_CHANGE_MORE_DIFFICULT_TO_AROUSE": ConceptMapping(
+        "NEURO_SLEEP_CHANGE_MORE_DIFFICULT_TO_AROUSE", "neurological", "Sleep change since prior visit: more difficult to arouse",
+        (_fw("sleepRest.changeSincePrior", "More Difficult To Arouse"),),
+    ),
+    "NEURO_SLEEP_CHANGE_NEW_UNRESPONSIVENESS": ConceptMapping(
+        "NEURO_SLEEP_CHANGE_NEW_UNRESPONSIVENESS", "neurological", "Sleep change since prior visit: new unresponsiveness",
+        (_fw("sleepRest.changeSincePrior", "New Unresponsiveness"),),
     ),
     "NEURO_AVG_SLEEP_HOURS": ConceptMapping(
         "NEURO_AVG_SLEEP_HOURS", "neurological", "Average sleep hours",

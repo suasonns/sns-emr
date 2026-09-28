@@ -111,6 +111,14 @@ def create_referral(
 @router.get("")
 def list_referrals(
     status_filter: str | None = Query(default=None, alias="status"),
+    converted_patient_id: uuid.UUID | None = Query(
+        default=None,
+        description="Filter to the referral(s) that converted into this patient. "
+        "Used by RNICA Evidence & Intake to show the original admission "
+        "referral (source, referring physician, referral diagnosis, reason) "
+        "for an already-converted patient -- read-only, does not duplicate "
+        "or re-author Face Sheet/RNICA data.",
+    ),
     db: Session = Depends(get_db_with_request_state),
     user=Depends(require_tenant_user),
 ):
@@ -118,6 +126,8 @@ def list_referrals(
     query = db.query(Referral).filter(Referral.tenant_id == tenant_id)
     if status_filter:
         query = query.filter(Referral.status == status_filter.upper())
+    if converted_patient_id:
+        query = query.filter(Referral.converted_patient_id == converted_patient_id)
     referrals = query.order_by(Referral.created_at.desc()).all()
     return [_serialize(referral) for referral in referrals]
 

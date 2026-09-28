@@ -1,4 +1,5 @@
 import React from 'react';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../../components/ui/accordion';
 import './PainAssessmentTools.css';
 
 // Shared clinical-guidance building blocks used by the pain scale
@@ -44,4 +45,23 @@ export const References = ({ items }) => (
   </div>
 );
 
-export default { GuideBox, GuideList, GradientBar, References };
+// Collapses the training/reference content (scoring interpretation,
+// psychometric properties, target population, citations) behind a single
+// "Pain Tool Reference" accordion so admission nurses are not scrolling
+// past research material during routine documentation (owner design
+// review 2026-09-25: keep Pain Screening + the active scoring surface
+// visible; move reference-only content out of the always-visible flow).
+export const PainToolReference = ({ children }) => (
+  <Accordion type="single" collapsible className="pain-tool-reference">
+    <AccordionItem value="reference">
+      <AccordionTrigger className="pain-tool-reference__trigger">
+        <span style={{ color: COLORS.teal, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Pain Tool Reference
+        </span>
+      </AccordionTrigger>
+      <AccordionContent>{children}</AccordionContent>
+    </AccordionItem>
+  </Accordion>
+);
+
+export default { GuideBox, GuideList, GradientBar, References, PainToolReference };

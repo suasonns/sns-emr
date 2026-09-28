@@ -179,12 +179,26 @@ implies automated eligibility/certification.
 
 **Purpose**
 - **[DESIGN REQUIREMENT]** Consolidate admission evidence and intake
-  verification needed before clinical synthesis.
+  verification needed before clinical synthesis. This screen is NOT a
+  second copy of Face Sheet demographics -- RNICA does not store, edit, or
+  duplicate demographic data. Demographics are owned exclusively by the
+  Face Sheet.
 
 **Always visible**
-- **[REPOSITORY-DISCOVERED]** Demographics, vitals, referral information,
+- **[OWNER DIRECTIVE 2026-09-24]** A single read-only "Face Sheet
+  Information" verification card (name, DOB, gender, address, insurance,
+  responsible party/emergency contact), sourced live from the Face Sheet
+  API -- never copied into RNICA form state. Referral Data (referral
+  source, date, referring physician, referral diagnosis, reason), sourced
+  from the admission Referral record. Imported Clinical Documents (title,
+  date, source, review status). Structured AI-Extracted Findings. An
+  Evidence Summary panel (completeness, outstanding gaps). Vitals and
+  internal discipline referrals (social work, spiritual care, volunteer,
+  etc.) remain unchanged, separate legacy modules on this screen's subnav.
+- ~~**[REPOSITORY-DISCOVERED]** Demographics, vitals, referral information,
   admission context, living situation, and records/evidence status
-  available to the workflow.
+  available to the workflow.~~ Superseded by the above -- see
+  `EvidenceIntakeOverview.jsx`.
 
 **Conditionally visible**
 - **[DESIGN REQUIREMENT]** Missing-source alerts and source-specific

@@ -1,0 +1,236 @@
+/* HOPE Administrative Review -- desktop-first density layout.
+   Owner direction (2026-09-25): the entire screen must fit a single
+   1440-1920px viewport without scrolling -- no one-field cards, no
+   vertically stacked controls that could share a row. Reuses the shared
+   --sns-* design tokens (see design-system/RnicaDesignSystem.css) instead
+   of introducing a new visual style. */
+
+.rnica-hope-admin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rnica-hope-admin__summary {
+  padding: 0;
+}
+.rnica-hope-admin__summary-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.6rem 1rem;
+  padding: 0.6rem 0.9rem !important;
+}
+.rnica-hope-admin__title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sns-white);
+  white-space: nowrap;
+}
+.rnica-hope-admin__note {
+  flex: 1 1 320px;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sns-muted);
+  min-width: 0;
+}
+
+.rnica-hope-admin__body {
+  padding: 0;
+}
+.rnica-hope-admin__grid {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 0.85rem 0.9rem !important;
+}
+
+/* Groups (Communication / Living Environment / Demographic Reporting) --
+   each group is one labeled section containing a dense field grid, rather
+   than one card per field. Column count is set per-group via the
+   `columns` prop so Communication (2 fields) and Living Environment
+   (4 fields) both read as a single row on desktop. */
+.rnica-hope-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid var(--sns-border);
+}
+.rnica-hope-group:first-child {
+  padding-top: 0;
+  border-top: none;
+}
+.rnica-hope-group__title {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sns-white);
+}
+.rnica-hope-group__fields {
+  display: grid;
+  gap: 0.75rem 1.25rem;
+}
+.rnica-hope-group__fields--1 { grid-template-columns: 1fr; }
+.rnica-hope-group__fields--2 { grid-template-columns: repeat(2, minmax(220px, 1fr)); }
+.rnica-hope-group__fields--3 { grid-template-columns: repeat(3, minmax(200px, 1fr)); }
+.rnica-hope-group__fields--4 { grid-template-columns: repeat(4, minmax(180px, 1fr)); }
+@media (max-width: 1280px) {
+  .rnica-hope-group__fields--3,
+  .rnica-hope-group__fields--4 { grid-template-columns: repeat(2, minmax(180px, 1fr)); }
+}
+@media (max-width: 900px) {
+  .rnica-hope-group__fields--2 { grid-template-columns: 1fr; }
+}
+@media (max-width: 720px) {
+  .rnica-hope-group__fields--2,
+  .rnica-hope-group__fields--3,
+  .rnica-hope-group__fields--4 { grid-template-columns: 1fr; }
+}
+
+.rnica-hope-textarea {
+  width: 100%;
+  min-height: 2.1rem;
+  resize: vertical;
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.35rem;
+  background: var(--sns-bg);
+  color: var(--sns-white);
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 400;
+}
+.rnica-hope-textarea:disabled { opacity: 0.6; }
+
+.rnica-hope-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  min-width: 0;
+}
+.rnica-hope-section--full {
+  grid-column: 1 / -1;
+}
+.rnica-hope-section__heading {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sns-dim, var(--sns-muted));
+}
+.rnica-hope-followup-badge {
+  align-self: flex-start;
+}
+
+/* Responsive checkbox grids -- Ethnicity (3 columns) / Race (4 columns) on
+   desktop, collapsing column count on narrower viewports. Complete CMS
+   response sets are preserved; only the layout changes. */
+.rnica-hope-checkgrid {
+  display: grid;
+  gap: 0.15rem 0.9rem;
+  border: none;
+  margin: 0;
+  padding: 0;
+  max-height: 11rem;
+  overflow-y: auto;
+}
+.rnica-hope-checkgrid--2 { grid-template-columns: repeat(2, minmax(200px, 1fr)); }
+.rnica-hope-checkgrid--3 { grid-template-columns: repeat(3, minmax(160px, 1fr)); }
+.rnica-hope-checkgrid--4 { grid-template-columns: repeat(4, minmax(140px, 1fr)); }
+@media (max-width: 1024px) {
+  .rnica-hope-checkgrid--2, .rnica-hope-checkgrid--3, .rnica-hope-checkgrid--4 { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+}
+@media (max-width: 640px) {
+  .rnica-hope-checkgrid--2, .rnica-hope-checkgrid--3, .rnica-hope-checkgrid--4 { grid-template-columns: 1fr; }
+}
+.rnica-hope-checkgrid__item {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sns-white);
+  padding: 0.1rem 0;
+}
+
+/* Compact demographic multi-select (A1005 Ethnicity / A1010 Race) -- owner
+   direction 2026-09-25: replace the unbounded checkbox wall with a
+   searchable popover + visible selection chips, so ordinary 0-3 category
+   documentation stays fast while the full CMS response set stays
+   reachable via search. */
+.rnica-demo-multiselect {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.rnica-demo-multiselect__trigger {
+  justify-content: space-between;
+  width: 100%;
+}
+.rnica-demo-multiselect__popover {
+  width: 20rem;
+  padding: 0;
+}
+.rnica-demo-multiselect__selected {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  min-height: 1.5rem;
+}
+.rnica-demo-multiselect__empty {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--sns-white-muted, rgba(255, 255, 255, 0.5));
+}
+.rnica-demo-multiselect__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+}
+.rnica-demo-multiselect__chip-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  color: inherit;
+  opacity: 0.7;
+}
+.rnica-demo-multiselect__chip-remove:hover {
+  opacity: 1;
+}
+.rnica-demo-multiselect__source {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  padding-top: 0.25rem;
+  border-top: 1px dashed var(--sns-border, rgba(255, 255, 255, 0.15));
+}
+.rnica-demo-multiselect__source-label {
+  font-size: 10px;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sns-white-muted, rgba(255, 255, 255, 0.6));
+}
+.rnica-demo-multiselect__source-other {
+  height: 2.25rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--sns-border, rgba(255, 255, 255, 0.15));
+  background: transparent;
+  color: var(--sns-white);
+  padding: 0 0.6rem;
+  font-size: 11px;
+  font-weight: 400;
+}
+

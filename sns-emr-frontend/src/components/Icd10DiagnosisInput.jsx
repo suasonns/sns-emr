@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { searchIcd10Diagnoses } from "../api/icd10";
+import { formatIcd10Code } from "../utils/formatIcd10";
 
 /**
  * Generic ICD-10 typeahead input. As the user types a diagnosis description
@@ -46,7 +47,7 @@ export default function Icd10DiagnosisInput({
 
   const pick = (suggestion) => {
     const label = suggestion.display_name
-      || `${suggestion.diagnosis_description} (${suggestion.icd10_code})`;
+      || `${suggestion.diagnosis_description} (${formatIcd10Code(suggestion.icd10_code)})`;
     onChange(label);
     onSelectSuggestion && onSelectSuggestion(suggestion);
     setShowSuggestions(false);
@@ -98,7 +99,7 @@ export default function Icd10DiagnosisInput({
             >
               <div>{s.diagnosis_description}</div>
               <div style={{ fontSize: 10.5, color: colors?.label || "#8fa3b8", marginTop: 2 }}>
-                {s.icd10_code}
+                {formatIcd10Code(s.icd10_code)}
               </div>
             </div>
           ))}
