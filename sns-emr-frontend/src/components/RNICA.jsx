@@ -11425,15 +11425,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 if (field.path === "cardiacDyspneaGuidanceNote" && (dyspneaGate.visible || !dyspneaGate.guidance)) {
                   return null;
                 }
-                // Owner directive (2026-09-28) "Cardiovascular
-                // Symptom-Focused Scope Correction" Sections 3/5/6/7 --
-                // Heart Failure is a diagnosis, not a current-entry
-                // symptom control, on every path except Path 2's
-                // read-only legacy display (which already hides these
-                // via the "only show already-documented findings" rule
-                // just above when nothing is stored). This guard is what
-                // actually removes them from Path 1/3/4.
-                if (["heartFailurePresent", "heartFailureType"].includes(field.path) && cardData.cardiovascularOverview !== "Existing Cardiovascular Findings Review") {
+                // Owner directive (2026-09-28) "Remove Heart Failure From
+                // Cardiovascular Body System Completely" -- Heart Failure
+                // is a diagnosis, not a current-entry symptom control or a
+                // reviewable Body System field, on ANY path including
+                // Path 2. Diagnosis-level Heart Failure data continues to
+                // live in Diagnosis & LCD / HOPE I0600 (untouched); this
+                // guard just stops it from ever rendering inside
+                // Cardiovascular. The stored value itself is never read,
+                // deleted, or rewritten by this guard.
+                if (["heartFailurePresent", "heartFailureType"].includes(field.path)) {
                   return null;
                 }
               }
