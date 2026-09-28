@@ -10572,6 +10572,18 @@ function computeBodySystemSummary(sectionKey, sectionData) {
   };
 }
 
+// Owner directive (2026-09-28) "New Cardiovascular Defect -- one-way
+// segmented selections": Cardiovascular Path 2 only shows fields that are
+// already "documented" (see the guard inside renderGenericSection below).
+// Now that segmented pills can be cleared back to "" by re-clicking the
+// selected option, that live documented-check would make a field vanish
+// the moment it's cleared. This module-level cache (keyed by
+// `${assessmentId}::${fieldPath}`) remembers which fields have been shown
+// at least once during this browser session so clearing a value never
+// hides its own control. It never reads or writes any stored field value
+// -- purely a render-visibility memo, reset naturally on full page reload.
+const cvPath2EverDocumentedFields = new Map();
+
 function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
@@ -11412,7 +11424,24 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 if (cardData.cardiovascularOverview === "Existing Cardiovascular Findings Review" && !CV_ALWAYS_VISIBLE_FIELDS.has(field.path)) {
                   const existing = getNestedValue(cardData, field.path);
                   const documented = Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
-                  if (!documented) return null;
+                  // Owner directive (2026-09-28) "New Cardiovascular Defect --
+                  // one-way segmented selections": a segmentedTriState field
+                  // (JVD/Edema Present/Chest Pain Present) can now be cleared
+                  // back to "" by re-clicking its selected pill. Without this
+                  // memo, clearing it here on Path 2 would make the field
+                  // vanish (documented === false) with no control left to
+                  // click -- an unrecoverable documentation trap. Once a
+                  // field has been shown for this open record, it stays
+                  // shown for the rest of the editing session even if the
+                  // clinician clears it back out; the stored value itself is
+                  // untouched by this -- it only freezes visibility.
+                  const everDocumentedKey = `${assessmentId || "unsaved"}::${field.path}`;
+                  let everDocumented = cvPath2EverDocumentedFields.get(everDocumentedKey);
+                  if (!everDocumented && documented) {
+                    everDocumented = true;
+                    cvPath2EverDocumentedFields.set(everDocumentedKey, true);
+                  }
+                  if (!everDocumented) return null;
                 }
                 // Directive (2026-09-28) Section 13 -- the confirmation
                 // control only makes sense on Path 2; every other path
