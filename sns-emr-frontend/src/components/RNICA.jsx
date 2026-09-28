@@ -9949,7 +9949,13 @@ function computeNeurologicalNarrative(d) {
   }
   const responsivenessText = {
     "Easily Aroused": "Easily aroused.",
-    Somnolent: "Somnolent.",
+    // GitHub Directive (2026-09-28) "Neurological Review -- Major Success,
+    // But We Are Drifting..." Major Concern #1 -- narrate the clinical
+    // finding ("Somnolence documented."), not an adjective describing the
+    // patient ("Patient somnolent."). Stored value is unchanged (still
+    // "Somnolent" -- see the option's {value,label} split below), so this
+    // is a display-only rewording.
+    Somnolent: "Somnolence documented.",
     "Difficult To Arouse": "Difficult to arouse.",
     "Minimally Responsive": "Minimally responsive.",
     Unresponsive: "Unresponsive.",
@@ -11456,17 +11462,14 @@ const SECTION_CONFIGS = {
         // was the reported "uneven, abnormally tall column" defect.
         title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, fields: [
           { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
-          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
+          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
-          // GitHub Directive (2026-09-28) "Neurological Review -- Average
-          // Sleep Hours..." Issue #1/#11 -- "(optional)" wrongly implies
-          // the field is never clinically important; whether it matters
-          // depends on the patient's condition/decline pattern, not a
-          // fixed rule. Replaced with an explicit gate: the field itself
-          // is only revealed once the nurse says a sleep-hours trend is
-          // actually known, instead of being always-visible-but-labeled-
-          // skippable (forced guessing) or silently hidden.
-          { type: "segmented", label: "Sleep Trend Known?", path: "sleepRest.sleepTrendKnown", options: ["Yes", "No", "Unable to Determine"] },
+          // GitHub Directive (2026-09-28) "Neurological Review -- Major
+          // Success, But We Are Drifting..." Major Concern #5 -- reframed
+          // as a direct clinical question ("Can sleep be estimated?")
+          // rather than a meta-question about whether a trend is known;
+          // same path/options, label only, so no data is affected.
+          { type: "segmented", label: "Can Sleep Be Estimated?", path: "sleepRest.sleepTrendKnown", options: ["Yes", "No", "Unable to Determine"] },
           { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
           // Section 17 rename: "Interventions" reframed as comfort measures
