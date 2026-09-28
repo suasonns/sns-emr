@@ -1020,6 +1020,57 @@
   gap: 0.35rem;
 }
 
+/* GitHub Directive (2026-09-28) Critical Finding #3 -- visual hierarchy:
+   sections carrying real clinical/decline weight (Consciousness,
+   Orientation, Sleep/Responsiveness) get a stronger left accent + slightly
+   larger heading so the eye lands there first; routine/supporting
+   sections (Notes, low-priority sensory detail) recede instead of
+   competing equally. Modifier class only -- no layout/grid change. */
+.rnica-bodysystem-workspace__group--high {
+  padding-left: 10px;
+  border-left: 3px solid var(--sns-orange, #d97706);
+}
+.rnica-bodysystem-workspace__group--high > .rnica-form-card__title {
+  font-weight: 700;
+  font-size: calc(var(--cw-section-size, 1rem) * 1.05);
+}
+.rnica-bodysystem-workspace__group--medium {
+  padding-left: 8px;
+  border-left: 2px solid var(--sns-border);
+}
+.rnica-bodysystem-workspace__group--low {
+  opacity: 0.86;
+}
+.rnica-bodysystem-workspace__group--low > .rnica-form-card__title {
+  font-size: calc(var(--cw-meta-size, 0.78rem) + 1px);
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* GitHub Directive (2026-09-28) Critical Finding #4 -- reduce checkbox/
+   radio footprint and vertical/horizontal spacing within Body Systems
+   specifically (scoped to .rnica-bodysystem-workspace so already-approved
+   non-Body-Systems screens using the same shared FormRadioGroup/
+   FormCheckboxGroup components are unaffected). Targets the shadcn
+   Radix primitives' rendered size, not just the inline label styles. */
+.rnica-bodysystem-workspace [role="radiogroup"],
+.rnica-bodysystem-workspace .rnica-form-card [role="group"] {
+  gap: 2px 8px !important;
+}
+.rnica-bodysystem-workspace button[role="radio"],
+.rnica-bodysystem-workspace button[role="checkbox"] {
+  height: 14px !important;
+  width: 14px !important;
+}
+.rnica-bodysystem-workspace label {
+  font-size: 11px !important;
+  gap: 3px !important;
+  line-height: 1.25 !important;
+}
+.rnica-bodysystem-workspace .rnica-bodysystem-workspace__group {
+  gap: 0.22rem;
+}
+
 /* Fields within a single sub-section (e.g. Mental Status's Consciousness/
    Orientation/Communication rows) use a real left-to-right CSS Grid, not
    newspaper-style `columns`. `columns` reads top-to-bottom-then-jump-to-

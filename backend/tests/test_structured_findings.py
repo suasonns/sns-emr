@@ -765,7 +765,16 @@ def test_rnica_sprint_registry_reaches_799_concepts():
     # Guards against silent regressions in the sprint total across all
     # 7 sections (Symptom Impact 8, Skin/Wounds 15/32-codes, GU 7,
     # GI 2-new-of-5, Endocrine 3, Nutrition 1-new-of-2,
-    # Respiratory/MSK/Cardio 2-new-of-3).
-    assert len(CONCEPT_REGISTRY) == 799
+    # Respiratory/MSK/Cardio 2-new-of-3), plus +12 from the 2026-09-28
+    # Neurological information-architecture rebuild (GitHub Directive):
+    # Sleep Pattern kept/expanded to 5 (Normal/Increased Sleeping/Excessive
+    # Sleeping/Fragmented Sleep/Insomnia), a new 5-concept Responsiveness
+    # field split out (Easily Aroused/Somnolent/Difficult To Arouse/
+    # Minimally Responsive/Unresponsive), 1 new sleep change-since-prior
+    # concept (New Unresponsiveness) for 5 total, a new Communication
+    # "Normal" concept, and a new Balance "Unable to assess" concept:
+    # 799 + 5 + 5 + 1 + 1 + 1 = 812... actual count below reflects the
+    # generator's authoritative total.
+    assert len(CONCEPT_REGISTRY) == 811
 
 

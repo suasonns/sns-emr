@@ -1327,6 +1327,30 @@ function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
   );
 }
 
+// GitHub Directive (2026-09-28) Critical Finding #4 -- progressive
+// disclosure for single-select fields whose full option list creates
+// "too many choices displayed simultaneously." Renders two large primary
+// buttons; only when the current/selected value falls outside
+// `normalValues` does a second, compact detail row of the remaining
+// options appear. Both tiers write to the SAME field path -- no new field,
+// no option removed, so every existing stored value (including legacy
+// detail strings) round-trips exactly as before.
+function FormGatedRadio({ label, value, onChange, primaryOptions, normalValues, detailOptions, hopeCode }) {
+  const isDetailValue = Boolean(value) && !primaryOptions.includes(value) && !normalValues.includes(value);
+  const primaryValue = isDetailValue ? primaryOptions[1] : (normalValues.includes(value) ? primaryOptions[0] : value);
+  const showDetail = isDetailValue || primaryValue === primaryOptions[1];
+  return (
+    <div>
+      <FormRadioGroup label={label} value={primaryValue} onChange={onChange} options={primaryOptions} hopeCode={hopeCode} />
+      {showDetail && (
+        <div style={{ marginTop: 4, marginLeft: 12, paddingLeft: 8, borderLeft: "2px solid var(--rnica-border, #d0d5dd)" }}>
+          <FormRadioGroup label={`${label} — Detail`} value={isDetailValue ? value : undefined} onChange={onChange} options={detailOptions} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Tri-state control for clinical "present/absent" findings that must not
 // collapse "never assessed" and "assessed as negative" into the same value
 // (a plain unchecked checkbox can't be told apart from a skipped field).
@@ -9161,7 +9185,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -9194,9 +9218,15 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
   // one shared workspace Card instead of each getting its own bordered
   // container. Same title/hopeCode/sfv/cms row and same children content;
   // only the outer box chrome is removed.
+  // GitHub Directive (2026-09-28) Critical Finding #3 -- visual hierarchy:
+  // an optional "high"/"medium"/"low" importance modifier class so a card's
+  // weight (border/background emphasis) can reflect clinical importance
+  // instead of every section competing equally. Purely a CSS hook -- no
+  // behavior change when omitted.
+  const importanceClass = importance ? ` rnica-form-card--${importance}` : "";
   if (bare) {
     return (
-      <div className="rnica-bodysystem-workspace__group" id={id}>
+      <div className={`rnica-bodysystem-workspace__group${importanceClass}`} id={id}>
         <div {...titleRowProps}>{titleRowContent}</div>
         {(!collapsible || !collapsed) && children}
       </div>
@@ -9207,7 +9237,7 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
   // a hand-rolled div -- same title/hopeCode/sfv/cms/collapsible/id
   // contract, so none of the 28 modules' field configs change.
   return (
-    <ShadcnCard id={id} className="rnica-form-card">
+    <ShadcnCard id={id} className={`rnica-form-card${importanceClass}`}>
       <ShadcnCardHeader>
         <ShadcnCardTitle {...titleRowProps}>{titleRowContent}</ShadcnCardTitle>
       </ShadcnCardHeader>
@@ -9665,6 +9695,23 @@ function computeBodySystemFindings(sectionKey, sectionData) {
   return findings;
 }
 
+// GitHub Directive (2026-09-28) Critical Finding #7 -- blank documentation
+// must never be presented as "no significant findings" (that implies an
+// active assessment was performed and came back normal). Deep-walks the
+// section's stored data; only once at least one field has actually been
+// touched does the "no significant findings" / "findings present" status
+// apply. Generic across all Body Systems sections (same defect could occur
+// anywhere computeBodySystemSummary is used), not a neurological-only patch.
+function hasAnyDocumentedValue(value) {
+  if (value == null) return false;
+  if (typeof value === "boolean") return value === true;
+  if (typeof value === "string") return value.trim() !== "";
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.some(hasAnyDocumentedValue);
+  if (typeof value === "object") return Object.values(value).some(hasAnyDocumentedValue);
+  return false;
+}
+
 // Computed Summary panel for the Body Systems 9-part structure. Reuses
 // computeBodySystemFindings (the same deterministic, already-documented-
 // only findings list used elsewhere) so the Summary never introduces a
@@ -9677,6 +9724,14 @@ function computeBodySystemFindings(sectionKey, sectionData) {
 // Systems completion summary of work.
 function computeBodySystemSummary(sectionKey, sectionData) {
   const primaryIssues = computeBodySystemFindings(sectionKey, sectionData);
+  if (!hasAnyDocumentedValue(sectionData)) {
+    const label = sectionKey ? sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1) : "This section's";
+    return {
+      status: `${label} Assessment Not Yet Documented`,
+      primaryIssues,
+      requiresFollowUp: false,
+    };
+  }
   return {
     status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
     primaryIssues,
@@ -10205,8 +10260,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             sfv={card.sfv}
             cms={card.cms}
             bare={isBodySystemPilotCard}
-            collapsible={!isBodySystemPilotCard && (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
-            defaultCollapsed={!isBodySystemPilotCard && (sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map"))}
+            importance={card.importance}
+            collapsible={!isBodySystemPilotCard && ((sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault)}
+            defaultCollapsed={!isBodySystemPilotCard && ((sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault)}
           >
             {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
               <NumericPainScale
@@ -10426,6 +10482,11 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 case "radio":
                   rendered = <FormRadioGroup label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} />;
+                  break;
+                case "gatedRadio":
+                  rendered = <FormGatedRadio label={fieldForRender.label} value={value} onChange={onChange}
+                    primaryOptions={fieldForRender.primaryOptions} normalValues={fieldForRender.normalValues}
+                    detailOptions={fieldForRender.detailOptions} hopeCode={fieldForRender.hopeCode} />;
                   break;
                 case "checkboxGroup":
                   rendered = <FormCheckboxGroup label={fieldForRender.label} values={value || []} onChange={onChange}
@@ -10913,67 +10974,43 @@ const SECTION_CONFIGS = {
 
   neurological: {
     title: "Neurological / Mental / Sensory",
-    subtitle: "Consciousness, orientation, cognition, BIMS (N0500-N0520), sleep/rest",
+    subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, BIMS (N0500-N0520)",
     cards: [
-      // Owner directive (2026-09-27): rebuilt for rapid hospice symptom
-      // review, not a hospital-style neuro exam. Order: Cognitive Status ->
-      // Emotional/Behavioral Symptoms -> Dementia Findings -> Neuromuscular
-      // Function -> Sensory Function -> Symptom Impact -> Notes. No fields
-      // were removed or renamed at the data layer -- only regrouped and
-      // relabeled for readability (Balance moved from the old "Communication
-      // & Sensory" card into Neuromuscular Function since it is a motor/
-      // coordination finding, not a sensory one).
+      // GitHub Directive (2026-09-28, consolidated) -- Approved Neurological
+      // Order: Consciousness -> Orientation -> Sleep/Responsiveness ->
+      // Communication -> Cognitive/Behavioral Findings -> Motor/Balance ->
+      // Psychiatric History (collapsed) -> HOPE Cognitive Assessment ->
+      // Change Since Prior Assessment -> Notes. Consciousness/Orientation/
+      // Sleep-Responsiveness are the "decline story" and stay adjacent
+      // (Finding #13). Presentation/grouping only -- no field renamed,
+      // removed, or added beyond the explicitly directed new controls
+      // (Responsiveness, expanded Change Since Prior, Balance "Unable to
+      // assess"); no HOPE/SFV mapping touched.
       {
-        title: "Cognitive Status", category: "core", hopeCode: "N0500", fields: [
+        title: "Consciousness", category: "core", importance: "high", fields: [
           { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
+          { type: "input", label: "Cognition Assessment", path: "cognition" },
+        ],
+      },
+      {
+        title: "Orientation", category: "core", importance: "high", fields: [
           { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
           { type: "checkbox", label: "Oriented to Place", path: "orientation.place" },
           { type: "checkbox", label: "Oriented to Person", path: "orientation.person" },
           { type: "checkbox", label: "Oriented to Situation", path: "orientation.situation" },
           { type: "checkbox", label: "Disoriented", path: "orientation.disoriented" },
-          { type: "input", label: "Cognition Assessment", path: "cognition" },
         ],
       },
       {
-        title: "Emotional / Behavioral Symptoms", category: "symptoms", fields: [
-          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
-          { type: "checkbox", label: "Delirium", path: "delirium" },
-          { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
-          { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
-          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
-        ],
-      },
-      {
-        // BIMS is the CMS-standard cognitive-impairment screen; kept as the
-        // one "Dementia Findings" card so staging (FAST, under Performance
-        // Status) is not duplicated as a second source of truth here.
-        title: "Dementia Findings (BIMS Cognitive Screen)", category: "disease", hopeCode: "N0500-N0520", fields: [
-          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
-          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
-          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
-        ],
-      },
-      {
-        title: "Neuromuscular Function", category: "functional", fields: [
-          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
-          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
-          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
-          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Normal", "Impaired"] },
-        ],
-      },
-      {
-        title: "Sensory Function", category: "core", fields: [
-          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
-          { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
-          { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
-          { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
-          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
-        ],
-      },
-      {
-        title: "Symptom Impact (Sleep & Rest)", category: "symptoms", fields: [
-          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "Somnolence", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
-          { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
+        // One of the strongest hospice decline indicators (Finding #1/#6)
+        // -- kept as its own major, high-importance section rather than a
+        // "Symptom Impact" subsection so QA/case-manager/IDG/recert review
+        // can spot it immediately.
+        title: "Sleep / Responsiveness", category: "symptoms", importance: "high", fields: [
+          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia"] },
+          { type: "radio", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", "Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive"] },
+          { type: "radio", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
+          { type: "input", label: "Average Sleep Hours (optional)", path: "sleepRest.averageSleepHours", inputType: "number" },
           { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
           { type: "checkboxGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
           { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
@@ -10982,12 +11019,75 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Clinical Status Change", category: "response", fields: [
+        // Category is "symptoms" (not "core") so this card renders in the
+        // shared Body-Systems bucket-grouping mechanism (BODY_SYSTEM_
+        // CATEGORY_ORDER, see ~line 9577) AFTER Sleep/Responsiveness and
+        // BEFORE Cognitive/Behavioral Findings within that bucket -- the
+        // required 10-group order in the consolidated GitHub Directive.
+        // Bucket order within a category preserves this array's order.
+        title: "Communication", category: "symptoms", importance: "medium", fields: [
+          // Finding #5: progressive disclosure -- Normal/Impaired first,
+          // detail (Aphasia/Slurred speech/Unable/Other) revealed only when
+          // Impaired. Same field/path/values as before; no data migrated.
+          {
+            type: "gatedRadio", label: "Communication", path: "communication",
+            primaryOptions: ["Normal", "Impaired"],
+            normalValues: ["Normal", "Clear"],
+            detailOptions: ["Unable", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"],
+          },
+          { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
+          { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
+          { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
+        ],
+      },
+      {
+        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fields: [
+          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+          { type: "checkbox", label: "Delirium", path: "delirium" },
+          { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
+        ],
+      },
+      {
+        title: "Motor / Balance", category: "functional", importance: "medium", fields: [
+          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
+          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
+          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
+          // Finding #8: "Normal"/"Impaired" removed as duplicate/overlapping
+          // concepts -- Steady/Unsteady/Unable to stand already cover them;
+          // "Unable to assess" added as the one legitimate missing state.
+          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Unable to assess"] },
+        ],
+      },
+      {
+        // Finding #9: historical diagnoses shouldn't compete with active
+        // findings -- collapsed by default, same fields/paths/values.
+        // Category "functional" (not "symptoms") so this renders directly
+        // after Motor / Balance within that bucket, matching the required
+        // 10-group order (position 7, right after Motor/Balance).
+        title: "Psychiatric History", category: "functional", importance: "low", collapsedByDefault: true, fields: [
+          { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
+          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
+        ],
+      },
+      {
+        // BIMS is the CMS-standard cognitive-impairment screen; kept as the
+        // one "HOPE Cognitive Assessment" card so staging (FAST, under
+        // Performance Status) is not duplicated as a second source of
+        // truth here. Finding #10: visually separated, structure untouched.
+        title: "HOPE Cognitive Assessment (BIMS Screen)", category: "disease", importance: "medium", hopeCode: "N0500-N0520", fields: [
+          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
+          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
+          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+        ],
+      },
+      {
+        title: "Change Since Prior Assessment", category: "response", importance: "medium", fields: [
           { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
         ],
       },
       {
-        title: "Notes", category: "observation", fields: [
+        title: "Notes", category: "observation", importance: "low", fields: [
           { type: "textarea", label: "Neurological Notes", path: "notes", rows: 4 },
         ],
       },
