@@ -635,9 +635,30 @@ const INITIAL_FORM = {
 
   // ─── 8. CARDIOVASCULAR ────────────────────────────
   cardiovascular: {
+    // OWNER-APPROVED "Cardiovascular Overview Gate" (2026-09-28) --
+    // presentation-only workflow gate, same pattern as Neurological's
+    // `neuroOverview`. Not a clinical finding by itself.
+    cardiovascularOverview: "",
+    cardiovascularUnableToAssessReason: "",
+    cardiovascularUnableToAssessOther: "",
     bpSymptoms: [],
+    // OWNER CORRECTION (2026-09-28 Contradiction 4) -- "BP Status" and
+    // "Orthostatic Finding" are two independent single-select fields
+    // (Hypotensive + Orthostatic-Present is a valid combination). The
+    // legacy multi-select `bpSymptoms` array above is preserved untouched
+    // (never rewritten); resolveBpLegacyDisplay reads it for display only
+    // when unambiguous (a contradictory legacy array is surfaced as a
+    // review-required note instead of being silently collapsed).
+    bpStatus: "",
+    orthostaticFinding: "",
     pulseSites: [],
     pulseQuality: "",
+    // OWNER-APPROVED "Pulse Redesign" (2026-09-28) -- Rhythm/Rate/
+    // Strength are independently selectable. Legacy `pulseQuality` above
+    // is preserved untouched and read-aliased into whichever of these
+    // three dimensions it belongs to when the corresponding new field is
+    // still blank (see PULSE_LEGACY_DIMENSION below).
+    pulseRhythm: "", pulseRate: "", pulseStrength: "",
     edema: { present: "", location: [], severity: "", pitting: "" },
     chestPain: { present: "", type: "", frequency: "" },
     peripheralCirculation: "", heartSounds: "", jvd: "",
@@ -10123,6 +10144,209 @@ export function computeNeurologicalWorkflowStatus(d) {
     : { code: "in_progress", label: "In Progress", variant: "neutral" };
 }
 
+// OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28, Contradiction
+// 6) -- legacy `pulseQuality` was a single combined value conflating
+// Rhythm/Rate/Strength (the Cardiovascular equivalent of Neurological's
+// "Awake / Alert" problem). Each legacy value belongs to exactly one of
+// the three new independent dimensions; the other two dimensions are
+// left unanswered rather than backfilled/inferred, per the directive
+// ("Do not infer missing dimensions... Do not backfill Normal rate,
+// Regular rhythm, Strong strength from one legacy value").
+const PULSE_LEGACY_DIMENSION = {
+  Regular: { dimension: "pulseRhythm", display: "Regular" },
+  Irregular: { dimension: "pulseRhythm", display: "Irregular" },
+  Tachycardia: { dimension: "pulseRate", display: "Tachycardic" },
+  Bradycardia: { dimension: "pulseRate", display: "Bradycardic" },
+  Strong: { dimension: "pulseStrength", display: "Strong" },
+  Weak: { dimension: "pulseStrength", display: "Weak" },
+  Thready: { dimension: "pulseStrength", display: "Thready" },
+  Bounding: { dimension: "pulseStrength", display: "Bounding" },
+  Absent: { dimension: "pulseStrength", display: "Absent" },
+};
+
+// Read-only alias resolver: returns the display value for one of the
+// three new pulse dimension fields, falling back to the legacy
+// `pulseQuality` value ONLY when it maps to that exact dimension and the
+// new field itself is still blank. Never writes to storage -- storage is
+// only ever written when the clinician interacts with a control.
+export function resolvePulseDimensionDisplay(d, dimension) {
+  const current = d[dimension];
+  if (current) return current;
+  const legacy = PULSE_LEGACY_DIMENSION[d.pulseQuality];
+  return legacy && legacy.dimension === dimension ? legacy.display : "";
+}
+
+const BP_STATUS_LEGACY_VALUES = ["Normal", "Hypertensive", "Hypotensive"];
+
+// OWNER-DIRECTED (2026-09-28, Contradiction 4) -- legacy `bpSymptoms` was
+// a multi-select array that could (and, per the directive, sometimes
+// does) hold contradictory combinations (e.g. "Normal" + "Hypertensive").
+// This never silently picks a "first" or "most severe" value: an
+// unambiguous single legacy status value is alias-displayed; a
+// contradictory legacy array is surfaced as `reviewRequired` (rendered as
+// a read-only note in the narrative/findings, never auto-resolved).
+export function resolveBpLegacyDisplay(d) {
+  const legacy = Array.isArray(d.bpSymptoms) ? d.bpSymptoms : [];
+  const statusValues = legacy.filter((v) => BP_STATUS_LEGACY_VALUES.includes(v));
+  const contradictory = statusValues.length > 1;
+  return {
+    statusDisplay: !contradictory && statusValues.length === 1 ? statusValues[0] : "",
+    orthostaticDisplay: legacy.includes("Orthostatic") ? "Present" : "",
+    reviewRequired: contradictory,
+    legacyValues: legacy,
+  };
+}
+
+export function resolveBpStatusDisplay(d) {
+  return d.bpStatus || resolveBpLegacyDisplay(d).statusDisplay;
+}
+
+export function resolveOrthostaticFindingDisplay(d) {
+  return d.orthostaticFinding || resolveBpLegacyDisplay(d).orthostaticDisplay;
+}
+
+// OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28, Contradiction 5)
+// -- Respiratory owns the dyspnea symptom/severity; Cardiovascular owns
+// only the cardiac-cause attribution. Returns a state, not a boolean, so
+// the render loop and narrative can distinguish "hidden, nothing to
+// preserve" from "hidden, but a legacy value must be preserved and
+// flagged" without ever silently clearing a legacy value.
+export function resolveCardiacDyspneaGate(cardiovascularData, respiratoryData) {
+  const sobSeverity = (respiratoryData || {}).sobSeverity;
+  const hasLegacyValue = cardiovascularData.cardiacDyspnea === true;
+  if (sobSeverity && sobSeverity !== "None") {
+    return { visible: true, reviewRequired: false, guidance: "" };
+  }
+  if (hasLegacyValue) {
+    // Respiratory is blank or negative but a value already exists here --
+    // never auto-cleared, never silently rewritten; flagged for review.
+    return { visible: true, reviewRequired: true, guidance: "" };
+  }
+  if (!sobSeverity) {
+    return { visible: false, reviewRequired: false, guidance: "Document dyspnea in Respiratory before assigning cardiac attribution." };
+  }
+  // sobSeverity === "None": Respiratory has explicitly documented no
+  // dyspnea, so no NEW cardiac attribution may be started.
+  return { visible: false, reviewRequired: false, guidance: "" };
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 --
+// Cardiovascular counterpart to neurologicalHasActionablePocFinding.
+// OWNER CORRECTION (Contradiction 7): a chronic/stable finding (e.g.
+// Heart Failure Present alone, on the "Existing Findings Review" path)
+// must NOT trigger POC review by itself -- only the explicit
+// always-actionable list, clinically-significant thresholds, and the
+// New/Worsening path itself do.
+export function cardiovascularHasActionablePocFinding(d) {
+  if (d.cardiovascularOverview === "Unable to Assess") return false;
+  if (d.cardiovascularOverview === "New/Worsening Cardiovascular Findings") return true;
+  if (d.chestPain?.present === "Yes") return true;
+  if (d.syncope === "Yes") return true;
+  if (["Declining", "New Symptom Since Prior Assessment"].includes(d.clinicalStatusChange)) return true;
+  if (d.edema?.present === "Yes" && ["3+", "4+"].includes(d.edema?.severity)) return true;
+  if (["Thready", "Absent"].includes(resolvePulseDimensionDisplay(d, "pulseStrength"))) return true;
+  if (d.cardiacDyspnea === true) return true;
+  return false;
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 --
+// Cardiovascular counterpart to computeNeurologicalWorkflowStatus.
+export function computeCardiovascularWorkflowStatus(d) {
+  const overview = d.cardiovascularOverview;
+  if (!overview) {
+    return hasAnyDocumentedValue(d)
+      ? { code: "in_progress", label: "In Progress", variant: "neutral" }
+      : { code: "not_started", label: "Not Started", variant: "neutral" };
+  }
+  if (overview === "Unable to Assess") {
+    return { code: "review_required", label: "Review Required", variant: "warning" };
+  }
+  const { cardiovascularOverview: _o, ...rest } = d;
+  return hasAnyDocumentedValue(rest)
+    ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+    : { code: "in_progress", label: "In Progress", variant: "neutral" };
+}
+
+// OWNER-DIRECTED Cardiovascular narrative (2026-09-28). Mirrors
+// computeNeurologicalNarrative's contract exactly: returns "" (falsy)
+// when nothing path-specific applies, letting computeBodySystemSummary's
+// existing generic fallback take over -- never infers a diagnosis,
+// normal finding, or stability from the Overview selection alone.
+export function computeCardiovascularNarrative(d) {
+  const overview = d.cardiovascularOverview;
+  if (!overview) return "";
+
+  if (overview === "Unable to Assess") {
+    const reason = d.cardiovascularUnableToAssessReason === "Other"
+      ? d.cardiovascularUnableToAssessOther
+      : d.cardiovascularUnableToAssessReason;
+    return reason ? `Cardiovascular assessment unable to complete. Reason: ${reason}.` : "";
+  }
+
+  if (overview === "No Current Cardiovascular Concern") {
+    const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
+    const rate = resolvePulseDimensionDisplay(d, "pulseRate");
+    const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
+    // Owner directive: this exact sentence is only allowed once ALL
+    // required normal-path selections are complete -- not from the
+    // Overview answer alone.
+    if (rhythm && rate && strength && d.clinicalStatusChange) {
+      return "No current cardiovascular concern identified.";
+    }
+    return "";
+  }
+
+  const clauses = [];
+  const bpStatusDisplay = resolveBpStatusDisplay(d);
+  const orthostaticDisplay = resolveOrthostaticFindingDisplay(d);
+  const bpLegacy = resolveBpLegacyDisplay(d);
+
+  if (overview === "Existing Cardiovascular Findings Review") {
+    if (d.clinicalStatusChange === "Stable / No Change") {
+      clauses.push("Cardiovascular findings documented as stable/no significant change.");
+    } else {
+      clauses.push("Cardiovascular findings documented.");
+    }
+  }
+
+  if (overview === "New/Worsening Cardiovascular Findings") {
+    const pulseDims = [];
+    const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
+    const rate = resolvePulseDimensionDisplay(d, "pulseRate");
+    const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
+    if (rhythm === "Irregular") pulseDims.push("irregular");
+    if (rate && rate !== "Normal" && rate !== "Unable to assess") pulseDims.push(rate.toLowerCase());
+    if (strength && !["Strong", "Unable to assess"].includes(strength)) pulseDims.push(strength.toLowerCase());
+    if (pulseDims.length > 0) {
+      clauses.push(`Pulse ${pulseDims.join(", ")}.`);
+    }
+    if (d.chestPain?.present === "Yes") {
+      clauses.push(d.chestPain?.type ? `Chest pain present: ${d.chestPain.type}.` : "Chest pain present.");
+    }
+    if (d.edema?.present === "Yes") {
+      const severity = d.edema?.severity ? `${d.edema.severity} ` : "";
+      const location = Array.isArray(d.edema?.location) && d.edema.location.length > 0 ? d.edema.location.join(", ").toLowerCase() : "";
+      clauses.push(`${severity}${location ? location + " " : ""}edema documented.`.trim().replace(/^\w/, (c) => c.toUpperCase()));
+    }
+    if (bpStatusDisplay && bpStatusDisplay !== "Normal" && bpStatusDisplay !== "Unable to assess") {
+      clauses.push(`BP status: ${bpStatusDisplay.toLowerCase()}.`);
+    }
+    if (orthostaticDisplay === "Present") {
+      clauses.push("Orthostatic finding present.");
+    }
+    if (d.dizziness && d.dizziness !== "None") clauses.push(`Dizziness: ${d.dizziness.toLowerCase()}.`);
+    if (d.fatigue && d.fatigue !== "None") clauses.push(`Fatigue: ${d.fatigue.toLowerCase()}.`);
+    if (d.syncope === "Yes") clauses.push("Syncope documented.");
+    if (d.cardiacDyspnea === true) clauses.push("Dyspnea attributed to cardiac condition.");
+    if (d.heartFailurePresent === true) clauses.push("Heart failure signs present.");
+  }
+
+  if (bpLegacy.reviewRequired) {
+    clauses.push(`Legacy BP values on record (${bpLegacy.legacyValues.join(", ")}) -- review required.`);
+  }
+
+  return clauses.join(" ");
+}
 
 // second, drifting source of truth. Deliberately does NOT include a
 // "Changes Since Prior" line -- no prior-assessment/longitudinal-diff
@@ -10143,6 +10367,13 @@ export function computeNeurologicalWorkflowStatus(d) {
 function computeBodySystemSummary(sectionKey, sectionData) {
   const primaryIssues = computeBodySystemFindings(sectionKey, sectionData);
   if (!hasAnyDocumentedValue(sectionData)) {
+    if (sectionKey === "cardiovascular") {
+      // Owner-required exact wording (2026-09-28) -- distinct casing from
+      // the generic label-based fallback below; must never be confused
+      // with the explicit "No current cardiovascular concern identified."
+      // sentence, which requires a completed normal-path selection.
+      return { status: "Cardiovascular assessment not yet documented.", primaryIssues, requiresFollowUp: false };
+    }
     const label = sectionKey ? sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1) : "This section's";
     return {
       status: `${label} Assessment Not Yet Documented`,
@@ -10152,6 +10383,14 @@ function computeBodySystemSummary(sectionKey, sectionData) {
   }
   if (sectionKey === "neurological") {
     const narrative = computeNeurologicalNarrative(sectionData || {});
+    return {
+      status: narrative || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
+      primaryIssues,
+      requiresFollowUp: primaryIssues.length > 0,
+    };
+  }
+  if (sectionKey === "cardiovascular") {
+    const narrative = computeCardiovascularNarrative(sectionData || {});
     return {
       status: narrative || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
       primaryIssues,
@@ -10316,6 +10555,25 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           // "confirm rather than re-enter prior values" flow is a
           // separate, larger feature tracked for a future pass, not
           // faked here.
+        }
+
+        // OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28 Final
+        // Directive, Section 3) -- same triage pattern as Neurological.
+        // Path 1 target is exactly 5 selections (Overview, Rhythm, Rate,
+        // Strength, Clinical Status Change); Path 4 shows only the
+        // Overview card (its reason control lives there). Path 2's
+        // "only show already-documented findings" rule is enforced at
+        // the field level (see the render-loop guard below), not by
+        // hiding whole cards, since Clinical Status Change/Notes/Circulation
+        // & Perfusion (which hosts the always-visible Pulse dimensions)
+        // must remain visible.
+        if (sectionKey === "cardiovascular" && card.title !== "Cardiovascular Overview") {
+          const overview = data.cardiovascularOverview;
+          if (!overview) return null;
+          if (overview === "Unable to Assess") return null;
+          if (overview === "No Current Cardiovascular Concern" && ["Cardiovascular Symptoms", "Cardiac Devices"].includes(card.title)) {
+            return null;
+          }
         }
 
         if (sectionKey === "performanceStatus" && card.title === "NYHA Classification (Heart Failure)" && !showNyha) {
@@ -10948,6 +11206,59 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               if (sectionKey === "cardiovascular" && field.path === "heartFailureType" && !cardData.heartFailurePresent) {
                 return null;
               }
+              // OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28
+              // Final Directive, Sections 2/3) -- the reason control lives
+              // on the Overview card itself; nothing else applies once
+              // that path is selected (Path 4 hides everything else via
+              // the card-level guard above).
+              if (sectionKey === "cardiovascular" && field.path === "cardiovascularUnableToAssessReason" && cardData.cardiovascularOverview !== "Unable to Assess") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "cardiovascularUnableToAssessOther" && (cardData.cardiovascularOverview !== "Unable to Assess" || cardData.cardiovascularUnableToAssessReason !== "Other")) {
+                return null;
+              }
+              if (sectionKey === "cardiovascular") {
+                // Path 1 ("No Current Cardiovascular Concern"): approved
+                // normal path is exactly Overview + Rhythm + Rate +
+                // Strength + Clinical Status Change (Notes optional) --
+                // every other Circulation & Perfusion field is hidden
+                // (never deleted) until the path changes.
+                const cvNormalPathActive = cardData.cardiovascularOverview === "No Current Cardiovascular Concern";
+                const normalPathHiddenFields = [
+                  "pulseSites", "peripheralCirculation", "heartSounds", "jvd", "skinColor",
+                  "coolExtremities", "varicoseVeins", "stasisUlcer",
+                  "edema.present", "edema.location", "edema.severity",
+                ];
+                if (cvNormalPathActive && normalPathHiddenFields.includes(field.path)) {
+                  return null;
+                }
+                // Path 2 ("Existing Cardiovascular Findings Review"): show
+                // only values that already exist in the currently loaded
+                // record (owner directive Section 3, Path 2) -- this is a
+                // visibility/review convenience only, never a claim of
+                // verified prior-assessment comparison.
+                const CV_ALWAYS_VISIBLE_FIELDS = new Set([
+                  "cardiovascularOverview", "cardiovascularUnableToAssessReason", "cardiovascularUnableToAssessOther",
+                  "clinicalStatusChange", "notes",
+                ]);
+                if (cardData.cardiovascularOverview === "Existing Cardiovascular Findings Review" && !CV_ALWAYS_VISIBLE_FIELDS.has(field.path)) {
+                  const existing = getNestedValue(cardData, field.path);
+                  const documented = Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+                  if (!documented) return null;
+                }
+                // Dyspnea Ownership Model (Contradiction 5): the checkbox
+                // and its guidance note are mutually exclusive, and both
+                // are independently gated from the plain edema/chestPain-
+                // style "parent present" pattern because the controlling
+                // value lives in a different Body System (Respiratory).
+                const dyspneaGate = resolveCardiacDyspneaGate(cardData, fullFormData?.respiratory);
+                if (field.path === "cardiacDyspnea" && !dyspneaGate.visible) {
+                  return null;
+                }
+                if (field.path === "cardiacDyspneaGuidanceNote" && (dyspneaGate.visible || !dyspneaGate.guidance)) {
+                  return null;
+                }
+              }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
@@ -10956,8 +11267,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // path) should still visually show "Present" here instead of
               // appearing unanswered; nothing is written until the nurse
               // actually interacts with the control.
+              const CV_PULSE_DIMENSION_PATHS = new Set(["pulseRhythm", "pulseRate", "pulseStrength"]);
               const value = sectionKey === "neurological" && fieldForRender.path === "motorStatus" && cardData.motorStatus === undefined && cardData.motorDeficit === true
                 ? "Present"
+                : sectionKey === "cardiovascular" && CV_PULSE_DIMENSION_PATHS.has(fieldForRender.path)
+                ? resolvePulseDimensionDisplay(cardData, fieldForRender.path)
+                : sectionKey === "cardiovascular" && fieldForRender.path === "bpStatus"
+                ? resolveBpStatusDisplay(cardData)
+                : sectionKey === "cardiovascular" && fieldForRender.path === "orthostaticFinding"
+                ? resolveOrthostaticFindingDisplay(cardData)
                 : getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
                 update(cardDataSection, fieldForRender.path, v);
@@ -11041,6 +11359,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 case "pillGroup":
                   rendered = <FormPillGroup label={fieldForRender.label} values={value || []} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} />;
+                  break;
+                case "note":
+                  // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
+                  // Contradiction 5) -- a non-interactive, non-blocking
+                  // guidance line (e.g. "Document dyspnea in Respiratory
+                  // before assigning cardiac attribution."). Read-only:
+                  // never written to storage, never gates save.
+                  rendered = <p style={{ fontSize: 12, fontStyle: "italic", color: COLORS.textMuted || "#6b7280", margin: "2px 0" }}>{fieldForRender.label}</p>;
                   break;
                 case "booleanPillRow": {
                   // Compact multi-path boolean row (e.g. Orientation's 5
@@ -11225,6 +11551,11 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   ? {
                       canAdd: neurologicalHasActionablePocFinding(data || {}),
                       suggestedFinding: neurologicalHasActionablePocFinding(data || {}),
+                    }
+                  : sectionKey === "cardiovascular"
+                  ? {
+                      canAdd: cardiovascularHasActionablePocFinding(data || {}),
+                      suggestedFinding: cardiovascularHasActionablePocFinding(data || {}),
                     }
                   : null)}
               />
@@ -11906,9 +12237,49 @@ const SECTION_CONFIGS = {
     title: "Cardiovascular",
     subtitle: "Blood pressure, pulse, edema, chest pain, circulation",
     cards: [
+      {
+        // OWNER-APPROVED "Cardiovascular Overview Gate" (2026-09-28) --
+        // same triage pattern as Neurological's Overview Gate: this
+        // up-front question determines which detail cards render below
+        // (see the card/field-level guards in the render loop). New path
+        // (`cardiovascularOverview`) -- no existing field/value touched.
+        title: "Cardiovascular Overview", category: "core", importance: "high", fullWidth: true, fields: [
+          {
+            // OWNER CORRECTION (2026-09-28 Contradiction 2/3) -- renamed
+            // from "...Findings Stable" to "...Findings Review": the app
+            // has no verified prior-assessment/comparison infrastructure,
+            // so this path must not itself claim stability. Stability is
+            // only ever asserted via an explicit current Clinical Status
+            // Change = "Stable / No Change" selection (see
+            // computeCardiovascularNarrative).
+            type: "segmented", label: "Cardiovascular Overview", path: "cardiovascularOverview",
+            options: [
+              "No Current Cardiovascular Concern",
+              "Existing Cardiovascular Findings Review",
+              "New/Worsening Cardiovascular Findings",
+              "Unable to Assess",
+            ],
+          },
+          {
+            type: "segmented", label: "Reason Unable to Assess", path: "cardiovascularUnableToAssessReason",
+            options: ["Patient unable to participate", "Patient unresponsive", "Clinical condition prevented completion", "Assessment interrupted", "Patient or representative declined", "Other"],
+          },
+          { type: "input", label: "Other Reason (if selected above)", path: "cardiovascularUnableToAssessOther" },
+        ],
+      },
       { title: "Circulation & Perfusion", category: "core", fields: [
         { type: "checkboxGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
-        { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Regular", "Strong", "Weak", "Thready", "Bounding", "Irregular", "Tachycardia", "Bradycardia", "Absent"] },
+        // OWNER-APPROVED "Pulse Redesign" (2026-09-28) -- Rhythm/Rate/
+        // Strength are three independent clinical concepts (previously
+        // one combined "Pulse Quality" radio, the Cardiovascular
+        // equivalent of Neurological's "Awake / Alert" problem) and must
+        // be independently selectable (e.g. Irregular + Bradycardic +
+        // Weak all at once). The legacy `pulseQuality` field is never
+        // rewritten; PULSE_LEGACY_DIMENSION aliases it for display into
+        // whichever of these three fields is still blank.
+        { type: "segmented", label: "Pulse Rhythm", path: "pulseRhythm", options: ["Regular", "Irregular", "Unable to assess"] },
+        { type: "segmented", label: "Pulse Rate", path: "pulseRate", options: ["Normal", "Tachycardic", "Bradycardic", "Unable to assess"] },
+        { type: "segmented", label: "Pulse Strength", path: "pulseStrength", options: ["Strong", "Weak", "Thready", "Bounding", "Absent", "Unable to assess"] },
         { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
         { type: "input", label: "Heart Sounds", path: "heartSounds" },
         { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
@@ -11928,11 +12299,33 @@ const SECTION_CONFIGS = {
       { title: "Cardiovascular Symptoms", category: "symptoms", fields: [
         { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
         { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
-        { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
+        // OWNER CORRECTION (2026-09-28 Contradiction 4) -- "Orthostatic"
+        // is not the same dimension as Normal/Hypertensive/Hypotensive
+        // (a patient can be Hypotensive AND have an Orthostatic finding
+        // at the same time), so this is two independent single-select
+        // controls, not one merged control. Legacy `bpSymptoms`
+        // multi-select array is never rewritten; resolveBpLegacyDisplay
+        // aliases it for display only when unambiguous (a contradictory
+        // legacy array is surfaced as a review-required note instead of
+        // being silently collapsed to one value -- see
+        // computeCardiovascularNarrative).
+        { type: "segmented", label: "BP Status", path: "bpStatus", options: ["Normal", "Hypertensive", "Hypotensive", "Unable to assess"] },
+        { type: "segmented", label: "Orthostatic Finding", path: "orthostaticFinding", options: ["Not Present", "Present", "Unable to assess"] },
         { type: "radio", label: "Fatigue", path: "fatigue", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Dizziness", path: "dizziness", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "triState", label: "Syncope (Fainting Episodes)", path: "syncope" },
-        { type: "checkbox", label: "Dyspnea Related to Cardiac Condition", path: "cardiacDyspnea" },
+        // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
+        // Contradiction 5) -- Respiratory owns the symptom (sobSeverity);
+        // Cardiovascular owns only the cardiac-cause attribution of an
+        // already-documented dyspnea. The `cardiacDyspnea` checkbox and
+        // this guidance note are mutually exclusive at render time (see
+        // resolveCardiacDyspneaGate + the render-loop guard below):
+        // Respiratory positive -> show checkbox; Respiratory blank ->
+        // show only this note; Respiratory negative -> show neither
+        // (unless a legacy value already exists, which is always
+        // preserved and never auto-hidden).
+        { type: "checkbox", label: "Dyspnea Attributed to Cardiac Condition", path: "cardiacDyspnea" },
+        { type: "note", label: "Document dyspnea in Respiratory before assigning cardiac attribution.", path: "cardiacDyspneaGuidanceNote" },
         // Demoted from a standalone "Disease-Specific Findings / Heart
         // Failure" card to a general symptom-level flag -- Heart Failure
         // Type (Systolic/Diastolic) is kept only as a StructuredFinding-
@@ -14335,13 +14728,15 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       const sectionData = formData[route.formSection];
       const meta = sidebarConfigItems.find((s) => s.key === module.key);
       const neuroStatus = module.key === "neurological" ? computeNeurologicalWorkflowStatus(sectionData || {}) : null;
+      const cardiovascularStatus = module.key === "cardiovascular" ? computeCardiovascularWorkflowStatus(sectionData || {}) : null;
+      const workflowStatus = neuroStatus || cardiovascularStatus;
       return {
         key: module.key,
         label: meta?.label || module.label,
         icon: meta?.icon || "🩺",
-        reviewed: neuroStatus ? neuroStatus.code === "ready_for_review" : sectionHasDocumentedData(sectionData),
-        statusLabel: neuroStatus?.label,
-        statusVariant: neuroStatus?.variant,
+        reviewed: workflowStatus ? workflowStatus.code === "ready_for_review" : sectionHasDocumentedData(sectionData),
+        statusLabel: workflowStatus?.label,
+        statusVariant: workflowStatus?.variant,
         content: config && sectionData
           ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
           : null,
