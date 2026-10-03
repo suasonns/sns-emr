@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References, PainToolReference } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainGuidancePanel } from './PainGuide';
 import { getPainadInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -79,12 +79,8 @@ const PAINADScale = ({ value, onChange }) => {
       </div>
       <div className="pain-tool__subtitle" style={{ color: COLORS.label, fontSize: 12, marginBottom: 12 }}>For patients unable to self-report pain (advanced dementia, non-verbal).</div>
 
-      {/* Instructions */}
-      <GuideBox title="Instructions" icon="🛈">
-        <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
-          Observe the patient for five minutes before scoring his or her behaviors. Score the behaviors according to the chart below. The patient can be observed under different conditions (e.g., at rest, during a pleasant activity, during caregiving, after the administration of pain medication).
-        </div>
-      </GuideBox>
+      {/* Instructions + reference material collapsed behind one toggle
+          (owner-directed 2026-10-03 density pass). */}
 
       {/* Scoring Table */}
       <div className="pain-tool__surface pain-tool__table" style={{ backgroundColor: COLORS.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
@@ -170,7 +166,13 @@ const PAINADScale = ({ value, onChange }) => {
         Score ranges (0 No Pain, 1-3 Mild, 4-6 Moderate, 7-10 Severe) are based on a standard 0-10 scale but have not been substantiated in the literature for this tool.
       </div>
 
-      <PainToolReference>
+      <PainGuidancePanel>
+        <GuideBox title="Instructions" icon="🛈">
+          <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
+            Observe the patient for five minutes before scoring his or her behaviors. Score the behaviors according to the chart below. The patient can be observed under different conditions (e.g., at rest, during a pleasant activity, during caregiving, after the administration of pain medication).
+          </div>
+        </GuideBox>
+
         <GuideBox title="Scoring & Interpretation">
           <GradientBar />
           <GuideList items={[
@@ -190,7 +192,7 @@ const PAINADScale = ({ value, onChange }) => {
         </GuideBox>
 
         <References items={['Warden V, Hurley AC, Volicer L. (2003). Development and psychometric evaluation of the Pain Assessment in Advanced Dementia (PAINAD) scale.']} />
-      </PainToolReference>
+      </PainGuidancePanel>
     </div>
   );
 };

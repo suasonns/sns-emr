@@ -11743,6 +11743,22 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
               let rendered;
               switch (fieldForRender.type) {
+                case "groupLabel":
+                  // Presentational-only sub-header (2026-10-03 density pass):
+                  // no path, no data binding, nothing persisted/rendered to
+                  // the record -- purely a visual divider so a card's field
+                  // list can read as two labeled groups (e.g. "SCREENING" /
+                  // "ASSESSMENT") without splitting it into a second card.
+                  rendered = (
+                    <div style={{
+                      fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase",
+                      color: COLORS.gray, borderBottom: `1px solid ${COLORS.border}`,
+                      paddingBottom: 4, marginTop: fi === 0 ? 0 : 10, marginBottom: 2,
+                    }}>
+                      {fieldForRender.label}
+                    </div>
+                  );
+                  break;
                 case "input":
                   rendered = <FormInput label={fieldForRender.label} value={value} onChange={onChange}
                     type={fieldForRender.inputType} placeholder={fieldForRender.placeholder} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
@@ -12053,9 +12069,14 @@ function getFieldSpan(field) {
   const options = field.options || [];
   const maxLabelLen = options.reduce((m, o) => Math.max(m, String(typeof o === "string" ? o : o.label).length), 0);
 
-  if (field.type === "textarea") {
+  if (field.type === "textarea" || field.type === "quickPickTextarea") {
     // Big narrative fields (explicit rows >= 4) still want real typing room;
     // short single-line-ish notes fields can share a row with a neighbor.
+    // Bug fix (2026-10-03 density pass): quickPickTextarea fell through to
+    // the default span-1 below, squeezing its whole preset-chip row + the
+    // textarea underneath into a single ~200px column and inflating the
+    // card's height with chips wrapping one-per-line -- it needs the same
+    // sizing as a plain textarea.
     return (field.rows || 3) >= 4 ? "full" : 3;
   }
   if (field.type === "radio" || field.type === "segmented") {
@@ -12153,42 +12174,50 @@ const SECTION_CONFIGS = {
       // picture before any detail section below is reached.
       {
         title: "Pain Overview", hopeCode: "J0900", fields: [
-          // GitHub UI Directive (2026-10-03) "Neuro Interaction Parity" --
-          // every exclusive single-choice field below uses `type:
-          // "segmented"` (compact chip row) instead of `type: "radio"`
-          // (large circular-radio stack), the same opt-in swap already
-          // applied throughout Neurological/Cardiovascular. Same options
-          // array/value/onChange contract -- no data shape change.
-          { type: "segmented", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
+          // Reorganized (2026-10-03 density pass) into two labeled groups --
+          // SCREENING (did we screen, and when) then ASSESSMENT (what the
+          // screening found) -- per explicit layout directive. Same fields,
+          // same paths, same options, same order within each group as
+          // before; only the visual grouping + a non-data groupLabel marker
+          // changed. GitHub UI Directive (2026-10-03) "Neuro Interaction
+          // Parity" -- every exclusive single-choice field below uses
+          // `type: "segmented"` (compact chip row) instead of `type:
+          // "radio"` (large circular-radio stack), the same opt-in swap
+          // already applied throughout Neurological/Cardiovascular. Same
+          // options array/value/onChange contract -- no data shape change.
+          { type: "groupLabel", label: "Screening" },
+          { type: "segmented", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", fieldSpan: 2, options: [
             { value: "0", label: "No — skip to Pain Active Problem (J0905)" }, { value: "1", label: "Yes" }
           ]},
           // Reason not assessed: shown only when screenedForPain = No.
           // Free text so it never has to fit CMS's binary J0900.A coding.
-          { type: "textarea", label: "Reason pain assessment was not completed", path: "reasonNotAssessed" },
+          { type: "textarea", label: "Reason pain assessment was not completed", path: "reasonNotAssessed", fieldSpan: "full" },
           { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
-          { type: "segmented", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
-            { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
-          ]},
-          { type: "segmented", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
+
+          { type: "groupLabel", label: "Assessment" },
+          { type: "segmented", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", fieldSpan: "full", options: [
             { value: "1", label: "Numeric" }, { value: "2", label: "Verbal descriptor" }, { value: "3", label: "Patient visual" }, { value: "4", label: "Staff observation" }, { value: "9", label: "No standardized tool used" }
           ]},
-          { type: "segmented", label: "Can the patient reliably self-report pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
+          { type: "segmented", label: "Can the patient reliably self-report pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", fieldSpan: 2, options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
           ]},
-          { type: "segmented", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
-            { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
-          ]},
-          // Section 4: current pain is conceptually distinct from HOPE
-          // J0900.C severity-in-general and from pain-as-active-problem.
-          { type: "segmented", label: "Is the patient experiencing pain now?", path: "currentPain", options: [
-            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
+          { type: "segmented", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", fieldSpan: "full", options: [
+            { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
           ]},
           // Section 10: conceptually distinct from "current pain" -- a
           // patient can deny pain right now and still have an active pain
           // problem requiring ongoing management/monitoring. AI may
           // propose this (see AI Insights); the RN always confirms.
-          { type: "segmented", label: "Is pain an active problem? (J0905)", path: "painActiveProblem", hopeCode: "J0905", options: [
+          { type: "segmented", label: "Is pain an active problem? (J0905)", path: "painActiveProblem", hopeCode: "J0905", fieldSpan: 2, options: [
             { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
+          ]},
+          // Section 4: current pain is conceptually distinct from HOPE
+          // J0900.C severity-in-general and from pain-as-active-problem.
+          { type: "segmented", label: "Is the patient experiencing pain now?", path: "currentPain", fieldSpan: 2, options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
+          ]},
+          { type: "segmented", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", fieldSpan: 2, options: [
+            { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
         ],
       },
@@ -12278,11 +12307,19 @@ const SECTION_CONFIGS = {
             { value: "0", label: "No" }, { value: "1", label: "Yes" }
           ]},
           { type: "pillGroup", label: "Supporting neuropathic characteristics", path: "neuropathicCharacteristics", options: ["Burning", "Tingling", "Pins and needles", "Electric/shooting quality", "Hyperesthesia", "Allodynia (pain to light touch)", "Other documented characteristic"] },
-          { type: "pillGroup", label: "Pain character", path: "painCharacter", options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
+          // fieldSpan overrides below (2026-10-03 density pass): these
+          // pillGroups' option counts push the default heuristic to "full"
+          // width, forcing neuropathicPain (a 2-option Yes/No) to sit alone
+          // in its own row with empty space beside it, and stacking
+          // Aggravating/Relieving as two separate full-width rows. Same
+          // fields, same paths, same options -- only how many grid columns
+          // each claims, so neuropathicPain shares Pain Character's row and
+          // Aggravating/Relieving share one row instead of two.
+          { type: "pillGroup", label: "Pain character", path: "painCharacter", fieldSpan: 3, options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
           { type: "textarea", label: "Onset & progression", path: "painOnsetProgression" },
           { type: "input", label: "Duration & frequency", path: "painDurationFrequency" },
-          { type: "pillGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
-          { type: "pillGroup", label: "Relieving factors", path: "relievingFactors", options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
+          { type: "pillGroup", label: "Aggravating factors", path: "aggravatingFactors", fieldSpan: 2, options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
+          { type: "pillGroup", label: "Relieving factors", path: "relievingFactors", fieldSpan: 2, options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
           { type: "quickPickTextarea", label: "Effect on function or quality of life", path: "effectOnFunction", presets: ["Limits mobility/ambulation", "Disrupts sleep", "Limits ADLs", "Decreases appetite", "Limits social engagement", "Causes mood/irritability changes", "No functional impact reported"] },
         ],
       },
@@ -12303,11 +12340,17 @@ const SECTION_CONFIGS = {
           { type: "segmented", label: "Pain medication type", path: "painMedicationType", options: [
             { value: "Opioid", label: "Opioid" }, { value: "Non-Opioid", label: "Non-Opioid" }, { value: "Both", label: "Both" }
           ]},
-          { type: "pillGroup", label: "Route", path: "painMedicationRoute", options: PAIN_ROUTE_OPTIONS },
+          // fieldSpan overrides (2026-10-03 density pass, same rationale as
+          // Pain Character & Impact above): Route (7 options) and
+          // Non-Pharmacological Interventions (9 options) each defaulted to
+          // full card width and stacked as two separate full rows. Pairing
+          // them onto one row makes this a genuine two-column layout instead
+          // of two chip rows each spanning the entire viewport.
+          { type: "pillGroup", label: "Route", path: "painMedicationRoute", fieldSpan: 2, options: PAIN_ROUTE_OPTIONS },
           { type: "segmented", label: "Breakthrough pain medication present?", path: "breakthroughPainMedication", options: [
             { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
           ]},
-          { type: "pillGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
+          { type: "pillGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", fieldSpan: 2, options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
           { type: "segmented", label: "Effectiveness", path: "painEffectivenessRating", options: [
             { value: "Effective", label: "Effective" }, { value: "Partially Effective", label: "Partially Effective" }, { value: "Ineffective", label: "Ineffective" }, { value: "Unable To Determine", label: "Unable To Determine" }
           ]},

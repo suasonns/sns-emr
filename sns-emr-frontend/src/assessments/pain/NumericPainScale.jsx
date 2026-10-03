@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References, PainToolReference } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainGuidancePanel } from './PainGuide';
 import { getNumericInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -61,15 +61,6 @@ const NumericPainScale = ({ value, onChange }) => {
         </div>
       </div>
 
-      {/* Clinical Protocol Guidance */}
-      <GuideBox title="Clinical Protocol Guidance" icon="🛈">
-        <GuideList items={[
-          'Administration: Can be administered verbally (including by telephone) or graphically for self-completion.',
-          'Standard prompt: Ask patient: "On a scale of 0 to 10, with 0 being no pain and 10 being the worst pain imaginable, how would you rate your pain?"',
-          'Recall Period: Most commonly ask for pain intensity "right now" or "in the last 24 hours," or average pain intensity.',
-        ]} />
-      </GuideBox>
-
       {/* Result */}
       {selectedScore !== null && interp && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 16 }}>
@@ -86,10 +77,18 @@ const NumericPainScale = ({ value, onChange }) => {
         </div>
       )}
 
-      {/* Reference material (owner 2026-09-25: keep out of the always-visible
-          flow — nurses should not scroll past training content during
-          routine documentation). */}
-      <PainToolReference>
+      {/* All guidance/reference content collapsed behind one toggle
+          (owner-directed 2026-10-03 density pass): the always-visible
+          surface is now just the title, the scale, and the live result. */}
+      <PainGuidancePanel>
+        <GuideBox title="Clinical Protocol Guidance" icon="🛈">
+          <GuideList items={[
+            'Administration: Can be administered verbally (including by telephone) or graphically for self-completion.',
+            'Standard prompt: Ask patient: "On a scale of 0 to 10, with 0 being no pain and 10 being the worst pain imaginable, how would you rate your pain?"',
+            'Recall Period: Most commonly ask for pain intensity "right now" or "in the last 24 hours," or average pain intensity.',
+          ]} />
+        </GuideBox>
+
         <GuideBox title="Scoring & Interpretation">
           <GradientBar />
           <GuideList items={[
@@ -119,7 +118,7 @@ const NumericPainScale = ({ value, onChange }) => {
         </GuideBox>
 
         <References items={['Hawker GA (2011)', 'Ferraz MB et al. (1990)', 'Farrar JT et al. (2001)']} />
-      </PainToolReference>
+      </PainGuidancePanel>
     </div>
   );
 };

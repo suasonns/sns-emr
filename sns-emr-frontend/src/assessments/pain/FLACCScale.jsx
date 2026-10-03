@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References, PainToolReference } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainGuidancePanel } from './PainGuide';
 import { getFlaccInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -79,12 +79,8 @@ const FLACCScale = ({ value, onChange }) => {
       </div>
       <div className="pain-tool__subtitle" style={{ color: COLORS.label, fontSize: 12, marginBottom: 12 }}>For infants, young children, and non-verbal critical care patients.</div>
 
-      {/* Instructions */}
-      <GuideBox title="Instructions" icon="🛈">
-        <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
-          Observe the patient for 1–2 minutes. Score each behavioral category on a 0–2 scale. The patient can be observed under different conditions. Total score determines pain severity.
-        </div>
-      </GuideBox>
+      {/* Instructions + reference material collapsed behind one toggle
+          (owner-directed 2026-10-03 density pass). */}
 
       {/* Scoring Table */}
       <div className="pain-tool__surface pain-tool__table" style={{ backgroundColor: COLORS.bg, borderRadius: 8, overflow: 'hidden', marginBottom: 16 }}>
@@ -170,7 +166,13 @@ const FLACCScale = ({ value, onChange }) => {
         0 = Relaxed/Comfortable · 1-3 = Mild Discomfort · 4-6 = Moderate Pain · 7-10 = Severe Pain
       </div>
 
-      <PainToolReference>
+      <PainGuidancePanel>
+        <GuideBox title="Instructions" icon="🛈">
+          <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
+            Observe the patient for 1–2 minutes. Score each behavioral category on a 0–2 scale. The patient can be observed under different conditions. Total score determines pain severity.
+          </div>
+        </GuideBox>
+
         <GuideBox title="Scoring & Interpretation">
           <GradientBar />
           <GuideList items={[
@@ -193,7 +195,7 @@ const FLACCScale = ({ value, onChange }) => {
         </GuideBox>
 
         <References items={['Merkel S, Voepel-Lewis T, Shayevitz JR, Malviya S. (1997). The FLACC: a behavioral scale for scoring postoperative pain in young children.']} />
-      </PainToolReference>
+      </PainGuidancePanel>
     </div>
   );
 };
