@@ -40,6 +40,11 @@ import { Progress as ShadcnProgress } from "./ui/progress";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
 import { Input as ShadcnInput } from "./ui/input";
 import { Textarea as ShadcnTextarea } from "./ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "./ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { listSfvRequirements } from "../api/sfv";
@@ -1496,48 +1501,30 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
         {sfv && <> <SfvTag /></>}
       </label>
-      <div role="radiogroup" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
+      {/* shadcn/ui ToggleGroup (Radix), type="single" -- compact mutually
+          exclusive clinical-status chip row. Re-clicking the selected chip
+          deselects it (Radix's native single-type behavior), preserving the
+          existing "" unselected-default convention used throughout this
+          file without any extra onClick interception. */}
+      <ToggleGroup type="single" aria-label={label} value={displayValue || ""} onValueChange={(v) => onChange(v ?? "")}>
         {options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
           const lbl = typeof opt === "string" ? opt : opt.label;
-          const selected = displayValue === val;
           return (
-            <button
-              type="button" key={val} role="radio" aria-checked={selected}
-              className="rnica-segment-btn"
-              // Owner directive (2026-09-28) "New Cardiovascular Defect --
-              // one-way segmented selections": clicking an already-selected
-              // option must let the user undo an accidental click / return
-              // to the unselected default, not just re-fire the same value.
-              // "" is already every one of these fields' pre-selection
-              // default (see initial state literals throughout this file),
-              // so clearing to "" never invents a new state.
-              onClick={() => onChange(selected ? "" : val)}
-              style={{
-                padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
-                cursor: "pointer", border: `1px solid ${selected ? COLORS.teal : COLORS.border}`,
-                background: selected ? COLORS.teal : "transparent",
-                color: selected ? COLORS.textOnTeal : COLORS.dark,
-                fontWeight: selected ? 700 : 500, whiteSpace: "nowrap",
-              }}
-            >
+            <ToggleGroupItem key={val} value={val}>
               {lbl}
-            </button>
+            </ToggleGroupItem>
           );
         })}
-        {hasLegacyValue && (
-          <span
-            title="This value was previously recorded but is no longer offered as an option. The stored value has not been changed."
-            style={{
-              padding: "2px 8px", fontSize: 10, lineHeight: 1.6, borderRadius: 999,
-              border: `1px dashed ${COLORS.amber || "#b45309"}`, color: COLORS.amber || "#b45309",
-              fontWeight: 600, whiteSpace: "nowrap",
-            }}
-          >
-            ⚠ Previously recorded: “{displayValue}”
-          </span>
-        )}
-      </div>
+      </ToggleGroup>
+      {hasLegacyValue && (
+        <span
+          title="This value was previously recorded but is no longer offered as an option. The stored value has not been changed."
+          className="ml-1 inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+        >
+          ⚠ Previously recorded: “{displayValue}”
+        </span>
+      )}
     </div>
   );
 }
@@ -1549,42 +1536,29 @@ function FormPillGroup({ label, values = [], onChange, options, hopeCode }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  const toggle = (val) => {
-    const next = values.includes(val) ? values.filter((v) => v !== val) : [...values, val];
-    onChange(next);
-  };
   return (
     <div style={styles.formGroup}>
       <label style={styles.label}>
         {label}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <div role="group" aria-label={label} style={{ display: "flex", flexWrap: "wrap", gap: 3 }}>
+      {/* shadcn/ui ToggleGroup (Radix), type="multiple" -- independent
+          multi-select findings/interventions chip row. */}
+      <ToggleGroup type="multiple" aria-label={label} value={values} onValueChange={(v) => onChange(v ?? [])}>
         {options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
           const lbl = typeof opt === "string" ? opt : opt.label;
-          const selected = values.includes(val);
           return (
-            <button
-              type="button" key={val} aria-pressed={selected}
-              className="rnica-segment-btn"
-              onClick={() => toggle(val)}
-              style={{
-                padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
-                cursor: "pointer", border: `1px solid ${selected ? COLORS.teal : COLORS.border}`,
-                background: selected ? COLORS.teal : "transparent",
-                color: selected ? COLORS.textOnTeal : COLORS.dark,
-                fontWeight: selected ? 700 : 500, whiteSpace: "nowrap",
-              }}
-            >
+            <ToggleGroupItem key={val} value={val}>
               {lbl}
-            </button>
+            </ToggleGroupItem>
           );
         })}
-      </div>
+      </ToggleGroup>
     </div>
   );
 }
+
 
 function FormCheckbox({ label, checked, onChange, disabled = false }) {
   const { mode: themeMode } = useThemeMode();
