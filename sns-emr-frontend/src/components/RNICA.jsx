@@ -7251,8 +7251,25 @@ function PainAssessmentSummaryCard({ data, styles }) {
   const rows = [];
 
   if (data?.screenedForPain === "0") {
-    rows.push(<div key="not-assessed" style={styles.infoBox}>Patient was not assessed for pain. Reason: {data?.reasonNotAssessed || "Not documented"}</div>);
-    return <div>{rows}</div>;
+    // Bug fix (2026-10-03): this used to hard-return here, hiding every
+    // other documented field whenever screenedForPain === "0" — producing
+    // a contradictory summary ("not assessed") on a screen that visibly
+    // showed assessment data (e.g. currentPain, intensity, location
+    // already filled in, perhaps from a prior screening answer that was
+    // later changed). The summary must never suppress real documented
+    // data; it only adds a banner, and only claims "nothing else is
+    // documented" when that is actually true.
+    const hasOtherPainEvidence = Boolean(
+      currentPain || data?.painActiveProblem ||
+      (data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "") ||
+      (data?.painLocation || []).length || (data?.painCharacter || []).length ||
+      data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1"
+    );
+    if (!hasOtherPainEvidence) {
+      rows.push(<div key="not-assessed" style={styles.infoBox}>Patient was not assessed for pain. Reason: {data?.reasonNotAssessed || "Not documented"}</div>);
+      return <div>{rows}</div>;
+    }
+    rows.push(<div key="screening-conflict" style={styles.infoBox}>Pain screening (HOPE J0900.A) is answered "No," but pain data is documented below — review for consistency before finalizing.</div>);
   }
 
   if (currentPain === "0") {
@@ -9024,6 +9041,72 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
   );
 }
 
+// Body map is a secondary interaction: the Pain screen's primary surface
+// only ever shows a one-line summary + "Edit body map" button. The full
+// interactive silhouette (BodyMap above) only exists inside this Dialog,
+// so it never consumes vertical space in the normal page flow -- opened
+// on demand, closed by default, same data/onToggle contract as before.
+function PainBodyMapDialogField({ value = [], onToggle, onClearAll, regionLabelById }) {
+  const [open, setOpen] = useState(false);
+  const selected = Array.isArray(value) ? value : [];
+  const summaryText = selected.length
+    ? selected.map((id) => regionLabelById?.[id] || id).join(", ")
+    : "No body map location documented";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ fontSize: 12, color: "var(--sns-text, inherit)", flex: 1, minWidth: 160 }}>
+        <strong style={{ fontWeight: 700 }}>Body map: </strong>{summaryText}
+      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rnica-pain-bodymap-edit-btn"
+        style={{
+          borderRadius: 8,
+          border: "1px solid var(--sns-border, #ccc)",
+          background: "transparent",
+          fontSize: 11.5,
+          fontWeight: 700,
+          padding: "6px 12px",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {selected.length ? "Edit body map" : "Add body map location"}
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Pain — Body Map</DialogTitle>
+            <DialogDescription>Select every region where the patient reports or shows pain.</DialogDescription>
+          </DialogHeader>
+          <BodyMap value={selected} tone="pain" onToggle={onToggle} onClearAll={onClearAll} />
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              style={{
+                borderRadius: 8,
+                border: "1px solid var(--sns-teal, #0d9488)",
+                background: "var(--sns-teal, #0d9488)",
+                color: "#fff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                padding: "8px 16px",
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 const ANTERIOR_REGIONS = [
   { id: "head_crown",          label: "Head (Crown)",            x: 90,  y: 25  },
   { id: "right_temple",        label: "Right Temple",            x: 78,  y: 26  },
@@ -9131,6 +9214,10 @@ const POSTERIOR_REGIONS = [
   { id: "left_sole",           label: "Left Sole",                x: 76,  y: 300 },
   { id: "right_sole",          label: "Right Sole",               x: 101, y: 300 },
 ];
+
+const BODY_MAP_REGION_LABEL_BY_ID = Object.fromEntries(
+  [...ANTERIOR_REGIONS, ...POSTERIOR_REGIONS].map((r) => [r.id, r.label])
+);
 
 const BODY_MAP_AUDIT = validateBodyMapRegions({
   anterior: ANTERIOR_REGIONS,
@@ -11230,9 +11317,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             )}
 
             {shouldRenderPainMap && painAssessmentMode === "verbal" && (
-              <BodyMap
+              <PainBodyMapDialogField
                 value={data.painBodySites || []}
-                tone="pain"
+                regionLabelById={BODY_MAP_REGION_LABEL_BY_ID}
                 onToggle={(regionId) => {
                   const current = data.painBodySites || [];
                   const next = current.includes(regionId)
