@@ -9526,7 +9526,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false, compact = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -9584,12 +9584,17 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
   // CardTitle/CardContent, restyled to the RNICA theme tokens) instead of
   // a hand-rolled div -- same title/hopeCode/sfv/cms/collapsible/id
   // contract, so none of the 28 modules' field configs change.
+  // [Pain density pass -- 2026-10] `compact` trims header/content padding
+  // (px-5/pt-4/py-4 -> px-4/pt-3/py-3). Opt-in only -- defaults to false so
+  // every other module's card chrome is byte-for-byte unchanged; only the
+  // Pain section passes compact=true (see renderGenericSection). No field,
+  // title, hopeCode, or content change -- padding only.
   return (
     <ShadcnCard id={id} className={`rnica-form-card${importanceClass}`}>
-      <ShadcnCardHeader>
+      <ShadcnCardHeader className={compact ? "px-4 pt-3" : undefined}>
         <ShadcnCardTitle {...titleRowProps}>{titleRowContent}</ShadcnCardTitle>
       </ShadcnCardHeader>
-      {(!collapsible || !collapsed) && <ShadcnCardContent>{children}</ShadcnCardContent>}
+      {(!collapsible || !collapsed) && <ShadcnCardContent className={compact ? "px-4 py-3" : undefined}>{children}</ShadcnCardContent>}
     </ShadcnCard>
   );
 }
@@ -11164,7 +11169,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // -- no card, no placeholder -- when no rule is triggered.
         if (sectionKey === "pain" && card.customRenderer === "painAssessmentSummary") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} compact>
               <PainAssessmentSummaryCard data={data} styles={styles} />
             </Card>
           );
@@ -11178,7 +11183,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           // review -- it must always be present so the RN/owner can see
           // it is implemented, not missing.
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} compact>
               <AiPainAnalysisCard data={data} styles={styles} />
             </Card>
           );
@@ -11187,7 +11192,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "pain" && card.customRenderer === "painOverdueAlerts") {
           if (computePainOverdueAlerts(data, painAssessmentMode).length === 0) return null;
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} compact>
               <PainOverdueAlertsCard data={data} painAssessmentMode={painAssessmentMode} styles={styles} />
             </Card>
           );
@@ -11326,6 +11331,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             bare={isBodySystemPilotCard}
             importance={card.importance}
             fullWidth={Boolean(card.fullWidth)}
+            // [Pain density pass -- 2026-10] Pain-only card-chrome
+            // compaction (tighter header/content padding). Scoped by
+            // sectionKey so every other module's cards are unaffected.
+            compact={sectionKey === "pain"}
             // Bug fix: Psychiatric History's `collapsedByDefault` (and
             // any other card's) had no effect while Body Systems' pilot
             // "bare" grouping was active, because this excluded
@@ -11462,6 +11471,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 return null;
               }
               if (sectionKey === "pain" && field.path === "currentPain" && cardData.screenedForPain !== "1") {
+                return null;
+              }
+              // [Pain density pass -- 2026-10] screenedForPain's own
+              // option label reads "No -- skip to Pain Active Problem
+              // (J0905)", so when the nurse answers No, the downstream
+              // ASSESSMENT-group fields that only make sense once pain
+              // has actually been screened (tool used, self-report
+              // reliability, severity category, discomfort) are not
+              // applicable yet. painActiveProblem (the stated skip
+              // target) is deliberately excluded and always renders.
+              // Same existing per-field gating mechanism as the rows
+              // above -- no field/option/HOPE mapping removed, only
+              // conditionally not rendered.
+              if (sectionKey === "pain" && ["standardizedPainToolType", "verbalizesPain", "painSeverityCategory", "uncomfortableBecauseOfPain"].includes(field.path) && cardData.screenedForPain === "0") {
                 return null;
               }
               if (sectionKey === "pain" && field.path === "chronicPainHistory" && cardData.currentPain !== "0") {
