@@ -7268,8 +7268,9 @@ function SummaryRow({ label, value }) {
 
 const joinList = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "");
 
-// Section 15 "Current Pain Summary": omit undocumented fields entirely
-// rather than fabricating a value or a default clinical statement.
+// Section 15 "Clinical Summary" (formerly "Current Pain Summary"): omit
+// undocumented fields entirely rather than fabricating a value or a
+// default clinical statement.
 function PainAssessmentSummaryCard({ data, styles }) {
   const currentPain = data?.currentPain;
   const chronicHistory = data?.chronicPainHistory;
@@ -7452,6 +7453,17 @@ function PainOverdueAlertsCard({ data, painAssessmentMode, styles }) {
 const PAIN_OPIOID_KEYWORDS = [...CHHA_OPIOID_KEYWORDS, "percocet", "vicodin", "norco", "codeine", "tramadol", "ultram", "tapentadol", "nucynta", "buprenorphine", "butrans", "belbuca"];
 const PAIN_NONOPIOID_KEYWORDS = ["acetaminophen", "tylenol", "ibuprofen", "advil", "motrin", "naproxen", "aleve", "aspirin", "celecoxib", "celebrex", "ketorolac", "toradol", "gabapentin", "neurontin", "pregabalin", "lyrica", "duloxetine", "cymbalta", "lidocaine", "lidoderm", "diclofenac", "voltaren"];
 const PAIN_ROUTE_OPTIONS = ["Oral", "Patch", "Topical", "Pump", "Sublingual", "Rectal", "Other"];
+
+// [Redesign 2026-10-03 "Nursing Assessment Flow"] Fields that only apply
+// when the patient can verbally describe/report pain (painAssessmentMode
+// === "verbal"). Used as a per-field render gate on the merged "Pain
+// Character & Impact" card so neuropathic-pain fields on that same card
+// (which are NOT verbal-only) keep showing for non-verbal/pediatric
+// patients -- see the card-level comment at isPainCharacteristicsCard.
+const PAIN_VERBAL_ONLY_PATHS = new Set([
+  "painCharacter", "painOnsetProgression", "painDurationFrequency",
+  "aggravatingFactors", "relievingFactors", "effectOnFunction",
+]);
 
 function classifyPainMedicationRoute(routeText) {
   const r = (routeText || "").toLowerCase();
@@ -10682,30 +10694,60 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // unchanged -- see RNICA_SCREEN_AUTHORITY_MATRIX.md.
         const cardDataSection = card.dataSection || sectionKey;
         const cardData = card.dataSection ? (fullFormData?.[card.dataSection] || {}) : data;
-        const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics & Body Map";
+        // [Pain information-hierarchy regroup -- 2026-10] Several "Pain
+        // Pattern & Trend" cards now share one visual title (the numeric/
+        // FLACC/PAINAD tool variants plus the chronic-pain detail card), so
+        // card identity below is detected by a field it uniquely owns
+        // rather than by `card.title` string equality. No field, path,
+        // option, or HOPE mapping changed -- only which named card a field
+        // renders under.
+        const isPainNumericToolCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "assessmentTool");
+        const isPainFlaccCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "flacc.face");
+        const isPainPainadCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "painad.breathing");
+        const isPainLocationCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "painLocation");
+        // [Redesign 2026-10-03 "Nursing Assessment Flow"] Pain Type,
+        // Characteristics, and Functional Impact are merged into one
+        // "Pain Character & Impact" card (identified by either of its two
+        // always-present anchor fields) so the former 3-box/3-border
+        // layout becomes 1 box. Visibility that used to be a whole-card
+        // gate (`painAssessmentMode === "verbal"`) is now a per-field gate
+        // below (PAIN_VERBAL_ONLY_PATHS) -- neuropathic-pain fields are
+        // NOT verbal-only and must keep showing for non-verbal patients,
+        // which the old card-level gate would have wrongly hidden if
+        // simply merged without this change. No field/path/option/HOPE
+        // mapping touched.
+        const isPainCharacteristicsCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "painOnsetProgression" || f.path === "neuropathicPain");
+        // Pain History merges the former standalone chronic/recurrent-pain
+        // gate question and its detail sub-fields (baseline/tolerance/
+        // threshold/management-approach/control-status) into one card
+        // (was two boxes). Same card-level visibility rule as before
+        // (only relevant once the patient denies current pain) and the
+        // same field-level chronicPainHistory === "1" gate on every detail
+        // field, both unchanged below.
+        const isPainHistoryCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "chronicPainHistory");
+        const shouldRenderPainMap = isPainLocationCard;
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
-        const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
-        const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics & Body Map" && painAssessmentMode === "verbal";
-        const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
-        const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
-        // Section 8 of the FINAL OWNER REQUIREMENTS: pain remains clinically
-        // relevant when the patient denies *current* pain but has a chronic
-        // or recurrent pain history -- this card only applies to that path.
-        const shouldRenderChronicPainProfile = sectionKey === "pain" && card.title === "Chronic Pain Profile" && data?.currentPain === "0" && data?.chronicPainHistory === "1";
+        const shouldRenderPainToolCard = isPainNumericToolCard && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
+        const shouldRenderLocationCard = isPainLocationCard && painAssessmentMode === "verbal";
+        const shouldRenderPainadCard = isPainPainadCard && painAssessmentMode === "painad";
+        const shouldRenderFlaccCard = isPainFlaccCard && painAssessmentMode === "flacc";
 
-        if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
+        if (isPainNumericToolCard && !shouldRenderPainToolCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "Pain Characteristics & Body Map" && !shouldRenderPainCharacteristicsCard) {
+        if (isPainLocationCard && !shouldRenderLocationCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && !shouldRenderPainadCard) {
+        if (isPainPainadCard && !shouldRenderPainadCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
+        if (isPainFlaccCard && !shouldRenderFlaccCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "Chronic Pain Profile" && !shouldRenderChronicPainProfile) {
+        // The chronic/recurrent-history question (and its detail fields)
+        // only applies once the patient denies current pain -- hide the
+        // whole merged card rather than show it with just one field.
+        if (isPainHistoryCard && cardData.currentPain !== "0") {
           return null;
         }
 
@@ -11179,16 +11221,16 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             // collapsed by default" requirement was silently not applying.
             // The bare-card render branch already respects
             // collapsible/collapsed correctly; only this gate was wrong.
-            collapsible={(sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault}
-            defaultCollapsed={(sectionKey === "pain" && (card.title === "Pain Assessment Tool" || card.title === "Pain Characteristics & Body Map")) || card.collapsedByDefault}
+            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard) || card.collapsedByDefault}
+            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard) || card.collapsedByDefault}
           >
-            {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
+            {isPainNumericToolCard && (
               <NumericPainScale
                 value={data.painIntensity?.current !== undefined && data.painIntensity?.current !== "" ? Number(data.painIntensity.current) : null}
                 onChange={(score) => u("painIntensity.current", score)}
               />
             )}
-            {sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && (
+            {isPainFlaccCard && (
               <FLACCScale
                 value={["face", "legs", "activity", "cry", "consolability"].map((k) => Number(data.flacc?.[k]) || 0)}
                 onChange={(arr) => {
@@ -11200,7 +11242,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 }}
               />
             )}
-            {sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && (
+            {isPainPainadCard && (
               <PAINADScale
                 value={["breathing", "vocalization", "facialExpression", "bodyLanguage", "consolability"].map((k) => Number(data.painad?.[k]) || 0)}
                 onChange={(arr) => {
@@ -11271,10 +11313,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
             <div style={isBodySystemPilotCard ? undefined : styles.fieldsGrid} className={isBodySystemPilotCard ? "rnica-bodysystem-workspace__fields" : undefined}>
             {card.fields.map((field, fi) => {
-              if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
+              if (isPainFlaccCard || isPainPainadCard) {
                 return null;
               }
-              if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && field.path === "assessmentTool") {
+              if (sectionKey === "pain" && field.path === "assessmentTool") {
+                return null;
+              }
+              // [Redesign 2026-10-03] "Pain Character & Impact" merge:
+              // these fields only apply when the patient can verbally
+              // describe/report pain (same verbal-only gate Location &
+              // Body Map uses) -- a per-field gate now that the card
+              // itself is unconditional (neuropathicPain/
+              // neuropathicCharacteristics are NOT verbal-only and must
+              // keep showing for non-verbal patients on the same card).
+              if (sectionKey === "pain" && PAIN_VERBAL_ONLY_PATHS.has(field.path) && painAssessmentMode !== "verbal") {
                 return null;
               }
               // HOPE J2052A controls the J2052 branch: when the SFV was
@@ -11312,7 +11364,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 // never apply when the patient cannot reliably self-report.
                 if (field.path === "tolerablePainLevel" && painAssessmentMode !== "verbal") return null;
               }
-              if (sectionKey === "pain" && ["painOnsetProgression", "painDurationFrequency", "effectOnFunction"].includes(field.path) && card.title === "Pain Characteristics & Body Map" && cardData.currentPain === "0" && cardData.chronicPainHistory !== "1") {
+              if (sectionKey === "pain" && ["painOnsetProgression", "painDurationFrequency", "effectOnFunction"].includes(field.path) && cardData.currentPain === "0" && cardData.chronicPainHistory !== "1") {
                 return null;
               }
               // [RNICA_NEURO_CARDIO_WORKFLOW_CORRECTION.md -- Category A,
@@ -11977,103 +12029,72 @@ const SECTION_CONFIGS = {
 
   pain: {
     title: "Pain Assessment",
-    subtitle: "Use the patient communication status to select the correct pain scale: verbal patients use numerical pain scoring, non-verbal patients use PAINAD or FLACC based on nurse selection, and pediatric patients use FLACC.",
+    subtitle: "Use the patient communication status to select the correct pain scale: verbal patients use numerical pain scoring, non-verbal patients use PAINAD or FLACC based on nurse selection, and pediatric patients use FLACC. [Information hierarchy regrouped 2026-10 to match the Neurological architecture -- no field, option, path, or HOPE mapping changed, only which named section each field renders under.]",
     cards: [
+      // 1. Pain Overview -- the triage front door (HOPE J0900 A-D, J0905,
+      // and the self-report/comfort/active-problem questions), same role
+      // as the Neurological Overview card: establishes the top-level
+      // picture before any detail section below is reached.
       {
-        title: "Pain Screening", hopeCode: "J0900", fields: [
-          { type: "radio", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
+        title: "Pain Overview", hopeCode: "J0900", fields: [
+          // GitHub UI Directive (2026-10-03) "Neuro Interaction Parity" --
+          // every exclusive single-choice field below uses `type:
+          // "segmented"` (compact chip row) instead of `type: "radio"`
+          // (large circular-radio stack), the same opt-in swap already
+          // applied throughout Neurological/Cardiovascular. Same options
+          // array/value/onChange contract -- no data shape change.
+          { type: "segmented", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
             { value: "0", label: "No — skip to Pain Active Problem (J0905)" }, { value: "1", label: "Yes" }
           ]},
           // Reason not assessed: shown only when screenedForPain = No.
           // Free text so it never has to fit CMS's binary J0900.A coding.
           { type: "textarea", label: "Reason pain assessment was not completed", path: "reasonNotAssessed" },
           { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
-          { type: "radio", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
+          { type: "segmented", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
             { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
           ]},
-          { type: "radio", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
+          { type: "segmented", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
             { value: "1", label: "Numeric" }, { value: "2", label: "Verbal descriptor" }, { value: "3", label: "Patient visual" }, { value: "4", label: "Staff observation" }, { value: "9", label: "No standardized tool used" }
           ]},
-          { type: "radio", label: "Can the patient reliably self-report pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
+          { type: "segmented", label: "Can the patient reliably self-report pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
           ]},
-          { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
+          { type: "segmented", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
           // Section 4: current pain is conceptually distinct from HOPE
           // J0900.C severity-in-general and from pain-as-active-problem.
-          { type: "radio", label: "Is the patient experiencing pain now?", path: "currentPain", options: [
+          { type: "segmented", label: "Is the patient experiencing pain now?", path: "currentPain", options: [
             { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
           ]},
-          // Section 6/7/8: denying current pain does not end the
-          // assessment -- chronic/recurrent history remains clinically
-          // relevant and is captured on the Chronic Pain Profile card below.
-          { type: "radio", label: "Does the patient have a history of chronic or recurrent pain?", path: "chronicPainHistory", options: [
-            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }, { value: "unable", label: "Unable to determine" }
-          ]},
-          { type: "radio", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
-            { value: "0", label: "No" }, { value: "1", label: "Yes" }
-          ]},
-          { type: "checkboxGroup", label: "Supporting neuropathic characteristics", path: "neuropathicCharacteristics", options: ["Burning", "Tingling", "Pins and needles", "Electric/shooting quality", "Hyperesthesia", "Allodynia (pain to light touch)", "Other documented characteristic"] },
           // Section 10: conceptually distinct from "current pain" -- a
           // patient can deny pain right now and still have an active pain
           // problem requiring ongoing management/monitoring. AI may
-          // propose this (see AI Pain Analysis); the RN always confirms.
-          { type: "radio", label: "Is pain an active problem? (J0905)", path: "painActiveProblem", hopeCode: "J0905", options: [
+          // propose this (see AI Insights); the RN always confirms.
+          { type: "segmented", label: "Is pain an active problem? (J0905)", path: "painActiveProblem", hopeCode: "J0905", options: [
             { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
           ]},
         ],
       },
+      // 2. Pain Intensity -- the longitudinal intensity picture
+      // (current/worst/best/acceptable). The three tool-specific cards
+      // immediately below share this same section title because only one
+      // of them ever renders at a time (Numeric for verbal patients,
+      // FLACC for pediatric, PAINAD for non-verbal adults -- see
+      // painAssessmentMode).
       {
-        title: "Pain Assessment Tool", fields: [
+        title: "Pain Intensity", fields: [
           { type: "select", label: "Pain scale selected", path: "assessmentTool", options: ["Numeric (0-10)"] },
           { type: "input", label: "Current intensity", path: "painIntensity.current", inputType: "number" },
           { type: "input", label: "Worst in 24 hours", path: "painIntensity.worst", inputType: "number" },
           { type: "input", label: "Best in 24 hours", path: "painIntensity.best", inputType: "number" },
           { type: "input", label: "Acceptable level", path: "painIntensity.acceptable", inputType: "number" },
-          { type: "checkbox", label: "Comprehensive pain assessment completed", path: "comprehensiveAssessmentCompleted" },
+          { type: "booleanPill", label: "Comprehensive pain assessment completed", path: "comprehensiveAssessmentCompleted" },
           { type: "input", label: "Comprehensive pain assessment date", path: "comprehensiveAssessmentDate", inputType: "date" },
         ],
       },
       {
-        // [OWNER REVIEW -- 2026-09-26] Pain Characteristics & Body Map must
-        // default to collapsed: the body map/checkbox grid consumes
-        // significant vertical space the nurse doesn't need to keep in view
-        // while reviewing Pain Management/treatment response above. Current
-        // Pain Assessment (Pain Screening) and Pain Management stay open.
-        // Onset/Duration/Effect-on-function are RN-entered assessment
-        // fields (the RN is a valid source -- no upstream module owns
-        // these) and only apply on the current-pain path (Section 5).
-        title: "Pain Characteristics & Body Map", fields: [
-          { type: "checkboxGroup", label: "Pain location", path: "painLocation", options: ["Head", "Neck", "Chest", "Abdomen", "Back", "Upper extremities", "Lower extremities", "Generalized"] },
-          { type: "checkboxGroup", label: "Pain character", path: "painCharacter", options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
-          { type: "textarea", label: "Onset & progression", path: "painOnsetProgression" },
-          { type: "input", label: "Duration & frequency", path: "painDurationFrequency" },
-          { type: "checkboxGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
-          { type: "checkboxGroup", label: "Relieving factors", path: "relievingFactors", options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
-          { type: "textarea", label: "Effect on function or quality of life", path: "effectOnFunction" },
-        ],
-      },
-      {
-        // Section 8: only rendered when Current Pain = No AND Chronic/
-        // Recurrent Pain History = Yes (see shouldRenderChronicPainProfile
-        // in renderGenericSection). Distinguishes CURRENT PAIN (none
-        // reported) from CHRONIC PAIN HISTORY (present) and USUAL BASELINE/
-        // TOLERABLE LEVEL (patient-reported) -- never merges them.
-        title: "Chronic Pain Profile", fields: [
-          { type: "textarea", label: "Chronic pain condition or source", path: "chronicPainCondition" },
-          { type: "input", label: "Usual/baseline pain level (0-10, or \"Unable to quantify\")", path: "usualBaselinePainLevel" },
-          { type: "input", label: "Patient's tolerable pain level before requesting intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "tolerablePainLevel" },
-          { type: "input", label: "Pain level that typically requires intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "interventionThresholdLevel" },
-          { type: "input", label: "Usual frequency or pattern", path: "usualFrequencyPattern" },
-          { type: "checkboxGroup", label: "Current pain-management approach", path: "currentManagementApproach", options: ["Medication", "Positioning", "Heat", "Cold", "Massage", "Rest", "Distraction", "Other nonpharmacologic intervention", "No current intervention", "Unable to determine"] },
-          { type: "radio", label: "Current control status", path: "controlStatus", options: [
-            { value: "Controlled", label: "Controlled" }, { value: "Partially controlled", label: "Partially controlled" }, { value: "Uncontrolled", label: "Uncontrolled" }, { value: "Unable to determine", label: "Unable to determine" }
-          ]},
-        ],
-      },
-      {
-        title: "FLACC Scale (Pediatric / child)", fields: [
+        title: "Pain Intensity", fields: [
           { type: "select", label: "Face", path: "flacc.face", options: [{ value: "0", label: "0 — No particular expression" }, { value: "1", label: "1 — Occasional grimace or frown" }, { value: "2", label: "2 — Frequent to constant frown, clenched jaw" }] },
           { type: "select", label: "Legs", path: "flacc.legs", options: [{ value: "0", label: "0 — Normal position or relaxed" }, { value: "1", label: "1 — Uneasy, restless, tense" }, { value: "2", label: "2 — Kicking or legs drawn up" }] },
           { type: "select", label: "Activity", path: "flacc.activity", options: [{ value: "0", label: "0 — Lying quietly, normal movement" }, { value: "1", label: "1 — Squirming, shifting, tense" }, { value: "2", label: "2 — Arched, rigid, or jerking" }] },
@@ -12082,7 +12103,7 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "PAINAD Scale (Non-verbal / unable to self-report)", fields: [
+        title: "Pain Intensity", fields: [
           { type: "select", label: "Breathing", path: "painad.breathing", options: [{ value: "0", label: "0 — Normal" }, { value: "1", label: "1 — Occasional labored" }, { value: "2", label: "2 — Noisy labored" }] },
           { type: "select", label: "Vocalization", path: "painad.vocalization", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Occasional moan" }, { value: "2", label: "2 — Repeated calling out" }] },
           { type: "select", label: "Facial expression", path: "painad.facialExpression", options: [{ value: "0", label: "0 — Smiling/inexpressive" }, { value: "1", label: "1 — Sad/frightened" }, { value: "2", label: "2 — Grimacing" }] },
@@ -12090,6 +12111,66 @@ const SECTION_CONFIGS = {
           { type: "select", label: "Consolability", path: "painad.consolability", options: [{ value: "0", label: "0 — No need" }, { value: "1", label: "1 — Distracted/reassured" }, { value: "2", label: "2 — Unable to console" }] },
         ],
       },
+      // 3. Pain History -- the chronic/recurrent-history gate plus its
+      // detail sub-fields (baseline/tolerance/threshold/management-
+      // approach/control-status), merged into one card (was two boxes:
+      // a standalone one-field gate card and a separate detail card).
+      // Same visibility rules as before: the whole card only applies once
+      // the patient denies current pain (isPainHistoryCard card-level
+      // gate), and the detail fields only apply once chronicPainHistory
+      // = Yes (unchanged field-level gate below in the render loop).
+      {
+        title: "Pain History", fields: [
+          { type: "segmented", label: "Does the patient have a history of chronic or recurrent pain?", path: "chronicPainHistory", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }, { value: "unable", label: "Unable to determine" }
+          ]},
+          { type: "textarea", label: "Chronic pain condition or source", path: "chronicPainCondition" },
+          { type: "input", label: "Usual/baseline pain level (0-10, or \"Unable to quantify\")", path: "usualBaselinePainLevel" },
+          { type: "input", label: "Patient's tolerable pain level before requesting intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "tolerablePainLevel" },
+          { type: "input", label: "Pain level that typically requires intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "interventionThresholdLevel" },
+          { type: "input", label: "Usual frequency or pattern", path: "usualFrequencyPattern" },
+          { type: "pillGroup", label: "Current pain-management approach", path: "currentManagementApproach", options: ["Medication", "Positioning", "Heat", "Cold", "Massage", "Rest", "Distraction", "Other nonpharmacologic intervention", "No current intervention", "Unable to determine"] },
+          { type: "segmented", label: "Current control status", path: "controlStatus", options: [
+            { value: "Controlled", label: "Controlled" }, { value: "Partially controlled", label: "Partially controlled" }, { value: "Uncontrolled", label: "Uncontrolled" }, { value: "Unable to determine", label: "Unable to determine" }
+          ]},
+        ],
+      },
+      // 4. Location -- the visual body silhouette plus the location
+      // checklist. Verbal-patients-only, same as before (see
+      // shouldRenderLocationCard). Stays collapsed by default (secondary
+      // interaction): the body map consumes significant vertical space
+      // the nurse doesn't need in view while reviewing Pain Management/
+      // treatment response -- Pain Overview and Pain Management stay open.
+      {
+        title: "Location", fields: [
+          { type: "pillGroup", label: "Pain location", path: "painLocation", options: ["Head", "Neck", "Chest", "Abdomen", "Back", "Upper extremities", "Lower extremities", "Generalized"] },
+        ],
+      },
+      // 5. Pain Character & Impact -- merges the former Pain Type,
+      // Characteristics, and Functional Impact cards (was 3 boxes) into
+      // one. Neuropathic classification (HOPE J0915) and pain character
+      // always apply; onset/duration/aggravating/relieving/functional-
+      // impact are verbal-patients-only (PAIN_VERBAL_ONLY_PATHS field-
+      // level gate in the render loop replaces the old per-card mode
+      // gate) and current-pain-or-chronic-history-only (unchanged
+      // field-level gate). Stays collapsed by default, same convention as
+      // Location, to keep this detail out of view while Pain Management
+      // is being reviewed.
+      {
+        title: "Pain Character & Impact", fields: [
+          { type: "segmented", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
+            { value: "0", label: "No" }, { value: "1", label: "Yes" }
+          ]},
+          { type: "pillGroup", label: "Supporting neuropathic characteristics", path: "neuropathicCharacteristics", options: ["Burning", "Tingling", "Pins and needles", "Electric/shooting quality", "Hyperesthesia", "Allodynia (pain to light touch)", "Other documented characteristic"] },
+          { type: "pillGroup", label: "Pain character", path: "painCharacter", options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
+          { type: "textarea", label: "Onset & progression", path: "painOnsetProgression" },
+          { type: "input", label: "Duration & frequency", path: "painDurationFrequency" },
+          { type: "pillGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
+          { type: "pillGroup", label: "Relieving factors", path: "relievingFactors", options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
+          { type: "textarea", label: "Effect on function or quality of life", path: "effectOnFunction" },
+        ],
+      },
+      // 6. Pain Management -- unchanged from the prior architecture.
       {
         // Section 14 (simplified 2026-09-26 per owner request): harvest
         // from the medication list first (see PainMedicationHarvestBanner
@@ -12100,32 +12181,33 @@ const SECTION_CONFIGS = {
         // admission workflow (better suited to medication management /
         // follow-up visits, not admission documentation burden).
         title: "Pain Management", fields: [
-          { type: "radio", label: "Routine pain medication present?", path: "routinePainMedicationPresent", options: [
+          { type: "segmented", label: "Routine pain medication present?", path: "routinePainMedicationPresent", options: [
             { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
           ]},
-          { type: "radio", label: "Pain medication type", path: "painMedicationType", options: [
+          { type: "segmented", label: "Pain medication type", path: "painMedicationType", options: [
             { value: "Opioid", label: "Opioid" }, { value: "Non-Opioid", label: "Non-Opioid" }, { value: "Both", label: "Both" }
           ]},
-          { type: "checkboxGroup", label: "Route", path: "painMedicationRoute", options: PAIN_ROUTE_OPTIONS },
-          { type: "radio", label: "Breakthrough pain medication present?", path: "breakthroughPainMedication", options: [
+          { type: "pillGroup", label: "Route", path: "painMedicationRoute", options: PAIN_ROUTE_OPTIONS },
+          { type: "segmented", label: "Breakthrough pain medication present?", path: "breakthroughPainMedication", options: [
             { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
           ]},
-          { type: "checkboxGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
-          { type: "radio", label: "Effectiveness", path: "painEffectivenessRating", options: [
+          { type: "pillGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
+          { type: "segmented", label: "Effectiveness", path: "painEffectivenessRating", options: [
             { value: "Effective", label: "Effective" }, { value: "Partially Effective", label: "Partially Effective" }, { value: "Ineffective", label: "Ineffective" }, { value: "Unable To Determine", label: "Unable To Determine" }
           ]},
           { type: "textarea", label: "Pain Management Notes (optional)", path: "painManagementPlan" },
         ],
       },
-      // Section 1 approved page structure: three derived/read-only cards
-      // follow Pain Management. Each is grounded-only (never fabricates)
-      // and, per Section 15/16, the AI Analysis and Overdue Alerts cards
-      // render nothing at all -- no card, no placeholder -- when there is
-      // no supported finding/triggered rule (see the customRenderer
-      // dispatch above for the hide-when-empty guards).
-      { title: "Current Pain Summary", customRenderer: "painAssessmentSummary" },
-      { title: "AI Pain Analysis", customRenderer: "aiPainAnalysis" },
+      // Three derived/read-only cards follow Pain Management. Each is
+      // grounded-only (never fabricates) and the AI Insights and Overdue
+      // Alerts cards render nothing at all -- no card, no placeholder --
+      // when there is no supported finding/triggered rule (see the
+      // customRenderer dispatch above for the hide-when-empty guards).
+      // 7. Clinical Summary (+ its overdue-action companion card).
+      { title: "Clinical Summary", customRenderer: "painAssessmentSummary" },
       { title: "Overdue Action Alerts", customRenderer: "painOverdueAlerts" },
+      // 8. AI Insights.
+      { title: "AI Insights", customRenderer: "aiPainAnalysis" },
     ],
   },
 
