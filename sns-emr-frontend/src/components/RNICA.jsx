@@ -1308,6 +1308,57 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled 
   );
 }
 
+// Structured-charting alternative to a pure narrative textarea: tap a
+// preset phrase to add/remove it from the same underlying string field
+// (semicolon-joined), instead of free typing. Same path/data type as a
+// plain textarea -- no schema change, no new field -- just a faster
+// click-to-chart entry path. The textarea stays available underneath for
+// anything a preset doesn't cover.
+function FormQuickPickTextarea({ label, value, onChange, presets = [], placeholder, rows = 2 }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  const parts = (value || "").split(";").map((s) => s.trim()).filter(Boolean);
+  const togglePreset = (preset) => {
+    const has = parts.includes(preset);
+    const next = has ? parts.filter((p) => p !== preset) : [...parts, preset];
+    onChange(next.join("; "));
+  };
+  return (
+    <div style={styles.formGroup}>
+      <label style={styles.label}>{label}</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+        {presets.map((preset) => {
+          const selected = parts.includes(preset);
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => togglePreset(preset)}
+              style={{
+                borderRadius: 999,
+                border: selected ? `1px solid ${COLORS.teal}` : `1px solid ${COLORS.border}`,
+                background: selected ? COLORS.teal : "transparent",
+                color: selected ? "#fff" : COLORS.text,
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "4px 10px",
+                cursor: "pointer",
+              }}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+      <ShadcnTextarea
+        style={{ minHeight: rows * 24 }} value={value || ""}
+        onChange={(e) => onChange(e.target.value)} placeholder={placeholder || "Add detail not covered by the presets above (optional)"}
+      />
+    </div>
+  );
+}
+
 function FormSelect({ label, value, onChange, options, required, hopeCode, disabled }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
@@ -11700,6 +11751,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   rendered = <FormTextarea label={fieldForRender.label} value={value} onChange={onChange}
                     placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
                   break;
+                case "quickPickTextarea":
+                  rendered = <FormQuickPickTextarea label={fieldForRender.label} value={value} onChange={onChange}
+                    presets={fieldForRender.presets} placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
+                  break;
                 case "select":
                   rendered = <FormSelect label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
@@ -12228,7 +12283,7 @@ const SECTION_CONFIGS = {
           { type: "input", label: "Duration & frequency", path: "painDurationFrequency" },
           { type: "pillGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
           { type: "pillGroup", label: "Relieving factors", path: "relievingFactors", options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
-          { type: "textarea", label: "Effect on function or quality of life", path: "effectOnFunction" },
+          { type: "quickPickTextarea", label: "Effect on function or quality of life", path: "effectOnFunction", presets: ["Limits mobility/ambulation", "Disrupts sleep", "Limits ADLs", "Decreases appetite", "Limits social engagement", "Causes mood/irritability changes", "No functional impact reported"] },
         ],
       },
       // 6. Pain Management -- unchanged from the prior architecture.
