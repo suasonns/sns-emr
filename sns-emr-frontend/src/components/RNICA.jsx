@@ -11195,8 +11195,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             // collapsed by default" requirement was silently not applying.
             // The bare-card render branch already respects
             // collapsible/collapsed correctly; only this gate was wrong.
-            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard) || card.collapsedByDefault}
-            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard) || card.collapsedByDefault}
+            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault}
+            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault}
           >
             {isPainNumericToolCard && (
               <NumericPainScale
