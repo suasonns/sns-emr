@@ -237,6 +237,8 @@ export type FacesheetResponse = {
     admission_date: NullableString;
     ref_date: NullableString;
     recert_date: NullableString;
+    election_date: NullableString;
+    face_to_face_due_date: NullableString;
   };
   notes: {
     special_instructions: NullableString;

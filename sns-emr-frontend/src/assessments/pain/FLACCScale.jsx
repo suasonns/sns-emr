@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainToolReference } from './PainGuide';
 import { getFlaccInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -170,30 +170,30 @@ const FLACCScale = ({ value, onChange }) => {
         0 = Relaxed/Comfortable · 1-3 = Mild Discomfort · 4-6 = Moderate Pain · 7-10 = Severe Pain
       </div>
 
-      {/* Scoring & Interpretation */}
-      <GuideBox title="Scoring & Interpretation">
-        <GradientBar />
-        <GuideList items={[
-          '0 = Relaxed/Comfortable (green)',
-          '1-3 = Mild Discomfort (yellow-green)',
-          '4-6 = Moderate Pain (amber)',
-          '7-10 = Severe Pain (red)',
-        ]} />
-        <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>
-          These ranges are based on a standard 0-10 scale of pain, but have not been substantiated for this tool.
-        </div>
-      </GuideBox>
+      <PainToolReference>
+        <GuideBox title="Scoring & Interpretation">
+          <GradientBar />
+          <GuideList items={[
+            '0 = Relaxed/Comfortable (green)',
+            '1-3 = Mild Discomfort (yellow-green)',
+            '4-6 = Moderate Pain (amber)',
+            '7-10 = Severe Pain (red)',
+          ]} />
+          <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>
+            These ranges are based on a standard 0-10 scale of pain, but have not been substantiated for this tool.
+          </div>
+        </GuideBox>
 
-      {/* Psychometric Properties */}
-      <GuideBox title="Psychometric Properties">
-        <GuideList items={[
-          'Source: Merkel S, Voepel-Lewis T, Shayevitz JR, Malviya S. (1997). The FLACC: a behavioral scale for scoring postoperative pain in young children.',
-          'Target: For infants, young children, and non-verbal critical care patients.',
-          'Administration: Observe patient for 1-2 minutes. Score each behavior 0-2. Takes < 3 minutes.',
-        ]} />
-      </GuideBox>
+        <GuideBox title="Psychometric Properties" style={{ marginBottom: 4 }}>
+          <GuideList items={[
+            'Source: Merkel S, Voepel-Lewis T, Shayevitz JR, Malviya S. (1997). The FLACC: a behavioral scale for scoring postoperative pain in young children.',
+            'Target: For infants, young children, and non-verbal critical care patients.',
+            'Administration: Observe patient for 1-2 minutes. Score each behavior 0-2. Takes < 3 minutes.',
+          ]} />
+        </GuideBox>
 
-      <References items={['Merkel S, Voepel-Lewis T, Shayevitz JR, Malviya S. (1997). The FLACC: a behavioral scale for scoring postoperative pain in young children.']} />
+        <References items={['Merkel S, Voepel-Lewis T, Shayevitz JR, Malviya S. (1997). The FLACC: a behavioral scale for scoring postoperative pain in young children.']} />
+      </PainToolReference>
     </div>
   );
 };
