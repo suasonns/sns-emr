@@ -1297,8 +1297,11 @@
    GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction": this
    is no longer the CMS BIMS; class names kept for minimal diff. */
 .rnica-cognitive-summary__bims {
-  margin-bottom: 0.4rem;
-  padding: 0.4rem 0.6rem;
+  /* OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- tighter
+     block padding/margin (was 0.4rem 0.6rem / 0.4rem); same content, no
+     text removed. */
+  margin-bottom: 0.3rem;
+  padding: 0.3rem 0.5rem;
   border-radius: 0.35rem;
   border-left: 3px solid var(--sns-hope, #059669);
   background: var(--sns-cardSoft);
@@ -1323,13 +1326,15 @@
 /* "Internal SNS clinical screen · Not submitted to CMS HOPE" metadata
    line -- GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction". */
 .rnica-cognitive-summary__source {
-  margin: 0.25rem 0 0;
+  /* Density pass (2026-10-04): 0.25rem -> 0.15rem top margin. */
+  margin: 0.15rem 0 0;
   color: var(--sns-muted);
   font-size: var(--cw-meta-size, 0.72rem);
   font-style: italic;
 }
 .rnica-cognitive-summary__line {
-  margin: 0 0 0.4rem;
+  /* Density pass (2026-10-04): 0.4rem -> 0.3rem bottom margin. */
+  margin: 0 0 0.3rem;
   color: var(--sns-white);
   font-size: var(--cw-body-size);
 }
@@ -1337,6 +1342,56 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.35rem;
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- "focus on
+   density, not redesign" (goal: ~25-35% less Neuro page height, same
+   workflow/data model). Every rule below is scoped to
+   [data-section="neurological"] (the `data-section` attribute added to
+   .rnica-bodysystem-workspace in RNICA.jsx) and/or `[data-card-title="..."]`
+   (added to the bare card group wrapper there), so no other Body System's
+   spacing, grid, or chip sizing changes. Named targets per the directive:
+   Cognitive Summary, Overall Change, Communication and Sensory, Additional
+   Cognitive Observations (textarea rows reduced in the schema above),
+   Psychiatric History (already collapsed by default), Nurse Observation. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group__cards {
+  /* 260px -> 220px min track so more sub-sections share a row at any given
+     width instead of each claiming a full row. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group__heading {
+  margin: 0 0 4px;
+  padding-bottom: 3px;
+}
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-workspace__fields {
+  /* 200px -> 160px min track; tighter row/column gap. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px 8px;
+}
+/* Overall Change's 7-option segmented row is the densest control in the
+   Consciousness/Orientation/Overall Change "status row" -- trims only the
+   label-to-options gap; the options/values themselves are untouched. */
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Overall Change Since Prior Assessment"] label {
+  margin-bottom: 2px;
+}
+/* Communication and Sensory (Communication/Hearing/Vision/Sensory Deficits/
+   Sensory Aids merged card) is the tallest sub-section in the section -- an
+   even narrower per-field track here lets its short segmented controls
+   share a row instead of each forcing its own. */
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Communication and Sensory"] .rnica-bodysystem-workspace__fields {
+  /* This card is `fullWidth: true` (spans the entire ~555-900px content
+     area regardless of viewport) and its 5 fields are mostly fieldSpan: 2
+     or 3 -- a narrower track here (vs. the 160px used elsewhere in Neuro)
+     gives enough implicit columns for 2-3 fields to share a row instead
+     of each claiming the full width by itself. */
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 6px 10px;
+}
+/* "Summary" banner (the prominent Neuro-only variant) -- same content,
+   tighter chrome. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-summary--prominent {
+  padding: 0.55rem 0.85rem;
 }
 
 @media (max-width: 700px) {

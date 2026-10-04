@@ -10275,7 +10275,13 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
   const fullWidthClass = fullWidth ? " rnica-bodysystem-workspace__group--full" : "";
   if (bare) {
     return (
-      <div className={`rnica-bodysystem-workspace__group${importanceClass}${fullWidthClass}`} id={id}>
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" --
+      // `data-card-title` is a presentation-only CSS hook (combined with
+      // the outer workspace's `data-section` attribute) so a specific
+      // sub-section of a specific Body System can be targeted for
+      // spacing/density without a bespoke class per card. No field, path,
+      // or behavior change.
+      <div className={`rnica-bodysystem-workspace__group${importanceClass}${fullWidthClass}`} id={id} data-card-title={title}>
         <div {...titleRowProps}>{titleRowContent}</div>
         {(!collapsible || !collapsed) && children}
       </div>
@@ -12624,10 +12630,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // styles.formGroup 8px bottom margin, which is the remaining
               // vertical-rhythm cost once rows are already paired up. This
               // opt-in `compact` prop (same pattern as Card's own `compact`
-              // prop below) tightens that margin for Pain only -- no other
-              // section passes it, so every other screen's spacing is
+              // prop below) tightens that margin for Pain -- no other
+              // section passed it, so every other screen's spacing was
               // byte-for-byte unchanged.
-              const compact = sectionKey === "pain";
+              //
+              // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass"
+              // goal #4 ("reduce default textarea heights"/general
+              // compaction) -- extended to Neurological for the same
+              // reason: it already has the exact per-field 8px-margin cost
+              // this flag exists to remove, on every segmented/pillGroup
+              // field (Overall Change, SNS Cognitive Screen, Communication
+              // and Sensory, Motor/Balance, Cognitive/Behavioral Findings,
+              // ...), not just one named card. Still opt-in per sectionKey,
+              // so every other Body System is unaffected.
+              const compact = sectionKey === "pain" || sectionKey === "neurological";
 
               let rendered;
               switch (fieldForRender.type) {
@@ -12913,7 +12929,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // instead of N separate bordered cards, and the section gets ONE
         // consolidated Add/View/Update/Resolve POC control instead of one
         // per sub-card.
-        <ShadcnCard className="rnica-bodysystem-workspace">
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" --
+        // `data-section` scoping hook so the density CSS below can target
+        // Neurological specifically (Cognitive Summary / Overall Change /
+        // Communication and Sensory / Additional Cognitive Observations /
+        // Psychiatric History / Nurse Observation) without touching any
+        // other Body System's spacing. Presentation-only attribute; no
+        // field, path, or behavior change.
+        <ShadcnCard className="rnica-bodysystem-workspace" data-section={sectionKey}>
           <ShadcnCardContent className="rnica-bodysystem-workspace__content">
             {bodySystemSummary && (
               <div
@@ -13558,6 +13581,12 @@ const SECTION_CONFIGS = {
         // Still placed directly below Consciousness/Orientation (directive
         // item #4/AC-10) and still category "core" for the same bucketing
         // reason as before.
+        // Still placed directly below Consciousness/Orientation (directive
+        // item #4/AC-10) and still category "core" for the same bucketing
+        // reason as before. (Density pass 2026-10-04: fullWidth was tried
+        // here and reverted -- it orphaned this card's "Cognitive Summary"
+        // pair into its own half-empty row, costing more height overall
+        // than the per-card shrinkage it bought; kept half-width.)
         title: "SNS Cognitive Screen", category: "core", importance: "medium", fields: [
           { type: "note", label: "Internal clinical assessment · Not submitted to CMS HOPE", path: "cognitiveScreenNote" },
           { type: "select", label: "Word Repetition", path: "cognitiveScreen.repetition", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
@@ -13589,7 +13618,14 @@ const SECTION_CONFIGS = {
         // fastest way to answer "is this patient declining?" without
         // scrolling. Same `clinicalStatusChange` path as before; only the
         // option list and title changed.
-        title: "Overall Change Since Prior Assessment", category: "core", importance: "high", fields: [
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- this
+        // card previously sat half-width (273px) paired with nothing
+        // (an empty half-row), which forced its 7 long option labels
+        // (e.g. "New or Worsening Concern", "No Significant Change") to
+        // wrap across several lines. `fullWidth` lets the same unchanged
+        // segmented control lay its chips out in far fewer rows -- no
+        // option, value, or control type changed.
+        title: "Overall Change Since Prior Assessment", category: "core", importance: "high", fullWidth: true, fields: [
           { type: "segmented", label: "Overall Change", path: "clinicalStatusChange", options: NEURO_OVERALL_CHANGE_OPTIONS },
         ],
       },
@@ -13699,7 +13735,12 @@ const SECTION_CONFIGS = {
           // (confirmed: its only other consumer is the read-only
           // Structured Findings generator at path `cognition`), so it's
           // now a small textarea instead of a wide single-line input.
-          { type: "textarea", label: "Additional Cognitive Observations", path: "cognition", rows: 2 },
+          // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" item
+          // #4 -- rows 2 -> 1 (presentation only; `minHeight: rows * 24` in
+          // FormTextarea, the textarea itself still accepts/displays any
+          // amount of typed or previously-charted text via its native
+          // scrollbar -- no content is truncated or lost).
+          { type: "textarea", label: "Additional Cognitive Observations", path: "cognition", rows: 1 },
           { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", fieldSpan: "full", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           // GitHub UI Directive (2026-09-28): single yes/no findings use a
           // compact toggle pill, not a large square checkbox. Same path/
@@ -13709,6 +13750,10 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        // Density pass (2026-10-04): fullWidth was tried here and reverted
+        // -- it orphaned this card's "Psychiatric History" pair into its
+        // own half-empty row, costing more height overall than the
+        // per-card shrinkage it bought; kept half-width.
         title: "Motor / Balance", category: "functional", importance: "medium", fields: [
           // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
           // same fast-path pattern as Behavioral Status above. New path;
@@ -13746,13 +13791,18 @@ const SECTION_CONFIGS = {
         // 10-group order.
         title: "Psychiatric History", category: "functional", importance: "low", collapsedByDefault: true, fields: [
           { type: "pillGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
-          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory", rows: 2 },
+          // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" item
+          // #4 -- rows 2 -> 1 (same minHeight-only, non-clipping rationale
+          // as Additional Cognitive Observations above).
+          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory", rows: 1 },
         ],
       },
       {
         title: "Notes", category: "observation", importance: "low", fields: [
           // Section 20/30 -- reduced textarea footprint (4 rows -> 2).
-          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 2 },
+          // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" item
+          // #4 -- further reduced 2 -> 1 (same non-clipping rationale).
+          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 1 },
         ],
       },
     ],
