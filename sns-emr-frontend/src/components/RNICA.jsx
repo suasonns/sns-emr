@@ -10227,7 +10227,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false, compact = false }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false, compact = false, summary = null }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -10283,6 +10283,14 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
       // or behavior change.
       <div className={`rnica-bodysystem-workspace__group${importanceClass}${fullWidthClass}`} id={id} data-card-title={title}>
         <div {...titleRowProps}>{titleRowContent}</div>
+        {/* OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+            Pass" item #8 -- an optional always-visible auto-generated
+            summary line, rendered whether or not the card is collapsed
+            (unlike `children`, which the collapsible mechanism already
+            hides). Purely additive: no caller passes this prop except
+            the one card opted into the "compact summary + edit" pattern;
+            every other card's render is unchanged. */}
+        {summary}
         {(!collapsible || !collapsed) && children}
       </div>
     );
@@ -12124,50 +12132,81 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             </Card>
           );
         }
-        // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" items
-        // #4/#6, corrected by the same-day "BIMS/HOPE compliance
-        // correction" directive -- read-only Cognitive Summary (SNS
-        // Cognitive Screen score/status + already-documented Cognitive/
-        // Behavioral findings), driven entirely by computeSnsCognitiveScreen
-        // (the one authoritative calculation). Renders nothing (returns
-        // null, same contract as every other computed summary here) until
-        // at least one qualifying field is documented -- never an empty
-        // placeholder card.
-        if (sectionKey === "neurological" && card.customRenderer === "neuroCognitiveSummary") {
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+        // Pass" item #3 -- "Merge Cognitive Summary into SNS Cognitive
+        // Screen". The two were previously separate schema cards that
+        // rendered as two adjacent half-width boxes; the standalone
+        // "Cognitive Summary" schema card (customRenderer
+        // "neuroCognitiveSummary") has been removed and its exact same
+        // read-only JSX (unchanged, driven by the same
+        // computeNeurologicalCognitiveSummary) is now appended inside this
+        // one SNS Cognitive Screen card instead, directly below its three
+        // select fields. This is a hand-rendered intercept (same
+        // established pattern as every other `card.customRenderer`/
+        // title-matched branch above) rather than routing through the
+        // ~600-line generic per-field loop below, because that loop is
+        // shared by every Body System and is not a safe place to splice
+        // in extra content for one specific card -- but the three fields
+        // themselves are plain, ungated `select` inputs (no per-field
+        // conditional-visibility rules exist for `cognitiveScreen.*`
+        // anywhere in that loop), so hand-rendering them here with the
+        // exact same FormSelect component/props/compact flag the generic
+        // loop would have used is a faithful, zero-behavior-change
+        // reproduction. Paths, options, onChange (`u`), and the `note`
+        // field are all identical to the schema below (still kept there
+        // as metadata only, e.g. for section-completion tracking).
+        if (sectionKey === "neurological" && card.title === "SNS Cognitive Screen") {
           const cognitive = computeNeurologicalCognitiveSummary(cardData);
-          if (!cognitive) return null;
-          const { screen } = cognitive;
+          const screenFields = card.fields.filter((f) => f.type === "select");
+          const noteField = card.fields.find((f) => f.type === "note");
           return (
             <Card key={ci} title={card.title} importance={card.importance} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
-              <div className="rnica-cognitive-summary">
-                {screen.completionStatus !== "NOT_STARTED" && (
-                  <div className="rnica-cognitive-summary__bims">
-                    {screen.completionStatus === "COMPLETE" ? (
-                      <>
-                        <span className="rnica-cognitive-summary__bims-score">SNS Cognitive Screen: {screen.rawScore} of {screen.maxScore}</span>
-                        {screen.interpretation && (
-                          <>
-                            <span className="rnica-cognitive-summary__bims-band">{screen.interpretation.label}</span>
-                            <p className="rnica-cognitive-summary__bims-detail">{screen.interpretation.detail} ({screen.interpretation.source})</p>
-                          </>
-                        )}
-                      </>
-                    ) : (
-                      <>
-                        <span className="rnica-cognitive-summary__bims-score">SNS Cognitive Screen incomplete</span>
-                        <p className="rnica-cognitive-summary__bims-detail">Not yet documented: {screen.missingItems.join(", ")}.</p>
-                      </>
-                    )}
-                    <p className="rnica-cognitive-summary__source">Internal SNS clinical screen · Not submitted to CMS HOPE</p>
+              {noteField && (
+                <p style={{ fontSize: 12, fontStyle: "italic", color: COLORS.textMuted || "#6b7280", margin: "2px 0" }}>{noteField.label}</p>
+              )}
+              <div className="rnica-bodysystem-workspace__fields">
+                {screenFields.map((f) => (
+                  <div key={f.path} style={{ gridColumn: `span ${f.fieldSpan || 1}` }}>
+                    <FormSelect
+                      label={f.label}
+                      value={getNestedValue(cardData, f.path)}
+                      onChange={(v) => u(f.path, v)}
+                      options={f.options}
+                      compact
+                    />
                   </div>
-                )}
-                {cognitive.behavioralLine && <p className="rnica-cognitive-summary__line">{cognitive.behavioralLine}</p>}
-                {cognitive.flags.length > 0 && (
-                  <div className="rnica-cognitive-summary__flags">
-                    {cognitive.flags.map((flag) => <ShadcnBadge key={flag} variant="warning">{flag}</ShadcnBadge>)}
-                  </div>
-                )}
+                ))}
               </div>
+              {cognitive && (
+                <div className="rnica-cognitive-summary">
+                  {cognitive.screen.completionStatus !== "NOT_STARTED" && (
+                    <div className="rnica-cognitive-summary__bims">
+                      {cognitive.screen.completionStatus === "COMPLETE" ? (
+                        <>
+                          <span className="rnica-cognitive-summary__bims-score">Score: {cognitive.screen.rawScore} of {cognitive.screen.maxScore}</span>
+                          {cognitive.screen.interpretation && (
+                            <>
+                              <span className="rnica-cognitive-summary__bims-band">{cognitive.screen.interpretation.label}</span>
+                              <p className="rnica-cognitive-summary__bims-detail">{cognitive.screen.interpretation.detail} ({cognitive.screen.interpretation.source})</p>
+                            </>
+                          )}
+                        </>
+                      ) : (
+                        <>
+                          <span className="rnica-cognitive-summary__bims-score">Incomplete</span>
+                          <p className="rnica-cognitive-summary__bims-detail">Not yet documented: {cognitive.screen.missingItems.join(", ")}.</p>
+                        </>
+                      )}
+                    </div>
+                  )}
+                  {cognitive.behavioralLine && <p className="rnica-cognitive-summary__line">{cognitive.behavioralLine}</p>}
+                  {cognitive.flags.length > 0 && (
+                    <div className="rnica-cognitive-summary__flags">
+                      {cognitive.flags.map((flag) => <ShadcnBadge key={flag} variant="warning">{flag}</ShadcnBadge>)}
+                    </div>
+                  )}
+                </div>
+              )}
             </Card>
           );
         }
@@ -12180,6 +12219,29 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // workspace Card wrapper is added once per section below (see
         // the wrapping <Card> around this whole map() call).
         const isBodySystemPilotCard = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+        // Pass" item #8 -- always-visible one-line auto-summary for
+        // "Cognitive / Behavioral Findings" (collapsed by default; see
+        // the schema's new `collapsedByDefault`), computed from the same
+        // fields the card itself edits (`symptomsDemeanor`, `delirium`,
+        // `seizureHistory`) -- nothing new is stored, this only restates
+        // already-documented values. `null` (renders nothing) for every
+        // other card, matching the existing "no empty placeholder" rule
+        // used elsewhere in this file.
+        let cardSummary = null;
+        if (sectionKey === "neurological" && card.title === "Cognitive / Behavioral Findings") {
+          const demeanor = (cardData.symptomsDemeanor || []).filter((s) => s !== "Peaceful");
+          const parts = [];
+          if (demeanor.length > 0) parts.push(demeanor.join(", "));
+          else if ((cardData.symptomsDemeanor || []).includes("Peaceful")) parts.push("Peaceful");
+          if (cardData.delirium) parts.push("Delirium");
+          if (cardData.seizureHistory) parts.push("Seizure Hx");
+          cardSummary = (
+            <p className="rnica-bodysystem-workspace__card-summary">
+              {parts.length > 0 ? parts.join(" · ") : "No behavioral or cognitive concerns documented."}
+            </p>
+          );
+        }
         return (
           <Card
             key={ci}
@@ -12191,6 +12253,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             bare={isBodySystemPilotCard}
             importance={card.importance}
             fullWidth={Boolean(card.fullWidth)}
+            summary={cardSummary}
             // [Pain density pass -- 2026-10] Pain-only card-chrome
             // compaction (tighter header/content padding). Scoped by
             // sectionKey so every other module's cards are unaffected.
@@ -12960,6 +13023,29 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 {bodySystemSummary.requiresFollowUp && (
                   <p className="rnica-bodysystem-summary__flag">Requires Follow-Up</p>
                 )}
+                {/* OWNER DIRECTIVE (2026-10-04) "Neurological Review
+                    Efficiency Pass" item #4 -- "Incorporate Overall Change
+                    into the Summary layer". Same unchanged
+                    `clinicalStatusChange` path/options
+                    (NEURO_OVERALL_CHANGE_OPTIONS) and `u()` write
+                    previously used by the now-removed standalone "Overall
+                    Change Since Prior Assessment" card; only relocated to
+                    render inside the prominent Summary banner instead of
+                    its own card lower down, since "is this patient
+                    declining?" belongs with the 5-second headline. Scoped
+                    to sectionKey === "neurological" only -- no other Body
+                    System's Summary banner gains this control. */}
+                {sectionKey === "neurological" && (
+                  <div className="rnica-bodysystem-summary__overall-change">
+                    <FormSegmented
+                      label="Overall Change Since Prior Assessment"
+                      value={data.clinicalStatusChange}
+                      onChange={(v) => u("clinicalStatusChange", v)}
+                      options={NEURO_OVERALL_CHANGE_OPTIONS}
+                      compact
+                    />
+                  </div>
+                )}
               </div>
             )}
             {bodySystemGroupedContent}
@@ -13594,41 +13680,27 @@ const SECTION_CONFIGS = {
           { type: "select", label: "Temporal Orientation", path: "cognitiveScreen.temporalOrientation", fieldSpan: 2, options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
         ],
       },
-      {
-        // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item
-        // #6 -- read-only, auto-generated (never manually entered) sibling
-        // to PerformanceScaleCard's Score+Interpretation+Significance
-        // pattern. Corrected by the same-day "BIMS/HOPE compliance
-        // correction" directive: this is the SNS Cognitive Screen (0-9
-        // raw sum, not a CMS BIMS 0-15 score), so per the same "never
-        // assume users remember the meaning of a scale value" principle
-        // already applied to PPS/KPS/ECOG/FAST/NYHA, it shows a neutral,
-        // non-diagnostic interpretation, not a clinical band. Also folds
-        // in the already-documented Cognitive/Behavioral Findings (further
-        // down this section) so both cognition signals read together in
-        // one place. Computed only -- no new field/path, nothing writable.
-        title: "Cognitive Summary", category: "core", importance: "medium", customRenderer: "neuroCognitiveSummary", fields: [],
-      },
-      {
-        // Section 10 -- Neurological uses its own more granular option set
-        // (NEURO_OVERALL_CHANGE_OPTIONS, not the shared CLINICAL_STATUS_
-        // CHANGE_OPTIONS other paused systems reuse) and sits directly
-        // beside Consciousness/Orientation as the third card of the
-        // "status row" -- hospice is about progression, and this is the
-        // fastest way to answer "is this patient declining?" without
-        // scrolling. Same `clinicalStatusChange` path as before; only the
-        // option list and title changed.
-        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- this
-        // card previously sat half-width (273px) paired with nothing
-        // (an empty half-row), which forced its 7 long option labels
-        // (e.g. "New or Worsening Concern", "No Significant Change") to
-        // wrap across several lines. `fullWidth` lets the same unchanged
-        // segmented control lay its chips out in far fewer rows -- no
-        // option, value, or control type changed.
-        title: "Overall Change Since Prior Assessment", category: "core", importance: "high", fullWidth: true, fields: [
-          { type: "segmented", label: "Overall Change", path: "clinicalStatusChange", options: NEURO_OVERALL_CHANGE_OPTIONS },
-        ],
-      },
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+      // Pass" item #3 -- the standalone "Cognitive Summary" card
+      // (previously here, customRenderer "neuroCognitiveSummary") has
+      // been removed; its exact same read-only content now renders
+      // appended inside the "SNS Cognitive Screen" card above (see the
+      // `card.title === "SNS Cognitive Screen"` intercept) instead of
+      // occupying its own adjacent half-width box. No field/path/HOPE
+      // mapping/computation changed -- presentation/grouping only.
+      //
+      // Item #4 -- "Incorporate Overall Change into the Summary layer":
+      // the standalone "Overall Change Since Prior Assessment" card
+      // (previously here) has also been removed; the same unchanged
+      // `clinicalStatusChange` segmented control (same
+      // NEURO_OVERALL_CHANGE_OPTIONS, same `u()` write) now renders
+      // directly inside the prominent Summary banner at the top of this
+      // section (see the `sectionKey === "neurological"` block inside
+      // the Summary banner JSX) instead of as its own card lower down --
+      // removing an entire grid row while keeping the control equally
+      // (arguably more) visible, since it now sits beside the 5-second
+      // headline instead of after Consciousness/Orientation/Cognitive
+      // Screen.
       {
         // One of the strongest hospice decline indicators (Finding #1/#6)
         // -- kept as its own major, high-importance section. `fullWidth`
@@ -13676,7 +13748,7 @@ const SECTION_CONFIGS = {
           { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
           { type: "input", label: "Additional Comment (if needed)", path: "sleepRest.response" },
           { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate", "Unable to Determine"] },
-          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 2 },
+          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 1 },
         ],
       },
       {
@@ -13721,7 +13793,19 @@ const SECTION_CONFIGS = {
         // width to wrap into a dense multi-per-line chip layout instead of
         // stacking narrowly, regardless of what else is in this category
         // bucket.
-        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fullWidth: true, fields: [
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+        // Pass" item #8 -- "Convert Behavioral Findings into compact
+        // summary + edit pattern". Reuses the exact same `collapsedByDefault`
+        // mechanism already applied to Psychiatric History/Sleep &
+        // Responsiveness (collapsed children, click title row to expand);
+        // paired with a new always-visible one-line auto-summary (see the
+        // `summary` prop passed at this card's render call site below,
+        // computed from these same fields' current values) so the
+        // collapsed state is still scannable instead of a blank title row.
+        // No field, path, option, or value removed -- only default
+        // visibility of the detail fields changed.
+        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fullWidth: true, collapsedByDefault: true, fields: [
           // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
           // fast-path replacement for the full detail below. New path;
           // only rendered/relevant when Neurological Overview = "No

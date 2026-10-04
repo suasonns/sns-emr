@@ -1338,10 +1338,26 @@
   color: var(--sns-white);
   font-size: var(--cw-body-size);
 }
-.rnica-cognitive-summary__flags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency Pass" item
+   #4 -- Overall Change's segmented control, relocated from its own
+   standalone card into the prominent Summary banner. */
+.rnica-bodysystem-summary__overall-change {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--sns-border, rgba(255, 255, 255, 0.12));
+}
+.rnica-bodysystem-summary__overall-change label {
+  color: var(--sns-white);
+  font-weight: 600;
+}
+/* Item #8 -- always-visible one-line auto-summary for a card using the
+   "compact summary + edit" pattern (collapsed by default; click the title
+   row to expand and edit the underlying fields). */
+.rnica-bodysystem-workspace__card-summary {
+  margin: 2px 0 0;
+  color: var(--sns-muted);
+  font-size: var(--cw-meta-size, 0.78rem);
+  line-height: 1.35;
 }
 
 /* OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- "focus on
@@ -1369,12 +1385,10 @@
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 6px 8px;
 }
-/* Overall Change's 7-option segmented row is the densest control in the
-   Consciousness/Orientation/Overall Change "status row" -- trims only the
-   label-to-options gap; the options/values themselves are untouched. */
-.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Overall Change Since Prior Assessment"] label {
-  margin-bottom: 2px;
-}
+/* Note: the former [data-card-title="Overall Change Since Prior
+   Assessment"] rule was removed -- that card no longer exists (item #4,
+   "Incorporate Overall Change into the Summary layer"); its spacing is
+   now handled by .rnica-bodysystem-summary__overall-change above. */
 /* Communication and Sensory (Communication/Hearing/Vision/Sensory Deficits/
    Sensory Aids merged card) is the tallest sub-section in the section -- an
    even narrower per-field track here lets its short segmented controls
