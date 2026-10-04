@@ -10690,16 +10690,40 @@ function computeBodySystemFindings(sectionKey, sectionData) {
       if (d.consciousness && !["Alert", "Awake"].includes(d.consciousness)) {
         findings.push(`Level of consciousness: ${d.consciousness}.`);
       }
-      if (d.orientation?.disoriented) findings.push(`Disoriented.`);
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+      // item #5 -- "Expand Structured Findings ... Orientation". Only the
+      // negative "Disoriented" flag surfaced here before; the positive x4
+      // state (equally clinically relevant to confirm, and already
+      // captured by the Orientation card's own "Mark Oriented x4" quick
+      // action) was invisible. Same four existing fields -- nothing new.
+      if (d.orientation?.disoriented) {
+        findings.push(`Disoriented.`);
+      } else if (d.orientation?.time && d.orientation?.place && d.orientation?.person && d.orientation?.situation) {
+        findings.push(`Orientation: Oriented x4.`);
+      }
       // GitHub Review Major Issue #6 -- Sleep/Responsiveness and
       // Communication/Behavioral findings weren't surfacing in the
       // Structured Findings rail, making Neurological's own findings look
       // thin next to other systems. Neurological is already first in the
       // panel's fixed section order (see bodySystemsStructuredFindings);
       // this only enriches what that first section actually shows.
+      //
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+      // item #5 -- "Expand Structured Findings ... Sleep Findings,
+      // Responsiveness" as their own distinct lines. `sleepRest.
+      // sleepPattern` previously wasn't read here at all, so an abnormal
+      // Sleep Pattern selection (e.g. "Insomnia") could go completely
+      // unmentioned whenever Change Since Prior Visit was left at "No
+      // Change". All three now surface independently instead of the
+      // prior "show only one of Change-Since-Prior OR Responsiveness"
+      // branching -- no field removed, every one already existed.
+      if (d?.sleepRest?.sleepPattern && !["Normal", ""].includes(d.sleepRest.sleepPattern)) {
+        findings.push(`Sleep pattern: ${d.sleepRest.sleepPattern}.`);
+      }
       if (d?.sleepRest?.changeSincePrior && d.sleepRest.changeSincePrior !== "No Change") {
         findings.push(`Sleep/responsiveness change: ${d.sleepRest.changeSincePrior}.`);
-      } else if (d?.sleepRest?.responsiveness && !["Easily Aroused", ""].includes(d.sleepRest.responsiveness)) {
+      }
+      if (d?.sleepRest?.responsiveness && !["Easily Aroused", ""].includes(d.sleepRest.responsiveness)) {
         // Display the clinical-finding noun ("Somnolence"), not the stored
         // legacy adjective value ("Somnolent") -- GitHub Directive
         // (2026-09-28) Major Concern #1/#2.
@@ -12180,8 +12204,55 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           const cognitive = computeNeurologicalCognitiveSummary(cardData);
           const screenFields = card.fields.filter((f) => f.type === "select");
           const noteField = card.fields.find((f) => f.type === "note");
+          // OWNER DIRECTIVE (2026-10-04) "Neurological Density
+          // Optimization" items #2/#3 -- "Remove SNS Cognitive Screen from
+          // the fixed top-row layout" / "Convert SNS Cognitive Screen into
+          // an accordion". This card is now `collapsedByDefault` (schema
+          // above) so it no longer consumes premium top-of-section space
+          // when not actively being edited; the collapsed state still
+          // shows Score / Interpretation / Review status via the `summary`
+          // prop below (rendered unconditionally by Card, unlike
+          // `children`, which the collapsible mechanism hides) so nothing
+          // is hidden behind a click that a reviewer needs to see at a
+          // glance. `reviewStatusLabel` is derived from the same
+          // `computeSnsCognitiveScreen`-produced `interpretation.
+          // reviewRecommended` flag the expanded detail below already
+          // used -- nothing new computed, no new field/path.
+          const reviewStatusLabel = !cognitive || cognitive.screen.completionStatus === "NOT_STARTED"
+            ? "Not Started"
+            : cognitive.screen.completionStatus === "PARTIAL"
+              ? "Incomplete"
+              : cognitive.screen.interpretation?.reviewRecommended
+                ? "Review Recommended"
+                : "No Review Needed";
+          const collapsedSummary = (
+            <div className="rnica-cognitive-summary rnica-cognitive-summary--collapsed">
+              <div className="rnica-cognitive-summary__bims">
+                <span className="rnica-cognitive-summary__bims-score">
+                  {cognitive && cognitive.screen.completionStatus === "COMPLETE"
+                    ? `Score: ${cognitive.screen.rawScore} of ${cognitive.screen.maxScore}`
+                    : cognitive && cognitive.screen.completionStatus === "PARTIAL"
+                      ? "Incomplete"
+                      : "Not yet documented"}
+                </span>
+                {cognitive?.screen.interpretation && (
+                  <span className="rnica-cognitive-summary__bims-band">{cognitive.screen.interpretation.label}</span>
+                )}
+                <span className="rnica-cognitive-summary__bims-review">Review status: {reviewStatusLabel}</span>
+              </div>
+            </div>
+          );
           return (
-            <Card key={ci} title={card.title} importance={card.importance} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+            <Card
+              key={ci}
+              title={card.title}
+              importance={card.importance}
+              bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}
+              fullWidth={Boolean(card.fullWidth)}
+              collapsible={Boolean(card.collapsedByDefault)}
+              defaultCollapsed={Boolean(card.collapsedByDefault)}
+              summary={collapsedSummary}
+            >
               {noteField && (
                 <p style={{ fontSize: 12, fontStyle: "italic", color: COLORS.textMuted || "#6b7280", margin: "2px 0" }}>{noteField.label}</p>
               )}
@@ -12977,6 +13048,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   // never silently dropped from the workspace. Purely a final-assembly
   // reorder; no field, data shape, HOPE mapping, or POC control changes.
   const bodySystemSummary = isBodySystemWorkspace ? computeBodySystemSummary(sectionKey, data) : null;
+  // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
+  // #4 -- "Display SNS Cognitive Screen result inside Summary". The raw
+  // score already appears in `bodySystemSummary.primaryIssues` (via
+  // `computeBodySystemFindings`), but that bullet list has no room for the
+  // human-readable interpretation (e.g. "Clinical review recommended");
+  // this reuses the same authoritative `computeNeurologicalCognitiveSummary`
+  // the SNS Cognitive Screen card itself renders, computing nothing new.
+  const neuroCognitiveSummaryForBanner = sectionKey === "neurological" ? computeNeurologicalCognitiveSummary(data) : null;
 
   const bodySystemGroupedContent = isBodySystemWorkspace
     ? BODY_SYSTEM_CATEGORY_ORDER.map((category) => {
@@ -13066,6 +13145,21 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                       compact
                     />
                   </div>
+                )}
+                {/* OWNER DIRECTIVE (2026-10-04) "Neurological Density
+                    Optimization" item #4 -- SNS Cognitive Screen result
+                    surfaced inside the Summary banner itself, not only
+                    inside its now-collapsed accordion card lower down.
+                    Same `computeNeurologicalCognitiveSummary` data the
+                    card renders; read-only, nothing new computed. */}
+                {sectionKey === "neurological" && neuroCognitiveSummaryForBanner && neuroCognitiveSummaryForBanner.screen.completionStatus !== "NOT_STARTED" && (
+                  <p className="rnica-bodysystem-summary__cognitive-screen">
+                    SNS Cognitive Screen:{" "}
+                    {neuroCognitiveSummaryForBanner.screen.completionStatus === "COMPLETE"
+                      ? `${neuroCognitiveSummaryForBanner.screen.rawScore} of ${neuroCognitiveSummaryForBanner.screen.maxScore}`
+                      : "Incomplete"}
+                    {neuroCognitiveSummaryForBanner.screen.interpretation && ` — ${neuroCognitiveSummaryForBanner.screen.interpretation.label}`}
+                  </p>
                 )}
               </div>
             )}
@@ -13581,41 +13675,19 @@ const SECTION_CONFIGS = {
     title: "Neurological / Mental / Sensory",
     subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, SNS Cognitive Screen",
     cards: [
-      {
-        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
-        // this single up-front triage question determines everything
-        // else that renders below it (see the card-level guard next to
-        // `resolvedCards.map`). It is deliberately its own card, first,
-        // full-width, high-importance: the nurse must answer it before
-        // any other Neurological control appears. New path (`neuroOverview`)
-        // -- no existing field/value is touched.
-        title: "Neurological Overview", category: "core", importance: "high", fullWidth: true, fields: [
-          {
-            type: "segmented", label: "Neurological Overview", path: "neuroOverview",
-            options: [
-              "No Current Neurological Concern",
-              "Existing Neurological Findings Stable",
-              "New/Worsening Neurological Findings",
-              "Unable to Assess",
-            ],
-          },
-          // Path 4 -- require a controlled reason instead of silently
-          // skipping the whole system (same pattern as Pain's
-          // reasonNotAssessed). New path; gated in the render loop below.
-          {
-            type: "segmented", label: "Reason Unable to Assess", path: "neuroUnableToAssessReason",
-            options: ["Patient unable to participate", "Patient unresponsive", "Assessment interrupted", "Other"],
-          },
-          { type: "input", label: "Other Reason (if selected above)", path: "neuroUnableToAssessOther" },
-        ],
-      },
-      // GitHub Directive (2026-09-28) "Final Neurological Density and
-      // Space-Utilization Plan" Section 5 -- required order: Consciousness
-      // / Orientation / Overall Change render as a 3-column "status" row
-      // (all category "core", none full-width, so the existing auto-fit
-      // grid packs them side by side); Sleep/Responsiveness then takes its
-      // own full-width row (Section 11/21 -- previously squeezed into one
-      // of 3 equal columns, making it look abnormally tall/imbalanced);
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+      // item #1 -- required order: Consciousness / Orientation /
+      // Neurological Overview render as a true, guaranteed 3-column row
+      // (CSS override below forces exactly 3 equal columns for this
+      // section's "core" category bucket -- see
+      // `[data-category="core"] .rnica-bodysystem-group__cards` in
+      // RNICACommandWorkspace.css -- instead of the generic auto-fit grid,
+      // which could pack 2, 3, or 4 cards per row depending on viewport
+      // width). SNS Cognitive Screen (item #2) is deliberately NOT part of
+      // this trio any more -- it is now its own full-width, collapsed-by-
+      // default accordion rendered after this row (see its intercept
+      // below) so it no longer competes for this premium top-of-section
+      // space. Sleep/Responsiveness then takes its own full-width row;
       // Communication and Sensory (merged) takes the next full-width row;
       // then Cognitive/Behavioral, Motor/Balance + Psychiatric (row), HOPE,
       // Notes. Presentation/grouping only -- no field removed, no path
@@ -13671,6 +13743,43 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+        // this single up-front triage question determines everything
+        // else that renders below it (see the card-level guard next to
+        // `resolvedCards.map`, which keys off `card.title`, not array
+        // position). High-importance, no longer full-width: OWNER
+        // DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
+        // #1 moved it into the 3rd column of the Consciousness/
+        // Orientation/Neurological Overview row (CSS override forces an
+        // exact 3-column grid for this section's "core" category bucket)
+        // instead of its own full-width row, so a nurse sees all three
+        // "status" cards simultaneously without dead horizontal space.
+        // The gate's render-loop guard is unaffected by this reorder --
+        // it still hides every other Neurological card until this
+        // question is answered, exactly as before; only this card's own
+        // screen position/width changed. New path (`neuroOverview`) -- no
+        // existing field/value is touched.
+        title: "Neurological Overview", category: "core", importance: "high", fields: [
+          {
+            type: "segmented", label: "Neurological Overview", path: "neuroOverview",
+            options: [
+              "No Current Neurological Concern",
+              "Existing Neurological Findings Stable",
+              "New/Worsening Neurological Findings",
+              "Unable to Assess",
+            ],
+          },
+          // Path 4 -- require a controlled reason instead of silently
+          // skipping the whole system (same pattern as Pain's
+          // reasonNotAssessed). New path; gated in the render loop below.
+          {
+            type: "segmented", label: "Reason Unable to Assess", path: "neuroUnableToAssessReason",
+            options: ["Patient unable to participate", "Patient unresponsive", "Assessment interrupted", "Other"],
+          },
+          { type: "input", label: "Other Reason (if selected above)", path: "neuroUnableToAssessOther" },
+        ],
+      },
+      {
         // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction"
         // -- this card previously claimed to be a HOPE item ("HOPE
         // Cognitive Assessment (BIMS Screen)", hopeCode "N0500-N0520").
@@ -13688,13 +13797,25 @@ const SECTION_CONFIGS = {
         // Still placed directly below Consciousness/Orientation (directive
         // item #4/AC-10) and still category "core" for the same bucketing
         // reason as before.
-        // Still placed directly below Consciousness/Orientation (directive
-        // item #4/AC-10) and still category "core" for the same bucketing
-        // reason as before. (Density pass 2026-10-04: fullWidth was tried
-        // here and reverted -- it orphaned this card's "Cognitive Summary"
-        // pair into its own half-empty row, costing more height overall
-        // than the per-card shrinkage it bought; kept half-width.)
-        title: "SNS Cognitive Screen", category: "core", importance: "medium", fields: [
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+        // items #2/#3/#4 supersede the half-width placement above --
+        // fullWidth was previously reverted because it orphaned this
+        // card's merged "Cognitive Summary" content into its own
+        // half-empty row alongside Consciousness/Orientation/Overall
+        // Change; those two cards no longer share a row with this one (see
+        // the new dedicated 3-column Consciousness/Orientation/
+        // Neurological-Overview row above), so that cost no longer
+        // applies. This card is now `fullWidth` + `collapsedByDefault`
+        // (same accordion mechanism as Sleep/Responsiveness and
+        // Psychiatric History) with a custom collapsed-state summary
+        // (Score / Interpretation / Review status -- see the
+        // `card.title === "SNS Cognitive Screen"` intercept) so it stays
+        // available without consuming premium top-of-section space when
+        // not actively being edited. Its result is also now surfaced
+        // directly inside the Summary banner (item #4; see the
+        // `sectionKey === "neurological"` block in the Summary JSX).
+        title: "SNS Cognitive Screen", category: "core", importance: "medium", fullWidth: true, collapsedByDefault: true, fields: [
           { type: "note", label: "Internal clinical assessment · Not submitted to CMS HOPE", path: "cognitiveScreenNote" },
           { type: "select", label: "Word Repetition", path: "cognitiveScreen.repetition", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
           { type: "select", label: "Word Recall", path: "cognitiveScreen.recall", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
@@ -16645,11 +16766,26 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     return order
       .map((key) => {
         const meta = RNICA_BODY_SYSTEM_SIDEBAR_ITEMS.find((m) => m.key === key);
+        const findings = computeBodySystemFindings(key, formData?.[key]);
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+        // item #5 -- "Expand Structured Findings ... Review Status".
+        // Reuses the exact same `computeNeurologicalWorkflowStatus` the
+        // Body Systems accordion trigger already shows as its Reviewed/
+        // Not-started badge (Bounded Compatibility Increment, 2026-09-28)
+        // -- nothing new computed, no new concept invented. Appended last
+        // so it never reorders the clinical findings above it; omitted
+        // when the Overview question hasn't been answered yet (status
+        // would just read "Not Started" for an otherwise-empty system,
+        // which is already obvious from the group not rendering at all).
+        if (key === "neurological" && formData?.neurological?.neuroOverview) {
+          const workflowStatus = computeNeurologicalWorkflowStatus(formData.neurological);
+          findings.push(`Review status: ${workflowStatus.label}.`);
+        }
         return {
           key,
           label: meta?.label || key,
           icon: meta?.icon || "🩺",
-          findings: computeBodySystemFindings(key, formData?.[key]),
+          findings,
         };
       })
       .filter((group) => group.findings.length > 0);

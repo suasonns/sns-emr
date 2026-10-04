@@ -1370,6 +1370,29 @@
   color: var(--sns-white);
   font-size: var(--cw-body-size);
 }
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" items
+   #2/#3 -- SNS Cognitive Screen's collapsed-state summary (Score /
+   Interpretation / Review status), shown via the Card `summary` prop
+   (rendered unconditionally, unlike `children`) while the card itself is
+   collapsed by default. Same `.rnica-cognitive-summary__bims*` classes as
+   the expanded detail below for visual consistency; `--collapsed` only
+   trims the block's own bottom margin since it has no following expanded
+   content to separate from while collapsed. */
+.rnica-cognitive-summary--collapsed .rnica-cognitive-summary__bims {
+  margin-bottom: 0;
+}
+.rnica-cognitive-summary__bims-review {
+  margin-left: 0.5rem;
+  color: var(--sns-muted);
+  font-size: var(--cw-meta-size, 0.78rem);
+}
+/* Item #4 -- SNS Cognitive Screen result surfaced inside the Summary
+   banner itself. */
+.rnica-bodysystem-summary__cognitive-screen {
+  margin: 0.35rem 0 0;
+  color: var(--sns-white);
+  font-size: var(--cw-meta-size, 0.82rem);
+}
 /* OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency Pass" item
    #4 -- Overall Change's segmented control, relocated from its own
    standalone card into the prominent Summary banner. */
@@ -1451,10 +1474,33 @@
 .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-summary--prominent {
   padding: 0.55rem 0.85rem;
 }
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
+   #1 -- "Reorganize top neuro findings into a true 3-column layout:
+   Consciousness / Orientation / Neurological Overview". These three cards
+   are the only members of the "core" category bucket now that SNS
+   Cognitive Screen (item #2) is `fullWidth` (escapes this track via
+   `.rnica-bodysystem-workspace__group--full`'s `grid-column: 1 / -1`, so
+   it still spans the full row beneath this one unaffected by the fixed
+   column count). A guaranteed `repeat(3, ...)` (instead of the
+   auto-fit/minmax heuristic above, which could pack 2, 3, or 4 cards per
+   row depending on viewport width) is the only way to make these three
+   specific *cards* -- not fields within one card -- reliably share one
+   row with no dead horizontal space (item #8), matching the
+   already-established per-card-title override technique used for Sleep/
+   Responsiveness and Communication and Sensory above, but scoped one
+   level up at the category-group container via the existing
+   `data-category` attribute (added 2026-10-04, see
+   `bodySystemGroupedContent` in RNICA.jsx) instead of `data-card-title`. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
 
 @media (max-width: 700px) {
   .rnica-bodysystem-workspace__fields,
   .rnica-bodysystem-group__cards {
+    grid-template-columns: 1fr;
+  }
+  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
     grid-template-columns: 1fr;
   }
 }
