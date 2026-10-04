@@ -215,18 +215,16 @@
 .rnica-pilot-diagnoses-grid > div:nth-child(n + 3) { grid-column: 1 / -1; }
 
 .rnica-diagnosis-ledger__summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
-.rnica-diagnosis-ledger__summary p { margin: 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.35; }
+.rnica-diagnosis-ledger__heading { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--sns-muted); font-size: var(--rnica-h3-size); font-weight: var(--rnica-h3-weight); text-transform: uppercase; letter-spacing: 0.03em; }
 .rnica-diagnosis-ledger__summary strong { flex: 0 0 auto; color: var(--sns-teal); }
 .rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
-.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; }
-.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
-.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 0.4rem 0.4rem 0 0; }
-.rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
-.rnica-diagnosis-ledger__table > *:last-child { border-radius: 0 0 0.4rem 0.4rem; }
-.rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
-.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 500; white-space: nowrap; }
-.rnica-diagnosis-ledger__related input { width: 1.15rem; height: 1.15rem; }
-.rnica-diagnosis-ledger__remove { min-height: 2.5rem !important; padding: 0.3rem 0.55rem !important; color: var(--sns-red) !important; }
+.rnica-diagnosis-cards { display: flex; flex-direction: column; gap: 0.4rem; }
+.rnica-diagnosis-card { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
+.rnica-diagnosis-card__search { flex: 1 1 14rem; min-width: 0; }
+.rnica-diagnosis-card__search input[type="text"], .rnica-diagnosis-card__search input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
+.rnica-diagnosis-card__related { display: flex; align-items: center; gap: 0.35rem; flex: 0 0 auto; white-space: nowrap; }
+.rnica-diagnosis-card__remove { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; border: 1px solid var(--sns-border); background: transparent; color: var(--sns-red); font-size: 1rem; line-height: 1; }
+.rnica-diagnosis-card__remove:hover { border-color: var(--sns-red); background: color-mix(in srgb, var(--sns-red) 12%, transparent); }
 .rnica-diagnosis-ledger__actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
 .rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
 .rnica-lcd-summary__counts { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem; }
@@ -243,21 +241,37 @@
 .rnica-lcd-criterion > div:first-child > div:last-child { color: var(--sns-muted) !important; font-size: var(--cw-meta-size) !important; }
 .rnica-lcd-criterion button { min-height: 2.35rem; }
 .rnica-comorbidity-guidance { padding: 0.65rem !important; margin-bottom: 0.65rem !important; }
-/* [OWNER DIRECTIVE -- 2026-09-26] Responsive multi-column clinical
-   checklist to cut vertical scrolling further than the flat single-column
-   accordion this replaces. Desktop: 3 columns (Cardiac/Pulmonary/
-   Neurological, GI/GU/Metabolic, Infection/Cancer/Other); medium: 2
-   columns; narrow: 1 column. Plain text group headings only -- no
-   per-category cards, no toggle controls, no per-row divider walls.
-   HOPE mappings/IDs/logic/reporting/exports are unchanged -- presentation
-   only. */
-.rnica-comorbidity-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 0.5rem; padding: 0.5rem 0.65rem; margin-bottom: 0.55rem; border-radius: 0.4rem; background: var(--sns-cardSoft); font-size: var(--cw-meta-size, 0.8rem); color: var(--sns-muted); }
-.rnica-comorbidity-summary strong { color: var(--sns-white); font-weight: 700; }
-.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 1.1rem; row-gap: 0.85rem; align-items: start; }
+/* [OWNER DIRECTIVE -- 2026-10-03] Chip/card-based comorbidity selection,
+   replacing the checkbox-driven grid above with the same chip visual
+   language as Pain Character / Neuropathic Characteristics / Aggravating
+   / Relieving Factors (RNICA_CHIP_CLASS == ui/toggle-group.tsx's
+   ToggleGroupItem recipe). Typography reduced to 4 levels: group label,
+   condition name (chip), helper/note text, plus the guidance banner
+   above. HOPE mappings/IDs/logic/reporting/exports are unchanged --
+   presentation only. */
+.rnica-comorbidity-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; padding: 0.5rem 0.65rem; margin-bottom: 0.65rem; border-radius: 0.4rem; background: var(--sns-cardSoft); }
+.rnica-comorbidity-selected__label { font-size: var(--rnica-h3-size); font-weight: var(--rnica-h3-weight); color: var(--sns-muted); text-transform: uppercase; letter-spacing: 0.03em; flex: 0 0 auto; }
+.rnica-comorbidity-selected__empty { font-size: var(--rnica-helper-size); color: var(--sns-muted); font-style: italic; }
+.rnica-comorbidity-selected__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 1.1rem; row-gap: 0.9rem; align-items: start; }
 .rnica-comorbidity-group { min-width: 0; margin: 0 !important; padding: 0 !important; background: none; border-radius: 0; }
-.rnica-comorbidity-group__heading { padding-bottom: 0.2rem !important; border-bottom: 1px solid var(--sns-border); }
-.rnica-comorbidity-option { min-height: 1.9rem; padding: 0.1rem 0; border-top: 0; }
-.rnica-comorbidity-option:first-child { border-top: 0; }
+.rnica-comorbidity-group__heading { font-size: var(--rnica-h3-size); font-weight: var(--rnica-h3-weight); color: var(--sns-muted); text-transform: uppercase; letter-spacing: 0.03em; padding-bottom: 0.25rem !important; margin-bottom: 0.4rem; border-bottom: 1px solid var(--sns-border); }
+.rnica-comorbidity-group__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.rnica-comorbidity-group__note { margin-top: 0.3rem; font-size: var(--rnica-helper-size); font-weight: var(--rnica-helper-weight); color: var(--sns-muted); font-style: italic; }
+.rnica-comorbidity-chip__detected { margin-left: 2px; color: var(--sns-teal); font-size: var(--rnica-body-size); line-height: 1; }
+
+/* Contributing Conditions (Disease & LCD Workflow Specification, Phase 1)
+   -- reuses the diagnosis-card/chip visual language above; adds per-row
+   status/rationale/notice regions stacked below the search+source+remove
+   row so the card never forces horizontal scrolling on narrow sheets. */
+.rnica-contributing-card { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.55rem 0.65rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
+.rnica-contributing-card__row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.rnica-contributing-card__statuses { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.rnica-contributing-card__rationale { width: 100%; min-height: 3.5rem; padding: 0.4rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); font: inherit; resize: vertical; }
+.rnica-contributing-card__error { padding: 0.35rem 0.55rem; border: 1px solid var(--sns-red); border-radius: 0.35rem; background: color-mix(in srgb, var(--sns-red) 12%, transparent); color: var(--sns-red); font-size: var(--rnica-helper-size); }
+.rnica-contributing-card__notice { padding: 0.35rem 0.55rem; border: 1px dashed var(--sns-orange); border-radius: 0.35rem; color: var(--sns-muted); font-size: var(--rnica-helper-size); }
+.rnica-contributing-card__incomplete { font-size: var(--rnica-helper-size); color: var(--sns-orange); font-style: italic; }
+.rnica-contributing-card__meta { font-size: var(--rnica-helper-size); color: var(--sns-muted); }
 
 /* [OWNER DIRECTIVE -- Functional Status Context-Aware Scale Visibility,
    finalized layout revision] Compact diagnosis-aware Functional Status
@@ -275,7 +289,9 @@
 .rnica-performance-group-label { padding-top: 0.4rem; font-size: var(--cw-meta-size, 0.75rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sns-muted); }
 .rnica-scale-card { padding-bottom: 0.6rem; }
 .rnica-scale-card__trigger { margin-bottom: 0.4rem; padding: 0.35rem 0.55rem; border-radius: 0.35rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); }
-.rnica-scale-card__meaning { margin-bottom: 0.4rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); line-height: 1.35; }
+.rnica-scale-card__interpretation { margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; border-radius: 0.35rem; border-left: 3px solid var(--sns-hope, #059669); background: var(--sns-cardSoft); }
+.rnica-scale-card__interpretation-headline { color: var(--sns-text); font-weight: 700; font-size: var(--cw-meta-size, 0.82rem); line-height: 1.3; }
+.rnica-scale-card__interpretation-significance { margin-top: 0.15rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); line-height: 1.35; }
 .rnica-scale-card__progress { margin-bottom: 0.5rem; }
 .rnica-scale-card__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; align-items: end; }
 .rnica-scale-card__row .rnica-form-card { padding: 0 !important; }
@@ -341,9 +357,6 @@
   .rnica-command-stepnav { position: sticky; bottom: 0.3rem; z-index: 10; padding: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.6rem; background: var(--sns-card); }
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
   .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
-  .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: 1fr; padding: 0.4rem; }
-  .rnica-diagnosis-ledger__related, .rnica-diagnosis-ledger__row > div:last-child { min-height: 2.5rem; }
   .rnica-diagnosis-ledger__actions { align-items: stretch; flex-direction: column; }
   .rnica-comorbidity-grid { grid-template-columns: 1fr; }
   .rnica-performance-grid { grid-template-columns: 1fr; }
@@ -390,8 +403,6 @@
   .rnica-command-prep > div { min-width: 12rem; }
   .rnica-command-rail { grid-template-columns: 1fr; }
   .rnica-lcd-group__toggle { align-items: flex-start; flex-direction: column; }
-  .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: 1fr; padding: 0.4rem; }
 }
 
 /* Standalone RNICA screen shell (Patient Story and future rebuilt
@@ -1105,8 +1116,19 @@
    non-Body-Systems screens using the same shared FormRadioGroup/
    FormCheckboxGroup components are unaffected). Targets the shadcn
    Radix primitives' rendered size, not just the inline label styles. */
-.rnica-bodysystem-workspace [role="radiogroup"],
-.rnica-bodysystem-workspace .rnica-form-card [role="group"] {
+/* Owner-reported regression fix (2026-10-04) "Neurological Assessment
+   appears to have regressed away from the approved Pain and Functional
+   Status design language" -- root cause: FormSegmented/FormPillGroup's
+   shared ToggleGroup (same chip component Pain and Functional Status use)
+   exposes role="radiogroup"/role="radio" for its single-select variant,
+   which these two rules were never meant to reach (they exist only to
+   shrink FormRadioGroup/FormTriState's real RadioGroupItem dot-rows and
+   FormCheckboxGroup's rows). `.rnica-chip-group`/`.rnica-chip-toggle`
+   (toggle-group.tsx) now exclude every chip row from both overrides, so
+   Neurological's chips render at full size/spacing again, identical to
+   Pain/Functional Status -- no field, option, or value touched. */
+.rnica-bodysystem-workspace [role="radiogroup"]:not(.rnica-chip-group),
+.rnica-bodysystem-workspace .rnica-form-card [role="group"]:not(.rnica-chip-group) {
   gap: 2px 8px !important;
 }
 /* Excludes .rnica-segment-btn: the compact segmented/pill controls
@@ -1117,8 +1139,8 @@
    text renders inside the button itself). Squashing them to 14x14px here
    caused every segment's label to overflow and visually overlap its
    neighbors. */
-.rnica-bodysystem-workspace button[role="radio"]:not(.rnica-segment-btn),
-.rnica-bodysystem-workspace button[role="checkbox"]:not(.rnica-segment-btn) {
+.rnica-bodysystem-workspace button[role="radio"]:not(.rnica-segment-btn):not(.rnica-chip-toggle),
+.rnica-bodysystem-workspace button[role="checkbox"]:not(.rnica-segment-btn):not(.rnica-chip-toggle) {
   height: 14px !important;
   width: 14px !important;
 }
@@ -1163,8 +1185,8 @@
   margin: 0 0 6px;
   padding-bottom: 4px;
   border-bottom: 1px solid var(--sns-border);
-  font-size: var(--cw-meta-size, 0.78rem);
-  font-weight: 700;
+  font-size: var(--rnica-h3-size);
+  font-weight: var(--rnica-h3-weight);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--sns-muted);
@@ -1213,8 +1235,8 @@
 
 .rnica-bodysystem-summary__heading {
   margin: 0 0 4px;
-  font-size: var(--cw-meta-size, 0.78rem);
-  font-weight: 700;
+  font-size: var(--rnica-h3-size);
+  font-weight: var(--rnica-h3-weight);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--sns-muted);
@@ -1241,6 +1263,80 @@
   font-size: var(--cw-meta-size, 0.78rem);
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item #1 --
+   elevates the generic .rnica-bodysystem-summary to the same visual
+   weight as Functional Status's banner (ShadcnCardTitle-size heading,
+   always-on teal accent, larger status line) instead of the muted
+   uppercase strip every other Body System still uses. Scoped to Neuro
+   only via the --prominent modifier applied in RNICA.jsx. */
+.rnica-bodysystem-summary--prominent {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--sns-hope, #059669);
+  background: var(--sns-cardSoft);
+}
+.rnica-bodysystem-summary--prominent.rnica-bodysystem-summary[data-requires-follow-up="true"] {
+  border-left-color: var(--sns-orange);
+}
+.rnica-bodysystem-summary--prominent .rnica-bodysystem-summary__heading {
+  font-size: var(--rnica-h2-size, 1rem);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--sns-white);
+}
+.rnica-bodysystem-summary--prominent .rnica-bodysystem-summary__status {
+  font-size: var(--cw-body-size);
+  line-height: 1.45;
+}
+
+/* Cognitive Summary card (SNS Cognitive Screen score + interpretation +
+   already-documented Cognitive/Behavioral findings) -- same visual
+   language as .rnica-scale-card__interpretation (PerformanceScaleCard).
+   GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction": this
+   is no longer the CMS BIMS; class names kept for minimal diff. */
+.rnica-cognitive-summary__bims {
+  margin-bottom: 0.4rem;
+  padding: 0.4rem 0.6rem;
+  border-radius: 0.35rem;
+  border-left: 3px solid var(--sns-hope, #059669);
+  background: var(--sns-cardSoft);
+}
+.rnica-cognitive-summary__bims-score {
+  margin-right: 0.5rem;
+  color: var(--sns-white);
+  font-weight: 700;
+  font-size: var(--cw-meta-size, 0.82rem);
+}
+.rnica-cognitive-summary__bims-band {
+  color: var(--sns-teal);
+  font-weight: 700;
+  font-size: var(--cw-meta-size, 0.82rem);
+}
+.rnica-cognitive-summary__bims-detail {
+  margin: 0.15rem 0 0;
+  color: var(--sns-muted);
+  font-size: var(--cw-meta-size, 0.78rem);
+  line-height: 1.35;
+}
+/* "Internal SNS clinical screen · Not submitted to CMS HOPE" metadata
+   line -- GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction". */
+.rnica-cognitive-summary__source {
+  margin: 0.25rem 0 0;
+  color: var(--sns-muted);
+  font-size: var(--cw-meta-size, 0.72rem);
+  font-style: italic;
+}
+.rnica-cognitive-summary__line {
+  margin: 0 0 0.4rem;
+  color: var(--sns-white);
+  font-size: var(--cw-body-size);
+}
+.rnica-cognitive-summary__flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
 }
 
 @media (max-width: 700px) {

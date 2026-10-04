@@ -31,6 +31,17 @@ import {
   validateBodyMapRegions,
 } from "./rn-ica/rnIcaClinicalNavigation";
 import { LANGUAGE_OPTIONS, ETHNICITY_OPTIONS, RACE_OPTIONS } from "./rn-ica/hope-admin-review/HopeAdministrativeReview";
+import { derivePainAssessmentMode, computeAiPainNotes, computePainOverdueAlerts } from "./rn-ica/pain-symptom-burden/painLogic";
+import {
+  CONTRIBUTING_CONDITION_STATUS_OPTIONS,
+  CONTRIBUTING_CONDITION_STATUSES_REQUIRING_RATIONALE,
+  CONTRIBUTING_CONDITION_SOURCE_OPTIONS,
+  isContributingConditionIncomplete,
+  findExactDuplicateContributingCondition,
+  findProbableDuplicateContributingConditions,
+  findContributingConditionCrossReferences,
+} from "./rn-ica/diagnosis-lcd/diagnosisLogic";
+import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -45,6 +56,17 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "./ui/sheet";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
 import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "./ui/alert-dialog";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { listSfvRequirements } from "../api/sfv";
@@ -498,6 +520,11 @@ const INITIAL_FORM = {
     standardizedPainToolType: "",
     comprehensiveAssessmentCompleted: false,
     comprehensiveAssessmentDate: "",
+    // [2026-10-03] Populated only when the nurse explicitly documents a
+    // comprehensive-assessment date different from the RNICA visit date
+    // (see ComprehensivePainAssessmentDateField + the auto-sync effect
+    // near handleLock). Empty = date stays auto-synced to the visit date.
+    comprehensiveAssessmentDateOverrideReason: "",
     assessmentTool: "",
     painIntensity: { current: "", worst: "", best: "", acceptable: "" },
     painLocation: [], painCharacter: [], painRadiation: "",
@@ -535,6 +562,13 @@ const INITIAL_FORM = {
     primaryDiagnosis: { icd10: "", description: "", onsetDate: "", hopeDiagnosisCategory: "" },
     secondaryDiagnoses: [],
     comorbidities: [],
+    // Disease & LCD Workflow Specification, Phase 1 / Option A — manually-
+    // documented conditions distinct from Primary/Secondary/HOPE
+    // Comorbidities, each carrying an explicit contribution-to-terminal-
+    // prognosis / contribution-to-clinical-burden judgment. See
+    // ContributingConditionsCard + diagnosisLogic.js for the full shape,
+    // validation, and cross-reference rules.
+    contributingConditions: [],
     terminalPrognosis: "",
     diseaseTrajectory: "",
     lcdEligibilityNarrative: "",
@@ -633,7 +667,26 @@ const INITIAL_FORM = {
       nighttimeSymptoms: [], response: "",
       notes: "",
     },
-    hopeItems: { n0500: "", n0510: "", n0520: "" },
+    // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+    // this was previously stored as `hopeItems: { n0500, n0510, n0520 }`
+    // and tagged with those HOPE item codes. docs/compliance/hope/
+    // HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv (sourced from the actual HOPE
+    // Guidance Manual v1.02) identifies N0500/N0510/N0520 as Scheduled
+    // Opioid / PRN Opioid / Bowel Regimen (Section N medications -- see
+    // hopeReportMapper.js:717-719, correctly sourced from `medications.*`
+    // and never read from here). HOPE has no cognitive-interview item at
+    // all, so this is an SNS-internal clinical screen, not a HOPE item --
+    // renamed out of `hopeItems` into its own namespace so it can never be
+    // mistaken for (or serialized as) an official HOPE code again. Legacy
+    // `hopeItems.n0500/n0510/n0520` values are moved here automatically by
+    // migrateNeurologicalCognitiveData() on load (see deepMergeFormData
+    // call site) -- see computeSnsCognitiveScreen for the one authoritative
+    // score calculation every consumer (Summary/Cognitive Summary/
+    // Structured Findings/Finalization) must use.
+    cognitiveScreen: {
+      instrument: "SNS_COGNITIVE_SCREEN_V1",
+      repetition: "", recall: "", temporalOrientation: "",
+    },
     notes: "",
     clinicalStatusChange: "",
   },
@@ -1165,9 +1218,12 @@ function validateRNICA(formData, mode = "ica") {
       warnings["performanceStatus"] = "HOPE M1190: At least PPS or KPS required";
     }
 
-    // Neurological ? BIMS N0500-N0520
-    if (!formData.neurological.hopeItems.n0500) {
-      warnings["neurological.hopeItems.n0500"] = "HOPE N0500: BIMS repetition required";
+    // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+    // this is an SNS-internal cognitive screen, not a HOPE item (N0500 is
+    // the official HOPE Scheduled-Opioid item). See cognitiveScreen in
+    // INITIAL_FORM.neurological and computeSnsCognitiveScreen.
+    if (!formData.neurological.cognitiveScreen.repetition) {
+      warnings["neurological.cognitiveScreen.repetition"] = "SNS Cognitive Screen: Word Repetition response required";
     }
 
     // Imminent Death ? J0050
@@ -1274,12 +1330,12 @@ function CmsTag({ label }) {
 }
 
 // Form field components
-function FormInput({ label, value, onChange, type = "text", placeholder, required, hopeCode, ...rest }) {
+function FormInput({ label, value, onChange, type = "text", placeholder, required, hopeCode, compact, ...rest }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
@@ -1293,12 +1349,12 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
-function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled }) {
+function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled, compact }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>{label}</label>
       <ShadcnTextarea
         style={{ minHeight: rows * 24 }} value={value || ""}
@@ -1314,7 +1370,7 @@ function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled 
 // plain textarea -- no schema change, no new field -- just a faster
 // click-to-chart entry path. The textarea stays available underneath for
 // anything a preset doesn't cover.
-function FormQuickPickTextarea({ label, value, onChange, presets = [], placeholder, rows = 2 }) {
+function FormQuickPickTextarea({ label, value, onChange, presets = [], placeholder, rows = 2, compact }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -1325,7 +1381,7 @@ function FormQuickPickTextarea({ label, value, onChange, presets = [], placehold
     onChange(next.join("; "));
   };
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>{label}</label>
       <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
         {presets.map((preset) => {
@@ -1339,7 +1395,14 @@ function FormQuickPickTextarea({ label, value, onChange, presets = [], placehold
                 borderRadius: 999,
                 border: selected ? `1px solid ${COLORS.teal}` : `1px solid ${COLORS.border}`,
                 background: selected ? COLORS.teal : "transparent",
-                color: selected ? "#fff" : COLORS.text,
+                // Bug fix (Pain Sheet UI polish pass): COLORS.text does not
+                // exist in the getRnicaColors token map (only COLORS.dark
+                // does), so this silently fell back to an inherited/near-
+                // black color in dark mode -- e.g. "Effect on Function or
+                // Quality of Life" presets reading dark-on-dark. COLORS.dark
+                // is the correct legible primary-text token (same one the
+                // adjacent pillGroup fields render with).
+                color: selected ? "#fff" : COLORS.dark,
                 fontSize: 11,
                 fontWeight: 700,
                 padding: "4px 10px",
@@ -1359,12 +1422,12 @@ function FormQuickPickTextarea({ label, value, onChange, presets = [], placehold
   );
 }
 
-function FormSelect({ label, value, onChange, options, required, hopeCode, disabled }) {
+function FormSelect({ label, value, onChange, options, required, hopeCode, disabled, compact }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
@@ -1533,7 +1596,7 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
 // "Awake") render as an already-existing canonical option (e.g. "Alert")
 // selected, without ever writing the alias again and without removing the
 // legacy value from the option list or backend concept registry.
-function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases }) {
+function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases, compact }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -1546,7 +1609,7 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
   // silently rendering "nothing selected" -- the raw value is untouched.
   const hasLegacyValue = Boolean(displayValue) && !options.some((opt) => (typeof opt === "string" ? opt : opt.value) === displayValue);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>
         {label}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
@@ -1583,12 +1646,12 @@ function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases
 // Compact multi-select pill row, opt-in via `type: "pillGroup"`. Same
 // array-value/onChange contract as FormCheckboxGroup (untouched, still
 // used everywhere else) -- purely a denser visual for Body Systems.
-function FormPillGroup({ label, values = [], onChange, options, hopeCode }) {
+function FormPillGroup({ label, values = [], onChange, options, hopeCode, compact }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>
         {label}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
@@ -2493,6 +2556,74 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
   );
 }
 
+// Shared chip visual language (Pain Character / Neuropathic
+// Characteristics / Aggravating / Relieving Factors use the exact same
+// recipe via ui/toggle-group.tsx's ToggleGroupItem). Reused directly as a
+// plain-button className here (rather than ToggleGroupItem) wherever a
+// chip needs per-item disabled/detected decoration that Radix's grouped
+// value-diffing doesn't support cleanly -- same classes, same
+// data-state="on"/"off" selected styling, so it is visually identical.
+const RNICA_CHIP_CLASS =
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-[9px] py-[2px] text-[11px] leading-[1.6] " +
+  "bg-transparent border-rnica-border text-rnica-text font-medium transition-colors hover:border-rnica-teal " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rnica-focusRing " +
+  "disabled:cursor-not-allowed disabled:opacity-40 " +
+  "data-[state=on]:border-rnica-teal data-[state=on]:bg-rnica-teal data-[state=on]:text-rnica-textInverse data-[state=on]:font-bold";
+
+// Small reusable "info" affordance -- converts an explanatory paragraph
+// into a hover/focus tooltip instead of permanent on-screen text, per the
+// "convert explanations to info tooltips" directive already applied to
+// Comorbidities/Pain/Neuro. Wraps its own TooltipProvider so it can be
+// dropped in anywhere without depending on a root-level provider.
+function InfoTooltip({ text }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="More information"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-rnica-border text-[10px] font-semibold leading-none text-rnica-muted hover:border-rnica-teal hover:text-rnica-teal"
+          >
+            i
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[260px] text-left normal-case">{text}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Determines what removing a secondary-diagnosis row would change
+// downstream (HopeComorbiditiesCard's ICD-10 category auto-detect dots,
+// which can feed the LCD Evidence Summary + "Comorbidities reviewed"
+// verification item) so the remove action can ask for confirmation only
+// when removal is not a no-op. Mirrors HopeComorbiditiesCard's own
+// `autoDetected` derivation exactly (categorizeIcd10 over every OTHER
+// row's icd10) -- keep the two in sync if that logic ever changes.
+function describeSecondaryDiagnosisRemovalImpact(rows, idx, hope) {
+  const target = rows[idx];
+  if (!target) return null;
+  const remaining = rows.filter((_, i) => i !== idx);
+  const detectedBefore = new Set();
+  rows.forEach((dx) => {
+    const cat = categorizeIcd10(dx?.icd10);
+    if (cat) detectedBefore.add(cat.key);
+  });
+  const detectedAfter = new Set();
+  remaining.forEach((dx) => {
+    const cat = categorizeIcd10(dx?.icd10);
+    if (cat) detectedAfter.add(cat.key);
+  });
+  const lostCategories = [...detectedBefore].filter((key) => !detectedAfter.has(key) && hope?.[key]);
+  const wasOnlyDiagnosis = rows.filter((dx) => dx?.icd10 || dx?.description).length === 1 && (target.icd10 || target.description);
+  if (lostCategories.length === 0 && !wasOnlyDiagnosis) return null;
+  const categoryLabels = lostCategories
+    .map((key) => HOPE_COMORBIDITY_CATEGORIES.find((c) => c.key === key)?.shortLabel || HOPE_COMORBIDITY_CATEGORIES.find((c) => c.key === key)?.label)
+    .filter(Boolean);
+  return { categoryLabels, wasOnlyDiagnosis };
+}
+
 // A single secondary-diagnosis row's search box, mirroring
 // PrimaryTerminalDiagnosisCard's merged "Search Diagnosis or ICD-10"
 // control -- one Icd10DiagnosisInput fills both icd10 + description in
@@ -2500,19 +2631,27 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
 // its own component (rather than inline in the rows.map below) so each
 // row can hold its own local "what the RN is currently typing" state
 // without violating the rules of hooks across a dynamic-length list.
-function SecondaryDiagnosisSearchRow({ row, idx, updateRow, removeRow, styles, COLORS }) {
+function SecondaryDiagnosisSearchRow({ row, idx, updateRow, onRequestRemove, styles, COLORS }) {
   const [searchText, setSearchText] = useState(() => (
     row.description ? `${row.description}${row.icd10 ? ` (${formatIcd10Code(row.icd10)})` : ""}` : formatIcd10Code(row.icd10 || "")
   ));
 
   const handleSelectSuggestion = (suggestion) => {
-    updateRow(idx, "icd10", suggestion.icd10_code);
-    updateRow(idx, "description", suggestion.diagnosis_description);
+    // Combine both field updates into one updateRow call -- two sequential
+    // single-field calls would each compute their new array from the same
+    // stale closure-captured `rows`, so the second call's result silently
+    // overwrites the first (see the identical fix in
+    // ContributingConditionRow.handleSelectSuggestion).
+    updateRow(idx, { icd10: suggestion.icd10_code, description: suggestion.diagnosis_description });
   };
 
+  // Flex "card" (not a fixed-width grid column) so the row wraps its own
+  // content on narrow sheets instead of overflowing the editor's column
+  // boundary -- the search input shrinks/grows while the toggle + remove
+  // affordance stay a fixed size and drop to their own line if needed.
   return (
-    <div className="rnica-diagnosis-ledger__row" role="row">
-      <div role="cell">
+    <div className="rnica-diagnosis-card" role="row">
+      <div className="rnica-diagnosis-card__search" role="cell">
         <Icd10DiagnosisInput
           value={searchText}
           onChange={setSearchText}
@@ -2522,19 +2661,33 @@ function SecondaryDiagnosisSearchRow({ row, idx, updateRow, removeRow, styles, C
           placeholder="Search diagnosis or ICD-10…"
         />
       </div>
-      <label role="cell" className="rnica-diagnosis-ledger__related">
-        <input
-          type="checkbox"
-          checked={row.relatedToTerminal !== false}
-          onChange={(event) => updateRow(idx, "relatedToTerminal", event.target.checked)}
-        />
-        <span>{row.relatedToTerminal !== false ? "Related" : "Not related"}</span>
-      </label>
-      <div role="cell">
-        <button type="button" className="rnica-diagnosis-ledger__remove" onClick={() => removeRow(idx)}>
-          Remove
+      <div className="rnica-diagnosis-card__related" role="cell">
+        <button
+          type="button"
+          className={RNICA_CHIP_CLASS}
+          data-state={row.relatedToTerminal !== false ? "on" : "off"}
+          onClick={() => updateRow(idx, "relatedToTerminal", true)}
+        >
+          Related
+        </button>
+        <button
+          type="button"
+          className={RNICA_CHIP_CLASS}
+          data-state={row.relatedToTerminal === false ? "on" : "off"}
+          onClick={() => updateRow(idx, "relatedToTerminal", false)}
+        >
+          Unrelated
         </button>
       </div>
+      <button
+        type="button"
+        className="rnica-diagnosis-card__remove"
+        title="Remove this secondary diagnosis"
+        aria-label="Remove this secondary diagnosis"
+        onClick={() => onRequestRemove(idx)}
+      >
+        <span aria-hidden="true">×</span>
+      </button>
     </div>
   );
 }
@@ -2546,7 +2699,9 @@ function SecondaryDiagnosisSearchRow({ row, idx, updateRow, removeRow, styles, C
 function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const rows = diagnosesData?.secondaryDiagnoses || [];
   const [showAll, setShowAll] = useState(false);
+  const [pendingRemoveIdx, setPendingRemoveIdx] = useState(null);
   const visibleRows = workspacePilot && !showAll ? rows.slice(0, 7) : rows;
+  const hope = diagnosesData?.hopeComorbidities || {};
 
   const setRows = (next) => updateField("secondaryDiagnoses", next);
 
@@ -2556,36 +2711,48 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
   };
 
   const updateRow = (idx, field, value) => {
-    setRows(rows.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
+    const patch = typeof field === "object" && field !== null ? field : { [field]: value };
+    setRows(rows.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
   };
 
   const removeRow = (idx) => setRows(rows.filter((_, i) => i !== idx));
+
+  // Empty/never-touched rows (just added, nothing searched yet) have no
+  // downstream impact -- remove them immediately instead of interrupting
+  // with a confirmation for a diagnosis that was never really "added".
+  const requestRemove = (idx) => {
+    const row = rows[idx];
+    const impact = row?.icd10 || row?.description ? describeSecondaryDiagnosisRemovalImpact(rows, idx, hope) : null;
+    if (impact) {
+      setPendingRemoveIdx(idx);
+    } else {
+      removeRow(idx);
+    }
+  };
+
+  const pendingImpact = pendingRemoveIdx !== null ? describeSecondaryDiagnosisRemovalImpact(rows, pendingRemoveIdx, hope) : null;
 
   if (workspacePilot) {
     return (
       <div className="rnica-diagnosis-ledger">
         <div className="rnica-diagnosis-ledger__summary">
-          <p>
-            Active diagnoses contributing to the plan of care. Related status does not add a diagnosis to the HOPE comorbidity checklist.
-          </p>
+          <span className="rnica-diagnosis-ledger__heading">
+            Secondary Diagnoses
+            <InfoTooltip text="Active diagnoses contributing to the plan of care. Related status does not add a diagnosis to the HOPE comorbidity checklist." />
+          </span>
           <strong>{rows.length} {rows.length === 1 ? "diagnosis" : "diagnoses"}</strong>
         </div>
         {rows.length === 0 ? (
           <div className="rnica-diagnosis-ledger__empty">No secondary diagnoses added yet.</div>
         ) : (
-          <div className="rnica-diagnosis-ledger__table" role="table" aria-label="Secondary diagnoses">
-            <div className="rnica-diagnosis-ledger__header" role="row">
-              <span role="columnheader">Diagnosis</span>
-              <span role="columnheader">Terminal related</span>
-              <span role="columnheader">Action</span>
-            </div>
+          <div className="rnica-diagnosis-cards" aria-label="Secondary diagnoses">
             {visibleRows.map((row, idx) => (
               <SecondaryDiagnosisSearchRow
                 key={idx}
                 row={row}
                 idx={idx}
                 updateRow={updateRow}
-                removeRow={removeRow}
+                onRequestRemove={requestRemove}
                 styles={styles}
                 COLORS={COLORS}
               />
@@ -2600,6 +2767,40 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
             </button>
           )}
         </div>
+
+        <AlertDialog open={pendingRemoveIdx !== null} onOpenChange={(next) => { if (!next) setPendingRemoveIdx(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this secondary diagnosis?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingImpact?.categoryLabels?.length > 0 && (
+                  <>
+                    This diagnosis is the only one currently detecting the{" "}
+                    <strong>{pendingImpact.categoryLabels.join(", ")}</strong> comorbidit{pendingImpact.categoryLabels.length === 1 ? "y" : "ies"}{" "}
+                    checked below. The checked box will remain, but its auto-detected support will be removed.
+                  </>
+                )}
+                {pendingImpact?.wasOnlyDiagnosis && (
+                  <>
+                    {pendingImpact?.categoryLabels?.length > 0 ? " Also, this" : "This"} is the only secondary diagnosis documented, so
+                    removing it will clear the "Secondary diagnoses reviewed" verification item and the LCD Evidence Summary.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingRemoveIdx(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  removeRow(pendingRemoveIdx);
+                  setPendingRemoveIdx(null);
+                }}
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
@@ -2660,6 +2861,356 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
       <button type="button" style={{ ...styles.btnSecondary, marginTop: 10 }} onClick={addRow}>
         + Add Secondary Diagnosis
       </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// CONTRIBUTING CONDITIONS — Disease & LCD Workflow Specification, Phase 1
+// / Option A (owner directive). Manually-documented conditions that are
+// distinct from the Primary Diagnosis, Secondary Diagnoses, and the HOPE
+// Comorbidities checklist, each carrying an explicit clinician judgment
+// (CONTRIBUTES_TO_TERMINAL_PROGNOSIS / CONTRIBUTES_TO_CLINICAL_BURDEN /
+// DOES_NOT_MATERIALLY_CONTRIBUTE / UNABLE_TO_DETERMINE). Persisted at
+// diagnoses.contributingConditions (array) -- the established
+// formData.diagnoses.* JSONB namespace already used by every other field
+// on this screen; no new table/column/migration.
+//
+// Documenting a condition here NEVER auto-adds it to Secondary Diagnoses
+// and NEVER auto-checks a HOPE comorbidity box, in either direction --
+// only nonblocking "already documented elsewhere" cross-reference notices
+// are shown (findContributingConditionCrossReferences). An exact ICD-10
+// duplicate within this list is blocked outright at selection time; a
+// "probable" duplicate (same HOPE category, different code) is a
+// nonblocking warning only, per owner directive ("warn, never silently
+// merge"). Zero conditions is a valid, fully-complete state.
+// ════════════════════════════════════════════════════════════════
+function ContributingConditionRow({ condition, diagnosesData, onChange, onRequestRemove, styles, COLORS }) {
+  const [searchText, setSearchText] = useState(() => (
+    condition.icdDescription
+      ? `${condition.icdDescription}${condition.icdCode ? ` (${formatIcd10Code(condition.icdCode)})` : ""}`
+      : formatIcd10Code(condition.icdCode || "")
+  ));
+  const [duplicateError, setDuplicateError] = useState("");
+
+  const requiresRationale = CONTRIBUTING_CONDITION_STATUSES_REQUIRING_RATIONALE.has(condition.contributionStatus);
+  const incomplete = isContributingConditionIncomplete(condition);
+  const crossRefs = condition.icdCode
+    ? findContributingConditionCrossReferences(diagnosesData, condition.icdCode)
+    : null;
+  const probableDuplicates = condition.icdCode
+    ? findProbableDuplicateContributingConditions(diagnosesData?.contributingConditions, condition.icdCode, condition.id)
+    : [];
+
+  const handleSelectSuggestion = (suggestion) => {
+    const existing = findExactDuplicateContributingCondition(
+      diagnosesData?.contributingConditions,
+      suggestion.icd10_code,
+      condition.id,
+    );
+    if (existing) {
+      setDuplicateError(
+        `${formatIcd10Code(suggestion.icd10_code)} is already documented as a contributing condition` +
+          `${existing.icdDescription ? ` (${existing.icdDescription})` : ""}. Edit the existing entry instead of adding a duplicate.`,
+      );
+      return;
+    }
+    setDuplicateError("");
+    // Apply both fields in a single patch -- two separate onChange("field", value)
+    // calls here would each read the same pre-update `rows` closure in the
+    // parent's touch() helper, so the second call would silently clobber the
+    // first (icdCode would be lost, leaving only icdDescription persisted).
+    onChange({ icdCode: suggestion.icd10_code, icdDescription: suggestion.diagnosis_description });
+  };
+
+  return (
+    <div className="rnica-contributing-card" role="group" aria-label="Contributing condition">
+      <div className="rnica-contributing-card__row1">
+        <div className="rnica-diagnosis-card__search" role="cell">
+          <Icd10DiagnosisInput
+            value={searchText}
+            onChange={setSearchText}
+            onSelectSuggestion={handleSelectSuggestion}
+            colors={{ cardBg: COLORS.white, border: COLORS.border, label: COLORS.gray, white: COLORS.dark }}
+            inputStyle={styles.input}
+            placeholder="Search diagnosis or ICD-10…"
+          />
+        </div>
+        <Select value={condition.sourceType || "CLINICIAN_ENTERED"} onValueChange={(v) => onChange("sourceType", v)}>
+          <SelectTrigger className="h-8 w-[220px] shrink-0 text-[12px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CONTRIBUTING_CONDITION_SOURCE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          className="rnica-diagnosis-card__remove"
+          title="Remove this contributing condition"
+          aria-label="Remove this contributing condition"
+          onClick={onRequestRemove}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+
+      {duplicateError && <div className="rnica-contributing-card__error" role="alert">{duplicateError}</div>}
+
+      <div className="rnica-contributing-card__statuses" role="group" aria-label="Contribution status">
+        {CONTRIBUTING_CONDITION_STATUS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            className={RNICA_CHIP_CLASS}
+            data-state={condition.contributionStatus === opt.value ? "on" : "off"}
+            onClick={() => onChange("contributionStatus", opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {requiresRationale && (
+        <textarea
+          className="rnica-contributing-card__rationale"
+          style={{ ...styles.input, minHeight: 56, resize: "vertical", width: "100%" }}
+          placeholder="Clinical rationale (required for this status)…"
+          value={condition.clinicalRationale || ""}
+          onChange={(e) => onChange("clinicalRationale", e.target.value)}
+        />
+      )}
+
+      {(probableDuplicates.length > 0 || crossRefs?.inSecondaryDiagnoses || crossRefs?.hopeCategoryChecked) && (
+        <div className="rnica-contributing-card__notice">
+          {crossRefs?.inSecondaryDiagnoses && "Already documented as a Secondary Diagnosis. "}
+          {crossRefs?.hopeCategoryChecked &&
+            `Overlaps a checked HOPE comorbidity category (${crossRefs.hopeCategory?.shortLabel || crossRefs.hopeCategory?.label}). `}
+          {probableDuplicates.length > 0 &&
+            "Another contributing condition in the same comorbidity category is already documented — confirm this is a distinct condition, not a duplicate entry."}
+        </div>
+      )}
+
+      {incomplete && (
+        <div className="rnica-contributing-card__incomplete">
+          Incomplete — select a diagnosis and a contribution status{requiresRationale ? ", plus a clinical rationale" : ""} to finish documenting this condition.
+        </div>
+      )}
+
+      {(condition.createdByName || condition.updatedByName) && (
+        <div className="rnica-contributing-card__meta">
+          {condition.createdByName &&
+            `Added by ${condition.createdByName}${condition.createdAt ? ` on ${new Date(condition.createdAt).toLocaleDateString()}` : ""}`}
+          {condition.updatedByName && condition.updatedAt && condition.updatedAt !== condition.createdAt &&
+            ` · Updated by ${condition.updatedByName} on ${new Date(condition.updatedAt).toLocaleDateString()}`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function makeContributingConditionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `cc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ContributingConditionsCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
+  const rows = diagnosesData?.contributingConditions || [];
+  const [pendingRemoveId, setPendingRemoveId] = useState(null);
+
+  const setRows = (next) => updateField("contributingConditions", next);
+  const currentUserName = () => {
+    const user = getCurrentUser();
+    return user?.full_name || user?.name || "";
+  };
+
+  const addRow = () => {
+    const nowIso = new Date().toISOString();
+    setRows([
+      ...rows,
+      {
+        id: makeContributingConditionId(),
+        icdCode: "",
+        icdDescription: "",
+        contributionStatus: "",
+        clinicalRationale: "",
+        sourceType: "CLINICIAN_ENTERED",
+        active: true,
+        createdByName: currentUserName(),
+        createdAt: nowIso,
+        updatedByName: currentUserName(),
+        updatedAt: nowIso,
+      },
+    ]);
+  };
+
+  const touch = (idx, patch) => {
+    const nowIso = new Date().toISOString();
+    setRows(rows.map((row, i) => (i === idx ? { ...row, ...patch, updatedByName: currentUserName(), updatedAt: nowIso } : row)));
+  };
+
+  // Empty/never-touched rows (just added, nothing searched yet) have no
+  // documentation to lose -- remove outright instead of interrupting with
+  // a confirmation, mirroring SecondaryDiagnosesCard's identical rule.
+  // Any row that was actually documented is soft-removed (active: false)
+  // rather than deleted outright, so the audit trail is preserved.
+  const requestRemove = (idx) => {
+    const row = rows[idx];
+    if (!row?.icdCode && !row?.icdDescription) {
+      setRows(rows.filter((_, i) => i !== idx));
+      return;
+    }
+    setPendingRemoveId(row.id);
+  };
+
+  const confirmRemove = () => {
+    const idx = rows.findIndex((row) => row.id === pendingRemoveId);
+    if (idx === -1) { setPendingRemoveId(null); return; }
+    const nowIso = new Date().toISOString();
+    setRows(rows.map((row, i) => (i === idx ? {
+      ...row,
+      active: false,
+      removedByName: currentUserName(),
+      removedAt: nowIso,
+    } : row)));
+    setPendingRemoveId(null);
+  };
+
+  const activeRows = rows.filter((row) => row.active !== false);
+  const pendingRow = rows.find((row) => row.id === pendingRemoveId);
+
+  if (workspacePilot) {
+    return (
+      <div className="rnica-diagnosis-ledger">
+        <div className="rnica-diagnosis-ledger__summary">
+          <span className="rnica-diagnosis-ledger__heading">
+            Contributing Conditions
+            <InfoTooltip text="Conditions that are not the Primary Diagnosis, a Secondary Diagnosis, or a checked HOPE Comorbidity, but that materially affect terminal prognosis or clinical burden. Documenting a condition here never auto-adds it elsewhere, and zero documented conditions is a valid state." />
+          </span>
+          <strong>{activeRows.length} documented</strong>
+        </div>
+        {activeRows.length === 0 ? (
+          <div className="rnica-diagnosis-ledger__empty">No contributing conditions documented. This is valid — not every patient has one.</div>
+        ) : (
+          <div className="rnica-diagnosis-cards" aria-label="Contributing conditions">
+            {rows.map((row, idx) => (row.active === false ? null : (
+              <ContributingConditionRow
+                key={row.id || idx}
+                condition={row}
+                diagnosesData={diagnosesData}
+                onChange={(field, value) => touch(idx, typeof field === "object" && field !== null ? field : { [field]: value })}
+                onRequestRemove={() => requestRemove(idx)}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )))}
+          </div>
+        )}
+        <div className="rnica-diagnosis-ledger__actions">
+          <button type="button" onClick={addRow}>+ Add contributing condition</button>
+        </div>
+
+        <AlertDialog open={pendingRemoveId !== null} onOpenChange={(next) => { if (!next) setPendingRemoveId(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this contributing condition?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingRow?.icdDescription || pendingRow?.icdCode
+                  ? `"${pendingRow.icdDescription || formatIcd10Code(pendingRow.icdCode)}" will be removed from Contributing Conditions. The entry is kept in the audit history, not permanently erased.`
+                  : "This entry will be removed."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingRemoveId(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmRemove}>Remove</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  // Legacy (non-pilot) rendering -- plain inline-styled rows, no chip/Sheet
+  // visual language, consistent with every other legacy branch on this
+  // screen. Same data, same validation, same cross-reference notices.
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: COLORS.gray, marginTop: -4, marginBottom: 10 }}>
+        Conditions that are not the Primary Diagnosis, a Secondary Diagnosis, or a checked HOPE
+        Comorbidity, but that materially affect terminal prognosis or clinical burden. Documenting
+        a condition here never auto-adds it to Secondary Diagnoses or the HOPE checklist.
+      </p>
+      {activeRows.length === 0 && (
+        <div style={{ fontSize: 12.5, color: COLORS.gray, fontStyle: "italic", marginBottom: 10 }}>
+          No contributing conditions documented.
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rows.map((row, idx) => {
+          if (row.active === false) return null;
+          const requiresRationale = CONTRIBUTING_CONDITION_STATUSES_REQUIRING_RATIONALE.has(row.contributionStatus);
+          const incomplete = isContributingConditionIncomplete(row);
+          return (
+            <div key={row.id || idx} style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg }}>
+              <div style={{ display: "grid", gridTemplateColumns: "140px minmax(0, 1fr) auto", gap: 10, alignItems: "center", marginBottom: 8 }}>
+                <input
+                  style={styles.input}
+                  placeholder="ICD-10"
+                  value={row.icdCode || ""}
+                  onChange={(e) => touch(idx, { icdCode: e.target.value })}
+                />
+                <input
+                  style={styles.input}
+                  placeholder="Description"
+                  value={row.icdDescription || ""}
+                  onChange={(e) => touch(idx, { icdDescription: e.target.value })}
+                />
+                <button type="button" style={{ ...styles.btnDanger, padding: "6px 10px" }} onClick={() => requestRemove(idx)}>
+                  Remove
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+                <select style={styles.input} value={row.contributionStatus || ""} onChange={(e) => touch(idx, { contributionStatus: e.target.value })}>
+                  <option value="">— select contribution status —</option>
+                  {CONTRIBUTING_CONDITION_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <select style={styles.input} value={row.sourceType || "CLINICIAN_ENTERED"} onChange={(e) => touch(idx, { sourceType: e.target.value })}>
+                  {CONTRIBUTING_CONDITION_SOURCE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              {requiresRationale && (
+                <textarea
+                  style={{ ...styles.input, minHeight: 56, resize: "vertical", width: "100%" }}
+                  placeholder="Clinical rationale (required for this status)…"
+                  value={row.clinicalRationale || ""}
+                  onChange={(e) => touch(idx, { clinicalRationale: e.target.value })}
+                />
+              )}
+              {incomplete && (
+                <p style={{ fontSize: 11.5, color: COLORS.red || "#DC2626", marginTop: 6 }}>
+                  Incomplete — select a diagnosis and a contribution status{requiresRationale ? ", plus a clinical rationale" : ""}.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" style={{ ...styles.btnSecondary, marginTop: 10 }} onClick={addRow}>
+        + Add Contributing Condition
+      </button>
+      {pendingRemoveId !== null && (
+        <div style={{ marginTop: 10, padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.bg }}>
+          <p style={{ fontSize: 12.5, marginBottom: 8 }}>
+            Remove {pendingRow?.icdDescription || formatIcd10Code(pendingRow?.icdCode || "") || "this entry"}?
+          </p>
+          <button type="button" style={{ ...styles.btnDanger, marginRight: 8 }} onClick={confirmRemove}>Remove</button>
+          <button type="button" style={styles.btnSecondary} onClick={() => setPendingRemoveId(null)}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2997,10 +3548,16 @@ function PerformanceScaleCard({ scaleKey, card, data, update, diagnosesData }) {
   const [scoreField, justificationField] = card.fields;
   const scoreValue = getNestedValue(data, scoreField.path);
   const justificationValue = getNestedValue(data, justificationField.path);
-  const scoreOption = (scoreField.options || []).find((opt) => (typeof opt === "string" ? opt : opt.value) === scoreValue);
-  const scoreLabel = scoreOption ? (typeof scoreOption === "string" ? null : scoreOption.label) : null;
   const percent = meta.isPercent && scoreValue ? parseInt(scoreValue, 10) : null;
   const trigger = meta.hint ? describeScaleTrigger(diagnosesData, meta.hint) : null;
+  // Owner directive (2026-10-04) "Never assume users remember the meaning
+  // of PPS, KPS, FAST, NYHA, or ECOG values" -- every documented score is
+  // paired with an automatically-derived plain-language interpretation and
+  // clinical-significance note (see performanceScaleInterpretations.js).
+  // This is purely presentational/derived from the score already on
+  // record; it is never itself stored, and the clinician's own
+  // justification field below is completely unaffected.
+  const interpretation = getScaleInterpretation(scaleKey, scoreValue);
 
   return (
     <ShadcnCard className="rnica-scale-card">
@@ -3014,7 +3571,12 @@ function PerformanceScaleCard({ scaleKey, card, data, update, diagnosesData }) {
       <ShadcnCardContent>
         {trigger && <div className="rnica-scale-card__trigger">Shown because of — {trigger}</div>}
         {percent !== null && <ShadcnProgress value={percent} className="rnica-scale-card__progress" />}
-        {scoreLabel && <div className="rnica-scale-card__meaning">{scoreLabel}</div>}
+        {interpretation && (
+          <div className="rnica-scale-card__interpretation" role="note">
+            <div className="rnica-scale-card__interpretation-headline">{interpretation.interpretation}</div>
+            <div className="rnica-scale-card__interpretation-significance">{interpretation.significance}</div>
+          </div>
+        )}
         <div className="rnica-scale-card__row">
           <FormSelect
             label={scoreField.label}
@@ -3364,35 +3926,163 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
 
   const groups = workspacePilot ? pilotColumns : legacyGroups;
 
-  // Compact "Selected Comorbidities" summary -- immediate visibility of
-  // what's already checked without scanning the whole grid. Pilot-only.
-  const selectedSummary = useMemo(() => {
-    const names = HOPE_COMORBIDITY_CATEGORIES.filter(isCategoryChecked).map((cat) => cat.shortLabel || cat.label);
-    if (hope.other) names.push("Other Medical Condition");
-    return names;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [hope, principalCategory, autoDetected]);
+  // ──────────────────────────────────────────────────────────────
+  // Pilot (RNICA workspace) presentation: chip/card-based selection,
+  // matching the Pain/Neuro visual language (same chip recipe as Pain
+  // Character / Neuropathic Characteristics / Aggravating / Relieving
+  // Factors -- RNICA_CHIP_CLASS). Replaces the checkbox-driven legacy
+  // rows with full-card chips: selected = filled accent background,
+  // unselected = outline only. Same HOPE_COMORBIDITY_CATEGORIES data,
+  // same checked/excluded/auto-detect logic as legacy -- presentation
+  // only, no new fields, no schema change.
+  // ──────────────────────────────────────────────────────────────
+  if (workspacePilot) {
+    const selectedCategories = HOPE_COMORBIDITY_CATEGORIES.filter(isCategoryChecked);
+    const selectedCount = selectedCategories.length + (hope.other ? 1 : 0);
 
+    return (
+      <div className="rnica-comorbidity-panel rnica-comorbidity-panel--chips">
+        <div className="rnica-comorbidity-guidance" style={styles.infoBox}>
+          Check all comorbid/coexisting conditions addressed in the plan of care. Do not check a
+          category already coded as the Principal Diagnosis — exception: a second, distinct
+          cancer diagnosis.
+        </div>
+
+        {/* Selected Comorbidities surface at the top as removable chips,
+            same pattern as Pain's selected-findings summary. */}
+        <div className="rnica-comorbidity-selected">
+          <span className="rnica-comorbidity-selected__label">Selected ({selectedCount})</span>
+          <div className="rnica-comorbidity-selected__chips">
+            {selectedCount === 0 ? (
+              <span className="rnica-comorbidity-selected__empty">None selected yet</span>
+            ) : (
+              <>
+                {selectedCategories.map((cat) => (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    className={RNICA_CHIP_CLASS}
+                    data-state="on"
+                    title="Remove"
+                    onClick={() => setHope(cat.key, false)}
+                  >
+                    {cat.shortLabel || cat.label}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ))}
+                {hope.other && (
+                  <button
+                    type="button"
+                    className={RNICA_CHIP_CLASS}
+                    data-state="on"
+                    title="Remove"
+                    onClick={() => setHope("other", false)}
+                  >
+                    Other Medical Condition
+                    <span aria-hidden="true">×</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="rnica-comorbidity-grid">
+          {groups.map(({ group, heading, categories }) => {
+            const excludedCat = categories.find((cat) => {
+              const isPrincipal = principalCategory?.key === cat.key;
+              const cancerException = cat.key === "cancer" && isPrincipal && autoDetected.has(cat.key);
+              return isPrincipal && !cancerException;
+            });
+            return (
+              <div key={group} className="rnica-comorbidity-group">
+                <div className="rnica-comorbidity-group__heading">{heading}</div>
+                <div className="rnica-comorbidity-group__chips">
+                  {categories.map((cat) => {
+                    const isPrincipal = principalCategory?.key === cat.key;
+                    const detected = autoDetected.has(cat.key);
+                    // CMS carve-out: cancer may be both the Principal Diagnosis and a
+                    // checked comorbidity if the patient has a second, distinct cancer.
+                    const cancerException = cat.key === "cancer" && isPrincipal && detected;
+                    const excluded = isPrincipal && !cancerException;
+                    const checked = excluded ? false : Boolean(hope[cat.key]);
+                    return (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        className={RNICA_CHIP_CLASS}
+                        data-state={checked ? "on" : "off"}
+                        disabled={excluded}
+                        title={excluded ? "Already coded as Principal Diagnosis — not double-entered per HOPE guidance." : `HOPE ${cat.hopeCode}`}
+                        onClick={() => setHope(cat.key, !checked)}
+                      >
+                        {cat.shortLabel || cat.label}
+                        {detected && (
+                          <span className="rnica-comorbidity-chip__detected" aria-hidden="true" title="Detected from secondary diagnoses">•</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {excludedCat && (
+                  <div className="rnica-comorbidity-group__note">
+                    {excludedCat.shortLabel || excludedCat.label} excluded — already coded as Principal Diagnosis.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* "Other" participates in the same grid flow as a regular
+              category column (Row 3, 3rd column). */}
+          <div className="rnica-comorbidity-group">
+            <div className="rnica-comorbidity-group__heading">Other</div>
+            <div className="rnica-comorbidity-group__chips">
+              <button
+                type="button"
+                className={RNICA_CHIP_CLASS}
+                data-state={hope.other ? "on" : "off"}
+                title="HOPE I8005"
+                onClick={() => setHope("other", !hope.other)}
+              >
+                Other Medical Condition
+              </button>
+            </div>
+            {uncategorizedSecondary.length > 0 && (
+              <div className="rnica-comorbidity-group__note">
+                Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${formatIcd10Code(dx.icd10)} ${dx.description || ""}`.trim()).join("; ")}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <FormTextarea
+          label="Additional Note (optional)"
+          value={hope.additionalNote}
+          onChange={(v) => setHope("additionalNote", v)}
+          placeholder="Clarify any comorbidity coding decisions..."
+          rows={2}
+        />
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Legacy (non-pilot) presentation -- unchanged checkbox-driven,
+  // single-column, always-expanded category sections.
+  // ──────────────────────────────────────────────────────────────
   return (
-    <div className={workspacePilot ? "rnica-comorbidity-panel" : undefined}>
-      <div className={workspacePilot ? "rnica-comorbidity-guidance" : undefined} style={styles.infoBox}>
+    <div>
+      <div style={styles.infoBox}>
         Per CMS HOPE guidance: check all comorbid/coexisting conditions addressed in the plan of
         care. <strong>Do not check a category already coded as the Principal Diagnosis</strong>{" "}
         — the exception is if the patient has a second, distinct cancer diagnosis.
       </div>
 
-      {workspacePilot && (
-        <div className="rnica-comorbidity-summary">
-          <strong>Selected Comorbidities: {selectedSummary.length}</strong>
-          {selectedSummary.length > 0 && <span>{selectedSummary.join(", ")}</span>}
-        </div>
-      )}
-
-      <div className={workspacePilot ? "rnica-comorbidity-grid" : undefined}>
-      {groups.map(({ group, heading, categories }) => (
-        <div key={group} className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 14 }}>
-          <div className={workspacePilot ? "rnica-comorbidity-group__heading" : undefined} style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
-            {heading}
+      {groups.map(({ group, categories }) => (
+        <div key={group} style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+            {group}
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             {categories.map((cat) => {
@@ -3405,7 +4095,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
               const checked = excluded ? false : Boolean(hope[cat.key]);
 
               return (
-                <div key={cat.key} className={workspacePilot ? "rnica-comorbidity-option" : undefined} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div key={cat.key} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <label
                     style={{
                       ...styles.checkboxLabel,
@@ -3419,7 +4109,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
                       disabled={excluded}
                       onCheckedChange={(v) => setHope(cat.key, Boolean(v))}
                     />
-                    <span>{workspacePilot ? (cat.shortLabel || cat.label) : cat.label}</span>
+                    <span>{cat.label}</span>
                   </label>
                   <HopeTag code={cat.hopeCode} />
                   {excluded && (
@@ -3445,11 +4135,8 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
           </div>
         </div>
       ))}
-      {/* "Other" participates in the same grid flow as a regular category
-          column in the pilot layout (Row 3, 3rd column); legacy mode keeps
-          it as its own section below the groups, unchanged. */}
-      <div className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 8 }}>
-        <div className={workspacePilot ? "rnica-comorbidity-group__heading" : undefined} style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+      <div style={{ marginBottom: 8 }}>
+        <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
           Other
         </div>
         <label style={styles.checkboxLabel}>
@@ -3462,7 +4149,6 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
             Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${formatIcd10Code(dx.icd10)} ${dx.description || ""}`.trim()).join("; ")}
           </div>
         )}
-      </div>
       </div>
 
       <FormTextarea
@@ -7379,41 +8065,9 @@ function PainAssessmentSummaryCard({ data, styles }) {
 // render loop hides the card entirely in that case rather than showing an
 // empty panel (owner requirement: never show an AI conclusion with no
 // supporting data, never imply pain is present when denied).
-function computeAiPainNotes(data) {
-  const notes = [];
-  const currentPain = data?.currentPain;
-  const current = Number(data?.painIntensity?.current);
-  const worst = Number(data?.painIntensity?.worst);
-  const hasCurrent = currentPain === "1" && data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "";
-  const hasWorst = currentPain === "1" && data?.painIntensity?.worst !== undefined && data?.painIntensity?.worst !== "";
-  const managementDocumented = Boolean(data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1" || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
-
-  if (hasCurrent && current >= 7 && !managementDocumented) {
-    notes.push({ text: `Current pain is severe (${current}/10) with no documented pain-management intervention.`, field: "Current Pain Intensity" });
-  }
-  if (hasCurrent && hasWorst && worst - current >= 4) {
-    notes.push({ text: `Worst pain (${worst}/10) is substantially higher than current (${current}/10) — breakthrough control may need review.`, field: "Current/Worst Pain Intensity" });
-  }
-  if (data?.neuropathicPain === "1") {
-    notes.push({ text: "Neuropathic pain documented (HOPE J0915) — confirm an adjuvant agent is part of the pain management plan.", field: "Neuropathic Pain" });
-  }
-  if (data?.painEffectivenessRating && /partial|ineffective/i.test(data.painEffectivenessRating)) {
-    notes.push({ text: `Pain management effectiveness documented as "${data.painEffectivenessRating}" — consider regimen reassessment.`, field: "Effectiveness Rating" });
-  }
-  if (data?.controlStatus === "Uncontrolled") {
-    notes.push({ text: "Chronic pain control status documented as Uncontrolled.", field: "Control Status" });
-  }
-  if (currentPain === "0" && data?.chronicPainHistory === "1" && data?.effectOnFunction) {
-    notes.push({ text: `Pain is documented as affecting function/quality of life: "${data.effectOnFunction}".`, field: "Effect on Function/QOL" });
-  }
-  if (currentPain === "1" && data?.effectOnFunction) {
-    notes.push({ text: `Pain is documented as affecting function/quality of life: "${data.effectOnFunction}".`, field: "Effect on Function/QOL" });
-  }
-  if (currentPain === "1" && !hasCurrent) {
-    notes.push({ text: "Patient reports current pain but current intensity has not been documented.", field: "Current Pain / Current Intensity" });
-  }
-  return notes;
-}
+// Logic now lives in rn-ica/pain-symptom-burden/painLogic.js (single
+// source of truth also consumed by the approved Pain & Symptom Burden
+// summary screen) -- this is just the re-export call site.
 
 function AiPainAnalysisCard({ data, styles }) {
   const notes = computeAiPainNotes(data);
@@ -7432,45 +8086,9 @@ function AiPainAnalysisCard({ data, styles }) {
 
 // Section 17: only real, currently-implemented rules — no arbitrary
 // timing/deadline logic (no reassessment-overdue-by-N-days rule exists
-// yet, so it is intentionally not included here).
-function computePainOverdueAlerts(data, painAssessmentMode) {
-  const alerts = [];
-  if (!data?.screenedForPain) {
-    alerts.push("Pain screening incomplete — was the patient assessed for pain? (HOPE J0900.A) has not been answered.");
-    return alerts;
-  }
-  if (data.screenedForPain === "0" && !data?.reasonNotAssessed) {
-    alerts.push("Reason pain assessment was not completed is required.");
-  }
-  if (data.screenedForPain === "1" && !data?.currentPain) {
-    alerts.push("Current pain status (\"Is the patient experiencing pain now?\") has not been documented.");
-  }
-  if (data?.currentPain === "0" && !data?.chronicPainHistory) {
-    alerts.push("Chronic/recurrent pain history has not been documented.");
-  }
-  if (data?.currentPain === "1" && !data?.comprehensiveAssessmentCompleted) {
-    alerts.push("Required comprehensive pain assessment incomplete.");
-  }
-  if (painAssessmentMode === "painad") {
-    const complete = ["breathing", "vocalization", "facialExpression", "bodyLanguage", "consolability"].every((k) => data?.painad?.[k] !== undefined && data?.painad?.[k] !== "");
-    if (!complete) alerts.push("Required PAINAD Scale incomplete.");
-  }
-  if (painAssessmentMode === "flacc") {
-    const complete = ["face", "legs", "activity", "cry", "consolability"].every((k) => data?.flacc?.[k] !== undefined && data?.flacc?.[k] !== "");
-    if (!complete) alerts.push("Required FLACC Scale incomplete.");
-  }
-  const managementDocumented = Boolean(data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1" || data?.painManagementPlan || (data?.nonPharmInterventions || []).length);
-  if (data?.currentPain === "1" && Number(data?.painIntensity?.current) >= 7 && !managementDocumented) {
-    alerts.push("Current pain is severe without documented intervention.");
-  }
-  if (data?.breakthroughPainMedication === "1" && !data?.painEffectivenessRating) {
-    alerts.push("Breakthrough pain medication documented without an effectiveness assessment.");
-  }
-  if (data?.painActiveProblem === "1" && !managementDocumented) {
-    alerts.push("Active pain problem documented without a pain-management plan.");
-  }
-  return alerts;
-}
+// yet, so it is intentionally not included here). Logic now lives in
+// rn-ica/pain-symptom-burden/painLogic.js (single source of truth also
+// consumed by the approved Pain & Symptom Burden summary screen).
 
 function PainOverdueAlertsCard({ data, painAssessmentMode, styles }) {
   const alerts = computePainOverdueAlerts(data, painAssessmentMode);
@@ -9092,6 +9710,83 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
   );
 }
 
+// Owner directive (2026-10-03) "Comprehensive Pain Assessment Date
+// auto-population" -- the nurse no longer manually confirms a
+// "Comprehensive pain assessment completed" checkbox or re-enters a date;
+// the comprehensive assessment date defaults to (and is kept live in sync
+// with, via the useEffect near handleLock) the parent RNICA visit date
+// (`visitMeta.visitDate`). The only way the two values ever diverge is an
+// explicit, reason-documented override, entered through this component.
+// `comprehensiveAssessmentCompleted` (HOPE J0910.A) remains a real stored
+// field -- it is now derived automatically (true once a date is present)
+// by that same sync effect, instead of requiring separate manual entry.
+function ComprehensivePainAssessmentDateField({ label, value, parentVisitDate, overrideReason, hopeCode, onDateChange, onReasonChange, onClearOverride, styles, COLORS }) {
+  const [overriding, setOverriding] = useState(Boolean(overrideReason));
+  const displayDate = value || parentVisitDate;
+
+  if (!overriding) {
+    return (
+      <div style={styles.formGroup}>
+        <label style={styles.label}>
+          {label} {hopeCode && <> <HopeTag code={hopeCode} /></>}
+        </label>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13.5, color: COLORS.dark, fontWeight: 600 }}>
+            {formatDate(displayDate)}
+          </span>
+          <span style={{ fontSize: 11, color: COLORS.gray }}>
+            (auto-filled from RNICA assessment date)
+          </span>
+          <button
+            type="button"
+            onClick={() => setOverriding(true)}
+            style={{
+              background: "none", border: "none", padding: 0, cursor: "pointer",
+              fontSize: 11.5, color: COLORS.teal, fontWeight: 600, textDecoration: "underline",
+            }}
+          >
+            Document a different date
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...styles.formGroup, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10 }}>
+      <label style={styles.label}>
+        {label} {hopeCode && <> <HopeTag code={hopeCode} /></>}
+      </label>
+      <FormInput
+        label="Comprehensive assessment date (override)"
+        type="date"
+        value={value}
+        onChange={onDateChange}
+      />
+      <FormInput
+        label="Reason date differs from RNICA assessment date"
+        required
+        value={overrideReason}
+        onChange={onReasonChange}
+        placeholder="Required to document an override"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          onClearOverride?.();
+          setOverriding(false);
+        }}
+        style={{
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          fontSize: 11.5, color: COLORS.gray, fontWeight: 600, textDecoration: "underline",
+        }}
+      >
+        Revert to RNICA assessment date
+      </button>
+    </div>
+  );
+}
+
 // Body map is a secondary interaction: the Pain screen's primary surface
 // only ever shows a one-line summary + "Edit body map" button. The full
 // interactive silhouette (BodyMap above) only exists inside this Dialog,
@@ -9115,8 +9810,14 @@ function PainBodyMapDialogField({ value = [], onToggle, onClearAll, regionLabelB
         className="rnica-pain-bodymap-edit-btn"
         style={{
           borderRadius: 8,
-          border: "1px solid var(--sns-border, #ccc)",
+          border: "1px solid var(--sns-teal, #0d9488)",
           background: "transparent",
+          // Bug fix (Pain Sheet UI polish pass): no color was set here, so
+          // the launch button silently inherited a near-black default and
+          // was nearly invisible against the dark theme. Brighter accent
+          // text (same teal used for the border) makes the trigger action
+          // immediately visible without changing the Body Map dialog itself.
+          color: "var(--sns-teal, #0d9488)",
           fontSize: 11.5,
           fontWeight: 700,
           padding: "6px 12px",
@@ -9974,10 +10675,17 @@ function computeBodySystemFindings(sectionKey, sectionData) {
         findings.push(`Communication: ${d.communication}.`);
       }
       if (d.cognition) findings.push(`Cognitive status: ${d.cognition}.`);
-      const bimsFields = [d?.hopeItems?.n0500, d?.hopeItems?.n0510, d?.hopeItems?.n0520];
-      if (bimsFields.every((v) => v !== "" && v !== undefined && v !== null)) {
-        const bimsSum = bimsFields.reduce((sum, v) => sum + parseInt(v, 10), 0);
-        findings.push(`BIMS score: ${bimsSum}/9.`);
+      // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+      // single authoritative score (computeSnsCognitiveScreen), not a
+      // locally-recomputed sum. Previously showed "BIMS score: X/9" (a
+      // name/denominator that conflicted with the Cognitive Summary
+      // card's then-assumed CMS BIMS 0-15 scale) and read from
+      // `hopeItems.n0500` (the official HOPE Scheduled-Opioid code).
+      const cognitiveScreenResult = computeSnsCognitiveScreen(d.cognitiveScreen);
+      if (cognitiveScreenResult.completionStatus === "COMPLETE") {
+        findings.push(`SNS Cognitive Screen: ${cognitiveScreenResult.rawScore} of ${cognitiveScreenResult.maxScore} (internal clinical screen).`);
+      } else if (cognitiveScreenResult.completionStatus === "PARTIAL") {
+        findings.push(`SNS Cognitive Screen incomplete: ${cognitiveScreenResult.missingItems.join(", ")} not yet documented.`);
       }
       if (d.delirium) findings.push(`Delirium present.`);
       const behavioral = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
@@ -10255,6 +10963,106 @@ export function computeNeurologicalNarrative(d) {
   }
 
   return clauses.join(" ");
+}
+
+// GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" -- the
+// single authoritative SNS Cognitive Screen calculation. Every consumer
+// (Cognitive Summary card, Neurological Summary, Structured Findings,
+// Finalization) MUST call this function; no component may compute its own
+// score or denominator independently -- that duplication (one place
+// assuming a CMS 0-15 BIMS scale, another correctly using this screen's
+// real 0-9 range) is exactly what produced the "8/15 vs 8/9" owner-reported
+// inconsistency this directive corrects.
+//
+// This is NOT the official CMS BIMS (Brief Interview for Mental Status).
+// docs/compliance/hope/HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv (sourced from
+// the real HOPE Guidance Manual v1.02) shows HOPE has no cognitive-
+// interview item at all -- N0500/N0510/N0520 are the official Scheduled
+// Opioid / PRN Opioid / Bowel Regimen items (Section N medications; see
+// hopeReportMapper.js:717-719, sourced from `medications.*`). This screen's
+// three controls each score 0-3 (fixed field options below), for a real
+// maximum of 9, not the CMS BIMS 0-15 range -- so it must never be labeled
+// "BIMS" until a separately-validated, approved BIMS instrument exists.
+const SNS_COGNITIVE_SCREEN_ITEMS = [
+  { key: "repetition", label: "Word Repetition" },
+  { key: "recall", label: "Word Recall" },
+  { key: "temporalOrientation", label: "Temporal Orientation" },
+];
+const SNS_COGNITIVE_SCREEN_MAX_SCORE = 9; // 3 items x 0-3 each -- see field options on the schema card.
+// SNS-configured screening heuristic only -- not a validated clinical cutoff
+// and not a CMS-mandated follow-up rule (directive item #11 "Interpretation
+// safety"). Below this fraction of the max score surfaces a neutral
+// "Clinical review recommended" note labeled as an SNS recommendation.
+const SNS_COGNITIVE_SCREEN_REVIEW_THRESHOLD_FRACTION = 0.75;
+
+export function computeSnsCognitiveScreen(cognitiveScreen) {
+  const cs = cognitiveScreen || {};
+  const items = SNS_COGNITIVE_SCREEN_ITEMS.map(({ key, label }) => {
+    const raw = cs[key];
+    const answered = raw !== undefined && raw !== null && raw !== "";
+    return { key, label, value: answered ? Number(raw) : null, answered };
+  });
+  const answeredCount = items.filter((i) => i.answered).length;
+  let completionStatus = "NOT_STARTED";
+  if (answeredCount === items.length) completionStatus = "COMPLETE";
+  else if (answeredCount > 0) completionStatus = "PARTIAL";
+
+  const rawScore = completionStatus === "COMPLETE" ? items.reduce((sum, i) => sum + i.value, 0) : null;
+  const missingItems = items.filter((i) => !i.answered).map((i) => i.label);
+
+  let interpretation = null;
+  if (completionStatus === "COMPLETE") {
+    const reviewRecommended = rawScore < Math.ceil(SNS_COGNITIVE_SCREEN_MAX_SCORE * SNS_COGNITIVE_SCREEN_REVIEW_THRESHOLD_FRACTION);
+    interpretation = {
+      label: reviewRecommended ? "Clinical review recommended" : "Within expected range",
+      detail: reviewRecommended
+        ? "Clinical review recommended based on configured SNS screening logic."
+        : "Score is within the configured SNS expected range for this screen.",
+      source: "SNS recommendation",
+      reviewRecommended,
+    };
+  }
+
+  return {
+    instrument: "SNS_COGNITIVE_SCREEN_V1",
+    items,
+    rawScore,
+    maxScore: SNS_COGNITIVE_SCREEN_MAX_SCORE,
+    completionStatus,
+    missingItems,
+    interpretation,
+  };
+}
+
+// OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" items #4/#6,
+// corrected by the same-day "BIMS/HOPE compliance correction" directive --
+// read-only, auto-generated Cognitive Summary. Reads the SNS Cognitive
+// Screen (via computeSnsCognitiveScreen -- the one authoritative
+// calculation) and the existing Cognitive/Behavioral Findings fields
+// (symptomsDemeanor/behavioralStatus/delirium/seizureHistory -- all already
+// read by computeNeurologicalNarrative above); computes nothing new,
+// infers nothing from blank fields, and writes nothing back. Returns null
+// when nothing has been documented yet, so the card simply doesn't render
+// (same "never show a card about nothing" contract as
+// computeBodySystemSummary's primaryIssues list).
+export function computeNeurologicalCognitiveSummary(d) {
+  const screen = computeSnsCognitiveScreen(d.cognitiveScreen);
+
+  let behavioralLine = "";
+  const behavioralAll = (d.symptomsDemeanor || []).filter(Boolean);
+  if (behavioralAll.length > 0) {
+    const concerns = behavioralAll.filter((s) => s !== "Peaceful");
+    behavioralLine = concerns.length > 0 ? `Behavioral findings: ${concerns.join(", ")}.` : "Peaceful / calm mood documented.";
+  } else if (d.behavioralStatus === "No Current Concern") {
+    behavioralLine = "No behavioral concern identified.";
+  }
+
+  const flags = [];
+  if (d.delirium === true || d.delirium === "Yes") flags.push("Delirium");
+  if (d.seizureHistory === true || d.seizureHistory === "Yes") flags.push("Seizure History");
+
+  if (screen.completionStatus === "NOT_STARTED" && !behavioralLine && flags.length === 0) return null;
+  return { screen, behavioralLine, flags };
 }
 
 // Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 -- a
@@ -10752,12 +11560,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
     "personalCare", "teachingNeeds",
   ]);
 
-  const normalizePainPatientType = (type) => {
-    if (!type || type === "adult-alert" || type === "alert") return "verbal";
-    if (type === "adult" || type === "alert-adult") return "verbal";
-    return type;
-  };
-
   const patientAge = sectionKey === "pain" ? calculateAgeFromDob(demographics?.dob) : null;
   const isPediatricAge = typeof patientAge === "number" && patientAge < 18;
 
@@ -10774,14 +11576,11 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
     return "verbal";
   };
 
-  const getPainAssessmentMode = () => {
-    const patientType = normalizePainPatientType(data.painMapMode || deriveModeFromScreening(data.verbalizesPain));
-    const selectedTool = String(data.assessmentTool || "");
-    if (patientType === "verbal") return "verbal";
-    if (patientType === "non-verbal") return selectedTool === "FLACC" ? "flacc" : "painad";
-    if (patientType === "pediatric") return "flacc";
-    return "verbal";
-  };
+  // Delegates to rn-ica/pain-symptom-burden/painLogic.js (single source of
+  // truth also consumed by the approved Pain & Symptom Burden summary
+  // screen) -- same normalizePainPatientType/deriveModeFromScreening
+  // algorithm, just centralized so both surfaces agree.
+  const getPainAssessmentMode = () => derivePainAssessmentMode(data, isPediatricAge);
 
   const getPainToolOptions = (mode) => {
     if (mode === "painad") return ["PAINAD", "FLACC"];
@@ -11038,6 +11837,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return (
             <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
               <HopeComorbiditiesCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "contributingConditions") {
+          return (
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ContributingConditionsCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
             </Card>
           );
         }
@@ -11308,6 +12115,53 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 styles={styles}
                 COLORS={COLORS}
               />
+            </Card>
+          );
+        }
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" items
+        // #4/#6, corrected by the same-day "BIMS/HOPE compliance
+        // correction" directive -- read-only Cognitive Summary (SNS
+        // Cognitive Screen score/status + already-documented Cognitive/
+        // Behavioral findings), driven entirely by computeSnsCognitiveScreen
+        // (the one authoritative calculation). Renders nothing (returns
+        // null, same contract as every other computed summary here) until
+        // at least one qualifying field is documented -- never an empty
+        // placeholder card.
+        if (sectionKey === "neurological" && card.customRenderer === "neuroCognitiveSummary") {
+          const cognitive = computeNeurologicalCognitiveSummary(cardData);
+          if (!cognitive) return null;
+          const { screen } = cognitive;
+          return (
+            <Card key={ci} title={card.title} importance={card.importance} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+              <div className="rnica-cognitive-summary">
+                {screen.completionStatus !== "NOT_STARTED" && (
+                  <div className="rnica-cognitive-summary__bims">
+                    {screen.completionStatus === "COMPLETE" ? (
+                      <>
+                        <span className="rnica-cognitive-summary__bims-score">SNS Cognitive Screen: {screen.rawScore} of {screen.maxScore}</span>
+                        {screen.interpretation && (
+                          <>
+                            <span className="rnica-cognitive-summary__bims-band">{screen.interpretation.label}</span>
+                            <p className="rnica-cognitive-summary__bims-detail">{screen.interpretation.detail} ({screen.interpretation.source})</p>
+                          </>
+                        )}
+                      </>
+                    ) : (
+                      <>
+                        <span className="rnica-cognitive-summary__bims-score">SNS Cognitive Screen incomplete</span>
+                        <p className="rnica-cognitive-summary__bims-detail">Not yet documented: {screen.missingItems.join(", ")}.</p>
+                      </>
+                    )}
+                    <p className="rnica-cognitive-summary__source">Internal SNS clinical screen · Not submitted to CMS HOPE</p>
+                  </div>
+                )}
+                {cognitive.behavioralLine && <p className="rnica-cognitive-summary__line">{cognitive.behavioralLine}</p>}
+                {cognitive.flags.length > 0 && (
+                  <div className="rnica-cognitive-summary__flags">
+                    {cognitive.flags.map((flag) => <ShadcnBadge key={flag} variant="warning">{flag}</ShadcnBadge>)}
+                  </div>
+                )}
+              </div>
             </Card>
           );
         }
@@ -11764,6 +12618,17 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // so nothing sits alone with empty space beside it.
               const fieldSpan = getFieldSpan(fieldForRender);
 
+              // Presentation-only density pass (2026-10): Pain's fieldsGrid
+              // already packs multiple fields per row via fieldSpan, but
+              // each field's own wrapper still carries the shared
+              // styles.formGroup 8px bottom margin, which is the remaining
+              // vertical-rhythm cost once rows are already paired up. This
+              // opt-in `compact` prop (same pattern as Card's own `compact`
+              // prop below) tightens that margin for Pain only -- no other
+              // section passes it, so every other screen's spacing is
+              // byte-for-byte unchanged.
+              const compact = sectionKey === "pain";
+
               let rendered;
               switch (fieldForRender.type) {
                 case "groupLabel":
@@ -11784,19 +12649,19 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   break;
                 case "input":
                   rendered = <FormInput label={fieldForRender.label} value={value} onChange={onChange}
-                    type={fieldForRender.inputType} placeholder={fieldForRender.placeholder} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                    type={fieldForRender.inputType} placeholder={fieldForRender.placeholder} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} compact={compact} />;
                   break;
                 case "textarea":
                   rendered = <FormTextarea label={fieldForRender.label} value={value} onChange={onChange}
-                    placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
+                    placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} compact={compact} />;
                   break;
                 case "quickPickTextarea":
                   rendered = <FormQuickPickTextarea label={fieldForRender.label} value={value} onChange={onChange}
-                    presets={fieldForRender.presets} placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
+                    presets={fieldForRender.presets} placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} compact={compact} />;
                   break;
                 case "select":
                   rendered = <FormSelect label={fieldForRender.label} value={value} onChange={onChange}
-                    options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                    options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} compact={compact} />;
                   break;
                 case "radio":
                   rendered = <FormRadioGroup label={fieldForRender.label} value={value} onChange={onChange}
@@ -11813,11 +12678,11 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   break;
                 case "segmented":
                   rendered = <FormSegmented label={fieldForRender.label} value={value} onChange={onChange}
-                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} aliases={fieldForRender.aliases} />;
+                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} aliases={fieldForRender.aliases} compact={compact} />;
                   break;
                 case "pillGroup":
                   rendered = <FormPillGroup label={fieldForRender.label} values={value || []} onChange={onChange}
-                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} />;
+                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} compact={compact} />;
                   break;
                 case "note":
                   // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
@@ -11845,6 +12710,31 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                         {legacyText}
                       </p>
                     </div>
+                  );
+                  break;
+                }
+                case "comprehensivePainAssessmentDate": {
+                  // [2026-10-03] See ComprehensivePainAssessmentDateField
+                  // above -- reads the parent RNICA visit date for the
+                  // auto-filled default and writes the override reason to
+                  // its own sibling path (not the generic single-path
+                  // onChange), since this one control owns two paths.
+                  rendered = (
+                    <ComprehensivePainAssessmentDateField
+                      label={fieldForRender.label}
+                      value={value}
+                      parentVisitDate={fullFormData?.visitMeta?.visitDate || ""}
+                      overrideReason={cardData.comprehensiveAssessmentDateOverrideReason || ""}
+                      hopeCode={fieldForRender.hopeCode}
+                      onDateChange={(v) => update(cardDataSection, fieldForRender.path, v)}
+                      onReasonChange={(v) => update(cardDataSection, "comprehensiveAssessmentDateOverrideReason", v)}
+                      onClearOverride={() => {
+                        update(cardDataSection, "comprehensiveAssessmentDateOverrideReason", "");
+                        update(cardDataSection, fieldForRender.path, fullFormData?.visitMeta?.visitDate || "");
+                      }}
+                      styles={styles}
+                      COLORS={COLORS}
+                    />
                   );
                   break;
                 }
@@ -12026,7 +12916,17 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         <ShadcnCard className="rnica-bodysystem-workspace">
           <ShadcnCardContent className="rnica-bodysystem-workspace__content">
             {bodySystemSummary && (
-              <div className="rnica-bodysystem-summary" data-requires-follow-up={bodySystemSummary.requiresFollowUp}>
+              <div
+                // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy
+                // Pass" item #1 -- Neurological's Summary must read as the
+                // 5-second headline, matching Functional Status's banner
+                // weight, not a muted generic strip. Scoped to
+                // sectionKey === "neurological" only (same pattern as
+                // every other Neuro-only directive in this file) so no
+                // other Body System's Summary styling changes.
+                className={`rnica-bodysystem-summary${sectionKey === "neurological" ? " rnica-bodysystem-summary--prominent" : ""}`}
+                data-requires-follow-up={bodySystemSummary.requiresFollowUp}
+              >
                 <h4 className="rnica-bodysystem-summary__heading">Summary</h4>
                 <p className="rnica-bodysystem-summary__status">{bodySystemSummary.status}</p>
                 {bodySystemSummary.primaryIssues.length > 0 && (
@@ -12125,6 +13025,21 @@ function getFieldSpan(field) {
     const maxItemLabelLen = items.reduce((m, it) => Math.max(m, String(it.label).length), 0);
     if (items.length <= 4 && maxItemLabelLen <= 20) return 2;
     return 3;
+  }
+  if (field.type === "booleanPill") {
+    // Bug fix (Pain Sheet UI polish pass): FormBooleanPill renders its
+    // whole label as nowrap text inside a single pill button. A long label
+    // (e.g. "Comprehensive pain assessment completed") was defaulting to a
+    // single ~150px grid column, overflowing into the next grid cell and
+    // visually overlapping the adjacent date field. Short labels (e.g.
+    // "Delirium", "Pacemaker") are unaffected and keep sharing a row.
+    return String(field.label || "").length > 24 ? "full" : 1;
+  }
+  if (field.type === "comprehensivePainAssessmentDate") {
+    // Can expand to show a date input + required override-reason input
+    // stacked vertically -- give it the full row so that never competes
+    // for width with a neighboring field.
+    return "full";
   }
   return 1;
 }
@@ -12257,8 +13172,14 @@ const SECTION_CONFIGS = {
           { type: "input", label: "Worst in 24 hours", path: "painIntensity.worst", inputType: "number" },
           { type: "input", label: "Best in 24 hours", path: "painIntensity.best", inputType: "number" },
           { type: "input", label: "Acceptable level", path: "painIntensity.acceptable", inputType: "number" },
-          { type: "booleanPill", label: "Comprehensive pain assessment completed", path: "comprehensiveAssessmentCompleted" },
-          { type: "input", label: "Comprehensive pain assessment date", path: "comprehensiveAssessmentDate", inputType: "date" },
+          // [2026-10-03 "Comprehensive Pain Assessment Date auto-
+          // population"] Replaces the former separate editable
+          // "Comprehensive pain assessment completed" checkbox + manually
+          // -typed date with a single auto-filled/override field -- see
+          // ComprehensivePainAssessmentDateField and the sync useEffect
+          // near handleLock. comprehensiveAssessmentCompleted (HOPE
+          // J0910.A) is still stored, now derived rather than hand-entered.
+          { type: "comprehensivePainAssessmentDate", label: "Comprehensive Assessment Date", path: "comprehensiveAssessmentDate", hopeCode: "J0910" },
         ],
       },
       {
@@ -12431,6 +13352,13 @@ const SECTION_CONFIGS = {
         hopeCode: "I0100-I8005",
         customRenderer: "hopeComorbidities",
       },
+      // Disease & LCD Workflow Specification, Phase 1 / Option A --
+      // manually-documented conditions distinct from Primary/Secondary/
+      // HOPE Comorbidities. See ContributingConditionsCard above.
+      {
+        title: "Contributing Conditions",
+        customRenderer: "contributingConditions",
+      },
     ],
   },
 
@@ -12521,7 +13449,7 @@ const SECTION_CONFIGS = {
 
   neurological: {
     title: "Neurological / Mental / Sensory",
-    subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, BIMS (N0500-N0520)",
+    subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, SNS Cognitive Screen",
     cards: [
       {
         // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
@@ -12613,6 +13541,46 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction"
+        // -- this card previously claimed to be a HOPE item ("HOPE
+        // Cognitive Assessment (BIMS Screen)", hopeCode "N0500-N0520").
+        // docs/compliance/hope/HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv (HOPE
+        // Guidance Manual v1.02) shows N0500/N0510/N0520 are the official
+        // Scheduled Opioid / PRN Opioid / Bowel Regimen items (Section N
+        // medications; see hopeReportMapper.js:717-719, correctly sourced
+        // from `medications.*`), and that HOPE has no cognitive-interview
+        // item at all. Renamed to "SNS Cognitive Screen" with no HOPE
+        // badge (hopeCode removed -- Card/field only render <HopeTag> when
+        // hopeCode is set) and an explicit "not a HOPE item" note. Paths
+        // moved from hopeItems.n0500/n0510/n0520 to cognitiveScreen.* (see
+        // INITIAL_FORM.neurological + migrateNeurologicalCognitiveData for
+        // the one-time migration of any legacy-shaped saved records).
+        // Still placed directly below Consciousness/Orientation (directive
+        // item #4/AC-10) and still category "core" for the same bucketing
+        // reason as before.
+        title: "SNS Cognitive Screen", category: "core", importance: "medium", fields: [
+          { type: "note", label: "Internal clinical assessment · Not submitted to CMS HOPE", path: "cognitiveScreenNote" },
+          { type: "select", label: "Word Repetition", path: "cognitiveScreen.repetition", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
+          { type: "select", label: "Word Recall", path: "cognitiveScreen.recall", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
+          { type: "select", label: "Temporal Orientation", path: "cognitiveScreen.temporalOrientation", fieldSpan: 2, options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+        ],
+      },
+      {
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item
+        // #6 -- read-only, auto-generated (never manually entered) sibling
+        // to PerformanceScaleCard's Score+Interpretation+Significance
+        // pattern. Corrected by the same-day "BIMS/HOPE compliance
+        // correction" directive: this is the SNS Cognitive Screen (0-9
+        // raw sum, not a CMS BIMS 0-15 score), so per the same "never
+        // assume users remember the meaning of a scale value" principle
+        // already applied to PPS/KPS/ECOG/FAST/NYHA, it shows a neutral,
+        // non-diagnostic interpretation, not a clinical band. Also folds
+        // in the already-documented Cognitive/Behavioral Findings (further
+        // down this section) so both cognition signals read together in
+        // one place. Computed only -- no new field/path, nothing writable.
+        title: "Cognitive Summary", category: "core", importance: "medium", customRenderer: "neuroCognitiveSummary", fields: [],
+      },
+      {
         // Section 10 -- Neurological uses its own more granular option set
         // (NEURO_OVERALL_CHANGE_OPTIONS, not the shared CLINICAL_STATUS_
         // CHANGE_OPTIONS other paused systems reuse) and sits directly
@@ -12632,7 +13600,22 @@ const SECTION_CONFIGS = {
         // being squeezed into one of 3 equal columns alongside the much
         // shorter Consciousness/Orientation/Overall Change cards, which
         // was the reported "uneven, abnormally tall column" defect.
-        title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, fields: [
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item
+        // #5 -- this card's 12 fields are the single densest block in the
+        // section; converted to a collapsible subsection (same mechanism
+        // already used for Psychiatric History) so the "5-second glance"
+        // reads Overview/Consciousness/Orientation/BIMS/Cognitive Summary/
+        // Overall Change first, with full Sleep/Responsiveness detail one
+        // click away. Nothing collapsed by default loses any data -- the
+        // title row, importance border, and HOPE/SFV/CMS tags stay visible
+        // either way; only the field list is hidden until expanded.
+        //
+        // "BIMS" renamed to "SNS Cognitive Screen" per the same-day
+        // "BIMS/HOPE compliance correction" directive; reading order is
+        // otherwise unchanged (Overview/Consciousness/Orientation/SNS
+        // Cognitive Screen/Cognitive Summary/Overall Change first).
+        title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, collapsedByDefault: true, fields: [
           { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: [{ value: "Normal", label: "Usual / No Significant Concern" }, "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
           { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
@@ -12764,21 +13747,6 @@ const SECTION_CONFIGS = {
         title: "Psychiatric History", category: "functional", importance: "low", collapsedByDefault: true, fields: [
           { type: "pillGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
           { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory", rows: 2 },
-        ],
-      },
-      {
-        // BIMS is the CMS-standard cognitive-impairment screen; kept as the
-        // one "HOPE Cognitive Assessment" card so staging (FAST, under
-        // Performance Status) is not duplicated as a second source of
-        // truth here. Finding #10: visually separated, structure untouched.
-        title: "HOPE Cognitive Assessment (BIMS Screen)", category: "disease", importance: "medium", hopeCode: "N0500-N0520", fields: [
-          // Issue #9 (2026-09-28 follow-up review) -- explicit equal
-          // fieldSpan so the three BIMS selects align into one even row
-          // instead of drifting to uneven widths based on option-label
-          // length heuristics.
-          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
-          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
-          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", fieldSpan: 2, options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
         ],
       },
       {
@@ -13638,6 +14606,50 @@ function deepMergeFormData(defaults, saved) {
     return merged;
   }
   return saved !== undefined ? saved : defaults;
+}
+
+// GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+// one-time, idempotent, non-destructive migration for any record saved
+// before this fix that still has legacy `neurological.hopeItems.n0500/
+// n0510/n0520` values shaped like the old cognitive screen (0-3 per item).
+// Runs AFTER deepMergeFormData (so INITIAL_FORM.neurological.cognitiveScreen
+// already exists on `merged`) and only migrates when:
+//   - cognitiveScreen is still fully blank (never overwrites an RN's
+//     already-entered new-schema answers), AND
+//   - legacy hopeItems.n05xx values are present and in the valid 0-3
+//     range (anything else is left alone -- most records will have these
+//     blank, since Medications doesn't populate hopeItems either).
+// The legacy hopeItems values are left in place (not deleted) so this is
+// safe to run repeatedly and never destroys the original data; the real
+// HOPE export (hopeReportMapper.js) never reads neurological.hopeItems in
+// the first place, so leaving stale values there cannot contaminate a
+// HOPE submission.
+export function migrateNeurologicalCognitiveData(merged) {
+  const neuro = merged?.neurological;
+  if (!neuro) return merged;
+  const cs = neuro.cognitiveScreen || {};
+  const csBlank = !cs.repetition && !cs.recall && !cs.temporalOrientation;
+  const legacy = neuro.hopeItems;
+  if (!csBlank || !legacy) return merged;
+
+  const isValidLegacyValue = (v) => v !== undefined && v !== null && v !== "" && ["0", "1", "2", "3"].includes(String(v));
+  const legacyMap = { repetition: legacy.n0500, recall: legacy.n0510, temporalOrientation: legacy.n0520 };
+  const hasAnyLegacyValue = Object.values(legacyMap).some(isValidLegacyValue);
+  if (!hasAnyLegacyValue) return merged;
+
+  return {
+    ...merged,
+    neurological: {
+      ...neuro,
+      cognitiveScreen: {
+        ...cs,
+        instrument: cs.instrument || "SNS_COGNITIVE_SCREEN_V1",
+        repetition: isValidLegacyValue(legacyMap.repetition) ? String(legacyMap.repetition) : cs.repetition,
+        recall: isValidLegacyValue(legacyMap.recall) ? String(legacyMap.recall) : cs.recall,
+        temporalOrientation: isValidLegacyValue(legacyMap.temporalOrientation) ? String(legacyMap.temporalOrientation) : cs.temporalOrientation,
+      },
+    },
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -14821,7 +15833,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return null;
         }
         if (data.formData) {
-          const merged = deepMergeFormData(INITIAL_FORM, data.formData);
+          const merged = migrateNeurologicalCognitiveData(deepMergeFormData(INITIAL_FORM, data.formData));
           setFormData(merged);
           markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
@@ -14938,6 +15950,36 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     formData.gastrointestinal?.constipation,
   ]);
 
+  // Owner directive (2026-10-03) "Comprehensive Pain Assessment Date
+  // auto-population" -- Rules 1-4: the comprehensive pain assessment date
+  // (HOPE J0910.B) is no longer independently typed by the nurse. It
+  // always mirrors the parent RNICA visit date (`visitMeta.visitDate`)
+  // unless the nurse has explicitly documented an override reason
+  // (`pain.comprehensiveAssessmentDateOverrideReason`), in which case this
+  // effect backs off entirely and leaves the nurse-entered date alone.
+  // `comprehensiveAssessmentCompleted` (HOPE J0910.A, "Done?") is likewise
+  // derived rather than hand-toggled: true once a date is present.
+  useEffect(() => {
+    const visitDate = formData.visitMeta?.visitDate || "";
+    const overrideReason = formData.pain?.comprehensiveAssessmentDateOverrideReason || "";
+    if (overrideReason) return;
+    if (!visitDate) return;
+    setFormData((prev) => {
+      const current = prev.pain || {};
+      if (current.comprehensiveAssessmentDate === visitDate && current.comprehensiveAssessmentCompleted === true) {
+        return prev;
+      }
+      return {
+        ...prev,
+        pain: {
+          ...current,
+          comprehensiveAssessmentDate: visitDate,
+          comprehensiveAssessmentCompleted: true,
+        },
+      };
+    });
+  }, [formData.visitMeta?.visitDate, formData.pain?.comprehensiveAssessmentDateOverrideReason]);
+
   // RNICA (RN Initial Comprehensive Assessment) is a one-time document --
   // it is never "updated" or "recertified" through this same form. Saving
   // before it is locked is just progressing the single initial assessment,
@@ -14997,6 +16039,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       );
       if (firstMappedSection) setActiveSection(firstMappedSection);
       return;
+    }
+    // Owner directive (2026-10-03) Rules 6-7: verify the comprehensive
+    // pain assessment date matches the RNICA assessment date at
+    // finalization. A mismatch is informational only (e.g. a documented,
+    // reason-justified override) and must never block locking.
+    const visitDateAtLock = formData.visitMeta?.visitDate || "";
+    const painDateAtLock = formData.pain?.comprehensiveAssessmentDate || "";
+    if (visitDateAtLock && painDateAtLock && visitDateAtLock !== painDateAtLock) {
+      alert(
+        `Note: the comprehensive pain assessment date (${formatDate(painDateAtLock)}) differs from the RNICA assessment date (${formatDate(visitDateAtLock)}).\n\nThis is a warning only — locking will continue.`
+      );
     }
     setPageError("");
     setSaving(true);
@@ -15281,6 +16334,71 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     );
   });
 
+  // Owner directive (Edit Pain Assessment restructure) -- renders only a
+  // named subset of SECTION_CONFIGS.pain's cards through the SAME
+  // renderGenericSection the rest of the app uses (identical fields,
+  // paths, HOPE mappings, validation, and update() autosave contract).
+  // Card-level visibility (e.g. which of the three Pain Intensity tool
+  // variants applies, the Pain History current-pain gate) is detected
+  // from each card's own field paths, not from array position or count,
+  // so filtering to a named subset here does not change any gating
+  // logic -- see renderGenericSection's isPain*Card detection. This lets
+  // the Edit Pain Assessment Sheet show one focused group of cards per
+  // step instead of the entire Pain module at once, while Pain
+  // Management stays reachable only through its own separate "Edit
+  // Regimen" entry point (never bundled into the stepped assessment
+  // Sheet).
+  const renderPainStepCards = (cardTitles) => {
+    const painConfig = SECTION_CONFIGS.pain;
+    const filteredConfig = { ...painConfig, cards: painConfig.cards.filter((c) => cardTitles.includes(c.title)) };
+    return renderGenericSection(
+      "pain",
+      formData.pain,
+      updateField,
+      filteredConfig,
+      formData.demographics,
+      formData,
+      COLORS,
+      styles,
+      patientId,
+      assessmentId,
+      locked,
+      true,
+      onNavigateToSection,
+      assessmentUiProfile,
+    );
+  };
+
+  // "Pain/Neuro interaction model" directive applied to Diagnosis & LCD
+  // (presentation-only, 2026-10). Mirrors renderPainStepCards above --
+  // renders only a named subset of SECTION_CONFIGS.diagnoses' cards
+  // through the SAME renderGenericSection the rest of the app uses
+  // (identical fields, paths, HOPE mappings, validation, and update()
+  // autosave contract). Lets DiagnosisLcdOverview show focused Edit Sheets
+  // (Primary Diagnosis; Secondary Diagnoses & Comorbidities) plus an
+  // always-visible LCD Eligibility & Supporting Evidence verification
+  // card, instead of the entire Diagnoses module rendered inline at once.
+  const renderDiagnosisStepCards = (cardTitles) => {
+    const diagnosesConfig = SECTION_CONFIGS.diagnoses;
+    const filteredConfig = { ...diagnosesConfig, cards: diagnosesConfig.cards.filter((c) => cardTitles.includes(c.title)) };
+    return renderGenericSection(
+      "diagnoses",
+      formData.diagnoses,
+      updateField,
+      filteredConfig,
+      formData.demographics,
+      formData,
+      COLORS,
+      styles,
+      patientId,
+      assessmentId,
+      locked,
+      true,
+      onNavigateToSection,
+      assessmentUiProfile,
+    );
+  };
+
   // ── Body Systems screen (pilot-only) ──────────────────────────────
   // Purely mechanical "is anything here documented" scan used only to
   // badge a body system Reviewed/Not Started in the compact accordion
@@ -15471,6 +16589,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           renderWorkspaceSections={renderWorkspaceSections}
           bodySystemsAccordionItems={bodySystemsAccordionItems}
           bodySystemsStructuredFindings={bodySystemsStructuredFindings}
+          // Approved "Pain & Symptom Burden" summary screen data (Phase B
+          // reference implementation, same pattern as Patient Story/
+          // Evidence & Intake/HOPE Administrative Review): read-only
+          // projections of state already owned by the Pain module and the
+          // HOPE J2051 symptomImpact derivation -- nothing new captured
+          // here, field entry still happens in the legacy Pain module
+          // rendered inside the Edit Assessment dialog.
+          painData={formData.pain}
+          symptomImpactData={formData.symptomImpact}
+          patientAge={patientAge}
+          renderPainStepCards={renderPainStepCards}
+          // "Diagnosis & LCD" summary screen (presentation-only Pain/Neuro
+          // interaction-model pass) -- read-only projection of state
+          // already owned by the Diagnoses module; field entry still
+          // happens through the same renderGenericSection via
+          // renderDiagnosisStepCards (Edit Sheets, or the always-visible
+          // LCD Eligibility verification card).
+          diagnosesData={formData.diagnoses}
+          renderDiagnosisStepCards={renderDiagnosisStepCards}
           // Lets Evidence & Intake's Administrative Demographics section
           // (Language/Interpreter/Ethnicity/Race/Living Arrangement/
           // Availability of Assistance) write directly back into RNICA's
