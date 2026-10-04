@@ -965,12 +965,44 @@
 
 .rnica-bodysystems__rail { min-width: 0; }
 
+/* OWNER DIRECTIVE (2026-10-04) Density Optimization Pass item #9 --
+   "expand Structured Findings into a true reviewer workspace": findings
+   are grouped per body system (icon + label + count header) instead of
+   one flat, unattributed list, so a reviewer can scan which system each
+   line came from without reading every entry. Groups stack with a small
+   gap; Neurological renders first (see bodySystemsStructuredFindings
+   order in RNICA.jsx), matching its current design-standard status. */
+.rnica-bodysystems__findings-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.rnica-bodysystems__findings-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.rnica-bodysystems__findings-group-label {
+  font: 700 11px Inter, sans-serif;
+  color: var(--sns-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rnica-bodysystems__findings-group-count {
+  margin-left: auto;
+  font-size: 10px;
+}
+
 .rnica-bodysystems__findings-list {
   margin: 0;
   padding-left: 1.05rem;
   display: flex;
   flex-direction: column;
-  gap: 0.4rem;
+  gap: 0.3rem;
   font-size: 11.5px;
   color: var(--sns-text);
 }
@@ -1389,6 +1421,18 @@
    Assessment"] rule was removed -- that card no longer exists (item #4,
    "Incorporate Overall Change into the Summary layer"); its spacing is
    now handled by .rnica-bodysystem-summary__overall-change above. */
+/* OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" items #1-3 --
+   Sleep / Responsiveness gets an explicit, fixed 2-column grid (rather
+   than the auto-fit heuristic used elsewhere in Neuro) so every field,
+   which now carries an explicit `fieldSpan: 1` or `"full"` in the schema,
+   reliably pairs up exactly as directed (Sleep Pattern/Can Sleep Be
+   Estimated, Responsiveness/Current Effect, Night Symptoms/Restfulness,
+   Sleep Aids/Additional Comment) regardless of viewport width, instead of
+   the implicit column count drifting with container width. */
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Sleep / Responsiveness"] .rnica-bodysystem-workspace__fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+}
 /* Communication and Sensory (Communication/Hearing/Vision/Sensory Deficits/
    Sensory Aids merged card) is the tallest sub-section in the section -- an
    even narrower per-field track here lets its short segmented controls

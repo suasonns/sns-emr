@@ -14,6 +14,8 @@ import { RnicaWorkflowRail, RnicaWorkflowSheet } from "./RnicaWorkflowRail";
 import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
 import EvidenceIntakeOverview from "./evidence-intake/EvidenceIntakeOverview";
 import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeReview";
+import PainSymptomBurdenOverview from "./pain-symptom-burden/PainSymptomBurdenOverview";
+import DiagnosisLcdOverview from "./diagnosis-lcd/DiagnosisLcdOverview";
 import {
   PrimaryCard,
   SourceLink,
@@ -319,6 +321,12 @@ export default function RNICACommandWorkspace({
   canLock,
   isOngoingAssessment = false,
   onUpdateField,
+  painData,
+  symptomImpactData,
+  patientAge,
+  renderPainStepCards,
+  diagnosesData,
+  renderDiagnosisStepCards,
 }) {
   // Persistent admission/benefit-period reference facts (benefit period #,
   // dates, recert due, allergies, F2F due). Read-only -- sourced live from
@@ -653,7 +661,53 @@ export default function RNICACommandWorkspace({
         density={density}
         onChangeDensity={changeDensity}
       >
-        {renderWorkspaceSections(["pain"])}
+        <PainSymptomBurdenOverview
+          painData={painData}
+          symptomImpactData={symptomImpactData}
+          patientAge={patientAge}
+          renderPainStepCards={renderPainStepCards}
+          onNavigateToSymptom={(moduleKey) => select(moduleKey, "pain_symptom_burden_matrix")}
+          onContinue={() => { onNext(); scrollDetailTop(); }}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "diagnosisLcd") {
+    // "Diagnosis & LCD" screen, presentation-only Pain/Neuro interaction-
+    // model pass (owner directive, 2026-10): "Do not redesign Diagnosis &
+    // LCD... change presentation only." Same renderGenericSection /
+    // SECTION_CONFIGS.diagnoses fields, HOPE mappings (I0010, I0100-I8005),
+    // and LCD validation as before -- only how much is permanently visible
+    // vs. behind a focused Edit action changed. See
+    // DiagnosisLcdOverview.jsx for the full rationale.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="diagnosisLcd"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
+      >
+        <DiagnosisLcdOverview
+          diagnosesData={diagnosesData}
+          renderDiagnosisStepCards={renderDiagnosisStepCards}
+          onContinue={() => { onNext(); scrollDetailTop(); }}
+        />
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
           <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
@@ -679,7 +733,12 @@ export default function RNICACommandWorkspace({
     // since it is already its own module with its own field depth.
     const reviewedCount = (bodySystemsAccordionItems || []).filter((item) => item.reviewed).length;
     const totalSystems = (bodySystemsAccordionItems || []).length;
-    const findingsCount = (bodySystemsStructuredFindings || []).length;
+    // OWNER DIRECTIVE (2026-10-04) Density Optimization Pass item #9 --
+    // bodySystemsStructuredFindings is now an array of per-system groups
+    // ({ key, label, icon, findings: [...] }), not a flat string array;
+    // total count is the sum of each group's findings.
+    const findingsGroups = bodySystemsStructuredFindings || [];
+    const findingsCount = findingsGroups.reduce((sum, group) => sum + (group.findings?.length || 0), 0);
     // Auto-collapse when empty unless the user has explicitly expanded it;
     // once findings appear, auto-expand unless the user explicitly
     // collapsed it. `findingsRailExpanded` (state) is the explicit
@@ -744,7 +803,9 @@ export default function RNICACommandWorkspace({
             <aside className="rnica-bodysystems__rail">
               <ShadcnCard className="rnica-bodysystems__findings">
                 <ShadcnCardHeader className="rnica-bodysystems__findings-header">
-                  <ShadcnCardTitle>Structured Findings</ShadcnCardTitle>
+                  <ShadcnCardTitle>
+                    Structured Findings{findingsCount ? ` (${findingsCount})` : ""}
+                  </ShadcnCardTitle>
                   <button
                     type="button"
                     className="rnica-bodysystems__rail-toggle"
@@ -757,13 +818,32 @@ export default function RNICACommandWorkspace({
                 <ShadcnCardContent>
                   {/* Deterministic restatement of already-charted fields only
                       -- never generated/inferred/predicted. See
-                      bodySystemsStructuredFindings in RNICA.jsx. */}
-                  {(bodySystemsStructuredFindings || []).length ? (
-                    <ul className="rnica-bodysystems__findings-list">
-                      {bodySystemsStructuredFindings.map((finding, idx) => (
-                        <li key={idx}>{finding}</li>
+                      bodySystemsStructuredFindings in RNICA.jsx.
+                      OWNER DIRECTIVE (2026-10-04) Density Optimization Pass
+                      item #9 -- "true reviewer workspace": grouped by body
+                      system (icon + label + count) instead of one flat,
+                      unattributed bullet list, so a reviewer can tell at a
+                      glance which system each finding came from. Same
+                      strings, same source fields -- grouping/labels only. */}
+                  {findingsGroups.length ? (
+                    <div className="rnica-bodysystems__findings-groups">
+                      {findingsGroups.map((group) => (
+                        <div key={group.key} className="rnica-bodysystems__findings-group">
+                          <div className="rnica-bodysystems__findings-group-header">
+                            <span aria-hidden="true">{group.icon}</span>
+                            <span className="rnica-bodysystems__findings-group-label">{group.label}</span>
+                            <ShadcnBadge variant="neutral" className="rnica-bodysystems__findings-group-count">
+                              {group.findings.length}
+                            </ShadcnBadge>
+                          </div>
+                          <ul className="rnica-bodysystems__findings-list">
+                            {group.findings.map((finding, idx) => (
+                              <li key={idx}>{finding}</li>
+                            ))}
+                          </ul>
+                        </div>
                       ))}
-                    </ul>
+                    </div>
                   ) : (
                     <p className="rnica-bodysystems__findings-empty">No structured findings documented yet.</p>
                   )}

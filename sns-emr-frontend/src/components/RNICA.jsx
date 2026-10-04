@@ -1349,16 +1349,37 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
-function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled, compact }) {
+function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled, compact, autoGrow = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item #7 --
+  // "auto-growing textareas starting at 2 rows" for Additional Cognitive
+  // Observations/Neurological Notes: a small `rows`-sized box by default
+  // (keeps the collapsed-at-a-glance density win from the prior pass) that
+  // grows with typed/charted content instead of relying on the browser's
+  // native scrollbar once text exceeds the box. Opt-in via `autoGrow` so
+  // every other FormTextarea call site (dozens, across every section)
+  // keeps its exact current fixed-height behavior unchanged.
+  const taRef = useRef(null);
+  const resize = useCallback(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useEffect(() => {
+    if (autoGrow) resize();
+  }, [autoGrow, value, resize]);
   return (
     <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>{label}</label>
       <ShadcnTextarea
-        style={{ minHeight: rows * 24 }} value={value || ""}
-        onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+        ref={autoGrow ? taRef : undefined}
+        style={autoGrow ? { minHeight: rows * 24, height: rows * 24, overflow: "hidden", resize: "none" } : { minHeight: rows * 24 }}
+        value={value || ""}
+        onChange={(e) => { onChange(e.target.value); if (autoGrow) resize(); }}
+        placeholder={placeholder} disabled={disabled}
       />
     </div>
   );
@@ -12732,7 +12753,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   break;
                 case "textarea":
                   rendered = <FormTextarea label={fieldForRender.label} value={value} onChange={onChange}
-                    placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} compact={compact} />;
+                    placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} compact={compact} autoGrow={fieldForRender.autoGrow} />;
                   break;
                 case "quickPickTextarea":
                   rendered = <FormQuickPickTextarea label={fieldForRender.label} value={value} onChange={onChange}
@@ -13724,20 +13745,30 @@ const SECTION_CONFIGS = {
         // otherwise unchanged (Overview/Consciousness/Orientation/SNS
         // Cognitive Screen/Cognitive Summary/Overall Change first).
         title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, collapsedByDefault: true, fields: [
-          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: [{ value: "Normal", label: "Usual / No Significant Concern" }, "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
-          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
-          { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
+          // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" items
+          // #1-3 -- a dedicated 2-column grid (CSS override, same pattern
+          // as Communication and Sensory's narrowed track) with explicit
+          // fieldSpan: 1 on every paired field below, so each pair always
+          // lands on the same row regardless of viewport width instead of
+          // relying on auto-fit heuristics. Pair order is the literal
+          // directive order (Sleep Pattern/Can Sleep Be Estimated,
+          // Responsiveness/Current Effect, Night Symptoms/Restfulness,
+          // Sleep Aids/Additional Comment); Sleep Notes is relocated
+          // directly under the first pair ("closer to Sleep Pattern")
+          // instead of being the last field in the card. Change Since
+          // Prior Visit and Average Sleep Hours (not named in any required
+          // pair) are paired with each other so no field is left to claim
+          // a half-empty row on its own. Same paths/options/values --
+          // order and span only, no data migrated.
+          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", fieldSpan: 1, options: [{ value: "Normal", label: "Usual / No Significant Concern" }, "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
           // GitHub Directive (2026-09-28) "Neurological Review -- Major
           // Success, But We Are Drifting..." Major Concern #5 -- reframed
           // as a direct clinical question ("Can sleep be estimated?")
           // rather than a meta-question about whether a trend is known;
           // same path/options, label only, so no data is affected.
-          { type: "segmented", label: "Can Sleep Be Estimated?", path: "sleepRest.sleepTrendKnown", options: ["Yes", "No", "Unable to Determine"] },
-          { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
-          { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
-          // Section 17 rename: "Interventions" reframed as comfort measures
-          // (hospice language) -- same path/values, label only.
-          { type: "pillGroup", label: "Sleep Aids / Current Comfort Measures", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "segmented", label: "Can Sleep Be Estimated?", path: "sleepRest.sleepTrendKnown", fieldSpan: 1, options: ["Yes", "No", "Unable to Determine"] },
+          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 1, fieldSpan: "full" },
+          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", fieldSpan: 1, options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           // Section 18 -- replaced the free-text "Response to Interventions"
           // with a constrained single-select so it can actually be scanned
           // at a glance. Added as a NEW field/path rather than repurposing
@@ -13745,10 +13776,15 @@ const SECTION_CONFIGS = {
           // silently reinterpreted as one of these 4 fixed values (Section
           // 40 guardrail); the old field is kept, demoted to an optional
           // comment for any nurse who needs to add nuance.
-          { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
-          { type: "input", label: "Additional Comment (if needed)", path: "sleepRest.response" },
-          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate", "Unable to Determine"] },
-          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 1 },
+          { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", fieldSpan: 1, options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
+          { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", fieldSpan: 1, options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
+          { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number", fieldSpan: 1 },
+          { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", fieldSpan: 1, options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
+          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", fieldSpan: 1, options: ["Adequate", "Inadequate", "Unable to Determine"] },
+          // Section 17 rename: "Interventions" reframed as comfort measures
+          // (hospice language) -- same path/values, label only.
+          { type: "pillGroup", label: "Sleep Aids / Current Comfort Measures", path: "sleepRest.sleepAids", fieldSpan: 1, options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "input", label: "Additional Comment (if needed)", path: "sleepRest.response", fieldSpan: 1 },
         ],
       },
       {
@@ -13819,12 +13855,13 @@ const SECTION_CONFIGS = {
           // (confirmed: its only other consumer is the read-only
           // Structured Findings generator at path `cognition`), so it's
           // now a small textarea instead of a wide single-line input.
-          // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" item
-          // #4 -- rows 2 -> 1 (presentation only; `minHeight: rows * 24` in
-          // FormTextarea, the textarea itself still accepts/displays any
-          // amount of typed or previously-charted text via its native
-          // scrollbar -- no content is truncated or lost).
-          { type: "textarea", label: "Additional Cognitive Observations", path: "cognition", rows: 1 },
+          // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item
+          // #7 -- auto-growing textarea starting at 2 rows instead of a
+          // fixed 1-row box: the box starts small (same density win as the
+          // prior pass) but grows with typed/charted content instead of
+          // relying on the native scrollbar. No content is truncated or
+          // lost either way.
+          { type: "textarea", label: "Additional Cognitive Observations", path: "cognition", rows: 2, autoGrow: true },
           { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", fieldSpan: "full", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
           // GitHub UI Directive (2026-09-28): single yes/no findings use a
           // compact toggle pill, not a large square checkbox. Same path/
@@ -13884,9 +13921,10 @@ const SECTION_CONFIGS = {
       {
         title: "Notes", category: "observation", importance: "low", fields: [
           // Section 20/30 -- reduced textarea footprint (4 rows -> 2).
-          // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" item
-          // #4 -- further reduced 2 -> 1 (same non-clipping rationale).
-          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 1 },
+          // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item
+          // #7 -- auto-growing textarea starting at 2 rows (same rationale
+          // as Additional Cognitive Observations above).
+          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 2, autoGrow: true },
         ],
       },
     ],
@@ -16590,11 +16628,31 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // findings"). Every line below reads one specific, already-existing
   // field and only appears when that field has a real charted value; none
   // of these paths are new fields, and nothing is derived/predicted.
+  //
+  // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item #9 --
+  // "expand Structured Findings into a true reviewer workspace": grouped
+  // by body system (icon + label + count, Neurological first, matching
+  // its Body Systems accordion order) instead of one flat, unattributed
+  // bullet list, so a reviewer can scan "what system is this from" at a
+  // glance. Same computeBodySystemFindings strings, same source fields --
+  // only the container shape changed (array of groups instead of a flat
+  // flatMap) to carry that attribution through to the rail.
   const bodySystemsStructuredFindings = useMemo(() => {
-    return [
+    const order = [
       "neurological", "respiratory", "cardiovascular", "skin",
       "gastrointestinal", "genitourinary", "nutrition", "endocrine", "infection",
-    ].flatMap((key) => computeBodySystemFindings(key, formData?.[key]));
+    ];
+    return order
+      .map((key) => {
+        const meta = RNICA_BODY_SYSTEM_SIDEBAR_ITEMS.find((m) => m.key === key);
+        return {
+          key,
+          label: meta?.label || key,
+          icon: meta?.icon || "🩺",
+          findings: computeBodySystemFindings(key, formData?.[key]),
+        };
+      })
+      .filter((group) => group.findings.length > 0);
   }, [formData]);
 
   if (workspacePilot) {
