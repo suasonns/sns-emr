@@ -345,6 +345,114 @@ def _normalize_rnica_lcd_detection(form_data: dict | None) -> dict:
     diagnoses["ndsEligibility"] = nds_eligibility
     normalized["diagnoses"] = diagnoses
     return normalized
+
+
+def _audit_rnica_contributing_conditions_diff(
+    db: Session,
+    *,
+    record: "RnicaAssessment",
+    current_user: CurrentUser,
+    previous_form_data: dict,
+    next_form_data: dict,) -> None:
+    """Disease & LCD Workflow Specification, Phase 1 / Option A --
+    best-effort audit trail for Contributing Conditions.
+
+    Contributing Conditions are stored inside `RnicaAssessment.form_data`
+    (JSONB), not as their own table/row, so there is no natural "row
+    changed" hook to attach audit events to. This computes a server-side
+    diff of `diagnoses.contributingConditions` (old vs. incoming) on every
+    save and writes one AuditLog row per added/updated/removed condition
+    via the existing `audit_event()` helper -- no schema change, no new
+    migration. This intentionally runs BEFORE `record.form_data` is
+    overwritten so "previous" always reflects the last-persisted state,
+    not the client's own in-flight edit.
+
+    Known limitation (documented, not silently overclaimed): this detects
+    *that* a condition changed and a coarse before/after snapshot, but
+    (like every other field on this JSONB-backed screen) does not capture
+    a field-by-field diff the way a dedicated table with row versioning
+    would. If finer-grained audit is required, Contributing Conditions
+    would need its own table -- out of scope for Phase 1.
+    """
+    try:
+        previous_rows = {
+            row.get("id"): row
+            for row in ((previous_form_data or {}).get("diagnoses") or {}).get("contributingConditions") or []
+            if isinstance(row, dict) and row.get("id")
+        }
+        next_rows = {
+            row.get("id"): row
+            for row in ((next_form_data or {}).get("diagnoses") or {}).get("contributingConditions") or []
+            if isinstance(row, dict) and row.get("id")
+        }
+        if not previous_rows and not next_rows:
+            return
+        tenant_id = str(record.tenant_id) if getattr(record, "tenant_id", None) else str(current_user.tenant_id)
+        user_id = str(current_user.user_id)
+        role = current_user.role
+        for condition_id, next_row in next_rows.items():
+            previous_row = previous_rows.get(condition_id)
+            if previous_row is None:
+                audit_event(
+                    db=db,
+                    action="RNICA_CONTRIBUTING_CONDITION_ADDED",
+                    entity_type="rnica_contributing_condition",
+                    entity_id=condition_id,
+                    user_id=user_id,
+                    role=role,
+                    tenant_id=tenant_id,
+                    meta={
+                        "assessmentId": str(record.id),
+                        "patientId": str(record.patient_id),
+                        "icdCode": next_row.get("icdCode"),
+                        "icdDescription": next_row.get("icdDescription"),
+                        "contributionStatus": next_row.get("contributionStatus"),
+                        "sourceType": next_row.get("sourceType"),
+                    },
+                )
+            elif previous_row.get("active", True) and next_row.get("active") is False:
+                audit_event(
+                    db=db,
+                    action="RNICA_CONTRIBUTING_CONDITION_REMOVED",
+                    entity_type="rnica_contributing_condition",
+                    entity_id=condition_id,
+                    user_id=user_id,
+                    role=role,
+                    tenant_id=tenant_id,
+                    meta={
+                        "assessmentId": str(record.id),
+                        "patientId": str(record.patient_id),
+                        "icdCode": next_row.get("icdCode"),
+                        "icdDescription": next_row.get("icdDescription"),
+                    },
+                )
+            elif previous_row != next_row:
+                audit_event(
+                    db=db,
+                    action="RNICA_CONTRIBUTING_CONDITION_UPDATED",
+                    entity_type="rnica_contributing_condition",
+                    entity_id=condition_id,
+                    user_id=user_id,
+                    role=role,
+                    tenant_id=tenant_id,
+                    meta={
+                        "assessmentId": str(record.id),
+                        "patientId": str(record.patient_id),
+                        "icdCode": next_row.get("icdCode"),
+                        "icdDescription": next_row.get("icdDescription"),
+                        "contributionStatus": next_row.get("contributionStatus"),
+                        "previousContributionStatus": previous_row.get("contributionStatus"),
+                    },
+                )
+    except Exception:
+        # Never let best-effort audit logging break the clinical save path.
+        logger.warning(
+            "RNICA contributing-conditions audit diff failed for assessment %s",
+            getattr(record, "id", None),
+            exc_info=True,
+        )
+
+
 def _build_rnica_allergy_summary(form_data: dict) -> tuple[bool | None, str | None]:
     allergies = _flatten_rnica_list_items(
         ((form_data or {}).get("infection") or {}).get("allergies")
@@ -1132,7 +1240,15 @@ def update_rnica_assessment(
                 "to request a traceable addendum instead of modifying signed content."
             ),
         )
+    previous_form_data = record.form_data or {}
     form_data = _normalize_rnica_lcd_detection((payload or {}).get("formData") or record.form_data or {})
+    _audit_rnica_contributing_conditions_diff(
+        db,
+        record=record,
+        current_user=current_user,
+        previous_form_data=previous_form_data,
+        next_form_data=form_data,
+    )
     record.form_data = form_data
     record.status = "DRAFT"
     incoming_provenance = (payload or {}).get("fieldProvenance")

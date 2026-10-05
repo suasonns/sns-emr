@@ -1323,68 +1323,20 @@
   line-height: 1.45;
 }
 
-/* Cognitive Summary card (SNS Cognitive Screen score + interpretation +
-   already-documented Cognitive/Behavioral findings) -- same visual
-   language as .rnica-scale-card__interpretation (PerformanceScaleCard).
-   GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction": this
-   is no longer the CMS BIMS; class names kept for minimal diff. */
-.rnica-cognitive-summary__bims {
-  /* OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- tighter
-     block padding/margin (was 0.4rem 0.6rem / 0.4rem); same content, no
-     text removed. */
-  margin-bottom: 0.3rem;
-  padding: 0.3rem 0.5rem;
-  border-radius: 0.35rem;
-  border-left: 3px solid var(--sns-hope, #059669);
-  background: var(--sns-cardSoft);
-}
-.rnica-cognitive-summary__bims-score {
-  margin-right: 0.5rem;
+/* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Change" item #3 --
+   SNS Cognitive Screen's score/interpretation/review-status renders
+   exactly once now, as this single compact header line (via the Card
+   `summary` prop, rendered unconditionally above the card's always-
+   visible fields -- no accordion, no second banner below the fields).
+   Supersedes the former `.rnica-cognitive-summary__bims*` multi-line
+   block, which duplicated this same information both above and below
+   the fields. */
+.rnica-cognitive-summary__header {
+  margin: 0 0 0.35rem;
+  padding: 0.2rem 0;
   color: var(--sns-white);
-  font-weight: 700;
   font-size: var(--cw-meta-size, 0.82rem);
-}
-.rnica-cognitive-summary__bims-band {
-  color: var(--sns-teal);
-  font-weight: 700;
-  font-size: var(--cw-meta-size, 0.82rem);
-}
-.rnica-cognitive-summary__bims-detail {
-  margin: 0.15rem 0 0;
-  color: var(--sns-muted);
-  font-size: var(--cw-meta-size, 0.78rem);
-  line-height: 1.35;
-}
-/* "Internal SNS clinical screen · Not submitted to CMS HOPE" metadata
-   line -- GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction". */
-.rnica-cognitive-summary__source {
-  /* Density pass (2026-10-04): 0.25rem -> 0.15rem top margin. */
-  margin: 0.15rem 0 0;
-  color: var(--sns-muted);
-  font-size: var(--cw-meta-size, 0.72rem);
-  font-style: italic;
-}
-.rnica-cognitive-summary__line {
-  /* Density pass (2026-10-04): 0.4rem -> 0.3rem bottom margin. */
-  margin: 0 0 0.3rem;
-  color: var(--sns-white);
-  font-size: var(--cw-body-size);
-}
-/* OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" items
-   #2/#3 -- SNS Cognitive Screen's collapsed-state summary (Score /
-   Interpretation / Review status), shown via the Card `summary` prop
-   (rendered unconditionally, unlike `children`) while the card itself is
-   collapsed by default. Same `.rnica-cognitive-summary__bims*` classes as
-   the expanded detail below for visual consistency; `--collapsed` only
-   trims the block's own bottom margin since it has no following expanded
-   content to separate from while collapsed. */
-.rnica-cognitive-summary--collapsed .rnica-cognitive-summary__bims {
-  margin-bottom: 0;
-}
-.rnica-cognitive-summary__bims-review {
-  margin-left: 0.5rem;
-  color: var(--sns-muted);
-  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 600;
 }
 /* Item #4 -- SNS Cognitive Screen result surfaced inside the Summary
    banner itself. */
@@ -1461,11 +1413,14 @@
    even narrower per-field track here lets its short segmented controls
    share a row instead of each forcing its own. */
 .rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Communication and Sensory"] .rnica-bodysystem-workspace__fields {
-  /* This card is `fullWidth: true` (spans the entire ~555-900px content
-     area regardless of viewport) and its 5 fields are mostly fieldSpan: 2
-     or 3 -- a narrower track here (vs. the 160px used elsewhere in Neuro)
-     gives enough implicit columns for 2-3 fields to share a row instead
-     of each claiming the full width by itself. */
+  /* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #3
+     -- this card is no longer `fullWidth: true`; it now shares a
+     two-column row with "Cognitive / Behavioral Findings" (see
+     RNICA.jsx), so its own content area is roughly half of what it used
+     to be. A narrower track here (vs. the 160px used elsewhere in Neuro)
+     still gives enough implicit columns for 2-3 fields to share a row at
+     that reduced width instead of each claiming the full column by
+     itself. */
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
   gap: 6px 10px;
 }
@@ -1494,6 +1449,37 @@
 .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
   grid-template-columns: repeat(3, minmax(0, 1fr));
 }
+/* OWNER DIRECTIVE (2026-10-04) "Final Neuro Cleanup" -- supersedes the
+   "Final Neuro Layout Change" item #4/#6 2/3+1/3 `nth-child` split that
+   used to live here. Motor/Balance has been removed from Neuro (see
+   RNICA.jsx), so SNS Cognitive Screen no longer shares row 2 with
+   anything; it is now `fullWidth: true` in the schema and gets its own
+   full-width row via the existing `.rnica-bodysystem-workspace__group--full`
+   rule (grid-column: 1 / -1), the same mechanism already used by Sleep/
+   Responsiveness. The fixed-position `nth-child(4)`/`nth-child(5)`
+   overrides and their companion tablet breakpoint are no longer needed
+   and have been removed -- they were schema-order-dependent and would
+   have mistargeted the "core" bucket's new 4th card (SNS Cognitive
+   Screen, already full-width) now that Motor/Balance no longer occupies
+   that bucket.
+   OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #3 --
+   "Cognitive / Behavioral Findings" has since moved out of this "core"
+   bucket entirely; it now pairs with "Communication and Sensory" in the
+   "symptoms" bucket instead (see the plain `.rnica-bodysystem-group__cards`
+   auto-fit rule above, which splits that two-card bucket into two equal
+   columns on desktop/tablet with no card-specific override needed). The
+   "core" bucket is back down to 4 cards: Consciousness, Orientation,
+   Neurological Overview (3 equal columns), then SNS Cognitive Screen
+   (full-width row beneath them). */
+/* The SNS Cognitive Screen card's own 3 fields (Word Repetition/Recall/
+   Temporal Orientation) get a dedicated fixed 3-column track (vs. the
+   generic auto-fit 160px minmax used elsewhere in Neuro) so they reliably
+   sit on one line at this card's full desktop width, instead of possibly
+   wrapping to 2+1 depending on exact pixel width. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-cognitive-screen__fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 10px;
+}
 
 @media (max-width: 700px) {
   .rnica-bodysystem-workspace__fields,
@@ -1503,7 +1489,368 @@
   .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
     grid-template-columns: 1fr;
   }
+  /* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #7
+     -- "Mobile: Stack controls vertically... do not create horizontal
+     scrolling." Without this explicit `[data-category="symptoms"]`
+     override, the "symptoms" bucket (Communication and Sensory +
+     Cognitive / Behavioral Findings) stayed on its non-media-query
+     auto-fit two-column rule even below 700px: that rule's selector
+     (`[data-section="neurological"] .rnica-bodysystem-group__cards`) is
+     MORE specific than the generic unscoped `.rnica-bodysystem-group__cards
+     { grid-template-columns: 1fr }` rule above, and CSS specificity -- not
+     media-query nesting -- decides the winner. Mirrors the equivalent
+     "core" category override immediately above. */
+  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="symptoms"] .rnica-bodysystem-group__cards {
+    grid-template-columns: 1fr;
+  }
+  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-cognitive-screen__fields {
+    grid-template-columns: 1fr;
+  }
 }
+
+/* OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Rebuild" v2 --
+   the prior "no explicit grid-row" column-band technique (every field a
+   direct grid item with only a fixed grid-column) is REJECTED: live DOM
+   verification found CSS Grid's sparse auto-placement cursor is SHARED
+   across the entire grid, not scoped per column-range. Because the field
+   array is column-major in DOM order (all of Column A, then all of
+   Column B, then all of Column C), placing Column A's fields first
+   pushed the shared cursor down several rows before Column B's first
+   field was ever considered, so Column B/C fields got dragged down onto
+   whatever row Column A's cursor had reached instead of starting at row
+   1 -- producing exactly the sparse, mostly-empty rows the "no row more
+   than 50% empty" rule forbids.
+   REPLACEMENT STRATEGY: fields are no longer individual grid items.
+   RNICA.jsx's `groupCvFieldsIntoColumns` groups the rendered field
+   elements into ONE wrapper `<div class="rnica-cv-col rnica-cv-col--*">`
+   per semantic column, and only those 1-4 wrapper divs are direct
+   children of this grid container. With only one placement decision per
+   column there is no shared-cursor interaction left to cause gaps, and a
+   column with zero visible fields is omitted entirely by the JS so it
+   never reserves empty grid space. Each wrapper internally uses flexbox
+   (`flex-flow: row wrap`) to stack its own fields top-to-bottom
+   independently of every other column's height -- this is also what lets
+   Cool Extremities/Varicose Veins share one sub-row via a narrower
+   flex-basis while Stasis Ulcer (full flex-basis) still starts its own
+   line beneath them. No field, option, validation, or persistence
+   change -- layout only. */
+/* OWNER DIRECTIVE (2026-10-04, Layout Standard v1.1 conformance pass) --
+   column-gap/row-gap corrected to the canonical tokens (Section 4/7:
+   grid gutter = 12, field-row gap = 8; previously 16/12/10, a confirmed
+   guide violation) and the desktop/tablet/mobile column selection is now
+   driven by each card's own measured inline-size via CSS container
+   queries, NOT the page/browser viewport -- per Section 11 ("the
+   measured container, not the nominal viewport, controls column count")
+   and the explicit correction replacing the former fixed @media
+   viewport breakpoints (701-1199px / <=700px). Each card establishes its
+   own containment context so column count reflects its actual rendered
+   width (e.g. if the utility rail is ever collapsed/hidden, the card
+   becomes wider and the 3-column band activates at that wider measured
+   width, which a viewport-only media query could never detect). */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"],
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] {
+  container-type: inline-size;
+  container-name: rnica-cv-region;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: start;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col {
+  display: flex;
+  flex-flow: row wrap;
+  align-content: flex-start;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-cv-col > div {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+/* Column A -- Pulse Rhythm, Pulse Sites, Skin Color each take a full
+   line; Cool Extremities/Varicose Veins share one sub-row.
+   OWNER CORRECTION (2026-10-06, live full-width screenshot audit): the
+   prior `flex: 1 1 calc(50% - 8px)` override forced each pill into a box
+   narrower than its own `white-space: nowrap` label text (the pill *is*
+   the label -- see FormBooleanPill), and since the box has no overflow
+   clipping the two labels visibly bled into each other ("Cool
+   ExtreVaricose Veins"). These are content-sized toggle pills, not
+   fixed-width inputs, so they must never be forced to a width smaller
+   than their own text. `flex: 0 1 auto` lets each pill size to its own
+   label and only wrap to its own line if the column is too narrow for
+   both -- the parent's `flex-flow: row wrap` already handles that case
+   safely with zero overlap. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--a [data-cv-field="coolExtremities"],
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--a [data-cv-field="varicoseVeins"] {
+  flex: 0 1 auto;
+}
+
+/* Cardiovascular Overview -- full-width row; its 4-option segmented
+   control already wraps horizontally (ToggleGroup is flex-wrap) and only
+   needs the full card width to keep all 4 options on one line when space
+   allows. Not container-scoped: always full width regardless of card
+   width, so no eligibility test applies here. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Overview"] .rnica-bodysystem-workspace__fields > div {
+  grid-column: 1 / -1 !important;
+}
+
+/* ---- Measured-width column selection (Section 8 eligibility bands) ----
+   Below 532px measured card width: one column (Section 8.3).
+   532-803px: two columns (Section 8.2).
+   804px and above: three columns, eligible per Section 8.1 (the explicit
+   Circulation & Perfusion A/B/C bands, rebalanced 4/4/3 per
+   CV_CIRCULATION_COLUMN_GROUPS in RNICA.jsx; the explicit Symptoms
+   LEFT/RIGHT halves).
+   Each range is mutually exclusive (no overlapping @container queries),
+   so there is no specificity contest between column-count rules -- only
+   one range's grid-template-columns and grid-column assignments are ever
+   in effect at a given measured width. */
+@container rnica-cv-region (max-width: 531px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+    grid-template-columns: 1fr;
+  }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+    grid-column: 1 / -1 !important;
+  }
+}
+@container rnica-cv-region (min-width: 532px) and (max-width: 803px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+    grid-column: span 1 !important;
+  }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div:has(p) {
+    grid-column: 1 / -1 !important;
+  }
+}
+@container rnica-cv-region (min-width: 804px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  /* Column A -- Pulse Rhythm, Pulse Sites, Skin Color, Cool
+     Extremities/Varicose Veins. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--a { grid-column: 1 / 5 !important; }
+  /* Column B -- Pulse Rate, Heart Sounds, Edema Present, Stasis Ulcer. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--b { grid-column: 5 / 9 !important; }
+  /* Column C -- Pulse Strength, JVD, Peripheral Circulation. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--c { grid-column: 9 / 13 !important; }
+  /* Edema Location/Severity/Type and the Skin Color/Heart Sounds/
+     Peripheral Circulation "Other" companions (only rendered once their
+     gating condition is met) drop to the end of DOM order and render as
+     a full-width row below the 3-column block. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--full { grid-column: 1 / 13 !important; }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col--full { grid-column: 1 / 13 !important; }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col--left { grid-column: 1 / 7 !important; }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col--right { grid-column: 7 / 13 !important; }
+}
+
+/* OWNER DIRECTIVE (2026-10-06) "No Current Cardiovascular Concern" --
+   Circulation & Perfusion is now a fully hidden card on this path (see
+   RNICA.jsx card-level guard); nothing further is needed here.
+   "Existing Cardiovascular Findings Review" -- replace the column-band
+   layout with a simple equal-thirds auto-flow so the handful of
+   documented findings pack from the top-left instead of sitting stranded
+   in an otherwise-empty column. Higher selector specificity (extra
+   `[data-cv-overview=...]` attribute) wins over the container-scoped
+   column-band rules above at every measured width -- unchanged from the
+   prior viewport-media-query implementation, and intentionally untouched
+   by this conformance pass (Path 2's flat/auto-flow layout was already
+   confirmed correct). */
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+  grid-column: span 1 !important;
+}
+/* Cardiac Devices -- 3 short boolean pills (Pacemaker/Internal
+   Defibrillator/Central Venous Line) as one normal horizontal flex row
+   with consistent gaps, replacing the generic per-system grid heuristic
+   that produced badly uneven gaps once this card moved into a halved-
+   width container (Step 4/10). */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-bodysystem-workspace__fields {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-bodysystem-workspace__fields > div {
+  flex: 0 0 auto;
+  grid-column: unset !important;
+  min-width: 0;
+}
+/* OWNER DIRECTIVE (2026-10-04) "Cardiovascular Density Pass -- Section 5"
+   -- Cardiac Devices and Clinical Status Change share one visual row on
+   desktop WITHOUT merging their category/heading/data identity: each
+   keeps its own `.rnica-bodysystem-group[data-category]` wrapper, own
+   `<h4>` heading, own cards array, own POC controls. Only the shared
+   flex container's wrap behavior changes. Every other category group
+   (Overview, Circulation & Perfusion, Symptoms, Notes) gets an explicit
+   `flex-basis: 100%` so it still renders as its own full-width row in
+   the existing fixed category order -- only the "treatments" (Cardiac
+   Devices) and "response" (Clinical Status Change) groups get a ~50%
+   basis, and because they are adjacent siblings in
+   BODY_SYSTEM_CATEGORY_ORDER (treatments immediately precedes response),
+   flex-wrap places them side by side on the same line instead of each
+   reserving a full-width row for 3 short pills / 2 short fields. Scoped
+   to `[data-section="cardiovascular"]` only -- no other Body System's
+   category layout is touched. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content {
+  flex-direction: row;
+  flex-wrap: wrap;
+  /* OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Visibility" --
+     live DOM measurement found the default flex `align-items: stretch`
+     was forcing Cardiac Devices (one short pill, ~62px of real content)
+     to match Clinical Status Change's taller height, producing a ~106px
+     blank region below the Cardiac Devices card -- the exact "large
+     empty area" the owner flagged. `flex-start` lets each side-by-side
+     group size to its own content instead of stretching to its
+     sibling's height. */
+  align-items: flex-start;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+  flex-basis: calc(50% - 2px);
+}
+@media (max-width: 900px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+    flex-basis: 100%;
+  }
+}
+/* Cardiovascular Overview (first card a nurse sees, functions as the
+   section's triage/summary gate), Cardiac Devices (3 short pills), and
+   Clinical Status Change (2 fields) are all short-content cards that
+   otherwise carry the same 8px per-field margin as long cards like
+   Circulation & Perfusion, producing disproportionate whitespace for
+   their actual content. `!important` is required because each field's
+   margin is set inline (FormInput/FormSegmented/etc.'s `styles.formGroup`)
+   and inline styles outrank an external stylesheet rule. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Overview"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Clinical Status Change"] .rnica-bodysystem-workspace__fields > div {
+  margin-bottom: 2px !important;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Overview"] .rnica-form-card__title,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-form-card__title,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Clinical Status Change"] .rnica-form-card__title {
+  margin-bottom: 3px !important;
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Cardiovascular Reversibility Safety" --
+   compact, non-alarming disclosure shown inside Cardiovascular Overview
+   when "No Current Cardiovascular Concern" is selected over a record
+   that still has real preserved abnormal findings (see
+   cardiovascularHasPreservedAbnormalFinding in RNICA.jsx). Deliberately
+   small/quiet -- a thin left border and muted background, matching the
+   existing `.rnica-bodysystem-summary` visual weight -- never a large
+   highlighted panel; this is information, not a warning/error state. */
+.rnica-cv-preserved-findings-banner {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--sns-border);
+  border-radius: 0.3rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.rnica-cv-preserved-findings-banner p { margin: 0; }
+.rnica-cv-preserved-findings-banner p + p { margin-top: 3px; }
+.rnica-cv-preserved-findings-banner strong { color: var(--sns-white); }
+
+/* OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" -- one
+   canonical respiratory editor (Dyspnea/SOB through Ventilator/Airway
+   Support) must never render twice. "Existing Respiratory Findings
+   Review" instead shows this compact, review-only clinical summary with
+   an explicit "Edit Existing Findings" action; the five clinical cards
+   only render (the shared editor) once that action is clicked, or when
+   Overview is "New or Worsening Respiratory Findings". Visual weight
+   matches the existing preserved-findings banner family -- informational
+   card, not an alert. */
+.rnica-resp-review-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rnica-resp-review-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 8px 16px;
+}
+@media (max-width: 532px) {
+  .rnica-resp-review-summary__grid { grid-template-columns: 1fr; }
+}
+.rnica-resp-review-summary__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rnica-resp-review-summary__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--sns-muted);
+}
+.rnica-resp-review-summary__value {
+  font-size: 0.85rem;
+  color: var(--sns-white);
+  line-height: 1.35;
+}
+.rnica-resp-review-summary__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--sns-border);
+}
+.rnica-resp-review-back-banner {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--sns-teal);
+  border-radius: 0.3rem;
+  background: var(--sns-cardSoft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rnica-resp-review-back-banner p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--sns-muted);
+  line-height: 1.4;
+}
+.rnica-chip-action-btn {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--sns-teal);
+  background: transparent;
+  color: var(--sns-teal);
+  cursor: pointer;
+}
+.rnica-chip-action-btn:hover { background: var(--sns-cardSoft); }
 
 @media (max-width: 1100px) {
   .rnica-bodysystems { grid-template-columns: 1fr; }

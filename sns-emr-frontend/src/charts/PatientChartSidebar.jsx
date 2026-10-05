@@ -80,6 +80,7 @@ const navSections = [
     { label: 'CHHA CC Visit', key: 'chha-cc' },
   ] },
   { label: 'Volunteer Services', key: 'volunteer', children: [] },
+  { label: 'Interdisciplinary Continuity', key: 'interdisciplinary-continuity', children: [] },
   { label: 'Bereavement', key: 'bereavement', children: [
     { label: 'Initial Assessment', key: 'bereavement' },
     { label: 'Bereavement POC', key: 'bereavement-poc' },

@@ -1,0 +1,20 @@
+{
+  "newOrWorsening": {
+    "locationVisible": true,
+    "severityVisible": false,
+    "typeVisible": true
+  },
+  "existingReview": {
+    "cardVisible": true,
+    "edemaPresentVisible": true,
+    "locationVisible": true,
+    "severityVisible": false,
+    "typeVisible": true
+  },
+  "noCurrentConcern": {
+    "cardText": "►\nCirculation & Perfusion\n\nCollapsed — \"No Current Cardiovascular Concern\" is selected. Previously documented findings are preserved below; nothing has been deleted. Click to review."
+  },
+  "unableToAssess": {
+    "cardText": "NOT FOUND / HIDDEN"
+  }
+}

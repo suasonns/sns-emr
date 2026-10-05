@@ -624,6 +624,36 @@ If any required item is unchecked, status is **NOT ACCEPTED**.
 
 ---
 
+## 15.5 Mandatory real-browser verification method (Playwright)
+
+**Why this section exists.** A documented 2026-10 Cardiovascular audit produced two invalid PASS claims before the real defect was found: a container-query fix was verified only in a narrow in-app canvas (where the bug could not structurally reproduce) and then "confirmed" a second time by forcibly setting `style.width` on the element under test via DevTools/JS evaluation. Both methods bypass the browser's real layout engine and can make a broken layout look correct. The actual bug — an ancestor `display:grid` category container (`auto-fit, minmax(...)`) silently confining one card to a single column track while a sibling card correctly spanned both — was only found by rendering the real screen in a real, unforced browser viewport. This section is mandatory precisely so that defect never costs days of false confidence again.
+
+### 15.5.1 Tooling requirement
+
+- [`@playwright/test`](../sns-emr-frontend/package.json) is installed as a permanent devDependency (chromium only) specifically for this purpose. It is production QA infrastructure, not a throwaway script dependency — do not remove it, and do not substitute an ad hoc alternative.
+- All layout/grid verification claims (PASS, FAIL, or NOT ACCEPTED) for any body-system or screen covered by this standard must be backed by a Playwright run against the real running app (the actual dev server, the actual authenticated session, the actual patient/assessment record) at genuine browser viewport sizes.
+
+### 15.5.2 Prohibited verification methods
+
+These produce evidence that looks valid but is not, and must never be used to justify a PASS:
+
+- Setting `element.style.width`, `element.style.minWidth`, or any other inline style on the element under test (or an ancestor) via DevTools/JS evaluation, then measuring that same element. This overrides the browser's real grid/flex track-sizing algorithm and will not reproduce an ancestor-grid-constraint bug.
+- Testing only inside a narrow in-app browser canvas/preview pane without confirming its actual rendered width matches (or exceeds) the real desktop breakpoints in Section 11. A canvas narrower than ~800px cannot expose a bug that only manifests once an ancestor grid has room for 2+ tracks.
+- Measuring only the component's own container-query/media-query behavior in isolation without walking the real ancestor chain (parent, grandparent, grid/flex containers) to confirm each one is actually delivering the width the component assumes it has.
+- Relying on source/DOM inspection alone as "visual verification" — a rule can exist in the stylesheet and still never apply to the real element (wrong selector specificity, missing modifier class, stale/overridden rule later in source order).
+
+### 15.5.3 Required method
+
+1. Use (or extend) the scripts under `sns-emr-frontend/scripts/` (Playwright, chromium) — log in with the dev credentials, set the target patient via `sessionStorage['sns-hospice-solutions-active-patient']`, navigate directly to the workspace route, open the relevant Body Systems accordion section.
+2. Capture real screenshots and real computed-style/`getBoundingClientRect()` measurements — never forced ones — at minimum 1440×900, 1366×768, and 1024×768 (Section 11), plus any narrower width actually in scope.
+3. When a layout looks wrong, measure the **entire ancestor chain** from the failing element up to the page root (`display`, `grid-template-columns`/`flex`, `container-type`/`container-name`, rendered width at each level) before proposing any fix. State the exact element, file, and line responsible — do not guess.
+4. Re-measure after the fix, at the same real viewports, with the same script, before claiming PASS.
+5. Treat any data mutated during verification (e.g. temporarily switching an Overview/path control to expose otherwise-hidden fields) as a data-integrity-sensitive operation: restore the true baseline and independently re-verify it via a fresh script/process (not the same browser context) before ending the session or reporting completion.
+
+### 15.5.4 Evidence required
+
+Any PASS/FAIL report produced under Section J must cite: the Playwright script(s) used, the real viewport(s) tested, and attach (or reference) the real screenshots and measurements. A report that lists desktop viewports as "not tested," or that bases acceptance on a forced-width or narrow-canvas test, is automatically **NOT ACCEPTED** regardless of other checklist items.
+
 ## 15. Conflict-resolution summary
 
 This v1.1 resolves the following v1 ambiguities:

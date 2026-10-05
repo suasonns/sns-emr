@@ -1,18 +1,28 @@
 # SNS Design System 1.0
 
 Status: Governance and build-ready implementation specification
-Initial pilot: RNICA
-Master visual reference: Existing SNS Facesheet
-Scope: All SNS clinical documentation modules
+Reference implementation: RNICA Pain & Symptom Burden and Neurological
+Assessment (both already implemented and approved)
+Master visual reference: RNICA Pain & Symptom Burden + Neurological
+Assessment (supersedes the prior Facesheet-derived typography baseline —
+see §12 Governance / Revision History)
+Scope: All SNS clinical documentation modules, and ultimately the whole
+chart and every discipline (see §12)
 
-This document defines the standard. It does not itself change any code.
-**Sequencing (explicit):** this document establishes the SNS design language
-first. RNICA is the pilot — it is the FIRST module actually converted to this
-standard, and only after this document is reviewed/approved. No RNICA code
-changes happen until a separate, explicit go-ahead is given. Once RNICA is
-validated, every other module listed below must be built/converted to match
-the RNICA implementation (not re-derive its own interpretation of Facesheet).
-Do not redesign all modules simultaneously.
+This document defines the standard. It does not itself change any code
+beyond the shared, additive typography tokens described in §3.2-§3.4,
+which are the literal values already shipped in
+`sns-emr-frontend/src/theme/sns-typography.css` (loaded globally from
+`main.tsx`) and already consumed by the Comorbidities and Neurological/Body
+Systems group headings.
+**Sequencing (explicit):** Pain & Symptom Burden and Neurological Assessment
+are the approved reference implementations — not a future pilot. Every other
+RNICA section, and in time the rest of the chart and other disciplines
+(Patient Story, RN/LVN visits, MSW, Chaplain, CHHA, Bereavement, Compliance,
+HOPE workflows, and the remaining modules listed in §12), must be brought
+into conformance with the typography/token values in §3, not the legacy
+Facesheet-derived values this document previously specified. Do not redesign
+all modules simultaneously — convert incrementally, section by section.
 
 ---
 
@@ -141,76 +151,77 @@ Any behavioral change requires a separate governance decision.
 
 ## 3. Design Tokens
 
-The following tokens are derived from the existing Facesheet design
-language (`sns-emr-frontend/src/charts/PatientFacesheet.jsx`). Before
-implementation, inspect the live Facesheet styles and reuse existing
-variables or components where available. **Do not create duplicate tokens
-when an equivalent token already exists.**
+**[SUPERSEDED 2026-10 — see §12 Revision History]** The typography tokens in
+§3.2-§3.4 below previously derived from the legacy Facesheet implementation
+(`sns-emr-frontend/src/charts/PatientFacesheet.jsx`). Per explicit owner
+direction, that baseline is superseded: **RNICA Pain & Symptom Burden and
+Neurological Assessment are now the approved reference implementations**,
+and the values below are the literal tokens already shipped in
+`sns-emr-frontend/src/theme/sns-typography.css` (loaded globally from
+`main.tsx`, so they are available on every route, not only RNICA). Color
+tokens (§3.5), card dimensions (§3.6), and the rest of this section are
+unaffected by this change. **Do not create duplicate tokens when an
+equivalent token already exists.**
 
 ### 3.1 Font Family
 
-Use the current Facesheet application font family everywhere:
+Use the current application font family everywhere:
 
 ```css
 --sns-font-family: inherit;
 ```
 
-Facesheet never sets a custom `fontFamily` beyond `inherit` — no module
-should introduce a new one.
+No module should introduce a new one.
 
-### 3.2 Font Size Tokens (CSS custom properties)
+### 3.2 Typography Tokens (CSS custom properties — "RNICA-H1" etc.)
 
-These are the canonical, literal font-size tokens for the entire system.
-Every module must reference one of these seven values — no ad hoc font sizes.
+These are the canonical, literal typography tokens for the entire system,
+derived from the approved RNICA Pain & Symptom Burden / Neurological
+Assessment implementations. Every module must reference one of these five
+values — no ad hoc font sizes or weights.
 
 ```css
---sns-font-utility: 8.5px;
---sns-font-label: 9px;
---sns-font-caption: 10px;
---sns-font-body: 11.5px;
---sns-font-card-title: 13px;
---sns-font-section-title: 14px;
---sns-font-page-title: 18px;
+--rnica-h1-size: 16px;  --rnica-h1-weight: 500;
+--rnica-h2-size: 14px;  --rnica-h2-weight: 500;
+--rnica-h3-size: 12px;  --rnica-h3-weight: 500;
+--rnica-body-size: 13px;  --rnica-body-weight: 400;
+--rnica-helper-size: 11px;  --rnica-helper-weight: 400;
 ```
+
+Utility classes `.rnica-h1`, `.rnica-h2`, `.rnica-h3`, `.rnica-body-text`,
+`.rnica-helper-text` wrap these pairs (`.rnica-helper-text` also sets
+`color: var(--sns-muted)`).
 
 | Token | Usage |
 |---|---|
-| `--sns-font-utility` | Timestamps, codes, compact audit metadata |
-| `--sns-font-label` | Uppercase field labels, card metadata labels |
-| `--sns-font-caption` | Supporting instructions, source labels, helper text |
-| `--sns-font-body` | Input values, paragraph text, clinical content |
-| `--sns-font-card-title` | Card and subsection headings |
-| `--sns-font-section-title` | Major workspace section headings |
-| `--sns-font-page-title` | Patient or document title only |
+| RNICA-H1 (16px / 500) | Top-level card/section title — patient/page title, "Pain Overview", "Neurological Overview" |
+| RNICA-H2 (14px / 500) | Card title / sub-screen heading — "Pain Intensity", "Secondary Diagnoses & Comorbidities" |
+| RNICA-H3 (12px / 500) | Group/category label inside a card — comorbidity category headings, body-system subsection headings; typically uppercase + letter-spacing, applied by the consuming selector |
+| RNICA-Body (13px / 400) | Standard reading copy/value text inside a card, input values |
+| RNICA-Helper (11px / 400, muted) | Secondary/helper/meta text, field labels, timestamps, counts, tooltip-replacement copy |
 
-### 3.3 Font Weight Tokens
+### 3.3 Font Weight Policy
 
-```css
---sns-weight-regular: 400;
---sns-weight-medium: 500;
---sns-weight-semibold: 600;
---sns-weight-bold: 700;
-```
-
-`--sns-weight-bold` is reserved for the exact Alert Hierarchy in §6 (per the
-Bold Text Policy, §4) plus `--sns-font-page-title` / `--sns-font-section-title`
-headings and status badges (§3.9). `--sns-weight-medium` /
-`--sns-weight-semibold` may be used sparingly for card titles
-(`--sns-font-card-title`) where a heavier-than-body weight helps scanability
-without competing with an actual alert. Routine field labels and content use
-`--sns-weight-regular` only.
+Only two weights appear in the standard typography scale: `500` (medium —
+RNICA-H1/H2/H3) and `400` (regular — RNICA-Body/Helper). **`700` (bold) is
+never part of the baseline scale** — it is reserved exclusively for the
+Alert Hierarchy (§6, per the Bold Text Policy §4) and status badges (§3.9).
+A heading is never bolded merely for emphasis; if something needs to stand
+out beyond RNICA-H1/H2/H3's medium weight, it must qualify under the Alert
+Hierarchy (§6), not receive ad hoc bold.
 
 ### 3.4 Typography Hierarchy
 
-One sizing hierarchy. Minimal variation. Maps the four Level 1-4 zones from
-§3.2's Purpose column onto the token set above.
+One sizing hierarchy. Minimal variation. Maps the five RNICA-H1...Helper
+tokens from §3.2 onto on-screen purpose.
 
 | Level | Purpose | Token | Weight |
 |---|---|---|---|
-| 1 | Patient Name (or record/entity name for non-chart modules) | `--sns-font-page-title` (18px) | `--sns-weight-bold` |
-| 2 | Section Header | `--sns-font-section-title` (14px) | `--sns-weight-bold` |
-| 3 | Field Label | `--sns-font-label` (9px) / `--sns-font-utility` (8.5px) | `--sns-weight-regular`, uppercase, letter-spacing 0.5 |
-| 4 | Field Content | `--sns-font-body` (11.5px) / `--sns-font-card-title` (13px) | `--sns-weight-regular` (bold only if alert, see §6) |
+| 1 | Patient Name (or record/entity name for non-chart modules) / page title | RNICA-H1 (16px) | 500 (medium) |
+| 2 | Section/Card Header | RNICA-H2 (14px) | 500 (medium) |
+| 3 | Group/Category Label (uppercase, letter-spacing) | RNICA-H3 (12px) | 500 (medium) |
+| 4 | Field Content / Body / Input Values | RNICA-Body (13px) | 400 (regular) (bold only if alert, see §6) |
+| 5 | Helper / Meta / Field Label text | RNICA-Helper (11px, muted) | 400 (regular), uppercase where used as a field label |
 
 No other font sizes are introduced without updating this table. For
 non-patient-chart modules (Orders, Care Plans, IDG, QAPI, HR) Level 1 becomes
@@ -226,8 +237,8 @@ sizes stay the same.
 | `card` | `#1e293b` | `#ffffff` | Card background |
 | `border` | `#334155` | `#d9e6eb` | Card/input border |
 | `teal` | `#10b7a2` | `#0d7d7a` | Primary accent (card left-border, active state) |
-| `white` (primary text) | `#ffffff` | `#18354c` | Level 1/2/4 primary text |
-| `label` | `#94a3b8` | `#5f7286` | Level 3 field labels |
+| `white` (primary text) | `#ffffff` | `#18354c` | Level 1/2/4 primary text (RNICA-H1/H2/Body) |
+| `label` | `#94a3b8` | `#5f7286` | Level 3/5 group labels and helper/field-label text (RNICA-H3/Helper) — same color as `--sns-muted` |
 | `text` | `#e2e8f0` | `#1e2d3b` | Secondary body text |
 | `green` | `#059669` | `#2d7b63` | Status: Complete |
 | `red` | `#ef4444` | `#d64d57` | Status: Clinical Risk / Alert |
@@ -251,32 +262,33 @@ sizes stay the same.
 
 - `borderRadius: 5`
 - `border: '1px solid ' + colors.border`
-- `fontSize: 11.5` (`--sns-font-body`), `lineHeight: 1.25`
+- `fontSize: 13` (RNICA-Body), `lineHeight: 1.25`
 - `padding: '5px 7px'`
 
 ### 3.8 Label Style
 
-`fontSize: 8.5` (`--sns-font-utility`), `textTransform: 'uppercase'`,
+`fontSize: 11` (RNICA-Helper), `textTransform: 'uppercase'`,
 `letterSpacing: 0.5`, `display: 'block'`, color = `colors.label`, weight =
-`--sns-weight-regular` (never bold — see §4).
+400 (regular — never bold — see §4).
 
 ### 3.9 Status Badge Style
 
 Small pill (e.g. admission status): `padding: '2px 8px'`, `borderRadius: 4`,
-`fontSize: 10` (`--sns-font-caption`), `fontWeight: 700`
-(`--sns-weight-bold`), background/color from the green/red/amber tokens +
-their `*Bg` tint pair above (bold IS allowed here because a status badge is
-itself a compact alert/status indicator, not routine label text).
+`fontSize: 11` (RNICA-Helper), `fontWeight: 700` (bold — intentional
+exception), background/color from the green/red/amber tokens + their `*Bg`
+tint pair above (bold IS allowed here because a status badge is itself a
+compact alert/status indicator, not routine label text — this is the same
+exception carved out in §3.3/§4, not a reintroduction of ad hoc bold).
 
 ### 3.10 Banner/Header Style
 
 Top-of-page identity card: container `borderRadius: 8`, `padding: '12px
-16px'`, `boxShadow: '0 1px 2px rgba(15,23,42,0.04)'`; name `fontSize: 18`
-(`--sns-font-page-title`), `fontWeight: 700`; supporting line `fontSize: 12`,
-`lineHeight: 1.4`, `color: colors.label`; key-fact label `fontSize: 9`
-(`--sns-font-label`), uppercase, `letterSpacing: 0.5`; key-fact value
-`fontSize: 13` (`--sns-font-card-title`), `fontWeight: 700` ONLY when `alert`
-is true, otherwise `fontWeight` is `--sns-weight-regular`.
+16px'`, `boxShadow: '0 1px 2px rgba(15,23,42,0.04)'`; name `fontSize: 16`
+(RNICA-H1), `fontWeight: 500`; supporting line `fontSize: 12`,
+`lineHeight: 1.4`, `color: colors.label`; key-fact label `fontSize: 11`
+(RNICA-Helper), uppercase, `letterSpacing: 0.5`; key-fact value `fontSize:
+13` (RNICA-Body), `fontWeight: 700` ONLY when `alert` is true (Alert
+Hierarchy, §6), otherwise `fontWeight` is 400 (regular).
 
 ---
 
@@ -486,16 +498,37 @@ Finalization.
   CTI, F2F, IDG, Referrals, Plan of Care) and operational (QAPI, HR) alike.
 - Any module claiming compliance with "SNS Design System 1.0" must pass the
   test in §1.
-- RNICA is the pilot; once validated there, this document extends to the
-  remaining modules in this priority order: RN/LVN visits, SW Assessment,
-  Spiritual Assessment, Bereavement Assessment, HHA Assessment, Volunteer
+- **RNICA Pain & Symptom Burden and Neurological Assessment are the approved,
+  already-implemented reference implementations** (superseding the prior
+  "RNICA is the pilot, not yet started" sequencing). The typography tokens in
+  §3.2-§3.4 are already live app-wide via
+  `sns-emr-frontend/src/theme/sns-typography.css`, and already consumed by
+  the Comorbidities and Neurological/Body Systems group headings. This
+  document now extends to the remaining modules in this priority order:
+  remaining RNICA sections (Functional Status, Safety, Caregiver Support,
+  ACP, Orders, Compliance, Finalization), Patient Story, future chart
+  workspaces, RN/LVN visits, MSW Assessment, Chaplain/Spiritual Assessment,
+  CHHA, Bereavement Assessment, Compliance & HOPE workflows, Volunteer
   documentation, Visit Notes, Orders, Plan of Care, Referrals, Care Plans,
   CTI, F2F, IDG, QAPI, HR (clinical-assessment-adjacent modules first,
   operational modules last).
-- No code changes are authorized by this document alone — implementation
-  work (starting with RNICA) requires a separate, explicit go-ahead.
+- No code changes are authorized by this document alone beyond the shared
+  typography tokens already shipped (§3.2-§3.4) — per-module conversion of
+  layout/cards/workflow still requires a separate, explicit go-ahead.
 - Non-Negotiable Clinical Principles (§2) and Identity of Data (§2.3) govern
   every future module conversion — a module cannot be "converted" to this
   design system if doing so would duplicate an authoritative data source or
   weaken existing compliance behavior (§2.5).
+
+### Revision History
+
+- **2026-10 — Typography baseline superseded.** §3.1-§3.4 and the dependent
+  references in §3.7-§3.10 were rewritten: the font-size/weight tokens no
+  longer derive from the legacy Facesheet implementation
+  (`PatientFacesheet.jsx`). They now derive from the approved RNICA Pain &
+  Symptom Burden and Neurological Assessment implementations, per explicit
+  owner direction ("Do not maintain separate typography systems for RNICA,
+  Chart, Facesheet, Disciplines. Approved RNICA sections become the source
+  of truth."). Color tokens (§3.5), card dimensions (§3.6), the Bold Text
+  Policy (§4), Color Policy (§5), and Alert Hierarchy (§6) are unchanged.
 

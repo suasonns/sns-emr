@@ -10,6 +10,11 @@ const Toggle = React.forwardRef<
     ref={ref}
     className={cn(
       "inline-flex items-center justify-center whitespace-nowrap rounded-full border border-rnica-border px-3 py-1 text-xs font-medium",
+      // See toggle-group.tsx: Tailwind preflight is disabled project-wide,
+      // so an unselected native <button> needs an explicit background
+      // class or it falls back to the browser's default opaque white
+      // button background behind the dark-theme text.
+      "bg-transparent",
       "transition-colors hover:bg-rnica-hoverSurface",
       "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rnica-focusRing",
       "disabled:pointer-events-none disabled:opacity-50",
