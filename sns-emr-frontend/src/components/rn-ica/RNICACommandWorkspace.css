@@ -1794,6 +1794,27 @@
 .rnica-cv-preserved-findings-banner p + p { margin-top: 3px; }
 .rnica-cv-preserved-findings-banner strong { color: var(--sns-white); }
 
+/* OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision" --
+   compact, user-initiated reveal control for "Additional Bowel Details"
+   (the collapsed Abdominal / Bowel Assessment card). Reserves no extra
+   layout space beyond a single small pill button; keyboard-focusable
+   and high-contrast like the rest of the SNS pill-control family. */
+.rnica-pill-reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 1px solid var(--sns-border);
+  border-radius: 999px;
+  background: var(--sns-cardSoft);
+  color: var(--sns-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rnica-pill-reveal:hover { background: var(--sns-card); }
+.rnica-pill-reveal:focus-visible { outline: 2px solid var(--sns-focusRing); outline-offset: 2px; }
+
 /* OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" -- one
    canonical respiratory editor (Dyspnea/SOB through Ventilator/Airway
    Support) must never render twice. "Existing Respiratory Findings

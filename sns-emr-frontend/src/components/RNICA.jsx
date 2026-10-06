@@ -11388,19 +11388,36 @@ export function giLastBMExceedsThreshold(lastBM) {
   return diffDays > GI_LAST_BM_THRESHOLD_DAYS;
 }
 
-// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Follow-Up
-// Governance" -- same historical-vs-current discipline as
-// `computeInfectionRequiresFollowUp` above: follow-up requires CURRENT
-// evidence (documented Moderate/Severe symptom burden, a bowel regimen
-// that could not be initiated, or a nurse-selected GI-Related Decline/
-// New Finding Clinical Status Change) -- never historical burden or
-// device presence (Ostomy/Feeding Tube) alone.
+// OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision,
+// Follow-Up Revision" -- supersedes the Phase 1 rule that treated ANY
+// Moderate/Severe symptom alone as sufficient. Owner explicitly required:
+// "Do not generate REQUIRES FOLLOW-UP solely because Constipation =
+// Severe [or] Last BM Size = Small. Additional supporting findings
+// should be present first." Each symptom now needs a genuinely
+// supporting, currently-documented finding before it contributes to
+// follow-up -- never historical burden, never device presence (Ostomy/
+// Feeding Tube) alone, never severity in isolation:
+//  - Constipation: only when Moderate/Severe AND Straining is also
+//    Moderate/Severe (the "meaningful bowel-movement" combination).
+//  - Diarrhea: only when Moderate/Severe AND Stool Character is Watery
+//    (frank watery output, not merely "diarrhea" as a label).
+//  - Vomiting: only when Moderate/Severe AND a documented occurrence
+//    count of 3 or more in 24 hours (repeated vomiting with supported
+//    current burden, not a single severity selection).
+//  - Concerning exam findings: a clinically concerning Abdomen finding
+//    (Distended/Rigid/Tender) or documented Ascites.
+//  - A bowel regimen that could not be initiated, or a nurse-selected
+//    GI-Related Decline/New Finding Clinical Status Change, remain
+//    sufficient on their own (unchanged from Phase 1).
+// Nausea alone and Mild severity of any symptom never contribute.
 export function computeGastrointestinalRequiresFollowUp(d = {}) {
-  const moderateOrSevere = (v) => v === "Moderate" || v === "Severe";
-  const symptomBurden = moderateOrSevere(d.nausea)
-    || moderateOrSevere(d.vomiting)
-    || moderateOrSevere(d.diarrhea)
-    || moderateOrSevere(d.constipation);
+  const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
+  const vomitingOccurrences = parseInt(d.vomitingOccurrences24h, 10);
+  const constipationWithStraining = isModOrSevere(d.constipation) && isModOrSevere(d.straining);
+  const diarrheaWithWateryOutput = isModOrSevere(d.diarrhea) && d.stoolConsistency === "Watery";
+  const vomitingWithBurden = isModOrSevere(d.vomiting) && Number.isFinite(vomitingOccurrences) && vomitingOccurrences >= 3;
+  const concerningExamFinding = ["Distended", "Rigid", "Tender"].includes(d.abdomen) || Boolean(d.ascites);
+  const symptomBurden = constipationWithStraining || diarrheaWithWateryOutput || vomitingWithBurden || concerningExamFinding;
   const bowelRegimenConcern = Boolean((d.reasonBowelRegimenNotInitiated || "").trim());
   const decliningStatus = d.clinicalStatusChange === "GI-Related Decline Observed Since Prior Assessment"
     || d.clinicalStatusChange === "New GI-Related Finding Since Prior Assessment";
@@ -13415,6 +13432,41 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "gastrointestinal" && card.title === "Abdominal / Bowel Assessment") {
+          // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+          // Revision, Additional Bowel Details" -- the full exam-detail
+          // card (Bowel Sounds, Abdomen, Ascites, Girth, Stool, Bowel
+          // Status/Frequency, bowel-regimen reason) is hidden by default
+          // and reveals only via: the nurse's own "Show Additional Bowel
+          // Details" toggle, Last BM Size = Unable To Determine, a
+          // meaningful-finding Straining Moderate/Severe, a Watery Stool
+          // Character, or Last BM exceeding the documented threshold
+          // (GI_LAST_BM_THRESHOLD_DAYS). Collapsing returns a single
+          // zero-reserved-space reveal control -- no empty card body, no
+          // data deleted. When a trigger fires, the collapsed state
+          // always states the reason so the nurse never wonders why the
+          // card suddenly expanded.
+          const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
+          const manuallyOpened = Boolean(data?.giShowAdditionalBowelDetails);
+          const autoOpenReason = data?.lastBMSize === "Unable To Determine" ? "Last BM Size is Unable To Determine"
+            : isModOrSevere(data?.straining) ? "Straining is documented as Moderate/Severe"
+            : data?.stoolConsistency === "Watery" ? "Stool Character is documented as Watery"
+            : giLastBMExceedsThreshold(data?.lastBM) ? `Last BM exceeds ${GI_LAST_BM_THRESHOLD_DAYS} days`
+            : null;
+          if (!manuallyOpened && !autoOpenReason) {
+            return (
+              <Card key={ci} title="Additional Bowel Details" compact bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+                <button type="button" className="rnica-pill-reveal" onClick={() => u("giShowAdditionalBowelDetails", true)}>
+                  + Additional Bowel Details
+                </button>
+              </Card>
+            );
+          }
+          // manuallyOpened OR autoOpenReason: fall through to the generic
+          // fields renderer below exactly like any other fields-based
+          // card -- no reimplementation of individual field controls.
+        }
+
         if (sectionKey === "gastrointestinal" && card.customRenderer === "constipationAutoAssess") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
@@ -13437,38 +13489,31 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // entirely (renders null) when no guidance condition applies, so
         // a normal/unremarkable GI assessment shows nothing extra here.
         if (sectionKey === "gastrointestinal" && card.customRenderer === "giDocumentationGuidance") {
-          const moderateOrSevere = (v) => v === "Moderate" || v === "Severe";
-          const siteOfService = fullFormData?.livingSituation?.siteOfService;
-          const facilityBased = ["02", "03", "04"].includes(siteOfService) || Boolean(fullFormData?.pcg?.noPcgReason);
-          const bedbound = fullFormData?.musculoskeletal?.mobility?.ambulatoryStatus === "Bedbound";
-          const constipationOrDiarrhea = Boolean(data?.constipation) || Boolean(data?.diarrhea);
-          const overflowRiskSupported = moderateOrSevere(data?.constipation) && (
-            data?.lastBMSize === "Small"
-            || moderateOrSevere(data?.straining)
-            || data?.stoolConsistency === "Watery"
-            || giLastBMExceedsThreshold(data?.lastBM)
-          );
-          const showFacilityGuidance = facilityBased && constipationOrDiarrhea;
-          const showBedboundGuidance = bedbound && (Boolean(data?.constipation) && data.constipation !== "None" || Boolean(data?.diarrhea) && data.diarrhea !== "None");
-          if (!showFacilityGuidance && !showBedboundGuidance && !overflowRiskSupported) return null;
+          // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+          // Revision" -- replaces the broader Phase 1 facility/bedbound/
+          // threshold-based banners with the exact two supported
+          // triggers from the revised matrix: Straining Moderate/Severe
+          // (constipation path) and Stool Character Watery (diarrhea
+          // path). Neutral, observation-focused wording only -- never
+          // names fecal impaction, overflow diarrhea, or bowel
+          // obstruction. Hidden entirely (returns null) for every other
+          // state, including Mild constipation/diarrhea and Severe
+          // constipation with a normal/unremarkable Last BM Size.
+          const showConstipationGuidance = data?.straining === "Moderate" || data?.straining === "Severe";
+          const showDiarrheaGuidance = data?.stoolConsistency === "Watery";
+          if (!showConstipationGuidance && !showDiarrheaGuidance) return null;
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
-              {showFacilityGuidance && (
-                <div className="rnica-cv-preserved-findings-banner" role="status">
-                  <p><strong>Facility Monitoring Consideration</strong></p>
-                  <p>Facility staff may already track bowel activity. Consider confirming: last meaningful bowel movement, typical stool amount, recent bowel pattern, caregiver concerns.</p>
-                </div>
-              )}
-              {showBedboundGuidance && (
-                <div className="rnica-cv-preserved-findings-banner" role="status">
-                  <p><strong>Bedbound Patient Consideration</strong></p>
-                  <p>Consider documenting: last meaningful bowel movement, stool amount, straining, caregiver observations, current bowel regimen effectiveness.</p>
-                </div>
-              )}
-              {overflowRiskSupported && (
+              {showConstipationGuidance && (
                 <div className="rnica-cv-preserved-findings-banner" role="status">
                   <p><strong>Documentation Guidance</strong></p>
-                  <p>Consider documenting: typical bowel pattern, stool quantity, straining, abdomen findings, current bowel regimen effectiveness, whether output was formed stool, loose stool, or mostly watery output.</p>
+                  <p>Consider asking: Was the bowel movement small, medium, or large? Was straining required? Was the patient uncomfortable? Has the recent bowel pattern changed? Is the current bowel regimen helping?</p>
+                </div>
+              )}
+              {showDiarrheaGuidance && (
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  <p><strong>Documentation Guidance</strong></p>
+                  <p>Consider asking: Was this loose stool or mostly watery output? Was there recent constipation or straining? Was the output a full bowel movement or only seepage? Is abdominal discomfort or distention present?</p>
                 </div>
               )}
             </Card>
@@ -14310,22 +14355,36 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // documentation (Constipation/Diarrhea = None) never shows
               // these conditional fields.
               if (sectionKey === "gastrointestinal") {
-                const moderateOrSevere = (v) => v === "Mild" || v === "Moderate" || v === "Severe";
-                const constipationOrDiarrheaDocumented = moderateOrSevere(cardData.constipation) || moderateOrSevere(cardData.diarrhea);
+                // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+                // Revision" -- tightened from the Phase 1 "any Mild+
+                // constipation/diarrhea reveals everything" gate to the
+                // exact one-step-at-a-time matrix: Moderate/Severe
+                // Constipation reveals Last BM Size ONLY; Last BM Size =
+                // Small reveals Straining; Straining Moderate/Severe OR
+                // Diarrhea documented (any severity) reveals Stool
+                // Character; Information Source stays hidden unless the
+                // nurse manually opens Additional Bowel Details or Last
+                // BM Size is Unable To Determine. Mild Constipation alone
+                // now reveals nothing further (Last BM Date already lives
+                // in the always-visible Bowel Basics card below).
+                const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
+                const diarrheaDocumented = Boolean(cardData.diarrhea) && cardData.diarrhea !== "None";
                 const manuallyOpened = Boolean(cardData.giShowAdditionalBowelDetails);
-                if (field.path === "lastBMSize" && !constipationOrDiarrheaDocumented && !manuallyOpened) {
+                if (field.path === "lastBMSize" && !isModOrSevere(cardData.constipation) && !manuallyOpened) {
                   return null;
                 }
-                if (field.path === "straining" && !moderateOrSevere(cardData.constipation) && !manuallyOpened) {
+                if (field.path === "straining" && cardData.lastBMSize !== "Small" && !manuallyOpened) {
                   return null;
                 }
-                if (field.path === "stoolConsistency" && !constipationOrDiarrheaDocumented && !manuallyOpened) {
+                if (field.path === "stoolConsistency" && !isModOrSevere(cardData.straining) && !diarrheaDocumented && !manuallyOpened) {
                   return null;
                 }
                 if (field.path === "giInformationSource"
-                  && !cardData.constipation && !cardData.diarrhea
-                  && !giLastBMExceedsThreshold(cardData.lastBM)
+                  && cardData.lastBMSize !== "Unable To Determine"
                   && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "vomitingOccurrences24h" && !isModOrSevere(cardData.vomiting) && !manuallyOpened) {
                   return null;
                 }
               }
@@ -16373,18 +16432,29 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
         { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-        // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" -- these
-        // four fields stay hidden (see the conditional guard in the
-        // render loop) unless Constipation/Diarrhea is Mild/Moderate/
-        // Severe, their specific OR-condition is met, or the nurse opens
-        // them manually below -- keeps routine/normal GI documentation
-        // under a minute, same philosophy as Infection's minimal-required-
-        // fields/conditional-prompts approach.
+        // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+        // Revision" -- these fields stay hidden (render-loop guard
+        // above) until the exact one-step trigger is met: Last BM Size
+        // only after Moderate/Severe Constipation; Straining only after
+        // Last BM Size = Small; Stool Character only after Straining
+        // Moderate/Severe OR Diarrhea documented; Information Source
+        // only after Last BM Size = Unable To Determine or the nurse
+        // manually opens Additional Bowel Details below. Mild
+        // Constipation alone now reveals nothing further -- Last BM Date
+        // lives in the always-visible Bowel Basics card below instead.
         { type: "radio", label: "Last BM Size", path: "lastBMSize", options: ["Small", "Medium", "Large", "Unable To Determine"] },
         { type: "radio", label: "Straining", path: "straining", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Stool Character", path: "stoolConsistency", options: ["Formed", "Soft", "Loose", "Watery", "Unable To Determine"] },
         { type: "select", label: "Information Source", path: "giInformationSource", options: ["Patient Report", "Caregiver Report", "Facility Record", "Nurse Observation"] },
         { type: "checkbox", label: "Show Additional Bowel Details", path: "giShowAdditionalBowelDetails" },
+      ]},
+      // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision"
+      // -- Last BM Date is one of the six fields required in the default
+      // view; it now lives in its own always-visible card instead of
+      // inside the Abdominal / Bowel Assessment card below (which is
+      // hidden by default). Same `lastBM` path, no data moved/renamed.
+      { title: "Bowel Basics", category: "core", fields: [
+        { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
       ]},
       { title: "GI Documentation Guidance", category: "symptoms", customRenderer: "giDocumentationGuidance" },
       { title: "Abdominal / Bowel Assessment", category: "core", fields: [
@@ -16395,7 +16465,6 @@ const SECTION_CONFIGS = {
         { type: "checkboxGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
         { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
         { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
-        { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
         { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
       { title: "Feeding Devices", category: "treatments", fields: [
