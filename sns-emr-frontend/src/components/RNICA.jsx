@@ -3443,6 +3443,46 @@ const CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS = ["Initial Assessment", "No
 // unchanged (same values, same `clinicalStatusChange` path).
 const RESPIRATORY_CLINICAL_STATUS_CHANGE_OPTIONS = ["Stable / No Change", "Improving", "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment", "Not Applicable"];
 
+// OWNER DIRECTIVE (2026-10-21) "Infection Language Standard Items 13-15"
+// -- Infection is an active clinical/infectious-process assessment, not a
+// general hospice symptom-trajectory review, so the generic hospice
+// "Stable / No Change"-family wording above is retired for Infection's
+// Clinical Status Change field specifically (does NOT touch
+// CLINICAL_STATUS_CHANGE_OPTIONS or any other body system's list).
+// Exactly five options, no sixth. Each label is paired with a stable,
+// machine-readable code (independent of display wording) for validators/
+// tests/reporting -- see `validateInfectionClinicalStatusSelection` and
+// `computeInfectionRequiresFollowUp` below.
+export const INFECTION_CLINICAL_STATUS_CODES = {
+  "Infection-Related Findings Reduced Since Prior Assessment": "infection_findings_reduced",
+  "Current Infection-Related Interventions Appear Effective": "infection_interventions_appear_effective",
+  "Infection-Related Decline Observed Since Prior Assessment": "infection_decline_observed",
+  "New Infection-Related Finding Since Prior Assessment": "infection_new_finding",
+  "Not Applicable": "not_applicable",
+};
+export const INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS = Object.keys(INFECTION_CLINICAL_STATUS_CODES);
+
+// Item 15 "Legacy Compatibility" -- these terms are retired from
+// Infection's Clinical Status Change going forward (not offered, never
+// auto-selected, never auto-mapped onto a new option). A record already
+// holding one of these continues to display it untouched via
+// FormSegmented's existing "Previously recorded" read-only chip (the same
+// generic forward-only-migration mechanism already used by Cardiovascular
+// and Respiratory above) -- no separate preservation code is needed here,
+// and nothing below ever writes to or deletes the stored value.
+export const INFECTION_RETIRED_CLINICAL_STATUS_VALUES = [
+  "Stable", "Stable / No Change", "No Change",
+  "No Significant Change Since Prior Assessment", "Improving",
+  "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment",
+  "Unable to Assess",
+];
+
+export function isRetiredInfectionClinicalStatusValue(value) {
+  if (!value) return false;
+  const norm = String(value).trim().toLowerCase();
+  return INFECTION_RETIRED_CLINICAL_STATUS_VALUES.some((r) => r.toLowerCase() === norm);
+}
+
 function DmeStatusCard({ data, updateField, styles, COLORS }) {
   const items = data?.dmeItems || [];
 
@@ -11226,6 +11266,86 @@ export function computeInfectionRequiresFollowUp(d = {}) {
     || infectionHistoryDocumented;
 }
 
+// OWNER DIRECTIVE (2026-10-21) "Infection Language Standard" item 14,
+// "Infection Supporting-Findings Gating" -- a single shared validator so
+// the gating logic lives in one place instead of scattered conditionals
+// throughout the render loop. Pure function: takes the proposed
+// `clinicalStatusChange` selection, the Infection section's own data, and
+// a small context object ({ hasPriorInfectionAssessment }, see
+// assessmentUiProfile.hasPriorInfectionAssessment), and returns
+// { valid, code, message, supportingFieldIds, comparisonAssessmentId,
+// comparisonDate } -- never throws, never mutates its inputs.
+//
+// "Not Applicable" is always valid (never gated). Each of the other four
+// options requires the specific Infection fields that actually support
+// its claim to already be documented; none are inferred from silence,
+// unchanged checkboxes, or normal temperature alone. `comparisonAssessmentId`/
+// `comparisonDate` are passed through from context only -- no real
+// baseline-assessment-selection feature exists yet (see
+// hasPriorInfectionAssessment comment above), so both are null until that
+// infrastructure exists.
+export function validateInfectionClinicalStatusSelection(value, d = {}, context = {}) {
+  const code = INFECTION_CLINICAL_STATUS_CODES[value];
+  const hasPriorAssessment = Boolean(context.hasPriorInfectionAssessment);
+  const comparisonAssessmentId = context.comparisonAssessmentId || null;
+  const comparisonDate = context.comparisonDate || null;
+  const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
+  const resistantCurrent = (d.antibioticResistantInfection || []).filter((i) => i && i !== "None");
+  const activeOrRecentAntibiotics = d.antibioticTherapyStatus === "Currently receiving antibiotics" || d.antibioticTherapyStatus === "Recently completed antibiotics";
+  const base = { comparisonAssessmentId, comparisonDate };
+
+  if (!code) {
+    return { valid: false, code: null, message: "Select one of the five approved Infection Clinical Status Change options.", supportingFieldIds: [], ...base };
+  }
+  if (code === "not_applicable") {
+    return { valid: true, code, message: "", supportingFieldIds: [], ...base };
+  }
+  if (!hasPriorAssessment) {
+    // Item 14, SOC/initial-assessment special-casing -- a status that
+    // claims a change "since prior assessment" cannot be clinically
+    // supported when no prior Infection assessment exists to compare
+    // against (e.g. this patient's SOC/initial assessment).
+    return {
+      valid: false, code,
+      message: "This option compares against a prior Infection assessment. No prior Infection assessment is available for this patient yet.",
+      supportingFieldIds: [], ...base,
+    };
+  }
+  if (code === "infection_findings_reduced") {
+    const supported = d.antibioticTreatmentEffective === "Improving";
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the specific finding(s) that improved (e.g. Antibiotic Therapy \u2192 Treatment Effective: Improving) before selecting this option.",
+      supportingFieldIds: ["antibioticTreatmentEffective"], ...base,
+    };
+  }
+  if (code === "infection_interventions_appear_effective") {
+    const supported = activeOrRecentAntibiotics && d.antibioticTreatmentEffective === "Improving";
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the active/recent intervention (Antibiotic Therapy) and its documented response (Treatment Effective: Improving) before selecting this option.",
+      supportingFieldIds: ["antibioticTherapyStatus", "antibioticTreatmentEffective"], ...base,
+    };
+  }
+  if (code === "infection_decline_observed") {
+    const supported = d.antibioticTreatmentEffective === "Worsening" || resistantCurrent.length > 0 || activeInfections.length > 0;
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the specific infection-related finding that declined (treatment response, a current active infection, or a new resistant organism) before selecting this option.",
+      supportingFieldIds: ["antibioticTreatmentEffective", "antibioticResistantInfection", "currentInfections"], ...base,
+    };
+  }
+  if (code === "infection_new_finding") {
+    const supported = activeInfections.length > 0;
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the new infection-related finding under Active Infection before selecting this option.",
+      supportingFieldIds: ["currentInfections"], ...base,
+    };
+  }
+  return { valid: true, code, message: "", supportingFieldIds: [], ...base };
+}
+
 // GitHub Directive (2026-09-28) Critical Finding #7 -- blank documentation
 // must never be presented as "no significant findings" (that implies an
 // active assessment was performed and came back normal). Deep-walks the
@@ -12636,9 +12756,18 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             return null;
           }
           const infEditingExisting = Boolean(data.infectionExistingFindingsEditMode);
+          // Item 13A "Per-Overview-State Display Rules" -- Clinical Status
+          // Change is a conclusion ABOUT infection findings, so it follows
+          // the same gating as the findings cards themselves: hidden when
+          // there is no current infection concern (nothing to compare),
+          // hidden during pure review of existing findings (reviewing
+          // prior data is not itself a new conclusion), and shown/required
+          // only when actively documenting (New/Worsening, or Existing
+          // Review with edit mode engaged).
           const INFECTION_HIDEABLE_CARDS = [
             "Active Infection", "Resistant Organisms",
             "Infection History", "Antibiotic Therapy", "Precautions", "Temperature",
+            "Clinical Status Change",
           ];
           if (INFECTION_HIDEABLE_CARDS.includes(card.title)) {
             if (infOverview === "Unable to Assess" || infOverview === "No Current Infection Concern") {
@@ -14103,6 +14232,31 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   rendered = null;
               }
               if (!rendered) return null;
+              // OWNER DIRECTIVE (2026-10-21) "Infection Language Standard"
+              // item 14, "Infection Supporting-Findings Gating" -- a
+              // non-blocking advisory (never silently blocks save/
+              // selection) surfaced directly under the Infection Clinical
+              // Status Change control whenever the current selection isn't
+              // yet supported by the specific Infection fields it claims.
+              // See validateInfectionClinicalStatusSelection above.
+              if (sectionKey === "infection" && fieldForRender.path === "clinicalStatusChange" && value) {
+                const gate = validateInfectionClinicalStatusSelection(value, cardData, {
+                  hasPriorInfectionAssessment: uiProfile.hasPriorInfectionAssessment,
+                });
+                if (!gate.valid) {
+                  rendered = (
+                    <>
+                      {rendered}
+                      <p
+                        style={{ fontSize: 12, color: COLORS.orange || "#b45309", margin: "4px 0 0", fontStyle: "italic" }}
+                        data-infection-status-gate="true"
+                      >
+                        {gate.message}
+                      </p>
+                    </>
+                  );
+                }
+              }
               // OWNER DIRECTIVE (2026-10-05) "Cardiovascular Explicit Grid
               // Rebuild" Step 1/4 -- a stable, path-keyed hook so CSS can
               // place each Cardiovascular field at an exact grid-column/
@@ -15717,8 +15871,11 @@ const SECTION_CONFIGS = {
       { title: "Temperature", category: "treatments", fields: [
         { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "°F" },
       ]},
+      // Item 13 "Infection-Specific Status Options" -- uses the dedicated
+      // INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS list, never the generic
+      // CLINICAL_STATUS_CHANGE_OPTIONS shared by other body systems.
       { title: "Clinical Status Change", category: "response", fields: [
-        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS },
       ]},
       { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Other Observations / Notes", path: "notes", placeholder: "List active infections..." },
@@ -17253,6 +17410,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     hideSpiritualHopeFields: isUpdateAssessment,
     infectionAllergyAlerts,
     onAllergiesChanged: handleAllergiesChanged,
+    // Item 14 "Infection Supporting-Findings Gating" -- no dedicated
+    // prior-assessment/baseline-selection infrastructure exists anywhere
+    // in RNICA (confirmed: no comparisonAssessmentId, no baseline-
+    // selection UI, no per-field "prior value" snapshot). `isUpdateAssessment`
+    // (an update/recert assessment, as opposed to a fresh SOC/initial
+    // assessment) is the only currently-available, non-fabricated proxy
+    // for "a prior Infection assessment exists to compare against" --
+    // used by validateInfectionClinicalStatusSelection below to gate the
+    // two Infection status options that claim a change since a prior
+    // assessment. A real baseline-selection feature remains a known,
+    // explicitly-flagged architecture gap, not something invented here.
+    hasPriorInfectionAssessment: isUpdateAssessment,
   }), [isUpdateAssessment, infectionAllergyAlerts, handleAllergiesChanged]);
   // Admission Action Center (Phase A) — global drawer, reachable from every
   // section via the persistent footer button. No draft loss / navigation:
