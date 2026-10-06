@@ -70,6 +70,7 @@ from app.services.dynamic_condition_detection_engine import (
     NoteInput,)
 from app.services.refusal_engine import record_refusal
 from app.services.task_completion import auto_complete_tasks_for_visit
+from app.services.task_completion_evidence import complete_task_with_evidence
 from app.domain.forms.form_resolution_service import resolve_form_package
 from app.services.visit_compliance_guards import (
     enforce_commlog_for_visit_status_change,)
@@ -108,6 +109,13 @@ logger = logging.getLogger(__name__)
 RNICA_ADMISSION_TYPE = "RNICA"
 RNICA_UPDATE_TYPE = "UPDATE"
 RNICA_RECERT_TYPE = "RECERT"
+
+# HOPE event-identity value persisted to RnicaAssessment.hope_event_type at
+# RNICA Lock time (issue HOPE-REPAIR-READINESS-001). HUV1/HUV2 reuse the
+# existing TASK_TYPE_HUV1/TASK_TYPE_HUV2 string constants imported above
+# from hope_phase_b_engine ("HUV1"/"HUV2") so the persisted event type and
+# the engine's own source-type vocabulary never drift apart.
+HOPE_EVENT_TYPE_ADMISSION = "ADMISSION"
 
 
 def _normalize_rnica_assessment_type(
@@ -269,6 +277,66 @@ def _matches_huv_window(record: RnicaAssessment, election_datetime: datetime, hu
         return True, None
     except ValueError as exc:
         return False, str(exc)
+
+
+_J2051_CODE_TO_IMPACT_WORD = {
+    "0": "NONE",
+    "1": "MILD",
+    "2": "MODERATE",
+    "3": "SEVERE",
+    # "9" = "unable to assess" / not applicable per CMS J2051 coding --
+    # intentionally excluded (maps to None), not "NONE". Treating it as
+    # "no impact" would be clinically wrong and could suppress a real SFV
+    # trigger when a different symptom's own value is what actually drives
+    # the non-pain aggregate.
+}
+
+
+def _j2051_code_to_impact_word(value: Any) -> str | None:
+    """Translate RNICA's stored numeric CMS J2051 impact code ("0"-"3","9")
+    into the word-form vocabulary (NONE/MILD/MODERATE/SEVERE) expected by
+    hope_phase_b_engine. This is the stateless, call-time-only adapter
+    approved for HOPE-REPAIR-READINESS-001 -- it never writes back to
+    RnicaAssessment.form_data and never modifies engine code.
+    """
+    code = str(value).strip() if value is not None else ""
+    return _J2051_CODE_TO_IMPACT_WORD.get(code)
+
+
+def _build_j2051_adapter_inputs(symptom_impact: dict | None) -> tuple[str | None, str | None]:
+    """Adapter approved under HOPE-REPAIR-READINESS-001: collapses RNICA's
+    eight discrete, CMS-coded J2051 symptomImpact fields into the two flat
+    values (pain_impact / non_pain_impact) that hope_phase_b_engine already
+    accepts, WITHOUT modifying engine behavior and WITHOUT persisting any
+    derived value. RNICA's own eight stored fields are left completely
+    untouched by this function -- it only reads them.
+
+    pain_impact        = word(symptomImpact.pain)
+    non_pain_impact    = max-by-severity of the other seven symptoms,
+                          reusing the existing _severity_rank() comparator
+                          already used by the generic/working path so
+                          severity ordering stays identical everywhere.
+    """
+    symptom_impact = symptom_impact or {}
+    pain_impact = _j2051_code_to_impact_word(symptom_impact.get("pain"))
+
+    non_pain_fields = (
+        "shortnessOfBreath",
+        "anxiety",
+        "nausea",
+        "vomiting",
+        "diarrhea",
+        "constipation",
+        "agitation",
+    )
+    non_pain_impact: str | None = None
+    for field_name in non_pain_fields:
+        candidate = _j2051_code_to_impact_word(symptom_impact.get(field_name))
+        if candidate is None:
+            continue
+        if non_pain_impact is None or _severity_rank(candidate) > _severity_rank(non_pain_impact):
+            non_pain_impact = candidate
+    return pain_impact, non_pain_impact
 
 
 def _flatten_rnica_primary_diagnosis(form_data: dict) -> str | None:
@@ -1309,6 +1377,207 @@ def delete_rnica_assessment(
         "status": "deleted",
         "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
     }
+def _resolve_huv_event_type_for_locking_record(
+    db: Session,
+    record: RnicaAssessment,
+    admission,
+    election_datetime: datetime,
+) -> str | None:
+    """Mirrors the exact first-match-wins ordering GET
+    /rnica/hope-update-status/{patient_id} already uses (locked_at asc,
+    created_at asc) so the assessment HOPE processing treats as "the"
+    HUV1/HUV2 event is always the same one the UI displays as such. This
+    is the additive, HOPE-REPAIR-READINESS-001-approved duplicate-identity
+    guard — it does NOT modify the engine's own
+    _find_existing_sfv_requirement dedup (keyed on trigger_reference_id),
+    which stays completely untouched.
+    """
+    other_records = (
+        db.query(RnicaAssessment)
+        .filter(
+            RnicaAssessment.patient_id == record.patient_id,
+            RnicaAssessment.assessment_type == RNICA_UPDATE_TYPE,
+            RnicaAssessment.locked.is_(True),
+            RnicaAssessment.admission_id == admission.id,
+            RnicaAssessment.id != record.id,
+        )
+        .all()
+    )
+    epoch = datetime.min.replace(tzinfo=timezone.utc)
+    candidates = other_records + [record]
+    candidates.sort(key=lambda item: (item.locked_at or epoch, item.created_at or epoch))
+
+    huv1_assigned = False
+    huv2_assigned = False
+    for candidate in candidates:
+        if not huv1_assigned:
+            matched, _reason = _matches_huv_window(candidate, election_datetime, TASK_TYPE_HUV1)
+            if matched:
+                huv1_assigned = True
+                if candidate.id == record.id:
+                    return TASK_TYPE_HUV1
+                continue
+        if not huv2_assigned:
+            matched, _reason = _matches_huv_window(candidate, election_datetime, TASK_TYPE_HUV2)
+            if matched:
+                huv2_assigned = True
+                if candidate.id == record.id:
+                    return TASK_TYPE_HUV2
+    return None
+
+
+def _trigger_rnica_hope_phase_b_on_lock(
+    db: Session,
+    record: RnicaAssessment,
+    tenant_id,
+    current_user: CurrentUser,
+) -> dict | None:
+    """HOPE-REPAIR-READINESS-001 / owner-approved wiring repair: makes
+    RNICA Lock the authoritative HOPE Phase B trigger for Admission, HUV1,
+    and HUV2 RN ICA assessments, reusing the existing (unmodified)
+    hope_phase_b_engine via the approved stateless J2051 adapter.
+
+    Called from lock_rnica_assessment BEFORE its first db.commit() so a
+    Phase B engine failure rolls back the entire lock rather than leaving
+    a locked-but-unprocessed record behind. Returns a summary dict for the
+    audit event, or None when this assessment is not a HOPE event (RECERT,
+    or an UPDATE outside any HUV window / already claimed by an earlier
+    assessment) — the lock still proceeds normally with no HOPE fields
+    touched, matching today's behavior exactly.
+
+    Explicit scope boundaries (per directive):
+      * visit_id is intentionally left untouched/NULL. It is a genuine
+        database foreign key to visits.id, and no Visit row is ever
+        created for an RNICA encounter — setting it would either violate
+        referential integrity or require fabricating a Visit row, both out
+        of scope for a wiring repair. hope_event_type/hope_event_date
+        (plain columns, no FK) are activated instead.
+      * SFV completion stays out of scope — RNICA only ever *triggers* SFV
+        creation via the engine below; SFV completion continues to flow
+        exclusively through the existing, untouched Visit/ClinicalNote
+        path (_maybe_complete_open_sfv_for_visit).
+      * RECERT assessments are out of scope — no HOPE event, unchanged.
+    """
+    assessment_type = (record.assessment_type or RNICA_ADMISSION_TYPE).strip().upper()
+    if assessment_type not in (RNICA_ADMISSION_TYPE, RNICA_UPDATE_TYPE):
+        return None
+
+    admission = _get_current_admission_for_patient(db, record.patient_id, tenant_id)
+    if admission is None:
+        logger.info("RNICA_HOPE_PHASE_B: skipped, no ADMITTED admission for patient %s", record.patient_id)
+        return None
+
+    election_datetime = (
+        admission.election_signed_at
+        or admission.soc_date
+        or admission.effective_date
+        or admission.admission_date
+    )
+    if election_datetime is None:
+        logger.info("RNICA_HOPE_PHASE_B: skipped, admission %s has no resolvable election date", admission.id)
+        return None
+
+    pain_impact, non_pain_impact = _build_j2051_adapter_inputs((record.form_data or {}).get("symptomImpact"))
+    discipline = str((((record.form_data or {}).get("visitMeta") or {}).get("discipline")) or "RN")
+
+    if assessment_type == RNICA_ADMISSION_TYPE:
+        completed_at = _assessment_completed_datetime(record) or record.locked_at or election_datetime
+        process_initial_rn_ica_finalize(
+            db=db,
+            tenant_id=tenant_id,
+            patient_id=record.patient_id,
+            initial_rn_ica_visit_id=record.id,
+            election_datetime=election_datetime,
+            j2051_pain_impact=pain_impact,
+            j2051_non_pain_impact=non_pain_impact,
+        )
+        record.hope_event_type = HOPE_EVENT_TYPE_ADMISSION
+        record.hope_event_date = completed_at.date()
+        return {
+            "hopeEventType": HOPE_EVENT_TYPE_ADMISSION,
+            "hopeEventDate": record.hope_event_date.isoformat(),
+            "admissionId": str(admission.id),
+            "painImpact": pain_impact,
+            "nonPainImpact": non_pain_impact,
+            "taskCompleted": False,
+            "completedTaskId": None,
+        }
+
+    # RNICA_UPDATE_TYPE: resolve HUV1 vs HUV2 using the same first-match
+    # ordering as GET /rnica/hope-update-status so the UI and the engine
+    # never disagree about which assessment "is" the HUV1/HUV2 event.
+    huv_task_type = _resolve_huv_event_type_for_locking_record(db, record, admission, election_datetime)
+    if huv_task_type is None:
+        logger.info(
+            "RNICA_HOPE_PHASE_B: skipped, UPDATE assessment %s is not the matched HUV1/HUV2 record for admission %s",
+            record.id,
+            admission.id,
+        )
+        return None
+
+    completed_at = _assessment_completed_datetime(record) or record.locked_at or election_datetime
+    process_huv_finalize(
+        db=db,
+        tenant_id=tenant_id,
+        patient_id=record.patient_id,
+        huv_task_type=huv_task_type,
+        huv_visit_id=record.id,
+        election_datetime=election_datetime,
+        completed_visit_datetime=completed_at,
+        discipline=discipline,
+        j2051_pain_impact=pain_impact,
+        j2051_non_pain_impact=non_pain_impact,
+    )
+    record.hope_event_type = huv_task_type
+    record.hope_event_date = completed_at.date()
+
+    task_completed = False
+    completed_task_id = None
+    task_type_member = TaskType.HUV1 if huv_task_type == TASK_TYPE_HUV1 else TaskType.HUV2
+    open_task = (
+        db.query(Task)
+        .filter(
+            Task.tenant_id == tenant_id,
+            Task.patient_id == record.patient_id,
+            Task.task_type == task_type_member,
+            Task.status != TaskStatus.COMPLETED,
+        )
+        .order_by(Task.due_date.asc().nulls_last(), Task.created_at.asc())
+        .first()
+    )
+    if open_task is not None:
+        complete_task_with_evidence(
+            db,
+            task_id=open_task.id,
+            completion_reference_type=CompletionReferenceType.DOCUMENT,
+            completion_reference_id=record.id,
+            completed_by=getattr(current_user, "id", None) or getattr(current_user, "user_id", None),
+        )
+        task_completed = True
+        completed_task_id = str(open_task.id)
+    else:
+        # Not fatal: an admission that predates this repair may never have
+        # had its HUV1/HUV2 tasks created. The HOPE event/SFV side of this
+        # repair still runs; task completion is simply skipped and logged
+        # for operational visibility. Backfilling pre-existing admissions
+        # is explicitly out of scope for this wiring repair.
+        logger.warning(
+            "RNICA_HOPE_PHASE_B: no open %s task found for patient %s to complete at RNICA lock time",
+            huv_task_type,
+            record.patient_id,
+        )
+
+    return {
+        "hopeEventType": huv_task_type,
+        "hopeEventDate": record.hope_event_date.isoformat(),
+        "admissionId": str(admission.id),
+        "painImpact": pain_impact,
+        "nonPainImpact": non_pain_impact,
+        "taskCompleted": task_completed,
+        "completedTaskId": completed_task_id,
+    }
+
+
 @router.post("/rnica/{assessment_id}/lock")
 def lock_rnica_assessment(
     assessment_id: str,
@@ -1363,6 +1632,14 @@ def lock_rnica_assessment(
     record.status = "LOCKED"
     record.locked_at = datetime.now(timezone.utc)
     rnica_hope_workflow_service.sync_submission_fields_from_form_data(record, record.form_data or {})
+    # HOPE-REPAIR-READINESS-001 / owner-approved wiring repair: RNICA Lock
+    # is now the authoritative HOPE Phase B trigger. This runs inside the
+    # same transaction as the lock itself (before this first db.commit())
+    # so an engine failure rolls back the whole lock instead of leaving a
+    # locked-but-unprocessed record. Returns None for RECERT assessments
+    # and for UPDATE assessments outside any HUV window -- the lock then
+    # proceeds exactly as it did before this repair.
+    hope_phase_b_summary = _trigger_rnica_hope_phase_b_on_lock(db, record, tenant_id, current_user)
     db.commit()
     # POC changes remain strictly clinician-initiated. Locking RN ICA must
     # only validate, sign/lock, and preserve assessment data — it must NOT
@@ -1385,6 +1662,19 @@ def lock_rnica_assessment(
             "lockedAt": record.locked_at.isoformat(),
         },
     )
+    if hope_phase_b_summary is not None:
+        audit_event(
+            db=db,
+            action="RNICA_HOPE_PHASE_B_TRIGGERED",
+            entity_type="rnica_assessment",
+            entity_id=str(record.id),
+            user_id=str(getattr(current_user, "id", None) or getattr(current_user, "user_id", None) or ""),
+            tenant_id=str(tenant_id) if tenant_id else None,
+            meta={
+                "patientId": str(record.patient_id),
+                **hope_phase_b_summary,
+            },
+        )
     db.commit()
     return {
         "assessmentId": str(record.id),
@@ -1392,6 +1682,7 @@ def lock_rnica_assessment(
         "locked": True,
         "lockedAt": record.locked_at.isoformat(),
         "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
+        "hopePhaseB": hope_phase_b_summary,
     }
 
 
