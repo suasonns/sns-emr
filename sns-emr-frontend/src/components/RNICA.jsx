@@ -8350,11 +8350,28 @@ function formatAllergyAlertLines(allergies) {
     });
 }
 
+// OWNER DIRECTIVE (item 8) "No Duplicate Allergy Entry Workflows" --
+// normalizes an allergen for comparison purposes only (trim + lowercase);
+// the stored record always keeps the nurse's original text/casing.
+function normalizeAllergenText(text) {
+  return (text || "").trim().toLowerCase();
+}
+
 export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
   const [allergies, setAllergies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [allergyForm, setAllergyForm] = useState({ allergen_type: "DRUG", allergen_text: "", reaction_description: "", severity: "" });
   const [allergyError, setAllergyError] = useState("");
+  // OWNER DIRECTIVE (item 8) "Duplicate-prevention UI check" -- when the
+  // nurse tries to add an allergen that already matches an active entry
+  // (same normalized allergen text + same type), surface a confirmation
+  // instead of silently creating a second record. `duplicateMatch` holds
+  // the existing entry so the dialog can show it and let the nurse jump
+  // to it; the record is never auto-merged -- the nurse always makes an
+  // explicit choice (Cancel, Review Existing, or Add As New Entry).
+  const [duplicateMatch, setDuplicateMatch] = useState(null);
+  const [highlightedAllergyId, setHighlightedAllergyId] = useState(null);
+  const allergyRowRefs = useRef({});
 
   const reload = useCallback(() => {
     if (!patientId) return;
@@ -8372,11 +8389,10 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
     reload();
   }, [reload]);
 
-  const handleAddAllergy = async () => {
-    if (!allergyForm.allergen_text.trim()) {
-      setAllergyError("Allergen is required.");
-      return;
-    }
+  // Performs the actual create call. Separated from handleAddAllergy so
+  // the duplicate-confirmation dialog's "Add As New Entry" action can
+  // call straight through after the nurse has made an explicit choice.
+  const submitNewAllergy = async () => {
     setAllergyError("");
     try {
       await addPatientAllergy(patientId, {
@@ -8391,6 +8407,7 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
       // reset, so the nurse never has to reselect the type for the next
       // entry of the same category.
       setAllergyForm((f) => ({ ...f, allergen_text: "", reaction_description: "" }));
+      setDuplicateMatch(null);
       reload();
       // Keep the Infection Summary / Structured Findings rail in sync
       // immediately -- otherwise a nurse who just documented an allergy
@@ -8400,6 +8417,43 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
       console.error("Add allergy failed:", err);
       setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
     }
+  };
+
+  // OWNER DIRECTIVE (item 8) "No Duplicate Allergy Entry Workflows" --
+  // before creating a new record, check for an active allergy that
+  // already matches on normalized allergen text + type. A match pauses
+  // submission and shows a confirmation dialog instead of silently
+  // creating a second record for the same allergen (which would make
+  // the grouped review list show the same allergen twice under one
+  // category). The nurse always decides explicitly: Cancel, jump to
+  // Review the existing entry, or deliberately Add As New Entry (e.g.
+  // to document a second, differently-severe reaction on file).
+  const handleAddAllergy = async () => {
+    if (!allergyForm.allergen_text.trim()) {
+      setAllergyError("Allergen is required.");
+      return;
+    }
+    setAllergyError("");
+    const normalizedNew = normalizeAllergenText(allergyForm.allergen_text);
+    const newType = allergyForm.allergen_type || "DRUG";
+    const existingMatch = allergies.find(
+      (a) => normalizeAllergenText(a.allergen_text) === normalizedNew && (a.allergen_type || "DRUG") === newType
+    );
+    if (existingMatch) {
+      setDuplicateMatch(existingMatch);
+      return;
+    }
+    await submitNewAllergy();
+  };
+
+  const handleReviewExistingAllergy = () => {
+    const match = duplicateMatch;
+    setDuplicateMatch(null);
+    if (!match) return;
+    setHighlightedAllergyId(match.allergy_id);
+    const node = allergyRowRefs.current[match.allergy_id];
+    node?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => setHighlightedAllergyId((id) => (id === match.allergy_id ? null : id)), 2500);
   };
 
   const handleRemoveAllergy = async (allergyId) => {
@@ -8439,7 +8493,20 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
             {group.label === "Other / Sensitivity" ? "Other Sensitivities" : `${group.label} Allergies`} ({group.entries.length})
           </div>
           {group.entries.map((a) => (
-            <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
+            <div
+              key={a.allergy_id}
+              ref={(node) => { allergyRowRefs.current[a.allergy_id] = node; }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 6px",
+                fontSize: 12.5,
+                borderRadius: 4,
+                transition: "background-color 0.3s ease",
+                backgroundColor: highlightedAllergyId === a.allergy_id ? "#fde68a" : "transparent",
+              }}
+            >
               <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
               {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
               {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
@@ -8450,6 +8517,42 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
           ))}
         </div>
       ))}
+      {/* OWNER DIRECTIVE (item 8) "Duplicate-Prevention UI Check" -- shown
+          only when handleAddAllergy detects an active allergy already
+          matching on normalized allergen text + type. The nurse must
+          make an explicit choice; nothing is auto-merged or auto-saved. */}
+      {duplicateMatch && (
+        <div
+          data-testid="allergy-duplicate-dialog"
+          style={{
+            border: `1px solid ${COLORS.warning || "#f59e0b"}`,
+            backgroundColor: "#fffbeb",
+            borderRadius: 6,
+            padding: "10px 12px",
+            marginTop: 8,
+            marginBottom: 4,
+            fontSize: 12.5,
+          }}
+        >
+          <div style={{ fontWeight: 700, color: "#92400e", marginBottom: 4 }}>This allergy is already documented</div>
+          <div style={{ color: "#78350f", marginBottom: 8 }}>
+            {ALLERGY_TYPE_SUMMARY_LABELS[duplicateMatch.allergen_type] || "Allergy"}: <strong>{duplicateMatch.allergen_text}</strong>
+            {duplicateMatch.severity ? ` (${ALLERGY_SEVERITY_LABELS[duplicateMatch.severity] || duplicateMatch.severity})` : ""}
+            {duplicateMatch.reaction_description ? ` — ${duplicateMatch.reaction_description}` : ""}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setDuplicateMatch(null)} style={{ ...styles.btnSecondary, padding: "4px 10px", fontSize: 12 }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleReviewExistingAllergy} style={{ ...styles.btnSecondary, padding: "4px 10px", fontSize: 12 }}>
+              Review Existing Allergy
+            </button>
+            <button type="button" onClick={submitNewAllergy} style={{ ...styles.btnSecondary, padding: "4px 10px", fontSize: 12 }}>
+              Add As New Entry
+            </button>
+          </div>
+        </div>
+      )}
       {/* OWNER CORRECTION (2026-10-05) "Document The Allergy First,
           Classify It Second" -- replaces the prior "quick fill type"
           pill row, which forced the nurse to pick a category BEFORE
