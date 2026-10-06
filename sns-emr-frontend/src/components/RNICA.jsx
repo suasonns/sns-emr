@@ -1194,10 +1194,18 @@ const api = {
 // 4. VALIDATION
 // ════════════════════════════════════════════════════════════════
 
-function validateRNICA(formData, mode = "ica") {
+function validateRNICA(formData, mode = "ica", assessmentType = undefined) {
   const errors = {};
   const warnings = {};
-  const includeHopeRequirements = mode !== "ongoing";
+  // Owner directive (GI SFV CMS Compliance Correction, includeHopeRequirements
+  // defect review): this must use the SAME qualifying-HOPE-timepoint formula
+  // as the render path (isQualifyingHopeTimepoint, RNICA.jsx ~line 18054),
+  // not a standalone mode==="ongoing" check. A generic "ongoing" mode covers
+  // both genuine HUV1/HUV2 Update visits (which DO require HOPE fields) and
+  // non-HOPE Recertification visits (which do not) -- both call sites
+  // already pass assessmentType; it was previously silently ignored here.
+  const includeHopeRequirements =
+    mode === "ica" || (mode === "ongoing" && assessmentType === "update");
   const requireAdmissionOrders = mode === "ica";
 
   // Demographics ? required fields
