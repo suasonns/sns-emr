@@ -1,11 +1,11 @@
 # SNS Hospice Language Standard
 
-**Version:** 1.1  
+**Version:** 1.2  
 **Status:** Proposed enterprise clinical-language, UI-copy, summary-generation, and documentation-assistance standard  
 **Owner:** SNS Hospice Solutions clinical governance  
 **Verification date:** October 5, 2026  
-**Supersedes:** Version 1.0  
-**Scope:** RN, LVN/LPN, CHHA/hospice aide, physician/medical director, MSW, spiritual care/chaplain, volunteer/bereavement, case manager/IDG coordinator, administrator/DPCS, quality/compliance, intake/admission, billing/authorization support, and future AI-assisted documentation
+**Supersedes:** Version 1.1  
+**Scope:** RN, LVN/LPN, CHHA/hospice aide, physician/medical director, NP/PA, MSW/MFT/MHC, spiritual care/chaplain, volunteer/bereavement, PT/OT/SLP, dietary, pharmacy, respiratory therapy, wound/ostomy care, inpatient/GIP/CHC staff, after-hours triage, case manager/IDG coordinator, administrator/DPCS, quality/QAPI/infection prevention, HIM/privacy/security, interpreter/language access, scheduling/front office, intake/admission, coding/billing/authorization, DME/supply, facility liaison, pediatric/child-life support where offered, complementary/creative arts services where offered, and future AI-assisted documentation
 
 ---
 
@@ -644,6 +644,254 @@ SNS must not automatically generate:
 - `Facility aware` without recipient, time, and communication result;
 - unresolved responsibility ambiguity.
 
+
+### 5.23 Wound / Ostomy / Continence Nurse or Consultant
+
+**Focus:** patient-specific skin, pressure injury, wound, ostomy, fistula, drainage, odor, pain, periwound condition, comfort, supplies, caregiver education, and treatment recommendations within scope and orders.
+
+**Preferred phrases**
+
+- `Wound assessment completed at [site]; findings include [dimensions, tissue, drainage, odor, periwound condition, pain].`
+- `Comparison with [date/source] shows [specific increase, reduction, or no significant change].`
+- `Treatment performed per current order; patient response documented as...`
+- `Recommendation communicated to [authorized prescriber/IDG] with rationale...`
+- `Caregiver demonstrated [wound/ostomy technique] with [level] cueing.`
+
+**Avoid**
+
+- `Wound better`, `healing well`, or `wound stable` without measurable findings;
+- staging or diagnosis outside authority;
+- treating absence of documentation as wound resolution;
+- recommending curative goals that conflict with the patient’s comfort-focused plan without documenting the goals discussion.
+
+### 5.24 Respiratory Therapist
+
+**Focus:** ordered respiratory treatments, oxygen delivery, equipment function, secretion management, ventilatory support, tolerance, caregiver education, and communication of changes.
+
+**Preferred phrases**
+
+- `Oxygen delivered by [device] at [setting] per order.`
+- `Respiratory effort and documented response before/after intervention: ...`
+- `Equipment function checked; issue identified/resolved/escalated: ...`
+- `Patient/caregiver demonstrated [equipment technique] with [level] cueing.`
+- `Change in respiratory status communicated to [role/name] at [time].`
+
+**Avoid**
+
+- `Oxygen good`, `breathing stable`, or `tolerated treatment well` without findings;
+- independently changing settings outside orders or scope;
+- equating a normal temperature or a single saturation value with absence of respiratory concern;
+- promising recovery of pulmonary function.
+
+### 5.25 Inpatient Hospice / General Inpatient / Continuous Home Care Clinician
+
+**Focus:** symptom crisis, level-of-care reason, intensity of services, frequent reassessment, interventions and responses, transition criteria, coordination, and continuity of the plan of care.
+
+**Preferred phrases**
+
+- `Level-of-care need supported by [specific uncontrolled symptom or crisis finding].`
+- `Intervention provided at [time]; response at reassessment: ...`
+- `Symptoms remain uncontrolled despite...`
+- `Current findings support continuation/transition review; provider/IDG communication documented.`
+- `Handoff includes current symptoms, recent interventions, responses, pending orders, and safety concerns.`
+
+**Avoid**
+
+- `Still qualifies for GIP/CHC` without patient-specific findings;
+- `Comfortable` or `stable` without reassessment evidence;
+- copying the same crisis narrative across shifts;
+- discharging or changing level of care from a missing note or isolated checkbox.
+
+### 5.26 After-Hours Triage / On-Call Clinician
+
+**Focus:** caller and patient identification, source of report, immediate safety screening, symptom details, intervention instructions within scope, provider notification, dispatch decision, follow-up, and closed-loop handoff.
+
+**Preferred phrases**
+
+- `Call received from [source/relationship] at [time] regarding...`
+- `Reported findings: ...; unable to directly observe by telephone.`
+- `Immediate safety concern identified/not identified based on reported information.`
+- `Instructions provided according to [order/plan/protocol]; caller teach-back documented.`
+- `Visit dispatched/provider notified; outcome and handoff documented.`
+
+**Avoid**
+
+- charting telephone reports as direct observation;
+- `No issue` or `patient stable` without the assessment basis;
+- `Family understands` without teach-back or documented response;
+- leaving advice without a follow-up owner or escalation plan when required.
+
+### 5.27 Interpreter / Translator / Language-Access Coordinator
+
+**Focus:** communication access, interpreter identity or service, language, modality, qualification, translated materials, patient preference, privacy, and accurate relay without adding clinical interpretation.
+
+**Preferred phrases**
+
+- `Qualified interpreter used for [language] by [modality/service/identifier].`
+- `Interpretation provided for [encounter/document/topic].`
+- `Patient/representative preference for communication documented as...`
+- `Translated material provided in [language/version].`
+- `Interpreter relayed the speaker’s statements without clinical summarization.`
+
+**Avoid**
+
+- using a minor child as interpreter except where expressly permitted in an emergency under controlling policy/law;
+- documenting that language assistance was declined without the offer and response;
+- machine-only translation of critical clinical or rights content when qualified human review is required;
+- replacing the clinician’s patient-specific assessment with the interpreter’s opinion.
+
+### 5.28 Health Information Management / Medical Records
+
+**Focus:** record completeness, authentication, indexing, reconciliation, amendments, addenda, disclosure, retention, deficiency tracking, linkage, and retrieval.
+
+**Preferred phrases**
+
+- `Record element missing/incomplete: ...`
+- `Authentication deficiency identified for [entry/date/role].`
+- `Correction/addendum linked to the original entry with author, date, time, and reason.`
+- `Disclosure request received/completed according to policy; scope documented.`
+- `Duplicate or wrong-patient entry escalated for correction and audit review.`
+
+**Avoid**
+
+- silently correcting clinical meaning;
+- overwriting signed content;
+- backdating;
+- marking a deficiency complete without verifying the required evidence.
+
+### 5.29 Privacy / Security Officer
+
+**Focus:** minimum necessary use, access review, disclosure, consent/authorization status, incident assessment, mitigation, breach workflow, device and account safeguards, and evidence preservation.
+
+**Preferred phrases**
+
+- `Potential privacy/security incident reported at [time]; facts known: ...`
+- `Access/disclosure reviewed for [system/event] according to policy.`
+- `Mitigation initiated: ...; owner and due date documented.`
+- `Affected information and recipients verified as...`
+- `Final determination made by authorized privacy/security process.`
+
+**Avoid**
+
+- placing sensitive incident-investigation details in the patient’s routine clinical narrative unless clinically necessary;
+- concluding `no breach` before authorized review;
+- sharing credentials, tokens, or unnecessary identifiers;
+- blame or intent statements unsupported by evidence.
+
+### 5.30 QAPI / Patient Safety / Risk / Infection Prevention
+
+**Focus:** measurable indicators, adverse events, infection surveillance, investigation, contributing factors, corrective actions, effectiveness checks, patient safety, and learning without unsupported blame.
+
+**Preferred phrases**
+
+- `Event/indicator identified from [source] with date range and denominator when applicable.`
+- `Known facts, contributing conditions, and unresolved questions documented separately.`
+- `Corrective action assigned to [role] by [date].`
+- `Effectiveness verified using [measure/evidence].`
+- `Infection-control concern escalated according to policy.`
+
+**Avoid**
+
+- `Staff error` or `negligence` without completed authorized review;
+- using QAPI language to score individual clinical performance in the patient record;
+- claiming improvement without a defined measure and comparison period;
+- closing an event because no additional report was received.
+
+### 5.31 Scheduler / Front Office / Patient Services Representative
+
+**Focus:** contact attempts, appointment or visit scheduling, availability, location, communication preference, routing, cancellations, access barriers, and escalation.
+
+**Preferred phrases**
+
+- `Contact attempted by [method] at [time]; outcome: ...`
+- `Visit scheduled/rescheduled/canceled at request of [source], reason if provided: ...`
+- `Urgent clinical concern routed immediately to [role] at [time].`
+- `Communication preference/language need documented and routed.`
+- `Transportation, access, or contact barrier identified: ...`
+
+**Avoid**
+
+- clinical triage or reassurance outside role;
+- `Patient refused care` when the person only declined a proposed time;
+- `Unable to reach` without attempts and methods;
+- recording diagnosis, prognosis, or symptom conclusions copied from an unverified call.
+
+### 5.32 Hospice Coding / Billing / Clinical Documentation Integrity
+
+**Focus:** source-supported codes, terminal and related-condition queries, claim-supporting dates, levels of care, certifications, election, authorization, and non-leading clarification routed to authorized clinicians.
+
+**Preferred phrases**
+
+- `Code/claim element supported by [specific authenticated source].`
+- `Documentation clarification requested regarding [objective inconsistency or missing specificity].`
+- `Query is non-leading and preserves clinician judgment.`
+- `Claim hold reason and required evidence documented.`
+- `Clinical determination routed to authorized clinician.`
+
+**Avoid**
+
+- selecting a diagnosis solely to secure payment;
+- instructing a clinician to document decline that is not present;
+- converting an LCD criterion into an automatic pass/fail determination;
+- altering clinical documentation or dates to fit billing.
+
+### 5.33 Patient Rights / Grievance / Patient Advocate
+
+**Focus:** complaint or grievance intake, respectful acknowledgment, immediate safety issues, nonretaliation, investigation routing, communication, resolution, and appeal rights.
+
+**Preferred phrases**
+
+- `Concern received from [source] on [date/time] regarding...`
+- `Immediate safety issue identified and escalated to...`
+- `Acknowledgment and next-step information provided in an understandable language/manner.`
+- `Investigation owner and response due date documented.`
+- `Resolution communicated; remaining concern or appeal option documented.`
+
+**Avoid**
+
+- minimizing a concern as `just a complaint`;
+- retaliatory or judgmental language;
+- declaring a grievance unfounded without investigation evidence;
+- placing confidential personnel-investigation details in the clinical record.
+
+### 5.34 Pediatric / Child-Life / Family Support Specialist, When Offered
+
+**Focus:** developmentally appropriate communication, play or legacy activities, sibling/child support, caregiver goals, anticipatory grief support, safety, consent, and coordination with the IDG.
+
+**Preferred phrases**
+
+- `Developmentally appropriate support provided through...`
+- `Child/family question or concern expressed as...`
+- `Activity aligned with family goal of...`
+- `Response to intervention observed/reported as...`
+- `Concern escalated to the appropriate licensed discipline.`
+
+**Avoid**
+
+- diagnostic conclusions outside credentials;
+- forcing disclosure or participation;
+- assuming developmental understanding from age alone;
+- documenting identity-sensitive family details beyond the minimum necessary.
+
+### 5.35 Music / Art / Massage / Other Complementary Therapy, When Offered
+
+**Focus:** service ordered or included in the plan of care, patient preference, intervention, observable or reported response, comfort goal, precautions, and IDG coordination.
+
+**Preferred phrases**
+
+- `Intervention provided according to the plan of care: ...`
+- `Patient preference and consent documented.`
+- `Before/after response documented as [reported or observed].`
+- `Intervention stopped/modified because...`
+- `Finding requiring clinical follow-up communicated to...`
+
+**Avoid**
+
+- claims that the service cured, reversed, or treated disease beyond evidence and scope;
+- `Relaxed` or `better` without an observable or reported basis;
+- continuing touch-based services without consent or despite contraindications;
+- replacing required clinical assessment or treatment.
+
 ---
 
 ## 6. Body-system word list
@@ -1250,7 +1498,22 @@ Each executed test must record:
 - [ ] **SYS-008 | Critical** — Functional phrases specify assistance level and task rather than `stable` or `total care` alone.
 - [ ] **SYS-009 | Critical** — Active-dying language requires documented findings and does not appear from a single checkbox alone.
 
-### 9.12 Exit criteria
+### 9.12 Additional discipline-gap tests
+
+- [ ] **DIS-015 | Critical** — Wound/ostomy language requires measurable findings and authority-appropriate staging.
+- [ ] **DIS-016 | Critical** — Respiratory-therapy language preserves orders, equipment settings, and pre/post response without unsupported conclusions.
+- [ ] **DIS-017 | Critical** — Inpatient/GIP/CHC language links level-of-care statements to patient-specific symptom findings and reassessment.
+- [ ] **DIS-018 | Critical** — After-hours triage distinguishes caller report from clinician observation and documents closed-loop follow-up.
+- [ ] **DIS-019 | Blocker** — Interpreter/translation workflows use qualified services when required and do not expose PHI or silently machine-translate critical documentation.
+- [ ] **DIS-020 | Blocker** — HIM workflows preserve signed text, authentication, correction reason, addendum linkage, and audit history.
+- [ ] **DIS-021 | Blocker** — Privacy/security workflows do not place credentials or unnecessary incident details in routine documentation.
+- [ ] **DIS-022 | Critical** — QAPI/risk/infection-prevention language separates facts, analysis, corrective action, and effectiveness evidence without unsupported blame.
+- [ ] **DIS-023 | Major** — Scheduler/front-office language routes clinical concerns and does not convert scheduling decisions into refusal-of-care conclusions.
+- [ ] **DIS-024 | Blocker** — Coding/CDI workflows cannot alter clinical facts, dates, or eligibility conclusions for payment purposes.
+- [ ] **DIS-025 | Critical** — Grievance/patient-rights language supports understandable communication, nonretaliation, escalation, ownership, and resolution tracking.
+- [ ] **DIS-026 | Critical** — Pediatric/child-life and complementary-service templates stay within scope, consent, plan-of-care, and escalation requirements.
+
+### 9.13 Exit criteria
 
 Release may be approved only when:
 
@@ -1286,10 +1549,17 @@ Release may be approved only when:
 | 42 CFR 418.52 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | Any amendment to Part 418 or patient-rights guidance | Respectful, understandable, noncoercive patient-facing language |
 | 42 CFR 418.54 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; verify before release | October 5, 2026 | Verified for current project use | HOPE/comprehensive-assessment revision or Part 418 amendment | Assessment language, patient-specific needs, symptom and risk documentation |
 | 42 CFR 418.56 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | IDG or plan-of-care rule change | IDG roles, RN coordination, patient/family-specific plan language |
+| 42 CFR 418.58 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | QAPI amendment or survey-guidance update | QAPI, patient-safety, event, measure, and improvement language |
+| 42 CFR 418.60 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current Part 418 text; verify before release | October 5, 2026 | Verified for current project use | Infection-control amendment or survey-guidance update | Infection prevention, surveillance, escalation, and education language |
+| 42 CFR 418.64 | Mandatory federal Condition of Participation | Medicare-certified hospices | eCFR displayed up to date September 30, 2026 | October 5, 2026 | Verified current snapshot | Core-service amendment | Physician, nursing, social-service, and counseling role language |
+
 | 42 CFR 418.76 | Mandatory federal Condition of Participation | Medicare-certified hospices using aide/homemaker services | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | Aide qualification or supervision amendment | Aide/homemaker scope-sensitive language |
 | 42 CFR 418.100 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text in 2026 | October 5, 2026 | Verified current snapshot | Part 418 service/organization amendment | Comfort, dignity, goals, service categories |
 | 42 CFR 418.104 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | Clinical-record, authentication, retention, or transfer amendment | Complete, clear, authenticated, dated clinical records and responses to care |
 | 42 CFR 418.106 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | Drug-ordering or pharmacy-services amendment | Pharmacist, order, adverse-reaction, and medication-response language |
+| 42 CFR 418.110 | Mandatory federal Condition of Participation | Hospices providing inpatient care directly | eCFR displayed up to date September 29, 2026 | October 5, 2026 | Verified current snapshot | Inpatient-hospice staffing or facility amendment | Inpatient/GIP nursing, safety, comfort, and handoff language |
+| 42 CFR 418.202 | Mandatory federal coverage regulation | Medicare hospice covered services | eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | Covered-service amendment | Covered service categories, qualified personnel, inpatient-care language |
+
 | 42 CFR 418.114 | Mandatory federal Condition of Participation | Medicare-certified hospices | Current eCFR text; eCFR displayed up to date October 1, 2026 | October 5, 2026 | Verified current snapshot | Personnel-qualification amendment | Scope-sensitive discipline templates and permissions |
 | CMS QSO-24-12 and Transmittal R12400BP | CMS implementation/survey and manual guidance | Medicare-certified hospices | MFT/MHC hospice changes effective January 1, 2024; manual implementation January 2, 2024 | October 5, 2026 | Verified | Superseding QSO memo, manual transmittal, or CoP amendment | MFT/MHC inclusion and terminology |
 | CMS MLN9895410, Creating an Effective Hospice Plan of Care | CMS educational guidance | Medicare hospice providers | CMS listing data date May 2025; no substantive update stated | October 5, 2026 | Advisory educational source | New MLN version or revised plan-of-care guidance | Individualized POC, IDG coordination, measurable outcomes, education |
@@ -1298,6 +1568,7 @@ Release may be approved only when:
 | California Title 22, Division 5, Chapter 6.5, DPH-18-002E | Mandatory California emergency regulation while in effect | California-licensed hospice agencies | Effective June 22, 2026 | October 5, 2026 | CDPH page states emergency rulemaking currently in effect | Readoption, permanent rule, expiration, amendment, court or OAL action | Medical-record governance, authentication, corrections, addenda, role definitions |
 | CDPH AFL 26-20 | California agency guidance | California hospice agencies | June 26, 2026 | October 5, 2026 | Verified agency notice | Superseding AFL or revised regulation | Operational context for 2026 emergency hospice regulations |
 | CGS disease-specific and non-disease-specific hospice guides in the SNS source library | Contractor educational derivatives of LCD guidance | Use only within applicable contractor context and source date | Available library copies revised February 16, 2022, unless the individual file states otherwise | October 5, 2026 | Historical/supporting reference; verify against current LCD before clinical use | Current LCD or guide revision | Body-system examples, decline domains, and disease-specific documentation prompts |
+| 45 CFR 92.11 and 92.201 | Mandatory federal nondiscrimination requirements when the entity/program is covered by Part 92 | Covered health programs and activities within the rules’ applicability | Current eCFR text displayed up to date October 1, 2026 | October 5, 2026 | Verified; applicability must be configured and legally confirmed | Part 92 amendment, court order, agency guidance, or applicability change | Language-assistance notices, qualified interpreter/translator use, privacy, accuracy, and meaningful access |
 | SNS Hospice Language Standard | Internal SNS clinical-design policy | Configured SNS tenants after approval | Version 1.1; effective only after clinical-governance approval | October 5, 2026 | Proposed | Any approved language-pack change or source-table update | Preferred/discouraged language, UI prompts, AI rules, and QA |
 
 ### 10.3 Confirmed federal requirements
@@ -1339,6 +1610,14 @@ The word lists, discipline templates, suggestion behavior, display priorities, m
 
 ---
 
+## 10.8 Version 1.2 discipline-gap review
+
+Version 1.2 adds guidance for wound/ostomy/continence specialists, respiratory therapists, inpatient/GIP/CHC clinicians, after-hours triage, interpreter/language access, HIM/medical records, privacy/security, QAPI/patient safety/risk/infection prevention, scheduling/front office, coding/CDI, patient-rights/grievance staff, pediatric/child-life support, and complementary/creative arts services when offered.
+
+These sections are SNS implementation guidance. A role’s presence does not by itself make the service separately covered or required. The controlling plan of care, qualifications, scope, contracts, jurisdiction, payer rules, and hospice policy remain applicable.
+
+---
+
 ## 11. Implementation rollout
 
 1. Preserve this document in `docs/SNS_HOSPICE_LANGUAGE_STANDARD.md`.
@@ -1347,7 +1626,7 @@ The word lists, discipline templates, suggestion behavior, display priorities, m
 4. Correct one active workflow at a time during its approved design review.
 5. Do not run an uncontrolled repository-wide replacement.
 6. Add non-blocking guidance only after wording is clinically approved.
-7. Validate by discipline and body system, including RN, LVN/LPN, aide/homemaker, physician/APP, MSW/MFT/MHC, spiritual care, therapies, dietary, pharmacy, volunteer/bereavement, case management, DPCS/administration, intake, billing, DME, and facility liaison roles.
+7. Validate by discipline and body system, including RN, LVN/LPN, aide/homemaker, physician/APP, MSW/MFT/MHC, spiritual care, therapies, dietary, pharmacy, volunteer/bereavement, case management, DPCS/administration, intake, billing, DME, facility liaison, wound/ostomy, respiratory therapy, inpatient/CHC/GIP, after-hours triage, interpreter/language access, HIM, privacy/security, QAPI/infection prevention, front office, coding/CDI, grievances, pediatric support, and complementary-service roles applicable to the organization.
 8. Perform one global consistency audit before field testing.
 9. Field test with users of varied computer experience.
 10. Revise and version the standard before organization-wide activation.
