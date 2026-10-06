@@ -39,6 +39,7 @@ from datetime import date, datetime, timedelta, timezone
 
 import pytest
 
+from app.api.visits import _build_j2051_adapter_inputs
 from app.models.admission import Admission
 from app.models.enums import CompletionReferenceType, TaskStatus, TaskType
 from app.models.patient import Patient
@@ -367,6 +368,87 @@ class TestRnicaHopePhaseBHuvWiring:
         assert huv2_task.status == TaskStatus.COMPLETED
         assert huv2_task.completion_reference_type == CompletionReferenceType.DOCUMENT
         assert huv2_task.completion_reference_id == record.id
+
+    def test_huv2_sob_severe_trigger_completes_task_and_creates_sfv(self, client, db_session, rn_headers):
+        """Literal HUV2 Shortness-of-Breath coverage.
+
+        The pre-existing test_huv2_severe_trigger_completes_task_and_creates_sfv
+        above proves the shared non-pain adapter path using Diarrhea = Severe.
+        It does not, by itself, prove that symptomImpact.shortnessOfBreath is
+        the literal field read by the adapter. This test closes that gap by
+        setting ONLY shortnessOfBreath to Severe (all other non-pain symptoms,
+        and pain itself, stay at "0"/non-triggering) and asserting the full
+        RNICA Lock -> adapter -> Phase B -> task -> SFV -> DB-persistence path
+        through the exact same HTTP endpoint used by the repaired workflow.
+        """
+        tenant_id = db_session.info.get("tenant_id")
+        patient, admission = _make_patient_with_admission(db_session, tenant_id)
+
+        sob_only_symptom_impact = _symptom_impact(shortnessOfBreath="3")
+
+        assessment_id, lock_json = self._lock_admission_then_update(
+            client,
+            db_session,
+            rn_headers,
+            patient,
+            update_visit_date=HUV2_WINDOW_VISIT_DATE,
+            update_symptom_impact=sob_only_symptom_impact,
+        )
+
+        summary = lock_json["hopePhaseB"]
+        assert summary is not None, "UPDATE assessment inside the HUV2 window must trigger HOPE processing"
+        assert summary["hopeEventType"] == "HUV2"
+        assert summary["taskCompleted"] is True
+
+        db_session.expire_all()
+        record = db_session.query(RnicaAssessment).filter_by(id=uuid.UUID(assessment_id)).one()
+        assert record.hope_event_type == "HUV2"
+        assert record.hope_event_date == date(2026, 1, 21)
+
+        # Adapter proof: run the real, unmodified adapter helper against the
+        # persisted RNICA form_data and show it reads shortnessOfBreath (not
+        # diarrhea, not a mock) as the sole qualifying non-pain symptom.
+        persisted_symptom_impact = record.form_data["symptomImpact"]
+        assert persisted_symptom_impact["shortnessOfBreath"] == "3"
+        assert persisted_symptom_impact["diarrhea"] == "0"
+        assert persisted_symptom_impact["constipation"] == "0"
+        pain_impact, non_pain_impact = _build_j2051_adapter_inputs(persisted_symptom_impact)
+        assert pain_impact == "NONE"
+        assert non_pain_impact == "SEVERE"
+
+        requirement = _sfv_requirement_for(db_session, patient.id, record.id)
+        assert requirement is not None
+        assert requirement.trigger_source_type == "HUV2"
+        assert requirement.trigger_reference_id == record.id
+        assert requirement.due_at.date() == date(2026, 1, 21) + timedelta(days=2)
+
+        huv2_task = (
+            db_session.query(Task)
+            .filter(Task.patient_id == patient.id, Task.task_type == TaskType.HUV2)
+            .one()
+        )
+        assert huv2_task.status == TaskStatus.COMPLETED
+        assert huv2_task.completion_reference_type == CompletionReferenceType.DOCUMENT
+        assert huv2_task.completion_reference_id == record.id
+
+        # Duplicate-lock / reload-persistence proof scoped to this scenario.
+        second_lock_resp = client.post(f"/visits/rnica/{assessment_id}/lock", headers=rn_headers)
+        assert second_lock_resp.status_code == 200, second_lock_resp.text
+
+        db_session.expire_all()
+        reloaded_record = db_session.query(RnicaAssessment).filter_by(id=uuid.UUID(assessment_id)).one()
+        assert reloaded_record.hope_event_type == "HUV2"
+        assert reloaded_record.hope_event_date == date(2026, 1, 21)
+
+        requirements_after_second_lock = (
+            db_session.query(SFVRequirement)
+            .filter(
+                SFVRequirement.patient_id == patient.id,
+                SFVRequirement.trigger_reference_id == record.id,
+            )
+            .all()
+        )
+        assert len(requirements_after_second_lock) == 1, "Re-locking must not create a duplicate SFV requirement"
 
     def test_update_assessment_outside_any_huv_window_is_not_a_hope_event(self, client, db_session, rn_headers):
         """An UPDATE assessment locked outside both the HUV1 (6-15) and
