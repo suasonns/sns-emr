@@ -11227,16 +11227,19 @@ export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
       const resistantHistory = (d.historyOfResistantInfections || []).filter((i) => i && i !== "None");
       if (resistantHistory.length > 0) findings.push(`History of resistant organism: ${resistantHistory.join(", ")}.`);
       // BUGFIX (2026-10-05) "Requires Follow-Up Must Show Its Reason" --
-      // `computeInfectionRequiresFollowUp` below already treats
-      // documented infection history (recurrentInfection/
-      // infectionHistoryTypes/infectionHistory) as a genuine follow-up
-      // trigger, but this findings list -- which drives both the Summary
-      // bullet list and the Structured Findings right-rail -- never
-      // surfaced that fact. Result: when only allergies + infection
-      // history were present, "REQUIRES FOLLOW-UP" appeared next to
-      // allergy-only-looking text, making it look like allergies caused
-      // it. Mirrors `infectionSummaryLine`'s equivalent line so the
-      // reason is always visible wherever the flag can appear.
+      // this findings list (which drives both the Summary bullet list
+      // and the Structured Findings right-rail) previously never
+      // surfaced documented infection-history facts at all, so when
+      // infection history was the only non-allergy data present,
+      // "REQUIRES FOLLOW-UP" (at the time still triggered by history
+      // alone) appeared next to allergy-only-looking text. Per the
+      // follow-up OWNER DIRECTIVE "Infection Follow-Up Governance
+      // Correction", `computeInfectionRequiresFollowUp` no longer treats
+      // history alone as a follow-up trigger -- but this line remains:
+      // infection history is still a real, clinically-relevant
+      // (historical/disease-burden) finding that belongs in the display,
+      // clearly labeled as history, distinct from "Active infection:".
+      // Mirrors `infectionSummaryLine`'s equivalent line.
       if (d.recurrentInfection || (d.infectionHistoryTypes || []).length > 0 || d.infectionHistory) {
         const historyTypes = (d.infectionHistoryTypes || []).filter((i) => i && i !== "Other" && i !== "None");
         const other = (d.infectionHistoryTypes || []).includes("Other") && d.infectionHistoryOther ? [d.infectionHistoryOther] : [];
@@ -11275,26 +11278,34 @@ export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
 // `primaryIssues` (which intentionally still lists allergies/
 // immunosuppression for display) so the "REQUIRES FOLLOW-UP" badge
 // reflects only genuine infection-clinical findings: active infection,
-// current/historical resistant organism, active antibiotic therapy,
-// non-standard precautions, or documented infection history. Mirrors the
-// same field checks already used above in the "infection" findings case
-// -- deliberately excludes allergyAlerts and immunosuppressed/
-// immunosuppressionReason.
+// current resistant organism, active antibiotic therapy, or non-standard
+// precautions. Mirrors the same field checks already used above in the
+// "infection" findings case -- deliberately excludes allergyAlerts and
+// immunosuppressed/immunosuppressionReason.
+//
+// OWNER DIRECTIVE (2026-10-05) "Infection Follow-Up Governance
+// Correction" -- PURELY HISTORICAL infection findings (recurrent
+// infection / infection-history quick-picks such as "Recurrent UTI" or
+// "Prior sepsis" / free-text infection-history notes / history of a
+// resistant organism) are hospice disease-burden and prognosis-support
+// indicators, not by themselves active clinical problems. They are
+// deliberately EXCLUDED from this trigger set so "REQUIRES FOLLOW-UP"
+// never fires from history alone -- it only fires when at least one
+// CURRENT signal (active infection, current resistant organism, active
+// antibiotic therapy, or non-standard precautions) is also documented.
+// Historical findings still surface in `computeBodySystemFindings`'s
+// "infection" findings list (display-only, clearly labeled "History of
+// resistant organism" / "Infection history") -- this function only
+// controls the follow-up badge, not what is shown.
 export function computeInfectionRequiresFollowUp(d = {}) {
   const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
   const resistantCurrent = (d.antibioticResistantInfection || []).filter((i) => i && i !== "None");
-  const resistantHistory = (d.historyOfResistantInfections || []).filter((i) => i && i !== "None");
   const activeAntibiotics = Boolean(d.antibioticTherapyStatus && d.antibioticTherapyStatus !== "Not receiving antibiotics");
   const nonStandardPrecautions = (d.precautions || []).some((p) => p && p !== "Standard");
-  const infectionHistoryDocumented = Boolean(d.recurrentInfection)
-    || (d.infectionHistoryTypes || []).some((t) => t && t !== "None")
-    || Boolean(d.infectionHistory);
   return activeInfections.length > 0
     || resistantCurrent.length > 0
-    || resistantHistory.length > 0
     || activeAntibiotics
-    || nonStandardPrecautions
-    || infectionHistoryDocumented;
+    || nonStandardPrecautions;
 }
 
 // OWNER DIRECTIVE (2026-10-21) "Infection Language Standard" item 14,

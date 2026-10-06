@@ -70,9 +70,37 @@ describe("Infection Summary -- REQUIRES FOLLOW-UP decoupling (item 12)", () => {
     expect(computeInfectionRequiresFollowUp({ precautions: ["Standard"] })).toBe(false);
   });
 
-  it("DOES require follow-up for documented infection history", () => {
-    expect(computeInfectionRequiresFollowUp({ recurrentInfection: true })).toBe(true);
-    expect(computeInfectionRequiresFollowUp({ infectionHistoryTypes: ["Prior sepsis"] })).toBe(true);
+  it("does NOT require follow-up for historical infection findings alone (Infection Follow-Up Governance Correction)", () => {
+    // Recurrent UTI / prior sepsis / recurrent-infection notes are
+    // disease-burden and prognosis-support indicators in hospice, not by
+    // themselves an active clinical problem -- history alone must never
+    // raise REQUIRES FOLLOW-UP.
+    expect(computeInfectionRequiresFollowUp({ recurrentInfection: true })).toBe(false);
+    expect(computeInfectionRequiresFollowUp({ infectionHistoryTypes: ["Prior sepsis"] })).toBe(false);
+    expect(computeInfectionRequiresFollowUp({ infectionHistoryTypes: ["Recurrent UTI", "Prior sepsis"] })).toBe(false);
+    expect(computeInfectionRequiresFollowUp({ infectionHistory: "Recurrent UTIs over past year" })).toBe(false);
+  });
+
+  it("does NOT require follow-up for history of a resistant organism alone", () => {
+    expect(computeInfectionRequiresFollowUp({ historyOfResistantInfections: ["MRSA"] })).toBe(false);
+  });
+
+  it("DOES require follow-up when historical infection findings are combined with a current active signal", () => {
+    const data = {
+      infectionHistoryTypes: ["Recurrent UTI", "Prior sepsis"],
+      currentInfections: ["UTI"],
+    };
+    expect(computeInfectionRequiresFollowUp(data)).toBe(true);
+  });
+
+  it("still returns No Current Infection Concern / no follow-up when history is documented but Overview is explicitly 'No Current Infection Concern' with no current signals", () => {
+    const data = {
+      infectionOverview: "No Current Infection Concern",
+      infectionHistoryTypes: ["Recurrent UTI", "Prior sepsis"],
+      historyOfResistantInfections: ["MRSA"],
+    };
+    const summary = computeBodySystemSummary("infection", data, { allergyAlerts: [] });
+    expect(summary.requiresFollowUp).toBe(false);
   });
 
   it("combines a real infection finding with allergy/immunosuppression without losing the follow-up signal", () => {
