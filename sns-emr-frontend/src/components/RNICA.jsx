@@ -861,8 +861,8 @@ const INITIAL_FORM = {
     lastBMSize: "",
     giInformationSource: "",
     continence: "",
-    feedingTube: { present: false, type: "", site: "" },
-    ostomy: { present: false, type: "", condition: "" },
+    feedingTube: { present: "", type: "", site: "" },
+    ostomy: { present: "", type: "", condition: "" },
     notes: "",
     clinicalStatusChange: "",
     // UI-only workflow flag (excluded from every summary/findings-count
@@ -1983,7 +1983,11 @@ function buildClientLcdFacts(formData) {
   const kps = normalizeLcdNumber(formData?.performanceStatus?.kps);
   const dressingScore = normalizeLcdNumber(formData?.musculoskeletal?.adl?.dressing);
   const bathingScore = normalizeLcdNumber(formData?.musculoskeletal?.adl?.bathing);
-  const hasContinenceEvidence = Boolean(urinaryStatus || bowelStatus || formData?.genitourinary?.catheter?.present || formData?.gastrointestinal?.ostomy?.present);
+  // OWNER DIRECTIVE (2026-10-29) "GI Rework" -- ostomy.present now stores
+  // "Yes"/"No"/"" (segmentedTriState); normalizeTriState also accepts a
+  // pre-existing legacy boolean `true`, so LCD scoring on historical
+  // records is unaffected.
+  const hasContinenceEvidence = Boolean(urinaryStatus || bowelStatus || formData?.genitourinary?.catheter?.present) || normalizeTriState(formData?.gastrointestinal?.ostomy?.present) === "Yes";
   const hasWeightLossEvidence = weightLoss.lbs !== null || weightLoss.percent !== null;
 
   return {
@@ -2004,7 +2008,7 @@ function buildClientLcdFacts(formData) {
           ["stress incontinence", "urge incontinence", "functional incontinence", "total incontinence", "catheterized"].includes(urinaryStatus)
           || bowelStatus === "incontinent"
           || Boolean(formData?.genitourinary?.catheter?.present)
-          || Boolean(formData?.gastrointestinal?.ostomy?.present)
+          || normalizeTriState(formData?.gastrointestinal?.ostomy?.present) === "Yes"
         )
       : null,
     is_bedbound: mobilityStatus ? mobilityStatus === "bedbound" : null,
@@ -11234,8 +11238,13 @@ export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
       if ((d.reasonBowelRegimenNotInitiated || "").trim()) {
         findings.push(`Bowel regimen not initiated: ${d.reasonBowelRegimenNotInitiated.trim()}.`);
       }
-      if (d.ostomy?.present) findings.push(`Ostomy present (${d.ostomy.type || "type not specified"}).`);
-      if (d.feedingTube?.present) findings.push(`Feeding tube present (${d.feedingTube.type || "type not specified"}).`);
+      // OWNER DIRECTIVE (2026-10-29) "GI Rework" -- feedingTube.present/
+      // ostomy.present now store "Yes"/"No"/"" (segmentedTriState) instead
+      // of a plain boolean; normalizeTriState keeps accepting a
+      // pre-existing legacy `true` value too, so historical records still
+      // surface this finding exactly as before.
+      if (normalizeTriState(d.ostomy?.present) === "Yes") findings.push(`Ostomy present (${d.ostomy.type || "type not specified"}).`);
+      if (normalizeTriState(d.feedingTube?.present) === "Yes") findings.push(`Feeding tube present (${d.feedingTube.type || "type not specified"}).`);
       break;
     }
     case "genitourinary": {
@@ -12271,16 +12280,24 @@ function categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData = {}
   });
   // "Current GI Status" reflects the nurse's own Clinical Status Change
   // selection (GASTROINTESTINAL_CLINICAL_STATUS_CODES) when one has been
-  // made, falling back to a neutral "no concern documented" sentence --
-  // same Scenario A/B wording convention as Infection's "No current
-  // infection concern documented." Never invented/inferred beyond the
-  // nurse's own selection.
+  // made. OWNER DIRECTIVE (2026-10-29) "GI Rework -- Summary Rework":
+  // removed the previous fallback sentence "Current GI symptom burden
+  // documented above." -- it repeated/pointed at the GI Symptom Burden
+  // category instead of adding a new fact, which the owner identified as
+  // non-compliant noise ("Remove it when it adds no new clinical
+  // information" / "Do not repeat the same finding in multiple
+  // categories"). When burden already lists the facts and no explicit
+  // status was selected, the whole "Current GI Status" category is now
+  // simply omitted (not rendered) rather than filled with a placeholder
+  // sentence. The neutral "No current GI concern documented." sentence is
+  // preserved for the true Scenario-B case (nothing documented at all),
+  // matching Infection's identical convention.
   const statusLine = sectionData?.clinicalStatusChange && sectionData.clinicalStatusChange !== "Not Applicable"
     ? `${sectionData.clinicalStatusChange}.`
-    : (burden.length > 0 ? "Current GI symptom burden documented above." : "No current GI concern documented.");
+    : (burden.length > 0 ? null : "No current GI concern documented.");
   const groups = [
     { heading: "GI Symptom Burden", items: burden },
-    { heading: "Current GI Status", items: [statusLine] },
+    { heading: "Current GI Status", items: statusLine ? [statusLine] : [] },
     { heading: "Current Management", items: management },
   ].filter((g) => g.items.length > 0);
   return groups.length > 0 ? groups : null;
@@ -14387,6 +14404,23 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 if (field.path === "vomitingOccurrences24h" && !isModOrSevere(cardData.vomiting) && !manuallyOpened) {
                   return null;
                 }
+                // OWNER DIRECTIVE (2026-10-29) "GI Rework -- Feeding-Tube/
+                // Ostomy Visibility" -- same gating pattern as
+                // Cardiovascular's `edema.present === "Yes"` ->
+                // `edema.location` reveal. Tube Type / Ostomy Type consume
+                // zero space until their own present-field is explicitly
+                // "Yes" (never inferred from a blank/legacy-false value).
+                // normalizeTriState also treats a pre-existing legacy
+                // boolean `true` (written by older records/registry
+                // quick-actions before this field converted to
+                // segmentedTriState) as "Yes", so historical data that
+                // already documented a tube/ostomy keeps showing its Type.
+                if (field.path === "feedingTube.type" && normalizeTriState(cardData.feedingTube?.present) !== "Yes") {
+                  return null;
+                }
+                if (field.path === "ostomy.type" && normalizeTriState(cardData.ostomy?.present) !== "Yes") {
+                  return null;
+                }
               }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
@@ -14722,10 +14756,19 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 // and keeps rendering for every other body system still
                 // using `type: "triState"`.
                 case "segmentedTriState":
+                  // OWNER DIRECTIVE (2026-10-29) "GI Rework" -- optional
+                  // `field.unassessedLabel` lets a specific field (e.g. GI
+                  // Feeding Tube/Ostomy Present, which must read "Unable To
+                  // Determine" rather than "Not Assessed") override the
+                  // displayed text for the "" value only. Stored value
+                  // contract is unchanged (still ""), so every existing
+                  // `segmentedTriState` field (Cardiovascular's
+                  // edema.present/chestPain.present/etc.) keeps rendering
+                  // "Not Assessed" exactly as before.
                   rendered = <FormSegmented label={fieldForRender.label} value={normalizeTriState(value)}
                     onChange={onChange} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv}
                     options={[
-                      { value: "", label: "Not Assessed" },
+                      { value: "", label: fieldForRender.unassessedLabel || "Not Assessed" },
                       { value: "No", label: "No" },
                       { value: "Yes", label: "Yes" },
                     ]} />;
@@ -16427,11 +16470,19 @@ const SECTION_CONFIGS = {
       ]},
       { title: "Constipation — Auto-Suggested from Last BM Date", category: "core", customRenderer: "constipationAutoAssess" },
       { title: "GI Symptoms", category: "symptoms", fields: [
-        { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "radio", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        // OWNER DIRECTIVE (2026-10-29) "GI Rework -- All Clinical Choices
+        // Must Use SNS Pills" -- converted from `type: "radio"` (large
+        // circular/square FormRadioGroup controls) to `type: "segmented"`
+        // (compact SNS ToggleGroup pill), the exact same component already
+        // used for the approved Pain/Neurological/Respiratory/Infection
+        // severity fields (e.g. Respiratory's `sobSeverity`). Same stored
+        // string values ("None"/"Mild"/"Moderate"/"Severe"), same `path`,
+        // same `sfv` prop -- visual-only swap, no data shape change.
+        { type: "segmented", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
-        { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
         // Revision" -- these fields stay hidden (render-loop guard
         // above) until the exact one-step trigger is met: Last BM Size
@@ -16442,10 +16493,13 @@ const SECTION_CONFIGS = {
         // manually opens Additional Bowel Details below. Mild
         // Constipation alone now reveals nothing further -- Last BM Date
         // lives in the always-visible Bowel Basics card below instead.
-        { type: "radio", label: "Last BM Size", path: "lastBMSize", options: ["Small", "Medium", "Large", "Unable To Determine"] },
-        { type: "radio", label: "Straining", path: "straining", options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "radio", label: "Stool Character", path: "stoolConsistency", options: ["Formed", "Soft", "Loose", "Watery", "Unable To Determine"] },
-        { type: "select", label: "Information Source", path: "giInformationSource", options: ["Patient Report", "Caregiver Report", "Facility Record", "Nurse Observation"] },
+        { type: "segmented", label: "Last BM Size", path: "lastBMSize", options: ["Small", "Medium", "Large", "Unable To Determine"] },
+        { type: "segmented", label: "Straining", path: "straining", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Stool Character", path: "stoolConsistency", options: ["Formed", "Soft", "Loose", "Watery", "Unable To Determine"] },
+        // OWNER DIRECTIVE (2026-10-29) -- "select" dropdown replaced with
+        // the same compact `segmented` pill used throughout; still hidden
+        // by default via the render-loop guard below.
+        { type: "segmented", label: "Information Source", path: "giInformationSource", options: ["Patient Report", "Caregiver Report", "Facility Record", "Nurse Observation", "Unable To Determine"] },
         { type: "checkbox", label: "Show Additional Bowel Details", path: "giShowAdditionalBowelDetails" },
       ]},
       // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision"
@@ -16467,10 +16521,23 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
         { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
+      // OWNER DIRECTIVE (2026-10-29) "GI Rework -- Feeding-Tube/Ostomy
+      // Visibility" -- `checkbox` (legacy boolean present/absent, defaults
+      // to a false "No" even when never assessed) replaced with
+      // `segmentedTriState`, the exact already-shipped Cardiovascular
+      // present/absent pattern (`edema.present`, `chestPain.present`):
+      // stores "" (Not Assessed) / "No" / "Yes", same SNS pill visual.
+      // Tube Type / Ostomy Type are now gated by their own present-field's
+      // "Yes" value in the render-loop guard below (same
+      // `edema.present === "Yes"` -> reveal `edema.location` pattern used
+      // by Cardiovascular), so they consume zero space unless Yes is
+      // selected -- fields/options/options-text unchanged, no registry
+      // schema change (downstream `.present` consumers updated to accept
+      // both the legacy boolean `true` and the new "Yes").
       { title: "Feeding Devices", category: "treatments", fields: [
-        { type: "checkbox", label: "Feeding Tube Present", path: "feedingTube.present" },
+        { type: "segmentedTriState", label: "Feeding Tube Present", path: "feedingTube.present", unassessedLabel: "Unable To Determine" },
         { type: "select", label: "Tube Type", path: "feedingTube.type", options: ["NG", "PEG", "PEJ", "G-tube", "J-tube"] },
-        { type: "checkbox", label: "Ostomy Present", path: "ostomy.present" },
+        { type: "segmentedTriState", label: "Ostomy Present", path: "ostomy.present", unassessedLabel: "Unable To Determine" },
         { type: "select", label: "Ostomy Type", path: "ostomy.type", options: ["Colostomy", "Ileostomy", "Urostomy"] },
       ]},
       // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Clinical
