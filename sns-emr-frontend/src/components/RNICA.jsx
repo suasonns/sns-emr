@@ -12082,6 +12082,53 @@ export function computeCardiovascularNarrative(d) {
 // diff, so computeNeurologicalNarrative may read them directly.
 //
 // (Comment continues from "Computed Summary panel for the Body Systems
+// OWNER DIRECTIVE "Infection Summary Categorization" (presentation-layer
+// only, approved after the Infection Follow-Up Governance correction) --
+// buckets the already-computed, already-worded `primaryIssues` lines from
+// computeBodySystemFindings into labeled groups for the Infection Summary
+// card ONLY. This is purely a re-grouping of existing strings: it does not
+// reword any line, does not change `requiresFollowUp`, and does not touch
+// computeInfectionRequiresFollowUp. Every other consumer of
+// computeBodySystemFindings (Structured Findings right-rail,
+// infectionSummaryLine/"Existing Infection Findings Review", other body
+// systems) keeps reading the flat array untouched. Returns null when there
+// is nothing to group so the renderer can fall back to the flat list.
+function categorizeInfectionSummaryIssues(primaryIssues) {
+  if (!Array.isArray(primaryIssues) || primaryIssues.length === 0) return null;
+  const patientSafety = [];
+  const historical = [];
+  const clinicalContext = [];
+  const current = [];
+  const ALLERGY_LINE_RE = /^(Medication|Food|Environmental|Other\/Sensitivity) allergy:/;
+  const HISTORICAL_LINE_RE = /^(Infection history:|History of resistant organism:)/;
+  const CLINICAL_CONTEXT_LINE_RE = /^Immunosuppressed/;
+  primaryIssues.forEach((line) => {
+    if (ALLERGY_LINE_RE.test(line)) {
+      patientSafety.push(line);
+    } else if (HISTORICAL_LINE_RE.test(line)) {
+      historical.push(line);
+    } else if (CLINICAL_CONTEXT_LINE_RE.test(line)) {
+      clinicalContext.push(line);
+    } else {
+      current.push(line);
+    }
+  });
+  // "Current Infection Status" always renders, even with no current
+  // findings, so the Summary explicitly states there is none documented
+  // rather than omitting the category (owner-requested Scenario A/B
+  // wording).
+  if (current.length === 0) {
+    current.push("No current infection concern documented.");
+  }
+  const groups = [
+    { heading: "Patient Safety Findings", items: patientSafety },
+    { heading: "Historical Infection Findings", items: historical },
+    { heading: "Clinical Context", items: clinicalContext },
+    { heading: "Current Infection Status", items: current },
+  ].filter((g) => g.items.length > 0);
+  return groups.length > 0 ? groups : null;
+}
+
 // 9-part structure. Reuses computeBodySystemFindings (the same
 // deterministic, already-documented-only findings list used elsewhere)
 // so the Summary never introduces a" -- split by an earlier edit that
@@ -12105,7 +12152,7 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
       // OWNER DIRECTIVE (2026-10-05) item 4, "Initial Unselected State"
       // -- exact required wording, same lowercase/period convention as
       // Cardiovascular's equivalent branch above.
-      return { status: "Infection assessment not yet documented.", primaryIssues, requiresFollowUp: false };
+      return { status: "Infection assessment not yet documented.", primaryIssues, primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues), requiresFollowUp: false };
     }
     const label = sectionKey ? sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1) : "This section's";
     return {
@@ -12205,6 +12252,7 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
           ? `Infection assessment unable to complete. Reason: ${reason}.`
           : "Infection Findings Documented -- Review Pending",
         primaryIssues,
+        primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
         requiresFollowUp: true,
       };
     }
@@ -12212,6 +12260,7 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
       return {
         status: primaryIssues.length > 0 ? "Findings Present" : "No current infection concern identified.",
         primaryIssues,
+        primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
         requiresFollowUp: computeInfectionRequiresFollowUp(sectionData),
       };
     }
@@ -12223,6 +12272,7 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
     return {
       status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
       primaryIssues,
+      primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
       requiresFollowUp: computeInfectionRequiresFollowUp(sectionData),
     };
   }
@@ -14511,10 +14561,29 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               >
                 <h4 className="rnica-bodysystem-summary__heading">Summary</h4>
                 <p className="rnica-bodysystem-summary__status">{bodySystemSummary.status}</p>
-                {bodySystemSummary.primaryIssues.length > 0 && (
-                  <ul className="rnica-bodysystem-summary__issues">
-                    {bodySystemSummary.primaryIssues.map((issue, ii) => <li key={ii}>{issue}</li>)}
-                  </ul>
+                {/* OWNER DIRECTIVE "Infection Summary Categorization" --
+                    when computeBodySystemSummary supplies
+                    `primaryIssueGroups` (Infection only), render labeled
+                    groups (Patient Safety Findings / Historical Infection
+                    Findings / Clinical Context / Current Infection
+                    Status) instead of one flat bullet list. Every other
+                    body system has no `primaryIssueGroups` and keeps the
+                    original flat rendering below unchanged. */}
+                {bodySystemSummary.primaryIssueGroups ? (
+                  bodySystemSummary.primaryIssueGroups.map((group, gi) => (
+                    <div className="rnica-bodysystem-summary__group" key={gi}>
+                      <p className="rnica-bodysystem-summary__group-heading">{group.heading}</p>
+                      <ul className="rnica-bodysystem-summary__issues">
+                        {group.items.map((issue, ii) => <li key={ii}>{issue}</li>)}
+                      </ul>
+                    </div>
+                  ))
+                ) : (
+                  bodySystemSummary.primaryIssues.length > 0 && (
+                    <ul className="rnica-bodysystem-summary__issues">
+                      {bodySystemSummary.primaryIssues.map((issue, ii) => <li key={ii}>{issue}</li>)}
+                    </ul>
+                  )
                 )}
                 {bodySystemSummary.requiresFollowUp && (
                   <p className="rnica-bodysystem-summary__flag">Requires Follow-Up</p>

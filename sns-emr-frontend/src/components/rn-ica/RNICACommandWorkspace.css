@@ -1297,6 +1297,24 @@
   letter-spacing: 0.04em;
 }
 
+/* OWNER DIRECTIVE "Infection Summary Categorization" -- labeled grouping
+   for Infection's Summary card only (Patient Safety Findings / Historical
+   Infection Findings / Clinical Context / Current Infection Status).
+   Presentation only: reuses the same list styling as the flat
+   `.rnica-bodysystem-summary__issues` rendering it replaces for Infection. */
+.rnica-bodysystem-summary__group + .rnica-bodysystem-summary__group {
+  margin-top: 6px;
+}
+
+.rnica-bodysystem-summary__group-heading {
+  margin: 0 0 2px;
+  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sns-muted);
+}
+
 /* OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item #1 --
    elevates the generic .rnica-bodysystem-summary to the same visual
    weight as Functional Status's banner (ShadcnCardTitle-size heading,
