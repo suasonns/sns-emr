@@ -15649,11 +15649,15 @@ const SECTION_CONFIGS = {
           },
         ],
       },
-      // OWNER DIRECTIVE (2026-10-05) "Shared Information = Render Once" --
-      // Allergies and Immune Status are patient-profile data (category
-      // "profile", see BODY_SYSTEM_CATEGORY_ORDER), not per-visit infection
-      // findings. category "profile" renders this group ABOVE "Infection
-      // Overview"'s "core" group -- rendered exactly once, never hidden or
+      // OWNER DIRECTIVE (2026-10-05) "Shared Information = Render Once" +
+      // "Infection Overview Must Lead" -- Allergies and Immune Status are
+      // patient-profile data (category "profile", last in
+      // BODY_SYSTEM_CATEGORY_ORDER), not per-visit infection findings.
+      // category "profile" renders as "Patient Reference Information"
+      // AFTER "Infection Overview"'s "core" group (and after every other
+      // category), so the nurse's first question -- "is there a current
+      // infection concern?" -- is answered before any allergy/immune-status
+      // review, not before it. Rendered exactly once, never hidden or
       // rebuilt by the Overview workflow-state selector below it (see the
       // exclusion for both titles in the Overview gate, ~line 12414).
       // Allergies is additionally shared with Facesheet + med-ordering
