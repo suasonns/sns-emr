@@ -28,6 +28,7 @@ import AdmissionActionCenterDrawer, {
 } from "./AdmissionActionCenterDrawer";
 import {
   RNICA_ASSESSMENT_MODULES,
+  UPDATE_HIDDEN_ROUTE_KEYS,
   validateBodyMapRegions,
 } from "./rn-ica/rnIcaClinicalNavigation";
 import { LANGUAGE_OPTIONS, ETHNICITY_OPTIONS, RACE_OPTIONS } from "./rn-ica/hope-admin-review/HopeAdministrativeReview";
@@ -307,7 +308,10 @@ const FORM_REGISTRY = [
   "admissionsOrder", "referrals", "finalization",
 ];
 
-const UPDATE_HIDDEN_ROUTE_KEYS = new Set(["admissionsOrder", "sfv"]);
+// UPDATE_HIDDEN_ROUTE_KEYS is imported from rnIcaClinicalNavigation.js --
+// a single shared source of truth with validateRnIcaClinicalNavigation's
+// expected-route computation (issue #166 fix) so the two can never drift
+// apart again.
 const UPDATE_HIDDEN_SIDEBAR_KEYS = new Set(["advancedCarePlanning", "admissionsOrder", "sfv"]);
 
 // ════════════════════════════════════════════════════════════════
@@ -19297,6 +19301,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           saveStatus={saveStatus}
           intelligence={intelligence}
           isOngoingAssessment={isOngoing}
+          isUpdateAssessment={isUpdateAssessment}
           renderWorkspaceSections={renderWorkspaceSections}
           bodySystemsAccordionItems={bodySystemsAccordionItems}
           bodySystemsStructuredFindings={bodySystemsStructuredFindings}

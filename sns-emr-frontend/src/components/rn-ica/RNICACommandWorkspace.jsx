@@ -320,6 +320,7 @@ export default function RNICACommandWorkspace({
   onExitPilot,
   canLock,
   isOngoingAssessment = false,
+  isUpdateAssessment = false,
   onUpdateField,
   painData,
   symptomImpactData,
@@ -419,8 +420,8 @@ export default function RNICACommandWorkspace({
     .find((route) => key === (route.validationPrefix || route.formSection)
       || key.startsWith(`${route.validationPrefix || route.formSection}.`));
   const navigationAudit = useMemo(
-    () => validateRnIcaClinicalNavigation(routes, formSections, isOngoingAssessment),
-    [formSections, routes, isOngoingAssessment],
+    () => validateRnIcaClinicalNavigation(routes, formSections, isOngoingAssessment, isUpdateAssessment),
+    [formSections, routes, isOngoingAssessment, isUpdateAssessment],
   );
   if (import.meta.env.DEV && !navigationAudit.valid) {
     throw new Error(`Invalid RNICA clinical navigation: ${navigationAudit.errors.join("; ")}`);
