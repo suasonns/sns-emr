@@ -1753,6 +1753,38 @@
     flex-basis: 100%;
   }
 }
+
+/* OWNER DIRECTIVE (2026-10-05) "SNS Global Body-System Standard, applied
+   to GI" -- Layout Standard v1.1 Section 10 ("Management" row: "2-column
+   at >=532 when both groups are populated") and the established
+   Cardiovascular precedent immediately above. Feeding Devices
+   (category "treatments": 2 checkboxes + 2 selects) and Clinical Status
+   Change (category "response": 1 segmented control) are both short,
+   content-driven cards that otherwise each reserve a full-width row,
+   producing the same disproportionate whitespace the Cardiovascular
+   pass corrected. Pairs them into one 50/50 row on desktop without
+   merging their category/heading/data identity -- each keeps its own
+   `.rnica-bodysystem-group[data-category]` wrapper, heading, and field
+   set. Scoped to `[data-section="gastrointestinal"]` only. */
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+  flex-basis: calc(50% - 2px);
+}
+@media (max-width: 900px) {
+  .rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+  .rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+    flex-basis: 100%;
+  }
+}
 /* Cardiovascular Overview (first card a nurse sees, functions as the
    section's triage/summary gate), Cardiac Devices (3 short pills), and
    Clinical Status Change (2 fields) are all short-content cards that
