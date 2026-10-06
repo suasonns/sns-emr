@@ -838,16 +838,39 @@ const INITIAL_FORM = {
   },
 
   // ─── 11. GASTROINTESTINAL ─────────────────────────
+  // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" -- same
+  // Overview-gate pattern already shipped for Cardiovascular/Respiratory/
+  // Infection (see `respiratoryOverview`/`infectionOverview` above).
+  // `gastrointestinalOverview` is an organization-only addition; no
+  // existing field below is renamed, removed, or reclassified. The
+  // conditional bowel-detail fields (`lastBMSize`, `straining`,
+  // `stoolConsistency`, `giInformationSource`) and the UI-only
+  // `giShowAdditionalBowelDetails` toggle are additive, minimal-required-
+  // field additions approved in the same directive -- they stay hidden
+  // in the render loop below until the nurse documents a Mild/Moderate/
+  // Severe symptom (see the conditional-field guard in the render loop)
+  // so routine/normal GI documentation stays under one minute.
   gastrointestinal: {
+    gastrointestinalOverview: "",
     nausea: "", vomiting: "", vomitingOccurrences24h: "", diarrhea: "", constipation: "",
+    straining: "",
+    stoolConsistency: "",
     bowelSounds: "", abdomen: "", ascites: false, abdominalGirth: "",
     stoolCharacter: [],
     bowelStatus: "", bowelFrequency: "", reasonBowelRegimenNotInitiated: "", lastBM: "",
+    lastBMSize: "",
+    giInformationSource: "",
     continence: "",
     feedingTube: { present: false, type: "", site: "" },
     ostomy: { present: false, type: "", condition: "" },
     notes: "",
     clinicalStatusChange: "",
+    // UI-only workflow flag (excluded from every summary/findings-count
+    // helper below) -- lets the nurse manually open the conditional
+    // bowel-detail fields even when no severity threshold has been
+    // crossed yet (Phase 1 spec "Nurse manually opens additional bowel
+    // details"). Never itself a clinical finding.
+    giShowAdditionalBowelDetails: false,
   },
 
   // ─── 12. NUTRITION ────────────────────────────────
@@ -3461,6 +3484,22 @@ export const INFECTION_CLINICAL_STATUS_CODES = {
   "Not Applicable": "not_applicable",
 };
 export const INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS = Object.keys(INFECTION_CLINICAL_STATUS_CODES);
+
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Clinical Status
+// Governance" -- same rationale as Infection's retirement of the generic
+// hospice "Stable / No Change"-family wording above: GI is an active
+// symptom-burden/elimination assessment, not a general trajectory review.
+// Exactly five options, no sixth, same shape as INFECTION_CLINICAL_STATUS_CODES
+// (does NOT touch CLINICAL_STATUS_CHANGE_OPTIONS or any other body
+// system's list).
+export const GASTROINTESTINAL_CLINICAL_STATUS_CODES = {
+  "GI-Related Findings Reduced Since Prior Assessment": "gi_findings_reduced",
+  "Current GI-Related Interventions Appear Effective": "gi_interventions_appear_effective",
+  "GI-Related Decline Observed Since Prior Assessment": "gi_decline_observed",
+  "New GI-Related Finding Since Prior Assessment": "gi_new_finding",
+  "Not Applicable": "not_applicable",
+};
+export const GASTROINTESTINAL_CLINICAL_STATUS_CHANGE_OPTIONS = Object.keys(GASTROINTESTINAL_CLINICAL_STATUS_CODES);
 
 // Item 15 "Legacy Compatibility" -- these terms are retired from
 // Infection's Clinical Status Change going forward (not offered, never
@@ -11172,6 +11211,29 @@ export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
       break;
     }
     case "gastrointestinal": {
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Structured
+      // Findings Integration" -- previously ONLY Ostomy/Feeding Tube
+      // presence reached Summary/Structured Findings; a documented
+      // Moderate/Severe GI symptom produced zero visible signal. "None"
+      // (baseline/normal) selections are excluded, same convention as
+      // every other body system case above.
+      if (d.nausea && d.nausea !== "None") findings.push(`Nausea: ${d.nausea}.`);
+      if (d.vomiting && d.vomiting !== "None") {
+        const occurrences = d.vomitingOccurrences24h ? ` (${d.vomitingOccurrences24h}x/24h)` : "";
+        findings.push(`Vomiting: ${d.vomiting}${occurrences}.`);
+      }
+      if (d.diarrhea && d.diarrhea !== "None") findings.push(`Diarrhea: ${d.diarrhea}.`);
+      if (d.constipation && d.constipation !== "None") {
+        const size = d.lastBMSize ? `, last BM size: ${d.lastBMSize}` : "";
+        const straining = d.straining && d.straining !== "None" ? `, straining: ${d.straining}` : "";
+        findings.push(`Constipation: ${d.constipation}${size}${straining}.`);
+      }
+      if (d.stoolConsistency && d.stoolConsistency !== "Unable To Determine") {
+        findings.push(`Stool consistency: ${d.stoolConsistency}.`);
+      }
+      if ((d.reasonBowelRegimenNotInitiated || "").trim()) {
+        findings.push(`Bowel regimen not initiated: ${d.reasonBowelRegimenNotInitiated.trim()}.`);
+      }
       if (d.ostomy?.present) findings.push(`Ostomy present (${d.ostomy.type || "type not specified"}).`);
       if (d.feedingTube?.present) findings.push(`Feeding tube present (${d.feedingTube.type || "type not specified"}).`);
       break;
@@ -11306,6 +11368,43 @@ export function computeInfectionRequiresFollowUp(d = {}) {
     || resistantCurrent.length > 0
     || activeAntibiotics
     || nonStandardPrecautions;
+}
+
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" -- no clinical
+// consensus threshold is stored anywhere in RNICA for "last BM exceeds
+// threshold"; 3 days is a commonly used conservative bowel-protocol
+// trigger point, used here ONLY to decide whether the optional
+// "Information Source" field is offered (never a diagnosis, never a
+// required field, never a follow-up trigger by itself). Flagged for
+// explicit owner confirmation; easy to change in one place if a
+// different value is preferred.
+export const GI_LAST_BM_THRESHOLD_DAYS = 3;
+
+export function giLastBMExceedsThreshold(lastBM) {
+  if (!lastBM) return false;
+  const parsed = new Date(lastBM);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const diffDays = (Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays > GI_LAST_BM_THRESHOLD_DAYS;
+}
+
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Follow-Up
+// Governance" -- same historical-vs-current discipline as
+// `computeInfectionRequiresFollowUp` above: follow-up requires CURRENT
+// evidence (documented Moderate/Severe symptom burden, a bowel regimen
+// that could not be initiated, or a nurse-selected GI-Related Decline/
+// New Finding Clinical Status Change) -- never historical burden or
+// device presence (Ostomy/Feeding Tube) alone.
+export function computeGastrointestinalRequiresFollowUp(d = {}) {
+  const moderateOrSevere = (v) => v === "Moderate" || v === "Severe";
+  const symptomBurden = moderateOrSevere(d.nausea)
+    || moderateOrSevere(d.vomiting)
+    || moderateOrSevere(d.diarrhea)
+    || moderateOrSevere(d.constipation);
+  const bowelRegimenConcern = Boolean((d.reasonBowelRegimenNotInitiated || "").trim());
+  const decliningStatus = d.clinicalStatusChange === "GI-Related Decline Observed Since Prior Assessment"
+    || d.clinicalStatusChange === "New GI-Related Finding Since Prior Assessment";
+  return symptomBurden || bowelRegimenConcern || decliningStatus;
 }
 
 // OWNER DIRECTIVE (2026-10-21) "Infection Language Standard" item 14,
@@ -12129,6 +12228,47 @@ function categorizeInfectionSummaryIssues(primaryIssues) {
   return groups.length > 0 ? groups : null;
 }
 
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Summary
+// Architecture" -- same re-grouping technique as
+// `categorizeInfectionSummaryIssues` above: buckets the already-computed,
+// already-worded `primaryIssues` lines from `computeBodySystemFindings`
+// into labeled groups for the Gastrointestinal Summary card ONLY. Pure
+// re-grouping of existing strings -- does not reword any line, does not
+// change `requiresFollowUp`, does not touch
+// `computeGastrointestinalRequiresFollowUp`. The Structured Findings
+// right-rail keeps reading the flat array untouched (see
+// bodySystemsStructuredFindings below). "Historical GI Findings" is
+// intentionally omitted here -- no historical-GI-tracking fields exist
+// yet (owner directive: "Only when historical tracking exists").
+function categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData = {}) {
+  if (!Array.isArray(primaryIssues) || primaryIssues.length === 0) return null;
+  const burden = [];
+  const management = [];
+  const MANAGEMENT_RE = /^(Ostomy present|Feeding tube present)/;
+  primaryIssues.forEach((line) => {
+    if (MANAGEMENT_RE.test(line)) {
+      management.push(line);
+    } else {
+      burden.push(line);
+    }
+  });
+  // "Current GI Status" reflects the nurse's own Clinical Status Change
+  // selection (GASTROINTESTINAL_CLINICAL_STATUS_CODES) when one has been
+  // made, falling back to a neutral "no concern documented" sentence --
+  // same Scenario A/B wording convention as Infection's "No current
+  // infection concern documented." Never invented/inferred beyond the
+  // nurse's own selection.
+  const statusLine = sectionData?.clinicalStatusChange && sectionData.clinicalStatusChange !== "Not Applicable"
+    ? `${sectionData.clinicalStatusChange}.`
+    : (burden.length > 0 ? "Current GI symptom burden documented above." : "No current GI concern documented.");
+  const groups = [
+    { heading: "GI Symptom Burden", items: burden },
+    { heading: "Current GI Status", items: [statusLine] },
+    { heading: "Current Management", items: management },
+  ].filter((g) => g.items.length > 0);
+  return groups.length > 0 ? groups : null;
+}
+
 // 9-part structure. Reuses computeBodySystemFindings (the same
 // deterministic, already-documented-only findings list used elsewhere)
 // so the Summary never introduces a" -- split by an earlier edit that
@@ -12153,6 +12293,12 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
       // -- exact required wording, same lowercase/period convention as
       // Cardiovascular's equivalent branch above.
       return { status: "Infection assessment not yet documented.", primaryIssues, primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues), requiresFollowUp: false };
+    }
+    if (sectionKey === "gastrointestinal") {
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" item 4,
+      // same "Initial Unselected State" wording convention as Infection's
+      // equivalent branch above.
+      return { status: "Gastrointestinal assessment not yet documented.", primaryIssues, primaryIssueGroups: categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData), requiresFollowUp: false };
     }
     const label = sectionKey ? sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1) : "This section's";
     return {
@@ -12274,6 +12420,36 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
       primaryIssues,
       primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
       requiresFollowUp: computeInfectionRequiresFollowUp(sectionData),
+    };
+  }
+  // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Current vs
+  // Historical Findings / Follow-Up Governance" -- same discipline as
+  // Infection above: `requiresFollowUp` comes from
+  // `computeGastrointestinalRequiresFollowUp` (current-evidence-only),
+  // never from `primaryIssues.length > 0`, so historical/management-only
+  // documentation (e.g. Ostomy/Feeding Tube presence alone) never forces
+  // "REQUIRES FOLLOW-UP". No "Unable to Assess" option exists for GI
+  // (not offered -- GI relies on observation/records, not patient
+  // interview, same rationale as Infection item 2).
+  if (sectionKey === "gastrointestinal") {
+    const giOverview = sectionData?.gastrointestinalOverview;
+    if (giOverview === "No Current GI Concern") {
+      return {
+        status: primaryIssues.length > 0 ? "Findings Present" : "No current GI concern identified.",
+        primaryIssues,
+        primaryIssueGroups: categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData),
+        requiresFollowUp: computeGastrointestinalRequiresFollowUp(sectionData),
+      };
+    }
+    // Not-yet-selected initial state, "Existing GI Findings Review", and
+    // "New or Worsening GI Findings" all share the same Findings Present
+    // / No Significant Findings Documented wording every other body
+    // system uses -- only `requiresFollowUp` is GI-specific here.
+    return {
+      status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
+      primaryIssues,
+      primaryIssueGroups: categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData),
+      requiresFollowUp: computeGastrointestinalRequiresFollowUp(sectionData),
     };
   }
   return {
@@ -13254,6 +13430,51 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Conditional
+        // Documentation Guidance" -- informational banners ONLY. Never
+        // diagnoses fecal impaction/bowel obstruction/overflow diarrhea;
+        // never writes to `data`/formData; never a required field. Hidden
+        // entirely (renders null) when no guidance condition applies, so
+        // a normal/unremarkable GI assessment shows nothing extra here.
+        if (sectionKey === "gastrointestinal" && card.customRenderer === "giDocumentationGuidance") {
+          const moderateOrSevere = (v) => v === "Moderate" || v === "Severe";
+          const siteOfService = fullFormData?.livingSituation?.siteOfService;
+          const facilityBased = ["02", "03", "04"].includes(siteOfService) || Boolean(fullFormData?.pcg?.noPcgReason);
+          const bedbound = fullFormData?.musculoskeletal?.mobility?.ambulatoryStatus === "Bedbound";
+          const constipationOrDiarrhea = Boolean(data?.constipation) || Boolean(data?.diarrhea);
+          const overflowRiskSupported = moderateOrSevere(data?.constipation) && (
+            data?.lastBMSize === "Small"
+            || moderateOrSevere(data?.straining)
+            || data?.stoolConsistency === "Watery"
+            || giLastBMExceedsThreshold(data?.lastBM)
+          );
+          const showFacilityGuidance = facilityBased && constipationOrDiarrhea;
+          const showBedboundGuidance = bedbound && (Boolean(data?.constipation) && data.constipation !== "None" || Boolean(data?.diarrhea) && data.diarrhea !== "None");
+          if (!showFacilityGuidance && !showBedboundGuidance && !overflowRiskSupported) return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+              {showFacilityGuidance && (
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  <p><strong>Facility Monitoring Consideration</strong></p>
+                  <p>Facility staff may already track bowel activity. Consider confirming: last meaningful bowel movement, typical stool amount, recent bowel pattern, caregiver concerns.</p>
+                </div>
+              )}
+              {showBedboundGuidance && (
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  <p><strong>Bedbound Patient Consideration</strong></p>
+                  <p>Consider documenting: last meaningful bowel movement, stool amount, straining, caregiver observations, current bowel regimen effectiveness.</p>
+                </div>
+              )}
+              {overflowRiskSupported && (
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  <p><strong>Documentation Guidance</strong></p>
+                  <p>Consider documenting: typical bowel pattern, stool quantity, straining, abdomen findings, current bowel regimen effectiveness, whether output was formed stool, loose stool, or mostly watery output.</p>
+                </div>
+              )}
+            </Card>
+          );
+        }
+
         if (card.customRenderer === "referralRecommendation" && ["psychosocial", "spiritual", "bereavement"].includes(sectionKey)) {
           const indicatorsPath = sectionKey === "bereavement" ? "riskFactors" : "referralIndicators";
           return (
@@ -14077,6 +14298,34 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   return null;
                 }
                 if (field.path === "infectionHistoryOther" && !(cardData.infectionHistoryTypes || []).includes("Other")) {
+                  return null;
+                }
+              }
+              // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" --
+              // same conditional-field pattern as Respiratory/Infection
+              // guards above. Last BM Size / Stool Character / Information
+              // Source / Straining stay hidden until their specific
+              // OR-condition is met (or the nurse manually opens them via
+              // "Show Additional Bowel Details"), so routine/normal GI
+              // documentation (Constipation/Diarrhea = None) never shows
+              // these conditional fields.
+              if (sectionKey === "gastrointestinal") {
+                const moderateOrSevere = (v) => v === "Mild" || v === "Moderate" || v === "Severe";
+                const constipationOrDiarrheaDocumented = moderateOrSevere(cardData.constipation) || moderateOrSevere(cardData.diarrhea);
+                const manuallyOpened = Boolean(cardData.giShowAdditionalBowelDetails);
+                if (field.path === "lastBMSize" && !constipationOrDiarrheaDocumented && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "straining" && !moderateOrSevere(cardData.constipation) && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "stoolConsistency" && !constipationOrDiarrheaDocumented && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "giInformationSource"
+                  && !cardData.constipation && !cardData.diarrhea
+                  && !giLastBMExceedsThreshold(cardData.lastBM)
+                  && !manuallyOpened) {
                   return null;
                 }
               }
@@ -16106,6 +16355,17 @@ const SECTION_CONFIGS = {
     title: "Gastrointestinal",
     subtitle: "J2051D-G (Nausea, Vomiting, Diarrhea, Constipation), bowel, feeding devices",
     cards: [
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Current vs
+      // Historical Findings" -- same Overview-gate pattern as
+      // Respiratory/Infection (see `respiratoryOverview` precedent).
+      // Organization only; no existing field renamed/removed/reclassified.
+      { title: "GI Overview", category: "core", fields: [
+        { type: "segmented", label: "GI Overview", path: "gastrointestinalOverview", options: [
+          "No Current GI Concern",
+          "Existing GI Findings Review",
+          "New or Worsening GI Findings",
+        ]},
+      ]},
       { title: "Constipation — Auto-Suggested from Last BM Date", category: "core", customRenderer: "constipationAutoAssess" },
       { title: "GI Symptoms", category: "symptoms", fields: [
         { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
@@ -16113,7 +16373,20 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
         { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" -- these
+        // four fields stay hidden (see the conditional guard in the
+        // render loop) unless Constipation/Diarrhea is Mild/Moderate/
+        // Severe, their specific OR-condition is met, or the nurse opens
+        // them manually below -- keeps routine/normal GI documentation
+        // under a minute, same philosophy as Infection's minimal-required-
+        // fields/conditional-prompts approach.
+        { type: "radio", label: "Last BM Size", path: "lastBMSize", options: ["Small", "Medium", "Large", "Unable To Determine"] },
+        { type: "radio", label: "Straining", path: "straining", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "radio", label: "Stool Character", path: "stoolConsistency", options: ["Formed", "Soft", "Loose", "Watery", "Unable To Determine"] },
+        { type: "select", label: "Information Source", path: "giInformationSource", options: ["Patient Report", "Caregiver Report", "Facility Record", "Nurse Observation"] },
+        { type: "checkbox", label: "Show Additional Bowel Details", path: "giShowAdditionalBowelDetails" },
       ]},
+      { title: "GI Documentation Guidance", category: "symptoms", customRenderer: "giDocumentationGuidance" },
       { title: "Abdominal / Bowel Assessment", category: "core", fields: [
         { type: "radio", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
         { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
@@ -16131,8 +16404,13 @@ const SECTION_CONFIGS = {
         { type: "checkbox", label: "Ostomy Present", path: "ostomy.present" },
         { type: "select", label: "Ostomy Type", path: "ostomy.type", options: ["Colostomy", "Ileostomy", "Urostomy"] },
       ]},
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Clinical
+      // Status Governance" -- uses the dedicated
+      // GASTROINTESTINAL_CLINICAL_STATUS_CHANGE_OPTIONS list, never the
+      // generic CLINICAL_STATUS_CHANGE_OPTIONS shared by other
+      // still-paused body systems (same replacement Infection received).
       { title: "Clinical Status Change", category: "response", fields: [
-        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: GASTROINTESTINAL_CLINICAL_STATUS_CHANGE_OPTIONS },
       ]},
       { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "GI Notes", path: "notes" },
