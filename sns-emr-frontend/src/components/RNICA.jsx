@@ -11226,6 +11226,23 @@ export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
       }
       const resistantHistory = (d.historyOfResistantInfections || []).filter((i) => i && i !== "None");
       if (resistantHistory.length > 0) findings.push(`History of resistant organism: ${resistantHistory.join(", ")}.`);
+      // BUGFIX (2026-10-05) "Requires Follow-Up Must Show Its Reason" --
+      // `computeInfectionRequiresFollowUp` below already treats
+      // documented infection history (recurrentInfection/
+      // infectionHistoryTypes/infectionHistory) as a genuine follow-up
+      // trigger, but this findings list -- which drives both the Summary
+      // bullet list and the Structured Findings right-rail -- never
+      // surfaced that fact. Result: when only allergies + infection
+      // history were present, "REQUIRES FOLLOW-UP" appeared next to
+      // allergy-only-looking text, making it look like allergies caused
+      // it. Mirrors `infectionSummaryLine`'s equivalent line so the
+      // reason is always visible wherever the flag can appear.
+      if (d.recurrentInfection || (d.infectionHistoryTypes || []).length > 0 || d.infectionHistory) {
+        const historyTypes = (d.infectionHistoryTypes || []).filter((i) => i && i !== "Other" && i !== "None");
+        const other = (d.infectionHistoryTypes || []).includes("Other") && d.infectionHistoryOther ? [d.infectionHistoryOther] : [];
+        const combined = [...historyTypes, ...other];
+        findings.push(`Infection history: ${combined.length > 0 ? combined.join(", ") : (d.infectionHistory || "Recurrent infection documented")}.`);
+      }
       break;
     }
     case "musculoskeletal": {
