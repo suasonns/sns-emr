@@ -201,6 +201,18 @@ const SYMPTOM_IMPACT_CHECKLIST = [
 const SYMPTOM_SEVERITY_LABEL = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
 
 const AssessmentModeContext = React.createContext("ica");
+// OWNER DIRECTIVE (2026-10-29) "GI Symptom Follow-Up Visit CMS Compliance
+// Correction" -- CMS requires a qualifying HOPE timepoint (HOPE Admission,
+// HUV1, or HUV2) before Moderate/Severe J2051 symptom impact may be
+// labeled a CMS SFV requirement; the pre-existing `mode === "ongoing"`
+// check could not distinguish a genuine HOPE Update Visit (assessmentType
+// "update", i.e. HUV1/HUV2) from a non-HOPE Recertification assessment
+// (assessmentType "recert") -- both set mode="ongoing". This context
+// carries that distinction so HopeTag/SfvTag and the SFV-required banners
+// can tell the two apart. Defaults to true (matches the default mode
+// "ica", which is always HOPE-qualifying) so any consumer rendered
+// outside a Provider keeps the pre-existing (CMS-labeled) behavior.
+const QualifyingHopeTimepointContext = React.createContext(true);
 
 const NAV_SECTIONS = [
   "Patient Demographics", "Vitals", "Pain Assessment", "Symptom Impact",
@@ -1386,20 +1398,42 @@ function describeStructuredFindingDestinations(conceptCode) {
 
 // Tag components
 function HopeTag({ code }) {
-  const mode = useContext(AssessmentModeContext);
+  // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+  // was `mode === "ongoing"`, which hid this tag during a genuine HOPE
+  // Update Visit (HUV1/HUV2, assessmentType "update") exactly the same as
+  // a non-HOPE Recertification (assessmentType "recert"). HOPE J-item
+  // tags apply throughout the first 30 days of service (Admission + HUV1
+  // + HUV2), not only on the Admission assessment.
+  const isQualifyingHopeTimepoint = useContext(QualifyingHopeTimepointContext);
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  if (mode === "ongoing") return null;
+  if (!isQualifyingHopeTimepoint) return null;
   return <span style={styles.hopeTag}>HOPE {code}</span>;
 }
 function SfvTag() {
-  const mode = useContext(AssessmentModeContext);
+  // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+  // (1) same HUV1/HUV2-vs-Recert fix as HopeTag above; (2) "STATIC UI
+  // LABEL" requirement: the static per-field tag means "this symptom
+  // participates in HOPE SFV rules" -- it must never read as if an SFV
+  // has already been activated, so the loud red "SFV Trigger" label is
+  // replaced with the neutral "SFV" label plus an accessible tooltip.
+  // Active-SFV-state badges remain a SEPARATE, differently-styled
+  // element (the sfvStatus.required banners below), unaffected by this
+  // change.
+  const isQualifyingHopeTimepoint = useContext(QualifyingHopeTimepointContext);
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  if (mode === "ongoing") return null;
-  return <span style={styles.sfvTag}>SFV Trigger</span>;
+  if (!isQualifyingHopeTimepoint) return null;
+  return (
+    <span
+      style={styles.sfvNeutralTag}
+      title="Moderate or severe symptom impact during a HOPE Admission or HUV requires an in-person SFV within two calendar days."
+    >
+      SFV
+    </span>
+  );
 }
 function CmsTag({ label }) {
   const { mode: themeMode } = useThemeMode();
@@ -18010,6 +18044,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   const isOngoing = mode === "ongoing";
   const [assessmentType, setAssessmentType] = useState("update");
   const isUpdateAssessment = isOngoing && assessmentType === "update";
+  // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+  // CMS SFV/HOPE labeling applies at HOPE Admission AND at a genuine HOPE
+  // Update Visit (HUV1/HUV2, assessmentType "update"); it must NOT apply
+  // during a non-HOPE Recertification (assessmentType "recert"), even
+  // though both Update and Recert set mode="ongoing". Feeds
+  // QualifyingHopeTimepointContext plus every inline `!isOngoing` HOPE/SFV
+  // gate below that was previously conflating the two.
+  const isQualifyingHopeTimepoint = mode === "ica" || isUpdateAssessment;
   // OWNER DIRECTIVE (2026-10-05) "All Documented Allergies Must Appear" --
   // the Infection Summary/Structured Findings rail must surface every
   // documented allergy (patient-profile data, fetched from the same
@@ -19158,6 +19200,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
     return (
       <AssessmentModeContext.Provider value={mode}>
+      <QualifyingHopeTimepointContext.Provider value={isQualifyingHopeTimepoint}>
         <RNICACommandWorkspace
           patient={{
             id: resolvedPatientId,
@@ -19305,7 +19348,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   {pageError && <div>RN ICA: {pageError}</div>}
                 </div>
               )}
-              {!isOngoing && sfvStatus.required && (
+              {isQualifyingHopeTimepoint && sfvStatus.required && (
                 <div style={styles.warningBox}>
                   <strong>SFV required:</strong> Moderate or severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}.
                   {sfvStatus.dueDate ? ` Due ${sfvStatus.dueDate}.` : " Due within 2 calendar days of screening."}
@@ -19321,12 +19364,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           onExitPilot={onExitWorkspacePilot}
           canLock={Boolean(assessmentId)}
         />
+      </QualifyingHopeTimepointContext.Provider>
       </AssessmentModeContext.Provider>
     );
   }
 
   return (
     <AssessmentModeContext.Provider value={mode}>
+    <QualifyingHopeTimepointContext.Provider value={isQualifyingHopeTimepoint}>
       <div style={styles.page}>
       {/* ── Patient Banner ── */}
       <div style={styles.banner}>
@@ -19500,7 +19545,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           sections={sidebarConfigItems.map((item) => ({
             key: item.key,
             label: item.label,
-            meta: item.cdphRequired ? "CDPH" : !isOngoing && item.hope?.length ? "HOPE" : undefined,
+            meta: item.cdphRequired ? "CDPH" : isQualifyingHopeTimepoint && item.hope?.length ? "HOPE" : undefined,
           }))}
           onSelect={(key) => {
             const match = sidebarConfigItems.find((item) => item.key === key);
@@ -19534,7 +19579,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               onInsertSymptomSeverity={assessmentLoaded ? handleInsertAiSymptomSeverity : undefined}
               onInsertNarrative={assessmentLoaded ? handleInsertAiNarrative : undefined}
             />
-            {!isOngoing && sfvStatus.required && (
+            {sfvStatus.required && isQualifyingHopeTimepoint && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>SFV Required</div>
                 <div>
@@ -19543,6 +19588,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 </div>
                 <div style={{ marginTop: 6 }}>
                   Complete J2052 after the follow-up visit. J2053 may then be documented by an RN or LPN/LVN.
+                </div>
+              </div>
+            )}
+            {/* OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance
+                Correction" -- a non-qualifying encounter (Recertification)
+                must NEVER show the CMS-labeled "SFV Required" banner
+                above, but the underlying symptom burden should still be
+                surfaced using neutral SNS clinical language rather than
+                going silent, since the J2051 symptom-impact values are
+                computed the same way regardless of encounter context. */}
+            {sfvStatus.required && !isQualifyingHopeTimepoint && (
+              <div style={{ ...styles.warningBox, marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Clinical Follow-Up May Be Needed</div>
+                <div>
+                  Moderate or Severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}. Clinical follow-up may be needed based on current symptom burden.
                 </div>
               </div>
             )}
@@ -19592,9 +19652,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {/* SFV (Symptom Follow-up Visit) Status — always visible in the
                 right panel, independent of scroll position or which section
                 is active, since SFV is a required separate visit the RN
-                must not lose track of. Only tracked during the initial ICA;
-                a recert cannot trigger a new SFV requirement. */}
-            {!isOngoing && (
+                must not lose track of. Tracked at HOPE Admission and at a
+                genuine HOPE Update Visit (HUV1/HUV2); a Recertification is
+                not a HOPE-qualifying timepoint and cannot trigger a new SFV
+                requirement. */}
+            {isQualifyingHopeTimepoint && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 4 }}>SFV Status</div>
                 <div style={{
@@ -19656,7 +19718,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             )}
 
             {/* HOPE Items for current section */}
-            {!isOngoing && sidebarConfig?.hope?.length > 0 && (
+            {isQualifyingHopeTimepoint && sidebarConfig?.hope?.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 8 }}>HOPE Items</div>
                 {sidebarConfig.hope.map((code) => (
@@ -20106,6 +20168,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         COLORS={COLORS}
       />
       </div>
+    </QualifyingHopeTimepointContext.Provider>
     </AssessmentModeContext.Provider>
   );
 }
