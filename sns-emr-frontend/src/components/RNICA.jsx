@@ -8397,7 +8397,7 @@ function normalizeAllergenText(text) {
   return (text || "").trim().toLowerCase();
 }
 
-export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
+export function AllergiesCard({ patientId, styles, COLORS, onChanged, readOnly = false }) {
   const [allergies, setAllergies] = useState([]);
   const [loading, setLoading] = useState(false);
   const [allergyForm, setAllergyForm] = useState({ allergen_type: "DRUG", allergen_text: "", reaction_description: "", severity: "" });
@@ -8550,9 +8550,11 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
               <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
               {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
               {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
-              <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
-                Remove
-              </button>
+              {!readOnly && (
+                <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
+                  Remove
+                </button>
+              )}
             </div>
           ))}
         </div>
@@ -8560,8 +8562,11 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
       {/* OWNER DIRECTIVE (item 8) "Duplicate-Prevention UI Check" -- shown
           only when handleAddAllergy detects an active allergy already
           matching on normalized allergen text + type. The nurse must
-          make an explicit choice; nothing is auto-merged or auto-saved. */}
-      {duplicateMatch && (
+          make an explicit choice; nothing is auto-merged or auto-saved.
+          Never reachable in readOnly mode (the add form below is hidden,
+          so handleAddAllergy can never be invoked), guarded here too for
+          defense-in-depth. */}
+      {!readOnly && duplicateMatch && (
         <div
           data-testid="allergy-duplicate-dialog"
           style={{
@@ -8593,55 +8598,64 @@ export function AllergiesCard({ patientId, styles, COLORS, onChanged }) {
           </div>
         </div>
       )}
-      {/* OWNER CORRECTION (2026-10-05) "Document The Allergy First,
-          Classify It Second" -- replaces the prior "quick fill type"
-          pill row, which forced the nurse to pick a category BEFORE
-          typing anything (computer-oriented: category -> allergen ->
-          save -> switch category -> next allergen). Allergen is now the
-          first field in reading/tab order; Type is a plain dropdown
-          immediately after it, defaulting to the last-used type so
-          consecutive same-type entries (Milk, Eggs, Peanuts) still need
-          no re-selection, but nothing requires choosing a category
-          before the nurse can start typing. Type remains a per-record
-          classification, never a section-wide mode -- unlimited
-          allergies across all four types may still be added back-to-back
-          in any order. */}
-      <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-        <input
-          style={{ ...styles.input, width: 160 }}
-          placeholder="Allergen (e.g. penicillin)"
-          value={allergyForm.allergen_text}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
-        />
-        <select
-          style={{ ...styles.select, width: 150 }}
-          value={allergyForm.allergen_type}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_type: e.target.value }))}
-        >
-          {ALLERGY_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
-        </select>
-        <input
-          style={{ ...styles.input, width: 180 }}
-          placeholder="Reaction (optional)"
-          value={allergyForm.reaction_description}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
-        />
-        <select
-          style={{ ...styles.select, width: 130 }}
-          value={allergyForm.severity}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
-        >
-          <option value="">Severity</option>
-          <option value="MILD">Mild</option>
-          <option value="MODERATE">Moderate</option>
-          <option value="SEVERE">Severe</option>
-          <option value="ANAPHYLAXIS">Anaphylaxis</option>
-        </select>
-        <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
-          + Add Allergy
-        </button>
-      </div>
-      {allergyError && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+      {/* Review-screen rule (owner directive 2026-10-05, "Existing
+          Infection Findings Review Is A True Review Screen") -- when
+          rendered readOnly, the add-allergy form itself is hidden
+          entirely, not merely disabled; nothing here lets a reviewer
+          mistake "reviewing" for "editing". */}
+      {!readOnly && (
+        <>
+          {/* OWNER CORRECTION (2026-10-05) "Document The Allergy First,
+              Classify It Second" -- replaces the prior "quick fill type"
+              pill row, which forced the nurse to pick a category BEFORE
+              typing anything (computer-oriented: category -> allergen ->
+              save -> switch category -> next allergen). Allergen is now the
+              first field in reading/tab order; Type is a plain dropdown
+              immediately after it, defaulting to the last-used type so
+              consecutive same-type entries (Milk, Eggs, Peanuts) still need
+              no re-selection, but nothing requires choosing a category
+              before the nurse can start typing. Type remains a per-record
+              classification, never a section-wide mode -- unlimited
+              allergies across all four types may still be added back-to-back
+              in any order. */}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <input
+              style={{ ...styles.input, width: 160 }}
+              placeholder="Allergen (e.g. penicillin)"
+              value={allergyForm.allergen_text}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
+            />
+            <select
+              style={{ ...styles.select, width: 150 }}
+              value={allergyForm.allergen_type}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_type: e.target.value }))}
+            >
+              {ALLERGY_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <input
+              style={{ ...styles.input, width: 180 }}
+              placeholder="Reaction (optional)"
+              value={allergyForm.reaction_description}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
+            />
+            <select
+              style={{ ...styles.select, width: 130 }}
+              value={allergyForm.severity}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
+            >
+              <option value="">Severity</option>
+              <option value="MILD">Mild</option>
+              <option value="MODERATE">Moderate</option>
+              <option value="SEVERE">Severe</option>
+              <option value="ANAPHYLAXIS">Anaphylaxis</option>
+            </select>
+            <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
+              + Add Allergy
+            </button>
+          </div>
+          {allergyError && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+        </>
+      )}
     </div>
   );
 }
@@ -12397,8 +12411,50 @@ function infectionSummaryLine(d) {
   if (d.clinicalStatusChange) {
     lines.push({ label: "Clinical Status", value: d.clinicalStatusChange });
   }
+  // OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings Review Is
+  // A True Review Screen" -- the editable Notes textarea is hidden
+  // during pure review (added to INFECTION_HIDEABLE_CARDS below), so a
+  // previously documented note must still surface here read-only;
+  // nothing documented is ever silently dropped from review.
+  if (d.notes) {
+    lines.push({ label: "Notes", value: d.notes });
+  }
   return lines;
 }
+
+// OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings Review Is A
+// True Review Screen" -- a read-only counterpart to the generic
+// Immune Status field card (Immunosuppressed booleanPill + reason
+// segmented), shown only during pure review of "Existing Infection
+// Findings Review" (no edit mode engaged). Immune Status itself is
+// unchanged patient-profile data/storage -- this only swaps the display
+// from live editable controls to a plain summary line, same pattern as
+// InfectionFindingsReviewSummary below. Shares the single "Edit
+// Allergies" action/unlock flag with the Allergies card immediately
+// after it in the Infection card list (both are "profile" category and
+// the owner's spec names one combined action for both).
+function ImmuneStatusReviewSummary({ data, onEdit }) {
+  const immunosuppressed = Boolean(data.immunosuppressed);
+  const reason = data.immunosuppressionReason === "Other" ? data.immunosuppressionReasonOther : data.immunosuppressionReason;
+  return (
+    <div className="rnica-resp-review-summary">
+      <div className="rnica-resp-review-summary__grid">
+        <div className="rnica-resp-review-summary__row">
+          <span className="rnica-resp-review-summary__label">Immunosuppressed</span>
+          <span className="rnica-resp-review-summary__value">
+            {immunosuppressed ? (reason ? `Yes — ${reason}` : "Yes") : "No"}
+          </span>
+        </div>
+      </div>
+      <div className="rnica-resp-review-summary__actions">
+        <button type="button" className="rnica-chip-action-btn" onClick={onEdit}>
+          Edit Allergies
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function InfectionFindingsReviewSummary({ data, onEdit }) {
   const lines = infectionSummaryLine(data);
   return (
@@ -12733,6 +12789,37 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           }
         }
 
+        // OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings
+        // Review Is A True Review Screen" -- Immune Status is excluded
+        // from the Overview-driven hide/rebuild gate below (it is
+        // standing patient-profile data, same as Allergies), but a
+        // review screen must still be display-only: during pure review
+        // (no edit mode engaged) render the read-only summary instead of
+        // the live editable fields. Deliberately independent of
+        // "Edit Existing Findings" (infectionExistingFindingsEditMode) --
+        // the owner's spec names two separate actions, so unlocking the
+        // infection-findings editor must not also silently unlock
+        // allergy/immune-status editing, and vice versa. Any other
+        // Overview state (initial unselected, No Current Infection
+        // Concern, New or Worsening) — or review with the "Edit
+        // Allergies" unlock engaged — falls through unchanged to the
+        // normal editable field card.
+        if (sectionKey === "infection" && card.title === "Immune Status") {
+          const infOverviewForImmune = data.infectionOverview;
+          const isPureReviewForImmune = infOverviewForImmune === "Existing Infection Findings Review"
+            && !data.infectionAllergiesEditMode;
+          if (isPureReviewForImmune) {
+            return (
+              <Card key={ci} title="Immune Status" bare={isBodySystemWorkspace}>
+                <ImmuneStatusReviewSummary
+                  data={cardData}
+                  onEdit={() => u("infectionAllergiesEditMode", true)}
+                />
+              </Card>
+            );
+          }
+        }
+
         // OWNER-APPROVED "Infection Hospice Workflow Optimization"
         // (2026-10-20), revised per OWNER DIRECTIVE (2026-10-05) "Shared
         // Information = Render Once" -- identical Review/Edit split
@@ -12767,7 +12854,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           const INFECTION_HIDEABLE_CARDS = [
             "Active Infection", "Resistant Organisms",
             "Infection History", "Antibiotic Therapy", "Precautions", "Temperature",
-            "Clinical Status Change",
+            "Clinical Status Change", "Notes",
           ];
           if (INFECTION_HIDEABLE_CARDS.includes(card.title)) {
             if (infOverview === "Unable to Assess" || infOverview === "No Current Infection Concern") {
@@ -13122,9 +13209,44 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
 
         if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
+          // OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings
+          // Review Is A True Review Screen" -- Add Allergy/Remove
+          // Allergy controls are hidden during pure review of "Existing
+          // Infection Findings Review" (no edit mode engaged); the
+          // nurse unlocks editing explicitly via "Edit Allergies" (also
+          // unlocks the Immune Status card immediately below -- both
+          // are the same "profile" category and the owner's spec names
+          // one combined action for both). Deliberately independent of
+          // "Edit Existing Findings" (infectionExistingFindingsEditMode)
+          // -- two separate owner-named actions, so unlocking one never
+          // silently unlocks the other. Every other Overview state keeps
+          // today's fully-editable behavior unchanged.
+          const infOverviewForAllergies = data.infectionOverview;
+          const allergiesEditUnlocked = Boolean(data.infectionAllergiesEditMode);
+          const isPureReviewForAllergies = infOverviewForAllergies === "Existing Infection Findings Review"
+            && !allergiesEditUnlocked;
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
-              <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} onChanged={uiProfile.onAllergiesChanged} />
+              {infOverviewForAllergies === "Existing Infection Findings Review" && allergiesEditUnlocked && (
+                <div className="rnica-resp-review-back-banner" role="status">
+                  <p>Editing allergies and immune status.</p>
+                  <button
+                    type="button"
+                    className="rnica-chip-action-btn"
+                    onClick={() => u("infectionAllergiesEditMode", false)}
+                  >
+                    ← Back to Review
+                  </button>
+                </div>
+              )}
+              <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} onChanged={uiProfile.onAllergiesChanged} readOnly={isPureReviewForAllergies} />
+              {isPureReviewForAllergies && (
+                <div style={{ marginTop: 10 }}>
+                  <button type="button" className="rnica-chip-action-btn" onClick={() => u("infectionAllergiesEditMode", true)}>
+                    Edit Allergies
+                  </button>
+                </div>
+              )}
             </Card>
           );
         }
