@@ -7,8 +7,14 @@
   --cw-meta-size: var(--ccw-meta-size);
   --cw-section-size: var(--ccw-section-size);
   --cw-patient-size: var(--ccw-patient-size);
-  --cw-nav-size: var(--ccw-nav-size);
-  --cw-nav-meta-size: var(--ccw-nav-meta-size);
+  /* [OWNER REVIEW -- 2026-09-25] Formal SNS RNICA typography scale (see
+     ClinicalCommandWorkspace.css header comment for the 4-tier spec).
+     Nav rows are "Size 3: Normal Chart Content" (11px/400); the small
+     progress/count text is "Size 4: Metadata" (10px/400). Column width
+     is intentionally not widened further -- rely on the approved scale
+     plus label wrapping (not ellipsis) to avoid clipping. */
+  --cw-nav-size: 11px;
+  --cw-nav-meta-size: 10px;
   --cw-button-size: var(--ccw-button-size);
   --cw-control-height: var(--ccw-control-height);
   min-height: 100%;
@@ -21,12 +27,12 @@
 }
 
 .rnica-command-patientbar {
-  min-height: 56px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.55rem 1rem;
+  padding: 0.4rem 0.9rem;
   border-bottom: 1px solid var(--sns-border);
   background: var(--sns-card);
 }
@@ -50,8 +56,8 @@
 }
 .rnica-command button:hover { border-color: var(--sns-teal); }
 .rnica-command button:disabled { cursor: not-allowed; opacity: 0.55; }
-.rnica-command-eyebrow { color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.rnica-command-badge { border-radius: 999px; padding: 0.25rem 0.5rem; font-size: var(--cw-meta-size); font-weight: 800; text-transform: uppercase; }
+.rnica-command-eyebrow { color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+.rnica-command-badge { border-radius: 999px; padding: 0.25rem 0.5rem; font-size: var(--cw-meta-size); font-weight: 400; text-transform: uppercase; }
 .rnica-command-badge.is-active { background: var(--sns-cardSoft); color: var(--sns-orange); }
 .rnica-command-badge.is-complete { background: var(--sns-cardSoft); color: var(--sns-green); }
 
@@ -67,10 +73,64 @@
 .rnica-command-prep span { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; }
 .rnica-command-prep strong { margin-top: 0.15rem; }
 
-.rnica-command-layout { display: grid; grid-template-columns: 220px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
-.rnica-command-nav, .rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
-.rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 720px; }
-.rnica-command-nav { padding: var(--cw-pad); border-right: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
+/* RNICA Workspace toolbar (owner directive FR-002) -- global, above the
+   context bar, so it's available regardless of active screen. */
+.rnica-command-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-bgAlt);
+}
+.rnica-command-toolbar__btn.is-active { border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); }
+
+/* Compact "Jump To" shortcut (owner directive 2026-09-26) -- replaces the
+   removed Bedside Quick Access / Assessment Modules panel. RNICA Workflow
+   Navigation (left navigator) remains the single source of navigation;
+   this is a secondary, space-neutral shortcut in the toolbar row. */
+.rnica-command-toolbar__jump { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: var(--cw-meta-size); color: var(--sns-muted); }
+.rnica-command-toolbar__jump select {
+  min-height: var(--cw-control-height);
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font-size: var(--cw-button-size);
+  max-width: 14rem;
+}
+
+/* Voice Documentation drawer -- shown only while the toolbar toggle is
+   active (FR-005: Visit Recording is no longer a permanent card). */
+.rnica-command-voice-drawer { margin-bottom: var(--cw-gap, 1rem); }
+
+/* Collapsible rail card headings (Validation drawer, FR-011) -- reset
+   button chrome so the toggle reads like the existing static heading. */
+.rnica-command-card__heading--toggle {
+  width: 100%;
+  min-height: unset;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.rnica-command-card__heading--toggle h2 { margin: 0; }
+
+/* [OWNER DIRECTIVE -- 2026-09-26, reversed 2026-09-26] Restored
+   RnicaWorkflowRail (the "RNICA WORKFLOW" nav) as this layout's workflow
+   navigator -- owner correction: "THIS NAVBAR SHOULD BE WORKING FOR ALL
+   NOT FOR JUST THE FIRST 3 TABS." The numbered .rnica-command-nav column
+   that used to live here was a bespoke duplicate and stays removed, but
+   RnicaWorkflowRail (already used by Patient Story/HOPE Administrative
+   Review/Evidence & Intake/Pain & Symptom Burden) is now rendered here
+   too, so every RNICA screen shares the exact same nav component/state.
+   The "Jump to" toolbar dropdown remains as a secondary shortcut. */
+.rnica-command-layout { display: grid; grid-template-columns: 270px minmax(28rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
+.rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
+.rnica-command-detail, .rnica-command-rail { max-height: 720px; }
 .rnica-command-detail { padding: var(--cw-pad); }
 .rnica-command-rail { padding: var(--cw-pad); border-left: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
 .rnica-command .visit-recorder-card { margin-bottom: var(--cw-gap) !important; border-color: var(--sns-border) !important; border-radius: 8px !important; background: var(--sns-card); }
@@ -90,42 +150,12 @@
 .rnica-command .visit-recorder-card__stop { border-color: var(--sns-red) !important; background: var(--sns-red) !important; color: var(--sns-bg) !important; }
 .rnica-command .visit-recorder-card button { min-height: var(--cw-control-height); padding: 0.35rem 0.6rem !important; font-size: var(--cw-body-size) !important; }
 
-.rnica-command-search span { display: block; margin-bottom: 0.25rem; color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 700; }
-.rnica-command-search input { width: 100%; min-height: var(--cw-control-height); padding: 0.4rem 0.55rem; border: 1px solid var(--sns-border); border-radius: 0.45rem; background: var(--sns-card); color: var(--sns-white); font-size: var(--cw-input-size); }
-.rnica-command-density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0.6rem 0; }
-.rnica-command-density button { min-height: var(--cw-control-height); padding: 0.25rem; font-size: var(--cw-nav-size); }
-.rnica-command-density button[aria-pressed="true"] { border-color: var(--sns-teal); color: var(--sns-teal); }
-.rnica-command-matrix { display: flex; flex-direction: column; gap: 0.3rem; }
-.rnica-command-matrix > button { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; width: 100%; min-height: max(38px, var(--cw-control-height)); text-align: left; background: var(--sns-card); font-size: var(--cw-nav-size); }
-.rnica-command-matrix > button.is-active { border-color: var(--sns-teal); box-shadow: inset 0.22rem 0 var(--sns-teal); }
-.rnica-command-matrix__module { display: flex; min-width: 0; align-items: center; gap: 0.35rem; }
-.rnica-command-matrix__title { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rnica-command-matrix__regulator { flex: 0 0 auto; color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 800; }
-.rnica-command-matrix__signals { display: grid; grid-template-columns: repeat(4, 2.2rem); gap: 0.15rem; color: var(--sns-muted); font-size: var(--cw-nav-meta-size); text-align: center; }
-.rnica-command-matrix__signals span:last-child { color: var(--sns-orange); font-weight: 800; }
-
-.rnica-command-screens { display: flex; flex-direction: column; gap: 0.5rem; }
-.rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.3rem; }
-.rnica-command-screen-group__header {
-  display: flex; align-items: center; gap: 0.4rem; width: 100%;
-  min-height: max(34px, var(--cw-control-height)); text-align: left;
-  background: var(--sns-bgAlt); font-weight: 800; font-size: var(--cw-nav-size);
-  text-transform: uppercase; letter-spacing: 0.03em;
-}
-.rnica-command-screen-group__header.is-active { border-color: var(--sns-teal); color: var(--sns-teal); }
-.rnica-command-screen-group__caret { flex: 0 0 auto; color: var(--sns-muted); }
-.rnica-command-screen-group__index { flex: 0 0 auto; color: var(--sns-muted); }
-.rnica-command-screen-group__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rnica-command-screen-group__progress { flex: 0 0 auto; color: var(--sns-muted); font-weight: 700; text-transform: none; }
-.rnica-command-screen-group--crosscutting .rnica-command-screen-group__header { background: var(--sns-cardSoft); }
-.rnica-command-screen-group .rnica-command-matrix { padding-left: 0.6rem; }
-
 .rnica-command-not-documented { color: var(--sns-muted); font-style: italic; font-weight: 400; }
 .rnica-command-story-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 0.6rem 0; }
 .rnica-command-story-card { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.5rem 0.6rem; text-align: left; }
-.rnica-command-story-card__label { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; font-weight: 800; }
+.rnica-command-story-card__label { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; font-weight: 400; }
 .rnica-command-story-section { margin-top: 0.8rem; }
-.rnica-command-story-section h3 { margin: 0 0 0.4rem; font-size: var(--cw-section-size); }
+.rnica-command-story-section h3 { margin: 0 0 0.4rem; font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-story-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%; text-align: left; margin-bottom: 0.3rem; }
 .rnica-command-story-footnote { margin-top: 0.8rem; color: var(--sns-muted); font-size: var(--cw-meta-size); }
 
@@ -133,25 +163,16 @@
 .rnica-command-evidence-alert__list { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .rnica-command-evidence-alert__list button { width: 100%; text-align: left; padding: 0.4rem 0.6rem; }
 
-.rnica-command-sticky-note, .rnica-command-card, .rnica-command-active {
+.rnica-command-card, .rnica-command-active {
   border: 1px solid var(--sns-border);
   border-radius: 0.6rem;
   background: var(--sns-card);
 }
-.rnica-command-sticky-note { display: grid; grid-template-columns: minmax(12rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--cw-gap); padding: var(--cw-pad); margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-yellow); }
-.rnica-command-sticky-note h2, .rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); color: var(--sns-white); }
-.rnica-command-sticky-note p, .rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
+.rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); font-weight: 600; color: var(--sns-white); }
+.rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
 .rnica-command-capture-groups { display: grid; gap: 0.55rem; }
 .rnica-command-capture-groups > div { display: grid; gap: 0.25rem; }
-.rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); letter-spacing: 0.02em; text-transform: uppercase; }
-.rnica-command-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
-.rnica-command-quick-grid button { min-width: 0; min-height: 2.25rem; padding: 0.3rem; overflow-wrap: anywhere; text-align: left; }
-.rnica-command-quick-grid button span { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; }
-.rnica-command-quick-grid--context { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.rnica-command-quick-grid--additional { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.rnica-command-quick-toggle { grid-column: 2; justify-self: start; }
-.rnica-command-provenance { grid-column: 1 / -1; flex-wrap: wrap; color: var(--sns-muted); font-size: var(--cw-meta-size); }
-.rnica-command-provenance span::before { content: "•"; margin-right: 0.3rem; color: var(--sns-teal); }
+.rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; }
 .rnica-command-active { padding: var(--cw-pad); overflow: hidden; }
 .rnica-command-active [style*="font-size"] { font-size: var(--cw-body-size) !important; }
 .rnica-command-active div[style*="padding"] { padding: var(--cw-pad) !important; }
@@ -197,16 +218,17 @@
 .rnica-diagnosis-ledger__summary p { margin: 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.35; }
 .rnica-diagnosis-ledger__summary strong { flex: 0 0 auto; color: var(--sns-teal); }
 .rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
-.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; overflow: hidden; }
-.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(7rem, 0.7fr) minmax(14rem, 2fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
-.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
+.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; }
+.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(16rem, 1fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
+.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.04em; text-transform: uppercase; border-radius: 0.4rem 0.4rem 0 0; }
 .rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
+.rnica-diagnosis-ledger__table > *:last-child { border-radius: 0 0 0.4rem 0.4rem; }
 .rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
-.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 700; white-space: nowrap; }
+.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 500; white-space: nowrap; }
 .rnica-diagnosis-ledger__related input { width: 1.15rem; height: 1.15rem; }
 .rnica-diagnosis-ledger__remove { min-height: 2.5rem !important; padding: 0.3rem 0.55rem !important; color: var(--sns-red) !important; }
 .rnica-diagnosis-ledger__actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
-.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
+.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
 .rnica-lcd-summary__counts { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem; }
 .rnica-lcd-summary__counts span { padding: 0.25rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 999px; background: var(--sns-card); color: var(--sns-muted); }
 .rnica-lcd-summary__counts strong { color: var(--sns-white); }
@@ -214,20 +236,61 @@
 .rnica-lcd-group.needs-review { border-left: 0.25rem solid var(--sns-orange) !important; }
 .rnica-lcd-group.is-satisfied { border-left: 0.25rem solid var(--sns-green) !important; }
 .rnica-lcd-group__toggle { width: 100%; min-height: 2.75rem !important; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.4rem 0.65rem !important; border: 0 !important; border-radius: 0 !important; background: var(--sns-cardSoft) !important; text-align: left; }
-.rnica-lcd-group__toggle > span:first-child { font-weight: 800; }
+.rnica-lcd-group__toggle > span:first-child { font-weight: 500; }
 .rnica-lcd-group__count { color: var(--sns-muted); font-size: var(--cw-meta-size); white-space: nowrap; }
 .rnica-lcd-criteria { gap: 0 !important; }
 .rnica-lcd-criterion { min-height: 2.75rem; padding: 0.4rem 0.6rem !important; border: 0 !important; border-top: 1px solid var(--sns-border) !important; border-radius: 0 !important; background: var(--sns-card) !important; }
 .rnica-lcd-criterion > div:first-child > div:last-child { color: var(--sns-muted) !important; font-size: var(--cw-meta-size) !important; }
 .rnica-lcd-criterion button { min-height: 2.35rem; }
 .rnica-comorbidity-guidance { padding: 0.65rem !important; margin-bottom: 0.65rem !important; }
-.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
-.rnica-comorbidity-group { min-width: 0; margin: 0 !important; padding: 0.55rem; border: 1px solid var(--sns-border); border-radius: 0.45rem; background: var(--sns-cardSoft); }
-.rnica-comorbidity-option { min-height: 2.5rem; padding: 0.25rem 0; border-top: 1px solid var(--sns-border); }
+/* [OWNER DIRECTIVE -- 2026-09-26] Responsive multi-column clinical
+   checklist to cut vertical scrolling further than the flat single-column
+   accordion this replaces. Desktop: 3 columns (Cardiac/Pulmonary/
+   Neurological, GI/GU/Metabolic, Infection/Cancer/Other); medium: 2
+   columns; narrow: 1 column. Plain text group headings only -- no
+   per-category cards, no toggle controls, no per-row divider walls.
+   HOPE mappings/IDs/logic/reporting/exports are unchanged -- presentation
+   only. */
+.rnica-comorbidity-summary { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0.4rem 0.5rem; padding: 0.5rem 0.65rem; margin-bottom: 0.55rem; border-radius: 0.4rem; background: var(--sns-cardSoft); font-size: var(--cw-meta-size, 0.8rem); color: var(--sns-muted); }
+.rnica-comorbidity-summary strong { color: var(--sns-white); font-weight: 700; }
+.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 1.1rem; row-gap: 0.85rem; align-items: start; }
+.rnica-comorbidity-group { min-width: 0; margin: 0 !important; padding: 0 !important; background: none; border-radius: 0; }
+.rnica-comorbidity-group__heading { padding-bottom: 0.2rem !important; border-bottom: 1px solid var(--sns-border); }
+.rnica-comorbidity-option { min-height: 1.9rem; padding: 0.1rem 0; border-top: 0; }
 .rnica-comorbidity-option:first-child { border-top: 0; }
 
+/* [OWNER DIRECTIVE -- Functional Status Context-Aware Scale Visibility,
+   finalized layout revision] Compact diagnosis-aware Functional Status
+   layout: summary banner + group labels span the full grid width; PPS/
+   KPS/ECOG/FAST/NYHA render as compact 2-up shadcn/ui cards instead of one
+   full-width card per scale. Existing gating logic (showEcog/showFast/
+   showNyha) is unchanged -- this only restyles what's already shown/
+   hidden. Legacy (non-pilot) mode is untouched. */
+.rnica-performance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cw-gap); align-items: start; }
+.rnica-performance-grid > .rnica-functional-summary,
+.rnica-performance-grid > .rnica-performance-group-label,
+.rnica-performance-grid > .rnica-decline-accordion,
+.rnica-performance-grid #rnica-functional-decline-card,
+.rnica-performance-grid #rnica-adl-assessment-card { grid-column: 1 / -1; }
+.rnica-performance-group-label { padding-top: 0.4rem; font-size: var(--cw-meta-size, 0.75rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sns-muted); }
+.rnica-scale-card { padding-bottom: 0.6rem; }
+.rnica-scale-card__trigger { margin-bottom: 0.4rem; padding: 0.35rem 0.55rem; border-radius: 0.35rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); }
+.rnica-scale-card__meaning { margin-bottom: 0.4rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); line-height: 1.35; }
+.rnica-scale-card__progress { margin-bottom: 0.5rem; }
+.rnica-scale-card__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; align-items: end; }
+.rnica-scale-card__row .rnica-form-card { padding: 0 !important; }
+.rnica-functional-summary__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
+.rnica-functional-summary__label { margin-bottom: 0.15rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.75rem); text-transform: uppercase; letter-spacing: 0.04em; }
+.rnica-functional-summary__value { color: var(--sns-white); font-size: var(--cw-body-size); font-weight: 500; }
+.rnica-functional-summary__badges { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.rnica-adl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; }
+.rnica-adl-grid__summary { margin-top: 0.6rem; padding: 0.5rem 0.65rem; border-radius: 0.4rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
+.rnica-adl-grid__summary strong { color: var(--sns-white); }
+.rnica-decline-accordion { padding: 0 0.85rem; border: 1px solid var(--sns-border); border-radius: 0.5rem; background: var(--sns-card); }
+.rnica-info-note { color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); font-style: italic; }
+
 .rnica-command-card { padding: var(--cw-pad); margin-bottom: var(--cw-gap); }
-.rnica-command-rail h2 { font-size: var(--cw-section-size); }
+.rnica-command-rail h2 { font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-rail strong,
 .rnica-command-rail p,
 .rnica-command-rail button { font-size: var(--cw-body-size); }
@@ -239,27 +302,27 @@
 .rnica-command-card__heading { justify-content: space-between; margin-bottom: 0.45rem; }
 .rnica-command-card__heading > span { color: var(--sns-muted); }
 .rnica-command-check { display: flex; align-items: center; gap: 0.45rem; min-height: 2.5rem; }
-.rnica-command-state { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; text-transform: uppercase; }
+.rnica-command-state { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; text-transform: uppercase; }
 .rnica-command-state--recording { color: var(--sns-red); }
 .rnica-command-state--paused { color: var(--sns-orange); }
 .rnica-command-review, .rnica-command-signal, .rnica-command-requirement { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem; margin-top: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
 .rnica-command-review span, .rnica-command-signal span, .rnica-command-requirement span { color: var(--sns-muted); font-size: var(--cw-meta-size); line-height: 1.35; }
 .rnica-command-narrative { margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-teal); }
-.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
-.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 800; }
+.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
+.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 500; }
 .rnica-command-final-shortcut--desktop { position: sticky; top: 0; z-index: 2; }
-.rnica-command-final-shortcut--mobile { display: none; }
 .rnica-command-requirement { width: 100%; min-height: unset !important; text-align: left; }
 .rnica-command-requirement strong { color: var(--sns-red); }
 .rnica-command-requirement.is-warning strong { color: var(--sns-orange); }
 .rnica-command-save { position: sticky; bottom: 0; box-shadow: 0 -0.4rem 1.2rem var(--sns-shadow); }
 .rnica-command-save > div { display: flex; justify-content: space-between; margin-bottom: 0.55rem; }
 .rnica-command-save > div span { color: var(--sns-muted); }
-.rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 800; }
+.rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 500; }
 .rnica-command-save > button.is-secondary { background: var(--sns-cardSoft); color: var(--sns-white); }
 
 @media (max-width: 1100px) {
-  .rnica-command-layout { grid-template-columns: minmax(14rem, 18rem) minmax(28rem, 1fr); }
+  .rnica-command-layout { display: block; height: auto; }
+  .rnica-command-detail { max-height: none; }
   .rnica-command-rail { position: static; grid-column: 1 / -1; width: auto; max-height: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--cw-gap); border-top: 1px solid var(--sns-border); border-left: 0; box-shadow: none; }
   .rnica-command-rail > * { margin-bottom: 0; }
   .rnica-command-final-shortcut--desktop { grid-column: 1 / -1; position: static; }
@@ -272,31 +335,24 @@
   .rnica-command-prep { display: flex; overflow-x: auto; min-height: 4rem; }
   .rnica-command-prep > div { min-width: 12rem; }
   .rnica-command-layout { display: block; height: auto; }
-  .rnica-command-nav { position: sticky; top: 4.25rem; z-index: 25; padding: 0.45rem; border-right: 0; border-bottom: 1px solid var(--sns-border); overflow: visible; }
-  .rnica-command-density, .rnica-command-screens { display: none; }
-  .rnica-command-nav:focus-within .rnica-command-screens { display: flex; flex-direction: column; max-height: 420px; margin-top: 0.4rem; overflow-y: auto; }
-  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.6rem; overflow: visible; }
   .rnica-command-rail { position: static; width: auto; max-height: none; padding: 0.6rem; border-left: 0; box-shadow: none; }
-  .rnica-command-final-shortcut--mobile { display: block; margin: 0.4rem 0 0; }
-  .rnica-command-final-shortcut--desktop { display: none; }
-  .rnica-command-sticky-note { display: block; }
-  .rnica-command-quick-grid { grid-template-columns: repeat(2, 1fr); margin-top: 0.6rem; }
-  .rnica-command-quick-toggle { margin-top: 0.4rem; }
   .rnica-command-active { max-height: none; overflow: visible; }
   .rnica-command-stepnav { position: sticky; bottom: 0.3rem; z-index: 10; padding: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.6rem; background: var(--sns-card); }
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
   .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
   .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(10rem, 1.5fr); padding: 0.4rem; }
+  .rnica-diagnosis-ledger__row { grid-template-columns: 1fr; padding: 0.4rem; }
   .rnica-diagnosis-ledger__related, .rnica-diagnosis-ledger__row > div:last-child { min-height: 2.5rem; }
   .rnica-diagnosis-ledger__actions { align-items: stretch; flex-direction: column; }
+  .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+  .rnica-performance-grid { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 701px) and (max-height: 800px) {
-  .rnica-command-patientbar { min-height: 52px; }
+  .rnica-command-patientbar { min-height: 40px; }
   .rnica-command-prep { min-height: 46px; }
-  .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 620px; }
+  .rnica-command-detail, .rnica-command-rail { max-height: 620px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -305,8 +361,8 @@
 
 @container clinical-command-workspace (max-width: 1000px) {
   .rnica-command { height: auto; min-height: 100%; overflow: visible; }
-  .rnica-command-layout { grid-template-columns: 210px minmax(0, 1fr); height: auto; }
-  .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { overflow: visible; }
+  .rnica-command-layout { display: block; height: auto; }
+  .rnica-command-detail, .rnica-command-rail { overflow: visible; }
   .rnica-command-rail { position: static; grid-column: 1 / -1; width: auto; max-height: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--cw-gap); border-top: 1px solid var(--sns-border); border-left: 0; box-shadow: none; }
   .rnica-command-rail > * { margin-bottom: 0; }
   .rnica-command-final-shortcut--desktop { grid-column: 1 / -1; position: static; }
@@ -317,33 +373,25 @@
   .rnica-command { height: auto; min-height: 100%; overflow: visible; }
   .rnica-command-prep { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rnica-command-layout { display: block; height: auto; }
-  .rnica-command-nav { position: sticky; top: 0; z-index: 25; padding: 0.55rem; border-right: 0; border-bottom: 1px solid var(--sns-border); }
-  .rnica-command-density, .rnica-command-screens { display: none; }
-  .rnica-command-nav:focus-within .rnica-command-screens { display: flex; flex-direction: column; max-height: 420px; margin-top: 0.4rem; overflow-y: auto; }
-  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.65rem; }
   .rnica-command-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0.65rem; }
-  .rnica-command-final-shortcut--mobile { display: block; margin-top: 0.4rem; }
-  .rnica-command-final-shortcut--desktop { display: none; }
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
   .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
   .rnica-lcd-criterion { grid-template-columns: minmax(0, 1fr) !important; }
   .rnica-lcd-criterion > div:last-child { min-width: 0 !important; }
   .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+  .rnica-performance-grid { grid-template-columns: 1fr; }
 }
 
 @container clinical-command-workspace (max-width: 520px) {
   .rnica-command-patientbar { align-items: flex-start; }
-  .rnica-command-nav { position: static; top: auto; }
   .rnica-command-patientbar__identity > span:last-child, .rnica-command-patientbar__status > span:not(.rnica-command-badge) { display: none; }
   .rnica-command-prep { display: flex; overflow-x: auto; }
   .rnica-command-prep > div { min-width: 12rem; }
-  .rnica-command-sticky-note { display: block; }
-  .rnica-command-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0.6rem; }
   .rnica-command-rail { grid-template-columns: 1fr; }
   .rnica-lcd-group__toggle { align-items: flex-start; flex-direction: column; }
   .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(0, 1.5fr); padding: 0.4rem; }
+  .rnica-diagnosis-ledger__row { grid-template-columns: 1fr; padding: 0.4rem; }
 }
 
 /* Standalone RNICA screen shell (Patient Story and future rebuilt
@@ -351,6 +399,25 @@
    entirely, not layered on top of it. Uses the same --sns-* tokens as the
    rest of the redesign so it is theme-aware (Light/Dark) automatically. */
 .rnica-screen {
+  /* Formal SNS RNICA typography scale, same --cw-* mapping/values used by
+     .rnica-command (generic fallback layout) -- kept as its own block
+     (rather than sharing the .rnica-command class) since this shell has
+     its own layout/overflow rules. Density is RN-selectable via the
+     RNICA Workflow rail's Compact/Comfortable/Large text controls,
+     added 2026-09-26 to fix the two nav bars not sharing a text-size
+     control. */
+  --cw-gap: 0.5rem;
+  --cw-pad: 0.625rem;
+  --cw-body-size: 11px;
+  --cw-input-size: 11px;
+  --cw-label-size: 10px;
+  --cw-meta-size: 10px;
+  --cw-section-size: 13px;
+  --cw-patient-size: 16px;
+  --cw-nav-size: 11px;
+  --cw-nav-meta-size: 10px;
+  --cw-button-size: 11px;
+  --cw-control-height: 34px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -358,6 +425,55 @@
   background: var(--sns-bg);
   color: var(--sns-white);
 }
+
+.rnica-screen--comfortable {
+  --cw-gap: 0.75rem;
+  --cw-pad: 0.75rem;
+  --cw-body-size: 12.5px;
+  --cw-input-size: 12.5px;
+  --cw-label-size: 10.5px;
+  --cw-meta-size: 10px;
+  --cw-section-size: 15px;
+  --cw-nav-size: 12.5px;
+  --cw-nav-meta-size: 10px;
+  --cw-button-size: 12.5px;
+  --cw-control-height: 36px;
+}
+
+.rnica-screen--large {
+  --cw-gap: 0.625rem;
+  --cw-pad: 0.7rem;
+  --cw-body-size: 14px;
+  --cw-input-size: 14px;
+  --cw-label-size: 11.5px;
+  --cw-meta-size: 11px;
+  --cw-section-size: 16px;
+  --cw-patient-size: 19.5px;
+  --cw-nav-size: 14px;
+  --cw-nav-meta-size: 11px;
+  --cw-button-size: 14px;
+  --cw-control-height: 36px;
+}
+
+/* Base plain-<button> styling for the whole RnicaScreenShell scope --
+   mirrors .rnica-command button (generic fallback layout). Without this,
+   unclassed buttons ("Use classic view", the density controls, etc.) fall
+   back to the browser's default white button chrome, which is a white box
+   against the dark theme -- owner correction: never render a white
+   background in dark theme. More specific selectors below (e.g.
+   .rnica-screen__footer-actions button) still override as needed. */
+.rnica-screen button {
+  min-height: var(--cw-control-height);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font-size: var(--cw-button-size);
+  cursor: pointer;
+}
+.rnica-screen button:hover { border-color: var(--sns-teal); }
+.rnica-screen button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .rnica-screen__bar {
   display: flex;
@@ -378,8 +494,34 @@
   flex-wrap: wrap;
 }
 
-.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); }
+.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); font-weight: 600; }
 .rnica-screen__identity > span:last-child { color: var(--sns-muted); }
+
+.rnica-screen__admission-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sns-muted);
+  row-gap: 0.15rem;
+}
+.rnica-screen__admission-facts > span {
+  padding: 0 0.55rem;
+  border-right: 1px solid var(--sns-border);
+  white-space: nowrap;
+}
+.rnica-screen__admission-facts > span:last-child { border-right: none; }
+.rnica-screen__admission-facts em {
+  font-style: normal;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 10px;
+  color: var(--sns-dim, var(--sns-muted));
+  margin-right: 0.3rem;
+}
 
 .rnica-screen__status {
   display: flex;
@@ -420,11 +562,22 @@
   min-height: 0;
 }
 
+/* [OWNER REVIEW -- 2026-09-25] "Does the outer navigation bar match the
+   RNICA navigation bar? Really?" -- this rail is the nav rendered for the
+   4 dedicated-shell screens (Patient Story, Evidence & Intake, HOPE
+   Administrative Review, Pain & Symptom Burden) and had NOT received the
+   chart-nav typography/footprint pass applied to `.rnica-command-matrix`
+   below -- it still used the pre-refinement 15.5rem width, 0.78rem/600
+   weight labels, and large (1.3rem) numbered circles. Brought in line:
+   same 176px width and ~11px/400-500 weight type as the outer chart nav
+   sidebar, smaller index circles, and a quieter, smaller status badge.
+   Color progress indicators (index circle color, status badge color)
+   are kept, only their size/weight is reduced. */
 .rnica-rail {
   display: flex;
   flex-direction: column;
-  flex: 0 0 15.5rem;
-  width: 15.5rem;
+  flex: 0 0 270px;
+  width: 270px;
   border-right: 1px solid var(--sns-border);
   background: var(--sns-bgNav);
 }
@@ -433,18 +586,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 0.85rem 0.4rem;
-  font: 800 0.72rem Inter, sans-serif;
-  letter-spacing: 0.04em;
+  padding: 0.5rem 0.6rem 0.3rem;
+  font: 400 10px Inter, sans-serif;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--sns-muted);
 }
 
+/* Compact/Comfortable/Large-text density controls -- same shared density
+   state/persistence as .rnica-command-density (generic fallback layout),
+   added here so the RNICA Workflow rail (used by Patient Story/HOPE
+   Administrative Review/Evidence & Intake/Pain & Symptom Burden) is no
+   longer the one nav surface without a text-size control. */
+.rnica-rail__density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0 0 0.4rem; padding: 0 0.6rem; }
+.rnica-rail__density button { min-height: var(--cw-control-height, 34px); padding: 0.25rem; font-size: var(--cw-nav-size, 11px); }
+.rnica-rail__density button[aria-pressed="true"] { border-color: var(--sns-teal); color: var(--sns-teal); }
+
 .rnica-rail__progress-text { color: var(--sns-teal); }
 
 .rnica-rail__progress-track {
-  height: 0.3rem;
-  margin: 0 0.85rem 0.6rem;
+  height: 0.25rem;
+  margin: 0 0.6rem 0.45rem;
   border-radius: 999px;
   background: var(--sns-border);
   overflow: hidden;
@@ -459,13 +621,13 @@
 .rnica-rail__scroll {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 0 0.5rem 0.75rem;
+  padding: 0 0.4rem 0.5rem;
 }
 
 .rnica-rail__list {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -474,14 +636,14 @@
 .rnica-rail__item {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.4rem;
   width: 100%;
-  padding: 0.45rem 0.55rem;
+  padding: 0.22rem 0.4rem;
   border: 1px solid transparent;
-  border-radius: 0.5rem;
+  border-radius: 0.4rem;
   background: transparent;
   color: var(--sns-dim);
-  font: 600 0.78rem Inter, sans-serif;
+  font: 400 11px Inter, sans-serif;
   text-align: left;
   cursor: pointer;
 }
@@ -497,8 +659,9 @@
 .rnica-rail__item.is-active {
   border-color: var(--sns-borderSelected);
   border-left: 3px solid var(--sns-teal);
-  padding-left: calc(0.55rem - 2px);
+  padding-left: calc(0.4rem - 2px);
   color: var(--sns-white);
+  font-weight: 500;
   background: var(--sns-selectedSurface);
   box-shadow: 0 0 0 1px var(--sns-tealSoftBorder), 0 4px 12px var(--sns-shadow);
 }
@@ -508,12 +671,12 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1rem;
+  height: 1rem;
   border-radius: 999px;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.65rem;
+  font-size: 10px;
 }
 
 /* ACTIVE: number circle = primary teal, number text = inverse text */
@@ -534,11 +697,18 @@
 .rnica-rail__item--attention:not(.is-active) { color: var(--sns-white); }
 .rnica-rail__item--caution:not(.is-active) { color: var(--sns-white); }
 
-.rnica-rail__label { flex: 1 1 auto; min-width: 0; }
+.rnica-rail__label { flex: 1 1 auto; min-width: 0; white-space: normal; word-break: break-word; line-height: 1.2; }
 
 .rnica-rail__status { flex: 0 0 auto; }
 
-.rnica-rail__status-badge { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rnica-rail__status-badge {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  padding: 0.03rem 0.32rem !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
 
 .rnica-rail__status-dot {
   display: inline-flex;
@@ -547,7 +717,7 @@
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 999px;
-  font-size: 0.6rem;
+  font-size: 10px;
   line-height: 1;
 }
 .rnica-rail__status-dot--done { background: var(--sns-green); color: var(--sns-textInverse); }
@@ -591,7 +761,7 @@
   justify-content: space-between;
   padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--sns-border);
-  font: 800 0.8rem Inter, sans-serif;
+  font: 600 13px Inter, sans-serif;
   color: var(--sns-white);
 }
 
@@ -611,7 +781,7 @@
 
 .rnica-rail-sheet .rnica-rail__item {
   padding: 0.6rem 0.65rem;
-  font-size: 0.85rem;
+  font-size: 11px;
 }
 
 .rnica-screen__subnav {
@@ -631,7 +801,7 @@
   border-radius: 0.4rem;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font: 700 0.78rem Inter, sans-serif;
+  font: 500 11px Inter, sans-serif;
   cursor: pointer;
 }
 
@@ -651,7 +821,7 @@
   border-radius: 999px;
   background: var(--sns-red);
   color: #fff;
-  font-size: 0.65rem;
+  font-size: 10px;
 }
 
 .rnica-screen__stepnav {
@@ -678,7 +848,7 @@
   border-top: 1px solid var(--sns-border);
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.8rem;
+  font-size: 10px;
   position: sticky;
   bottom: 0;
 }
@@ -695,7 +865,7 @@
   border-radius: 0.45rem;
   background: var(--sns-teal);
   color: var(--sns-bg);
-  font: 800 0.8rem Inter, sans-serif;
+  font: 500 11px Inter, sans-serif;
   cursor: pointer;
 }
 
@@ -716,9 +886,379 @@
 
 @media (max-width: 700px) {
   .rnica-screen__bar { flex-direction: column; align-items: flex-start; }
+  .rnica-screen__admission-facts { gap: 0.6rem; }
   .rnica-screen__status { width: 100%; justify-content: space-between; }
   .rnica-screen__content { padding: 0.65rem; }
   .rnica-screen__footer { flex-direction: column; align-items: stretch; gap: 0.5rem; }
   .rnica-screen__footer-actions { width: 100%; }
   .rnica-screen__footer-actions button { flex: 1 1 auto; }
+}
+
+/* ── Body Systems screen (compact accordion + Structured Findings) ───── */
+/* Owner directive: "PLEASE NEVER WASTE SPACE" -- 2-column layout keeps the
+   accordion and findings rail side-by-side on desktop instead of stacking
+   with empty gutters, and the accordion itself defaults to fully collapsed
+   (see bodySystemsAccordionItems in RNICA.jsx) so only the systems the RN
+   opens take up vertical space. */
+.rnica-bodysystems {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.rnica-bodysystems__main { min-width: 0; }
+
+.rnica-bodysystems__status {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+}
+
+.rnica-bodysystems__status-label {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-muted);
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__progress { flex: 1 1 auto; width: auto; }
+
+.rnica-bodysystems__status-count {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-teal);
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__accordion {
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+  padding: 0 0.75rem;
+}
+
+.rnica-bodysystems__item { border-bottom: 1px solid var(--sns-border); }
+.rnica-bodysystems__item:last-child { border-bottom: none; }
+
+.rnica-bodysystems__trigger-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rnica-bodysystems__content { padding-top: 0; }
+
+.rnica-bodysystems__rail { min-width: 0; }
+
+.rnica-bodysystems__findings-list {
+  margin: 0;
+  padding-left: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 11.5px;
+  color: var(--sns-text);
+}
+
+.rnica-bodysystems__findings-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--sns-muted);
+}
+
+/* Owner directive 2026-09-26: "No structured findings documented yet"
+   must not occupy an entire side-panel card -- cap the empty state's
+   footprint; the card grows automatically once real findings exist. */
+.rnica-bodysystems__findings-empty { max-height: 80px; }
+
+/* GitHub Directive (2026-09-28) "Final Neurological Density and
+   Space-Utilization Plan" Section 4/32/41 -- collapse the rail to a
+   narrow strip when Structured Findings has nothing to show, and let the
+   central workspace reclaim that width instead of reserving a fixed
+   18rem column for an empty card. */
+.rnica-bodysystems--rail-collapsed { grid-template-columns: minmax(0, 1fr) 2.25rem; }
+
+.rnica-bodysystems__findings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.rnica-bodysystems__rail-toggle {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-teal);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__rail-collapsed-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.3rem;
+  width: 2.25rem;
+  padding: 0.5rem 0.2rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+  cursor: pointer;
+}
+
+.rnica-bodysystems__rail-collapsed-count {
+  font: 700 12px Inter, sans-serif;
+  color: var(--sns-teal);
+}
+
+.rnica-bodysystems__rail-collapsed-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 600 10px Inter, sans-serif;
+  color: var(--sns-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Body Systems architectural correction (owner directive, 2026-09-27):
+   supersedes the earlier "clinical review grid" of N separate bordered
+   sub-cards. Each of the 10 body systems is now ONE shadcn Card
+   (.rnica-bodysystem-workspace, applied to the Card root in RNICA.jsx)
+   containing bare inline groups (.rnica-bodysystem-workspace__group --
+   title row + fields only, no box/border) packed into a responsive
+   2-3 column grid so nothing is hidden behind a click and nothing is
+   fragmented into its own card shell. Widgets with their own
+   customRenderer (wound list, allergies, constipation auto-assess, ...)
+   also render `bare` inside this same box. */
+.rnica-bodysystem-workspace {
+  margin-bottom: 0;
+}
+
+/* Multi-column (masonry-style) flow instead of CSS Grid: a CSS Grid row's
+   height is set by its tallest cell, which left large empty gaps under
+   every shorter sub-section sharing that row (owner-reported "disorganized"
+   defect, 2026-09-26). `columns` flows each group down a column
+   independently of its neighbors' height, so short and tall groups pack
+   tightly with no dead space, while `break-inside: avoid` keeps a whole
+   group (title + its fields) from being split across two columns. */
+/* Multi-column (masonry-style) flow instead of CSS Grid: a CSS Grid row's
+   height is set by its tallest cell, which left large empty gaps under
+   every shorter sub-section sharing that row (owner-reported "disorganized"
+   defect, 2026-09-26). `columns` flows each group down a column
+   independently of its neighbors' height, so short and tall groups pack
+   tightly with no dead space, while `break-inside: avoid` keeps a whole
+   group (title + its fields) from being split across two columns.
+   The masonry now lives one level down, per BODY_SYSTEM_CATEGORY_ORDER
+   section (.rnica-bodysystem-group__cards) -- this top-level content
+   area is a stacked, fixed-order list of Summary + those named clinical
+   sections (Core Findings, Symptom Impact, ...), not raw cards, so it no
+   longer masonry-flows itself. */
+.rnica-bodysystem-workspace__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rnica-bodysystem-workspace__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* GitHub Directive (2026-09-28) Critical Finding #3 -- visual hierarchy:
+   sections carrying real clinical/decline weight (Consciousness,
+   Orientation, Sleep/Responsiveness) get a stronger left accent + slightly
+   larger heading so the eye lands there first; routine/supporting
+   sections (Notes, low-priority sensory detail) recede instead of
+   competing equally. Modifier class only -- no layout/grid change. */
+.rnica-bodysystem-workspace__group--high {
+  padding-left: 10px;
+  border-left: 3px solid var(--sns-orange, #d97706);
+}
+.rnica-bodysystem-workspace__group--high > .rnica-form-card__title {
+  font-weight: 700;
+  font-size: calc(var(--cw-section-size, 1rem) * 1.05);
+}
+.rnica-bodysystem-workspace__group--medium {
+  padding-left: 8px;
+  border-left: 2px solid var(--sns-border);
+}
+.rnica-bodysystem-workspace__group--low {
+  opacity: 0.86;
+}
+.rnica-bodysystem-workspace__group--low > .rnica-form-card__title {
+  font-size: calc(var(--cw-meta-size, 0.78rem) + 1px);
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* GitHub Directive (2026-09-28) Critical Finding #4 -- reduce checkbox/
+   radio footprint and vertical/horizontal spacing within Body Systems
+   specifically (scoped to .rnica-bodysystem-workspace so already-approved
+   non-Body-Systems screens using the same shared FormRadioGroup/
+   FormCheckboxGroup components are unaffected). Targets the shadcn
+   Radix primitives' rendered size, not just the inline label styles. */
+.rnica-bodysystem-workspace [role="radiogroup"],
+.rnica-bodysystem-workspace .rnica-form-card [role="group"] {
+  gap: 2px 8px !important;
+}
+/* Excludes .rnica-segment-btn: the compact segmented/pill controls
+   (FormSegmented/FormPillGroup, added 2026-09-28 GitHub UI Directive) are
+   also plain <button role="radio">/... elements, but unlike a Radix
+   RadioGroupItem/Checkbox indicator dot -- a separate small circle sitting
+   next to its own label text -- these buttons ARE the label (the option
+   text renders inside the button itself). Squashing them to 14x14px here
+   caused every segment's label to overflow and visually overlap its
+   neighbors. */
+.rnica-bodysystem-workspace button[role="radio"]:not(.rnica-segment-btn),
+.rnica-bodysystem-workspace button[role="checkbox"]:not(.rnica-segment-btn) {
+  height: 14px !important;
+  width: 14px !important;
+}
+.rnica-bodysystem-workspace label {
+  font-size: 11px !important;
+  gap: 3px !important;
+  line-height: 1.25 !important;
+}
+.rnica-bodysystem-workspace .rnica-bodysystem-workspace__group {
+  gap: 0.22rem;
+}
+
+/* Fields within a single sub-section (e.g. Mental Status's Consciousness/
+   Orientation/Communication rows) use a real left-to-right CSS Grid, not
+   newspaper-style `columns`. `columns` reads top-to-bottom-then-jump-to-
+   next-column, which is not how a nurse scans a form and is what made a
+   dense system like Neurological confusing to read (owner-reported
+   2026-09-27). `auto-fit`/`minmax` still avoids the CSS Grid dead-space
+   problem the original masonry was written to fix: a lone field grows to
+   fill the row via the `1fr` term instead of leaving the rest of the row
+   blank, while multiple fields wrap left-to-right in natural order. */
+.rnica-bodysystem-workspace__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 12px;
+  align-items: start;
+}
+
+/* Owner directive (Body Systems 9-part structure): every system follows
+   Summary -> Core Findings -> Symptom Impact -> Functional Impact ->
+   Disease-Specific Findings -> Current Management -> Clinical Status
+   Change -> Nurse Observation -> Plan of Care Impact, so a nurse always
+   knows where to look. Cards render already-tagged into these named
+   groups (BODY_SYSTEM_CATEGORY_ORDER/LABELS in RNICA.jsx); only groups
+   with at least one real card render a heading. */
+.rnica-bodysystem-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.rnica-bodysystem-group__heading {
+  margin: 0 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sns-border);
+  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sns-muted);
+}
+
+/* Cards within a single named group use the same auto-fit/minmax grid as
+   the field-level fix above (2026-09-27): a lone card in a category (very
+   common -- e.g. Cardiovascular's "Symptom Impact" is usually one card)
+   now grows to fill the full row instead of being stuck in a single
+   ~260px newspaper column with the rest of the row left blank. Multiple
+   cards in one category wrap left-to-right in natural reading order. */
+.rnica-bodysystem-group__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* GitHub Directive (2026-09-28) "Final Neurological Density and
+   Space-Utilization Plan" Section 11/21 -- force a sub-section to always
+   span the entire row instead of auto-fit squeezing it into one ~260px
+   column beside much shorter neighbors (the reported "Sleep/Responsiveness
+   is much taller... producing a highly imbalanced first row" defect).
+   The card's own fields still use their normal auto-fit grid, which now
+   gets the full workspace width to flow 2-3 fields per row instead of 1. */
+.rnica-bodysystem-workspace__group--full {
+  grid-column: 1 / -1;
+}
+
+/* Computed Summary panel (owner directive: Summary is the first thing a
+   nurse sees). Reuses computeBodySystemFindings so it can never drift
+   from the same already-documented findings shown elsewhere. Does not
+   include "Changes Since Prior" -- no longitudinal-diff infrastructure
+   exists yet; see RNICA_CLINICAL_DOCUMENTATION_INTELLIGENCE_GAP_MAP.md. */
+.rnica-bodysystem-summary {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.4rem;
+  background: var(--sns-cardSoft);
+}
+
+.rnica-bodysystem-summary[data-requires-follow-up="true"] {
+  border-left: 3px solid var(--sns-orange);
+}
+
+.rnica-bodysystem-summary__heading {
+  margin: 0 0 4px;
+  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sns-muted);
+}
+
+.rnica-bodysystem-summary__status {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--sns-white);
+}
+
+.rnica-bodysystem-summary__issues {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  color: var(--sns-muted);
+  font-size: var(--cw-body-size);
+  line-height: 1.4;
+}
+
+.rnica-bodysystem-summary__flag {
+  margin: 0;
+  color: var(--sns-orange);
+  font-weight: 700;
+  font-size: var(--cw-meta-size, 0.78rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+@media (max-width: 700px) {
+  .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-group__cards {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 1100px) {
+  .rnica-bodysystems { grid-template-columns: 1fr; }
+  .rnica-bodysystems--rail-collapsed { grid-template-columns: 1fr; }
+  .rnica-bodysystems__rail { order: -1; }
+  .rnica-bodysystems__rail-collapsed-toggle {
+    order: -1;
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+  }
+  .rnica-bodysystems__rail-collapsed-label { writing-mode: horizontal-tb; transform: none; }
 }

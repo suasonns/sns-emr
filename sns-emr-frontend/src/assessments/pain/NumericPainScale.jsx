@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainToolReference } from './PainGuide';
 import { getNumericInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -86,38 +86,40 @@ const NumericPainScale = ({ value, onChange }) => {
         </div>
       )}
 
-      {/* Scoring & Interpretation */}
-      <GuideBox title="Scoring & Interpretation">
-        <GradientBar />
-        <GuideList items={[
-          '0 = No Pain (green)',
-          '1-3 = Mild Pain (yellow-green)',
-          '4-6 = Moderate Pain (amber)',
-          '7-10 = Severe Pain (red)',
-        ]} />
-        <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>Higher scores indicate greater pain intensity.</div>
-        <div className="pain-tool__meta" style={{ marginTop: 6, color: COLORS.label, fontSize: 11 }}>MCID: A reduction of 2 points (or 30%) is considered clinically important.</div>
-      </GuideBox>
+      {/* Reference material (owner 2026-09-25: keep out of the always-visible
+          flow — nurses should not scroll past training content during
+          routine documentation). */}
+      <PainToolReference>
+        <GuideBox title="Scoring & Interpretation">
+          <GradientBar />
+          <GuideList items={[
+            '0 = No Pain (green)',
+            '1-3 = Mild Pain (yellow-green)',
+            '4-6 = Moderate Pain (amber)',
+            '7-10 = Severe Pain (red)',
+          ]} />
+          <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>Higher scores indicate greater pain intensity.</div>
+          <div className="pain-tool__meta" style={{ marginTop: 6, color: COLORS.label, fontSize: 11 }}>MCID: A reduction of 2 points (or 30%) is considered clinically important.</div>
+        </GuideBox>
 
-      {/* Psychometric Properties */}
-      <GuideBox title="Psychometric Properties">
-        <GuideList items={[
-          'Reliability: High test-retest reliability (r = 0.96 literate, r = 0.95 illiterate) — Ferraz et al.',
-          'Validity: Highly correlated with VAS (r = 0.86-0.95) in chronic pain conditions.',
-          'Responsiveness: MDC = 2 points on 11-point scale.',
-        ]} />
-      </GuideBox>
+        <GuideBox title="Psychometric Properties">
+          <GuideList items={[
+            'Reliability: High test-retest reliability (r = 0.96 literate, r = 0.95 illiterate) — Ferraz et al.',
+            'Validity: Highly correlated with VAS (r = 0.86-0.95) in chronic pain conditions.',
+            'Responsiveness: MDC = 2 points on 11-point scale.',
+          ]} />
+        </GuideBox>
 
-      {/* Target Patient Population */}
-      <GuideBox title="Target Patient Population">
-        <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
-          <div><strong style={{ color: COLORS.white }}>Best for:</strong> Adults and older children who can reliably self-report pain intensity.</div>
-          <div>Preferred by chronic pain patients over VAS due to comprehensibility and ease of completion.</div>
-          <div>Takes &lt; 1 minute to complete.</div>
-        </div>
-      </GuideBox>
+        <GuideBox title="Target Patient Population" style={{ marginBottom: 4 }}>
+          <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
+            <div><strong style={{ color: COLORS.white }}>Best for:</strong> Adults and older children who can reliably self-report pain intensity.</div>
+            <div>Preferred by chronic pain patients over VAS due to comprehensibility and ease of completion.</div>
+            <div>Takes &lt; 1 minute to complete.</div>
+          </div>
+        </GuideBox>
 
-      <References items={['Hawker GA (2011)', 'Ferraz MB et al. (1990)', 'Farrar JT et al. (2001)']} />
+        <References items={['Hawker GA (2011)', 'Ferraz MB et al. (1990)', 'Farrar JT et al. (2001)']} />
+      </PainToolReference>
     </div>
   );
 };

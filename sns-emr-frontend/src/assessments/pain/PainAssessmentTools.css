@@ -61,6 +61,28 @@
 .pain-guide__list, .pain-guide__body { color: var(--sns-muted) !important; font-size: var(--pain-body-size) !important; }
 .pain-guide__references, .pain-guide__references span { color: var(--sns-muted) !important; font-size: var(--pain-meta-size) !important; }
 
+/* [OWNER FIX -- 2026-09-26] The "Pain Tool Reference" accordion trigger is
+   a native <button> (Radix AccordionTrigger) with no background utility
+   class, and RnicaTailwind.css disables Tailwind's Preflight reset -- so
+   the browser's default button chrome (opaque light gray/white) was
+   showing through in dark mode instead of the card surface. Force it to
+   the theme's card-soft surface/border so it matches every other panel. */
+.pain-tool-reference {
+  border: 1px solid var(--sns-border) !important;
+  border-radius: 8px;
+  overflow: hidden;
+  margin-bottom: 16px;
+}
+.pain-tool-reference__trigger {
+  width: 100%;
+  background: var(--sns-cardSoft) !important;
+  border: none !important;
+  padding: 10px 14px !important;
+  cursor: pointer;
+}
+.pain-tool-reference [data-radix-collection-item],
+.pain-tool-reference svg { color: var(--sns-teal) !important; }
+
 @container clinical-command-workspace (max-width: 520px) {
   .pain-tool__scale { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .pain-tool__summary { align-items: flex-start !important; flex-direction: column; }

@@ -454,6 +454,10 @@ export const CONCEPT_REGISTRY = {
     section: "neurological",
     writes: [{ path: "communication", value: "Clear", op: "set", section: null }],
   },
+  NEURO_COMMUNICATION_NORMAL: {
+    section: "neurological",
+    writes: [{ path: "communication", value: "Normal", op: "set", section: null }],
+  },
   NEURO_COMMUNICATION_IMPAIRED: {
     section: "neurological",
     writes: [{ path: "communication", value: "Impaired", op: "set", section: null }],
@@ -505,6 +509,10 @@ export const CONCEPT_REGISTRY = {
   NEURO_BALANCE_UNABLE_TO_STAND: {
     section: "neurological",
     writes: [{ path: "balance", value: "Unable to stand", op: "set", section: null }],
+  },
+  NEURO_BALANCE_UNABLE_TO_ASSESS: {
+    section: "neurological",
+    writes: [{ path: "balance", value: "Unable to assess", op: "set", section: null }],
   },
   NEURO_SENSORY_NUMBNESS: {
     section: "neurological",
@@ -1821,21 +1829,61 @@ export const CONCEPT_REGISTRY = {
     section: "neurological",
     writes: [{ path: "sleepRest.sleepPattern", value: "Normal", op: "set", section: null }],
   },
+  NEURO_SLEEP_PATTERN_INCREASED_SLEEPING: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.sleepPattern", value: "Increased Sleeping", op: "set", section: null }],
+  },
+  NEURO_SLEEP_PATTERN_EXCESSIVE_SLEEPING: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.sleepPattern", value: "Excessive Sleeping", op: "set", section: null }],
+  },
+  NEURO_SLEEP_PATTERN_FRAGMENTED_SLEEP: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.sleepPattern", value: "Fragmented Sleep", op: "set", section: null }],
+  },
   NEURO_SLEEP_PATTERN_INSOMNIA: {
     section: "neurological",
     writes: [{ path: "sleepRest.sleepPattern", value: "Insomnia", op: "set", section: null }],
   },
-  NEURO_SLEEP_PATTERN_HYPERSOMNIA: {
+  NEURO_RESPONSIVENESS_EASILY_AROUSED: {
     section: "neurological",
-    writes: [{ path: "sleepRest.sleepPattern", value: "Hypersomnia", op: "set", section: null }],
+    writes: [{ path: "sleepRest.responsiveness", value: "Easily Aroused", op: "set", section: null }],
   },
-  NEURO_SLEEP_PATTERN_FRAGMENTED: {
+  NEURO_RESPONSIVENESS_SOMNOLENT: {
     section: "neurological",
-    writes: [{ path: "sleepRest.sleepPattern", value: "Fragmented", op: "set", section: null }],
+    writes: [{ path: "sleepRest.responsiveness", value: "Somnolent", op: "set", section: null }],
   },
-  NEURO_SLEEP_PATTERN_SOMNOLENCE: {
+  NEURO_RESPONSIVENESS_DIFFICULT_TO_AROUSE: {
     section: "neurological",
-    writes: [{ path: "sleepRest.sleepPattern", value: "Somnolence", op: "set", section: null }],
+    writes: [{ path: "sleepRest.responsiveness", value: "Difficult To Arouse", op: "set", section: null }],
+  },
+  NEURO_RESPONSIVENESS_MINIMALLY_RESPONSIVE: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.responsiveness", value: "Minimally Responsive", op: "set", section: null }],
+  },
+  NEURO_RESPONSIVENESS_UNRESPONSIVE: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.responsiveness", value: "Unresponsive", op: "set", section: null }],
+  },
+  NEURO_SLEEP_CHANGE_NO_CHANGE: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.changeSincePrior", value: "No Change", op: "set", section: null }],
+  },
+  NEURO_SLEEP_CHANGE_SLEEPING_MORE: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.changeSincePrior", value: "Sleeping More", op: "set", section: null }],
+  },
+  NEURO_SLEEP_CHANGE_INCREASED_SOMNOLENCE: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.changeSincePrior", value: "Increased Somnolence", op: "set", section: null }],
+  },
+  NEURO_SLEEP_CHANGE_MORE_DIFFICULT_TO_AROUSE: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.changeSincePrior", value: "More Difficult To Arouse", op: "set", section: null }],
+  },
+  NEURO_SLEEP_CHANGE_NEW_UNRESPONSIVENESS: {
+    section: "neurological",
+    writes: [{ path: "sleepRest.changeSincePrior", value: "New Unresponsiveness", op: "set", section: null }],
   },
   NEURO_AVG_SLEEP_HOURS: {
     section: "neurological",

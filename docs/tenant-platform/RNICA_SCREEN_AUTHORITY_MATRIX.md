@@ -36,7 +36,11 @@ which screen currently exists.
 ## 2. Evidence & Intake
 - **Purpose:** Review referral, facesheet, imported records, vitals, and
   available evidence. **Owns:** RNICA intake-review state only where
-  already canonical (legacy `demographics`, `vitals`, `referrals` modules).
+  already canonical (legacy `demographics`, `vitals` modules). **[OWNER
+  DIRECTION, 2026-09-24 — supersedes the prior line below]:** the legacy
+  `referrals` (discipline referrals) module moved to Orders & POC (#10) —
+  the RN has not completed the comprehensive assessment yet at this screen,
+  so discipline referral need cannot be determined here.
 - **Consumes:** Facesheet (`fetchFacesheet`, `fetchPerformanceHistory`),
   structured findings signals harvested from documents
   (`intelligence.structured_findings_signals`,
@@ -167,7 +171,12 @@ which screen currently exists.
 ## 10. Orders & POC
 - **Purpose:** Show and explicitly initiate authorized order/POC actions.
   **Owns:** RNICA action state only; `poc_problems` remain owned by the
-  authoritative Plan of Care domain (`rnica_poc_adapter.py`).
+  authoritative Plan of Care domain (`rnica_poc_adapter.py`). **[OWNER
+  DIRECTION, 2026-09-24 — supersedes the prior line below]:** also owns the
+  legacy `referrals` module (discipline referrals: social work, spiritual
+  care, volunteer, dietitian, pharmacist), moved here from Evidence & Intake
+  (#2) — these are post-assessment care-planning decisions, not intake
+  evidence.
 - **Consumes/Produces:** `viewRnicaSectionPoc`, `addRnicaSectionPocProblem`,
   `updateRnicaSectionPocProblem`, `resolveRnicaSectionPocProblem`,
   `linkExistingRnicaSectionPocProblem`, `mergeRnicaPocDuplicateProblems`,

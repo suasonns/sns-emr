@@ -12,11 +12,21 @@ import {
 import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
 import { RnicaWorkflowRail, RnicaWorkflowSheet } from "./RnicaWorkflowRail";
 import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
+import EvidenceIntakeOverview from "./evidence-intake/EvidenceIntakeOverview";
+import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeReview";
 import {
   PrimaryCard,
   SourceLink,
   StatusChip,
+  DocumentedValue,
+  notYetDocumented,
 } from "./design-system/RnicaDesignSystem";
+import { listBenefitPeriods } from "../../api/benefitPeriods";
+import { fetchFacesheet } from "../../api/facesheet";
+import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as ShadcnCardTitle, CardContent as ShadcnCardContent } from "../ui/card";
+import { Badge as ShadcnBadge } from "../ui/badge";
+import { Progress as ShadcnProgress } from "../ui/progress";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../ui/accordion";
 import "./RNICACommandWorkspace.css";
 
 const DENSITY_KEY = "sns-clinical-command-workspace-density";
@@ -25,6 +35,34 @@ const DENSITIES = ["compact", "comfortable", "large"];
 function storedDensity() {
   const value = window.localStorage.getItem(DENSITY_KEY) || window.localStorage.getItem(LEGACY_DENSITY_KEY);
   return DENSITIES.includes(value) ? value : "compact";
+}
+
+// Shared, read-only formatters for the persistent clinical context bar
+// (used by both the new RnicaScreenShell admission-facts bar and the
+// legacy ClinicalCommandContextBar) so every screen presents allergies and
+// vitals the same way. `patient` here is the object assembled in
+// RNICA.jsx -- nothing is computed or fabricated, only formatted.
+function formatAllergies(patient) {
+  if (patient?.hasAllergies === false) return "NKA";
+  if (patient?.allergiesText) return patient.allergiesText;
+  if (patient?.hasAllergies === true) return "Present (see Face Sheet)";
+  return null;
+}
+
+// Individual vitals facts (owner direction 2026-09-25: the context strip
+// must be a single dense row, not a paragraph -- each vital is its own
+// short fact so the strip can wrap per-item on narrow viewports instead of
+// hiding everything behind one combined sentence).
+function vitalsFacts(vitals) {
+  if (!vitals) return [];
+  return [
+    (vitals.bpSystolic && vitals.bpDiastolic) ? { label: "BP", value: `${vitals.bpSystolic}/${vitals.bpDiastolic}` } : null,
+    vitals.pulse ? { label: "P", value: vitals.pulse } : null,
+    vitals.respirations ? { label: "RR", value: vitals.respirations } : null,
+    vitals.temperature ? { label: "Temp", value: `${vitals.temperature}\u00b0${vitals.temperatureUnit || "F"}` } : null,
+    vitals.oxygenSaturation ? { label: "O2", value: `${vitals.oxygenSaturation}%` } : null,
+    vitals.weight ? { label: "Wt", value: `${vitals.weight} lbs` } : null,
+  ].filter(Boolean);
 }
 
 function ScrollRegion({ name, className, children }) {
@@ -120,7 +158,10 @@ function PatientStoryPanel({ patient, intelligence, errorKeys, warningKeys, rout
 // scoped to this screen's three legacy modules (demographics, vitals,
 // referrals), e.g. the existing `referrals.reviewed` requirement.
 function EvidenceIntakeAlertBanner({ errorKeys, warningKeys, routeForRequirement, onNavigate }) {
-  const screenModuleKeys = new Set(["demographics", "vitals", "referrals"]);
+  // `referrals` (discipline referrals) moved to Orders & POC -- see
+  // rnicaThirteenScreenTaxonomy.js. This banner only scopes to modules this
+  // screen still owns.
+  const screenModuleKeys = new Set(["demographics", "vitals"]);
   const scoped = [...errorKeys, ...warningKeys]
     .map((key) => ({ key, route: routeForRequirement(key) }))
     .filter(({ route }) => route && screenModuleKeys.has(route.key));
@@ -183,15 +224,30 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
 // only: a compact identity/status bar, the 13-screen tab strip, the screen's
 // own content, and the save/lock controls -- there is no old-workspace
 // content behind it.
-function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, children }) {
+function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, density, onChangeDensity, children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   return (
-    <div className="rnica-screen">
+    <div className={`rnica-screen rnica-screen--${density || "compact"}`}>
       <header className="rnica-screen__bar">
         <div className="rnica-screen__identity">
           <span className="rnica-command-eyebrow">RNICA</span>
           <strong>{patient.name}</strong>
           <span>MRN {patient.mrn}</span>
+          {!notYetDocumented(patient.assessmentStage) && <StatusChip tone="warning">{patient.assessmentStage}</StatusChip>}
+        </div>
+        <div className="rnica-screen__admission-facts" aria-label="Persistent clinical context (read-only)">
+          <span><em>Dx</em> <DocumentedValue value={patient.primaryDiagnosis} /></span>
+          <span><em>2nd Dx</em> <DocumentedValue value={patient.secondaryDiagnoses} /></span>
+          <span><em>Allergies</em> <DocumentedValue value={formatAllergies(patient)} /></span>
+          <span><em>PPS</em> <DocumentedValue value={patient.currentPps ? `${patient.currentPps}%` : null} /></span>
+          {vitalsFacts(patient.vitals).map((fact) => (
+            <span key={fact.label}><em>{fact.label}</em> {fact.value}</span>
+          ))}
+          <span><em>Decline</em> <DocumentedValue value={patient.functionalDeclineNarrative} /></span>
+          <span><em>Admit</em> <DocumentedValue value={patient.admissionDate} /></span>
+          <span><em>BP#</em> <DocumentedValue value={patient.benefitPeriodNumber ? `${patient.benefitPeriodNumber} (${patient.benefitPeriodStart || "?"}\u2013${patient.benefitPeriodEnd || "?"})` : null} /></span>
+          <span><em>Recert</em> <DocumentedValue value={patient.recertDueDate} /></span>
+          <span><em>F2F</em> <DocumentedValue value={patient.faceToFaceDueDate} /></span>
         </div>
         <div className="rnica-screen__status">
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
@@ -213,6 +269,8 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
           activeScreenKey={activeScreenKey}
           onSelectScreen={onSelectScreenTab}
           statusContext={statusContext}
+          density={density}
+          onChangeDensity={onChangeDensity}
         />
         <main className="rnica-screen__content">{children}</main>
       </div>
@@ -248,6 +306,8 @@ export default function RNICACommandWorkspace({
   saveStatus,
   intelligence,
   renderWorkspaceSections,
+  bodySystemsAccordionItems,
+  bodySystemsStructuredFindings,
   visitRecorder,
   alerts,
   onSelect,
@@ -258,33 +318,77 @@ export default function RNICACommandWorkspace({
   onExitPilot,
   canLock,
   isOngoingAssessment = false,
+  onUpdateField,
 }) {
-  const [query, setQuery] = useState("");
+  // Persistent admission/benefit-period reference facts (benefit period #,
+  // dates, recert due, allergies, F2F due). Read-only -- sourced live from
+  // the Benefit Period API and the Face Sheet facesheet endpoint, never
+  // copied into RNICA form state, per owner direction that RNICA must not
+  // duplicate other modules' data or touch the Face Sheet. Recert Due is
+  // the current benefit period's end date (the date recertification must
+  // be completed by), not a separately fabricated field. Allergies: the
+  // Face Sheet (`clinical.has_allergies`/`clinical.allergies`) is the
+  // authoritative, already-live source for this read-only display --
+  // resolves the prior "two conflicting ownership claims" note in
+  // PATIENT_CHART_AUTHORITY_MAP.md pragmatically for display purposes only
+  // (this does not settle Medications-module write ownership, which is a
+  // separate concern from showing the current value here).
+  const [admissionFacts, setAdmissionFacts] = useState({
+    benefitPeriodLabel: null,
+    benefitPeriodStart: null,
+    benefitPeriodEnd: null,
+    benefitPeriodNumber: null,
+    recertDueDate: null,
+    allergiesText: null,
+    hasAllergies: null,
+    faceToFaceDueDate: null,
+  });
+  useEffect(() => {
+    let cancelled = false;
+    if (!patient?.id) return undefined;
+    Promise.all([
+      listBenefitPeriods(patient.id).catch(() => []),
+      fetchFacesheet(patient.id).catch(() => null),
+    ]).then(([benefitPeriods, facesheet]) => {
+      if (cancelled) return;
+      const current = (benefitPeriods || []).find((bp) => bp.is_current) || (benefitPeriods || [])[0] || null;
+      setAdmissionFacts({
+        benefitPeriodLabel: current
+          ? `#${current.period_number} (${current.benefit_type === "RECERT" ? "Recert" : "Initial"}) \u00b7 ${current.start_date || "?"} \u2013 ${current.end_date || "?"}`
+          : null,
+        benefitPeriodStart: current?.start_date || null,
+        benefitPeriodEnd: current?.end_date || null,
+        benefitPeriodNumber: current?.period_number ?? null,
+        recertDueDate: current?.end_date || null,
+        allergiesText: facesheet?.clinical?.allergies || null,
+        hasAllergies: facesheet?.clinical?.has_allergies ?? null,
+        faceToFaceDueDate: facesheet?.service_dates?.face_to_face_due_date || null,
+      });
+    });
+    return () => { cancelled = true; };
+  }, [patient?.id]);
+  const patientWithAdmissionFacts = useMemo(() => ({ ...patient, ...admissionFacts }), [patient, admissionFacts]);
+
   const [density, setDensity] = useState(storedDensity);
-  const [searchStartedAt, setSearchStartedAt] = useState(0);
-  const [showAllQuickAccess, setShowAllQuickAccess] = useState(false);
-  const [collapsedScreens, setCollapsedScreens] = useState({});
   const [viewMode, setViewMode] = useState("screen");
-  const filteredRoutes = useMemo(() => {
-    const normalized = query.trim().toLowerCase();
-    return normalized ? routes.filter((route) => route.label.toLowerCase().includes(normalized)) : routes;
-  }, [query, routes]);
+  const [genericNavOpen, setGenericNavOpen] = useState(false);
+  // GitHub Directive (2026-09-28) "Final Neurological Density and
+  // Space-Utilization Plan" Section 4/32/41 -- Structured Findings must
+  // collapse to a compact rail (reclaiming width for the central
+  // workspace) whenever it has no findings, and remain user-expandable at
+  // any time. `null` means "no explicit user choice yet" so the rail
+  // auto-tracks whether findings exist; once the user manually toggles it
+  // that explicit choice is respected until they toggle again.
+  const [findingsRailExpanded, setFindingsRailExpanded] = useState(null);
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
   // data. See rnicaThirteenScreenTaxonomy.js.
-  const screenGroups = useMemo(() => groupRoutesIntoScreens(filteredRoutes), [filteredRoutes]);
+  const screenGroups = useMemo(() => groupRoutesIntoScreens(routes), [routes]);
   const activeScreen = useMemo(() => screenForModuleKey(activeSection), [activeSection]);
   const activeScreenIndex = activeScreen
     ? RNICA_THIRTEEN_SCREENS.findIndex((screen) => screen.key === activeScreen.key)
     : -1;
-  const isScreenCollapsed = (screenKey) => {
-    if (screenKey in collapsedScreens) return collapsedScreens[screenKey];
-    return activeScreen?.key !== screenKey;
-  };
-  const toggleScreen = (screenKey) => {
-    setCollapsedScreens((prev) => ({ ...prev, [screenKey]: !isScreenCollapsed(screenKey) }));
-  };
   const selectCrossCuttingScreen = (screen) => {
     if (screen.key === "patientStory") {
       setViewMode("patientStory");
@@ -294,6 +398,7 @@ export default function RNICACommandWorkspace({
     setViewMode("screen");
     onSelect(screen.landingModuleKey);
     emitRnIcaTelemetry({ name: "section_jump", section: screen.landingModuleKey, source: `screen:${screen.key}` });
+    if (screen.railTarget === "validation") setValidationOpen(true);
     requestAnimationFrame(() => {
       document.querySelector(`[data-rnica-rail-target="${screen.railTarget}"]`)
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -333,16 +438,21 @@ export default function RNICACommandWorkspace({
     emitRnIcaTelemetry({ name: "density_changed", density: nextDensity });
   };
 
-  const changeSearch = (event) => {
-    if (!searchStartedAt) setSearchStartedAt(performance.now());
-    const next = event.target.value;
-    setQuery(next);
-    if (next.length > 1) {
-      const normalized = next.toLowerCase();
-      const resultCount = routes.filter((route) => route.label.toLowerCase().includes(normalized)).length;
-      emitRnIcaTelemetry({ name: "section_find", elapsedMs: Math.round(performance.now() - (searchStartedAt || performance.now())), resultCount });
-    }
-  };
+  // RNICA Diagnosis & LCD Workspace Optimization (owner directive FR-002):
+  // global workspace toolbar. "Voice Documentation" toggles the Visit
+  // Recording drawer (previously rendered permanently at the top of every
+  // screen -- see visitRecorderOpen below); "AI Assist" and "HOPE Report"
+  // reuse the existing cross-cutting screen navigation to the real
+  // AI Action Center / Compliance & Readiness rail panels (no new
+  // panels/data -- those are the only working surfaces for this content);
+  // "Classic View" reuses the existing exitPilot confirm-and-switch flow.
+  const [visitRecorderOpen, setVisitRecorderOpen] = useState(false);
+  // FR-011: the persistent Validation drawer is collapsed by default so
+  // it doesn't dominate the rail; the RN expands it deliberately, same
+  // pattern as the LCD groups and HOPE Comorbidities category groups.
+  const [validationOpen, setValidationOpen] = useState(false);
+  const aiActionCenterScreen = RNICA_THIRTEEN_SCREENS.find((screen) => screen.key === "aiActionCenter");
+  const complianceReadinessScreen = RNICA_THIRTEEN_SCREENS.find((screen) => screen.key === "complianceReadiness");
 
   const exitPilot = () => {
     if (window.confirm("Switch to the classic RN ICA view? Save or finish any open tool drafts before switching presentations.")) {
@@ -385,7 +495,7 @@ export default function RNICACommandWorkspace({
     // itself, sourced from the same data).
     return (
       <RnicaScreenShell
-        patient={patient}
+        patient={patientWithAdmissionFacts}
         locked={locked}
         completedSections={completedSections}
         totalRoutes={routes.length}
@@ -398,6 +508,8 @@ export default function RNICACommandWorkspace({
         onLock={onLock}
         canLock={canLock}
         statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
       >
         <PatientStoryPanel
           patient={patient}
@@ -413,16 +525,65 @@ export default function RNICACommandWorkspace({
     );
   }
 
-  if (viewMode === "screen" && activeScreen?.key === "evidenceIntake" && evidenceIntakeGroup) {
-    // Evidence & Intake is the second RNICA screen rebuilt into the
-    // standalone shell (no legacy chrome). It owns three existing legacy
-    // modules unchanged (demographics, vitals, referrals -- see
-    // rnicaThirteenScreenTaxonomy.js) and reuses their real form content
-    // via renderWorkspaceSections/select exactly as the legacy workspace
-    // did; only the surrounding composition changes.
+  if (viewMode === "screen" && activeScreen?.key === "hopeAdministrativeReview") {
+    // [OWNER DESIGN DECISION -- 2026-09-25, RESTORED] HOPE Administrative
+    // Review is restored as its own standalone RNICA screen (owner
+    // rejected the 2026-09-25 consolidation into Evidence & Intake --
+    // "RESTORE THIS ONE" / "THATS WHAT YOU DESTROYED", referring to the
+    // original 14-screen navigation). It is NOT a duplicate Face Sheet and
+    // NOT part of Evidence & Intake or Psychosocial. It renders the CMS
+    // Section A administrative items (A1005/A1010/A1110 x2/A1905/A1910)
+    // via HopeAdministrativeReview, reading/writing the same
+    // `formData.demographics` / `formData.livingSituation` state as
+    // before -- no persistence path change, no schema change.
     return (
       <RnicaScreenShell
-        patient={patient}
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="hopeAdministrativeReview"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
+      >
+        <HopeAdministrativeReview
+          value={patient.administrativeDemographics}
+          onUpdateField={onUpdateField}
+          locked={locked}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "evidenceIntake" && evidenceIntakeGroup) {
+    // Evidence & Intake is the first substantive RNICA screen after Patient
+    // Story. Per owner direction: vitals are continuous clinical context,
+    // not a sub-navigation tab -- they render inline, always visible, as
+    // the Clinical Snapshot leading the screen, above the evidence review
+    // content (2026-09-25 owner correction: "Do not bury vitals beneath
+    // evidence sections."). Discipline referrals (social work/spiritual
+    // care/volunteer/etc.) live under Orders & POC -- see
+    // rnicaThirteenScreenTaxonomy.js. The former "Patient Demographics" tab
+    // is replaced by EvidenceIntakeOverview -- per owner direction, RNICA
+    // must not store or edit a second copy of Face Sheet demographics. It
+    // shows the real intake evidence pipeline (referral evidence, imported
+    // clinical documents, AI-extracted structured findings), sourced live
+    // -- nothing here is captured or persisted by RNICA.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
         locked={locked}
         completedSections={completedSections}
         totalRoutes={routes.length}
@@ -435,30 +596,193 @@ export default function RNICACommandWorkspace({
         onLock={onLock}
         canLock={canLock}
         statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
       >
-        <nav className="rnica-screen__subnav" aria-label="Evidence & Intake modules">
-          {evidenceIntakeGroup.routes.map((route) => {
-            const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
-            return (
-              <button
-                type="button"
-                key={route.key}
-                className={activeSection === route.key ? "is-active" : ""}
-                onClick={() => select(route.key, "evidence_intake_subnav")}
-              >
-                {route.label}
-                {missing > 0 && <span className="rnica-screen__subnav-badge">{missing}</span>}
-              </button>
-            );
-          })}
-        </nav>
+        {/* Clinical Snapshot (vitals) renders first -- 2026-09-25 owner
+            direction: "Do not bury vitals beneath evidence sections."
+            Vitals are continuous clinical context and must lead the
+            screen, not trail the AI/evidence review content below. */}
+        <section className="rnica-screen__inline-vitals" aria-label="Vitals & measurements">
+          {renderWorkspaceSections(["vitals"])}
+        </section>
         <EvidenceIntakeAlertBanner
           errorKeys={errorKeys}
           warningKeys={warningKeys}
           routeForRequirement={routeForRequirement}
           onNavigate={(key) => select(key, "evidence_intake_banner")}
         />
-        {renderWorkspaceSections()}
+        <EvidenceIntakeOverview
+          patientId={patient.id}
+          intelligence={intelligence}
+          onNavigate={(key) => select(key, "evidence_intake_overview")}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "painSymptomBurden") {
+    // Pain Assessment is its own standalone RNICA screen. Owner
+    // correction 2026-09-25: Symptom Impact Screening ("J2051 A-H") is
+    // NOT rendered here as its own RN-facing section -- pain, dyspnea,
+    // nausea/vomiting/diarrhea/constipation, and anxiety/agitation are
+    // each documented exactly once, in their true owning section (Pain
+    // Assessment, Respiratory, GI, Neuro/Mental Status). HOPE J2051
+    // derivation/export/SFV/reporting logic still runs silently in the
+    // background off those source fields (see the symptomImpact sync
+    // effect) -- there is simply no duplicate RN-facing entry surface.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="painSymptomBurden"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
+      >
+        {renderWorkspaceSections(["pain"])}
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "bodySystems") {
+    // Body Systems is a presentation-only consolidation of the 10 body
+    // system modules (Neuro, CV, Respiratory, Infection, GI, Nutrition,
+    // Endocrine, GU, Musculoskeletal, Skin) into ONE compact accordion
+    // screen instead of a one-at-a-time wizard, per 2026 owner directive
+    // ("Body Systems Review — Preserve HOPE + Preserve SFV + Do Not Move
+    // Safety Content Into Body Systems"). Every accordion item reuses the
+    // exact same field config / HOPE mapping / POC controls as legacy,
+    // non-grouped rendering (see bodySystemsAccordionItems in RNICA.jsx) --
+    // nothing about matching, validation, or data is changed here. Falls,
+    // Safety, and Disaster Triage remain their own independent screen
+    // (safetyClinicalRisk) and are never rendered here, per the owner's
+    // explicit "do not move Safety/Falls into Body Systems" warning. Skin
+    // stays a full body-system accordion item (not reduced to a checkbox)
+    // since it is already its own module with its own field depth.
+    const reviewedCount = (bodySystemsAccordionItems || []).filter((item) => item.reviewed).length;
+    const totalSystems = (bodySystemsAccordionItems || []).length;
+    const findingsCount = (bodySystemsStructuredFindings || []).length;
+    // Auto-collapse when empty unless the user has explicitly expanded it;
+    // once findings appear, auto-expand unless the user explicitly
+    // collapsed it. `findingsRailExpanded` (state) is the explicit
+    // override; `null` defers to this auto behavior.
+    const railExpanded = findingsRailExpanded === null ? findingsCount > 0 : findingsRailExpanded;
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="bodySystems"
+        onSelectScreenTab={selectScreenTab}
+        onExitPilot={exitPilot}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
+      >
+        <div className={`rnica-bodysystems${railExpanded ? "" : " rnica-bodysystems--rail-collapsed"}`}>
+          <div className="rnica-bodysystems__main">
+            <div className="rnica-bodysystems__status">
+              <span className="rnica-bodysystems__status-label">System Assessment Status</span>
+              <ShadcnProgress
+                value={totalSystems ? (reviewedCount / totalSystems) * 100 : 0}
+                className="rnica-bodysystems__progress"
+              />
+              <span className="rnica-bodysystems__status-count">{reviewedCount} of {totalSystems} Systems Reviewed</span>
+            </div>
+            <Accordion type="multiple" className="rnica-bodysystems__accordion">
+              {(bodySystemsAccordionItems || []).map((item) => (
+                <AccordionItem key={item.key} value={item.key} className="rnica-bodysystems__item">
+                  <AccordionTrigger className="rnica-bodysystems__trigger">
+                    <span className="rnica-bodysystems__trigger-label">
+                      <span aria-hidden="true">{item.icon}</span> {item.label}
+                    </span>
+                    {/* Bounded Compatibility Increment (2026-09-28) Section 5 --
+                        Neurological supplies its own richer statusLabel/
+                        statusVariant (Not Started / In Progress / Review
+                        Required / Ready for Review) computed in RNICA.jsx's
+                        computeNeurologicalWorkflowStatus. Every other body
+                        system leaves these undefined and keeps the exact
+                        original Reviewed/Not-started boolean badge. */}
+                    <ShadcnBadge variant={item.statusVariant || (item.reviewed ? "success" : "neutral")}>
+                      {item.statusLabel || (item.reviewed ? "Reviewed" : "Not started")}
+                    </ShadcnBadge>
+                  </AccordionTrigger>
+                  <AccordionContent className="rnica-bodysystems__content">{item.content}</AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+          </div>
+          {/* GitHub Directive (2026-09-28) Section 4/32 -- when empty,
+              collapse to a narrow rail with a compact count instead of
+              reserving a large blank card; reclaim that width for the
+              central workspace. Always user-expandable/collapsible. */}
+          {railExpanded ? (
+            <aside className="rnica-bodysystems__rail">
+              <ShadcnCard className="rnica-bodysystems__findings">
+                <ShadcnCardHeader className="rnica-bodysystems__findings-header">
+                  <ShadcnCardTitle>Structured Findings</ShadcnCardTitle>
+                  <button
+                    type="button"
+                    className="rnica-bodysystems__rail-toggle"
+                    onClick={() => setFindingsRailExpanded(false)}
+                    aria-label="Collapse Structured Findings panel"
+                  >
+                    Collapse
+                  </button>
+                </ShadcnCardHeader>
+                <ShadcnCardContent>
+                  {/* Deterministic restatement of already-charted fields only
+                      -- never generated/inferred/predicted. See
+                      bodySystemsStructuredFindings in RNICA.jsx. */}
+                  {(bodySystemsStructuredFindings || []).length ? (
+                    <ul className="rnica-bodysystems__findings-list">
+                      {bodySystemsStructuredFindings.map((finding, idx) => (
+                        <li key={idx}>{finding}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="rnica-bodysystems__findings-empty">No structured findings documented yet.</p>
+                  )}
+                </ShadcnCardContent>
+              </ShadcnCard>
+            </aside>
+          ) : (
+            <button
+              type="button"
+              className="rnica-bodysystems__rail-collapsed-toggle"
+              onClick={() => setFindingsRailExpanded(true)}
+              aria-label="Expand Structured Findings panel"
+              title="Structured Findings"
+            >
+              <span className="rnica-bodysystems__rail-collapsed-count">{findingsCount}</span>
+              <span className="rnica-bodysystems__rail-collapsed-label">Structured Findings</span>
+            </button>
+          )}
+        </div>
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
           <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
@@ -479,9 +803,64 @@ export default function RNICACommandWorkspace({
           <span className={`clinical-command-status rnica-command-badge ${locked ? "is-complete" : "is-active"}`}>{locked ? "Locked" : "In progress"}</span>
           <span>{completedSections.length}/{routes.length} sections</span>
           {activeScreenIndex >= 0 && <span>Screen {activeScreenIndex + 1} of {RNICA_THIRTEEN_SCREENS.length}</span>}
-          <button type="button" onClick={exitPilot}>Use classic view</button>
+          {/* Same mobile workflow-nav trigger pattern as RnicaScreenShell
+              (owner correction 2026-09-26: RnicaWorkflowRail must work for
+              every RNICA screen, not just the 4 dedicated-shell ones). */}
+          <button
+            type="button"
+            className="rnica-screen__mobile-nav-trigger"
+            aria-haspopup="dialog"
+            onClick={() => setGenericNavOpen(true)}
+          >
+            Workflow
+          </button>
         </div>
       </ClinicalCommandHeader>
+
+      {/* RNICA Workspace toolbar (owner directive FR-002) -- global, so it
+          applies to every screen using this shared layout, not only
+          Diagnosis & LCD. Each button reuses existing, already-working
+          surfaces; nothing here is a new panel or data source. */}
+      <div className="rnica-command-toolbar" role="toolbar" aria-label="RNICA Workspace">
+        <button
+          type="button"
+          className={`rnica-command-toolbar__btn ${visitRecorderOpen ? "is-active" : ""}`}
+          aria-pressed={visitRecorderOpen}
+          onClick={() => setVisitRecorderOpen((current) => !current)}
+        >
+          Voice Documentation
+        </button>
+        <button
+          type="button"
+          className="rnica-command-toolbar__btn"
+          onClick={() => aiActionCenterScreen && selectCrossCuttingScreen(aiActionCenterScreen)}
+        >
+          AI Assist
+        </button>
+        <button
+          type="button"
+          className="rnica-command-toolbar__btn"
+          onClick={() => complianceReadinessScreen && selectCrossCuttingScreen(complianceReadinessScreen)}
+        >
+          HOPE Report
+        </button>
+        <button type="button" className="rnica-command-toolbar__btn" onClick={exitPilot}>
+          Classic View
+        </button>
+        {/* Compact "Jump To" replacement for the removed Bedside Quick
+            Access / Assessment Modules panel (owner directive
+            2026-09-26): RNICA Workflow Navigation (left navigator) remains
+            the single source of workflow navigation -- this is a
+            secondary, space-neutral shortcut, not a second nav system. */}
+        <label className="rnica-command-toolbar__jump">
+          <span>Jump to</span>
+          <select value={activeSection} onChange={(event) => select(event.target.value, "jump_to")}>
+            {routes.map((route) => (
+              <option key={route.key} value={route.key}>{route.label}</option>
+            ))}
+          </select>
+        </label>
+      </div>
 
       <ClinicalCommandContextBar className="rnica-command-prep" ariaLabel="Before visit patient context">
         <div><span>Primary</span><strong>{patient.primaryDiagnosis || "Not documented"}</strong></div>
@@ -492,85 +871,23 @@ export default function RNICACommandWorkspace({
       </ClinicalCommandContextBar>
 
       <ClinicalCommandLayout className="rnica-command-layout">
-        <ScrollRegion name="navigator" className="rnica-command-nav">
-          <label className="rnica-command-search">
-            <span>Find section</span>
-            <input type="search" value={query} onChange={changeSearch} placeholder={`Search ${routes.length} sections`} />
-          </label>
-          <div className="rnica-command-density" role="group" aria-label="Workspace density">
-            {DENSITIES.map((item) => (
-              <button type="button" key={item} aria-pressed={density === item} onClick={() => changeDensity(item)}>
-                {item === "large" ? "Large text" : item[0].toUpperCase() + item.slice(1)}
-              </button>
-            ))}
-          </div>
-          <button type="button" className="rnica-command-final-shortcut rnica-command-final-shortcut--mobile" onClick={() => select("finalization")}>
-            Narrative &amp; final review
-          </button>
-          <div className="rnica-command-screens" aria-label="RN ICA 13-screen navigator">
-            {screenGroups.map((screen, screenIndex) => {
-              if (screen.crossCutting) {
-                return (
-                  <div className="rnica-command-screen-group rnica-command-screen-group--crosscutting" key={screen.key}>
-                    <button
-                      type="button"
-                      className={`rnica-command-screen-group__header ${activeScreen?.key === screen.key ? "is-active" : ""}`}
-                      onClick={() => selectCrossCuttingScreen(screen)}
-                    >
-                      <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
-                      <span className="rnica-command-screen-group__label">{screen.label}</span>
-                    </button>
-                  </div>
-                );
-              }
-              if (screen.routes.length === 0) return null;
-              const collapsed = isScreenCollapsed(screen.key);
-              const screenComplete = screen.routes.filter((route) => completedSections.includes(route.key)).length;
-              return (
-                <div className="rnica-command-screen-group" key={screen.key}>
-                  <button
-                    type="button"
-                    className={`rnica-command-screen-group__header ${activeScreen?.key === screen.key ? "is-active" : ""}`}
-                    onClick={() => toggleScreen(screen.key)}
-                    aria-expanded={!collapsed}
-                  >
-                    <span className="rnica-command-screen-group__caret">{collapsed ? "▸" : "▾"}</span>
-                    <span className="rnica-command-screen-group__index">{screenIndex + 1}</span>
-                    <span className="rnica-command-screen-group__label">{screen.label}</span>
-                    <span className="rnica-command-screen-group__progress">{screenComplete}/{screen.routes.length}</span>
-                  </button>
-                  {!collapsed && (
-                    <div className="rnica-command-matrix" aria-label={`${screen.label} sections`}>
-                      {screen.routes.map((route) => {
-                        const complete = completedSections.includes(route.key);
-                        const missing = errorKeys.filter((key) => routeForRequirement(key)?.key === route.key).length;
-                        const changed = complete && !locked;
-                        return (
-                          <button type="button" key={route.key} className={activeSection === route.key ? "is-active" : ""} onClick={() => select(route.key)}>
-                            <span className="rnica-command-matrix__module">
-                              <span className="rnica-command-matrix__title">{route.label}</span>
-                              {route.regulator && <span className="rnica-command-matrix__regulator">{route.regulator}</span>}
-                            </span>
-                            <span className="rnica-command-matrix__signals">
-                              <span title="Completion">{complete ? "Done" : "Open"}</span>
-                              <span title="Risk">{missing ? "Risk" : "—"}</span>
-                              <span title="Changed">{changed ? "Changed" : "—"}</span>
-                              <span title="Missing requirements">{missing || "—"}</span>
-                            </span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </ScrollRegion>
-
+        <RnicaWorkflowRail
+          activeScreenKey={activeScreen?.key}
+          onSelectScreen={selectScreenTab}
+          statusContext={railStatusContext}
+          density={density}
+          onChangeDensity={changeDensity}
+        />
         <ScrollRegion name="detail" className="rnica-command-detail">
           <>
-              {visitRecorder}
+              {/* FR-002/FR-005: Visit Recording is no longer a permanent
+                  card -- it renders only inside the toolbar-controlled
+                  drawer, same VisitRecorderCard/props as before. */}
+              {visitRecorderOpen && (
+                <div className="rnica-command-voice-drawer" data-rnica-rail-target="voice-documentation">
+                  {visitRecorder}
+                </div>
+              )}
               {alerts}
               {activeScreen?.key === "evidenceIntake" && (
                 <EvidenceIntakeAlertBanner
@@ -580,28 +897,6 @@ export default function RNICACommandWorkspace({
                   onNavigate={(key) => select(key, "evidence_intake_banner")}
                 />
               )}
-              <section className="clinical-command-card rnica-command-sticky-note" aria-labelledby="quick-capture-title">
-                <div>
-                  <span className="rnica-command-eyebrow">Bedside quick access</span>
-                  <h2 id="quick-capture-title">Assessment modules</h2>
-                  <p>Use the same ordered RN workflow as the navigator. Missing documentation is never treated as a negative finding.</p>
-                </div>
-                <div className="rnica-command-quick-grid" aria-label="Ordered assessment module shortcuts">
-                  {(showAllQuickAccess ? routes : routes.slice(0, 16)).map((route, index) => (
-                    <button type="button" key={route.key} onClick={() => select(route.key, "quick_capture")}>
-                      <span>{index + 1}</span> {route.label}
-                    </button>
-                  ))}
-                </div>
-                {routes.length > 16 && (
-                  <button type="button" className="rnica-command-quick-toggle" onClick={() => setShowAllQuickAccess((current) => !current)}>
-                    {showAllQuickAccess ? "Show first 16 modules" : `Show all ${routes.length} modules`}
-                  </button>
-                )}
-                <div className="rnica-command-provenance" aria-label="Finding provenance">
-                  <span>Observed / tapped</span><span>Spoken / extracted</span><span>Carried forward / verified</span>
-                </div>
-              </section>
               <section className="clinical-command-card rnica-command-active" aria-live="polite">
                 {activeSection === "finalization" && (
                   <NarrativeFinalReviewPanel
@@ -624,20 +919,32 @@ export default function RNICACommandWorkspace({
             Narrative &amp; final review
           </button>
           <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="validation">
-              <div className="rnica-command-card__heading"><h2>Validation</h2><span>{errorKeys.length + warningKeys.length} items</span></div>
-              {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
-              {errorKeys.slice(0, 5).map((key) => (
-                <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
-                  select(routeForRequirement(key)?.key || "finalization", "requirement");
-                }}>
-                  <strong>Required</strong><span>{validation.errors[key]}</span>
-                </button>
-              ))}
-              {warningKeys.slice(0, 3).map((key) => (
-                <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
-                  <strong>Review</strong><span>{validation.warnings[key]}</span>
-                </button>
-              ))}
+              <button
+                type="button"
+                className="rnica-command-card__heading rnica-command-card__heading--toggle"
+                aria-expanded={validationOpen}
+                onClick={() => setValidationOpen((current) => !current)}
+              >
+                <h2>{validationOpen ? "▾" : "▸"} Validation</h2>
+                <span>{errorKeys.length + warningKeys.length} items</span>
+              </button>
+              {validationOpen && (
+                <>
+                  {errorKeys.length === 0 && warningKeys.length === 0 && <p>No current validation blockers.</p>}
+                  {errorKeys.slice(0, 5).map((key) => (
+                    <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
+                      select(routeForRequirement(key)?.key || "finalization", "requirement");
+                    }}>
+                      <strong>Required</strong><span>{validation.errors[key]}</span>
+                    </button>
+                  ))}
+                  {warningKeys.slice(0, 3).map((key) => (
+                    <button type="button" className="rnica-command-requirement is-warning" key={key} onClick={() => select(routeForRequirement(key)?.key || "finalization", "requirement")}>
+                      <strong>Review</strong><span>{validation.warnings[key]}</span>
+                    </button>
+                  ))}
+                </>
+              )}
             </section>
           <section className="clinical-command-card rnica-command-card" data-rnica-rail-target="intelligence">
               <div className="rnica-command-card__heading"><h2>RN ICA intelligence</h2><span>{intelligence?.summary?.finding_count || 0} findings</span></div>
@@ -651,6 +958,14 @@ export default function RNICACommandWorkspace({
           </section>
         </ScrollRegion>
       </ClinicalCommandLayout>
+
+      <RnicaWorkflowSheet
+        open={genericNavOpen}
+        onClose={() => setGenericNavOpen(false)}
+        activeScreenKey={activeScreen?.key}
+        onSelectScreen={selectScreenTab}
+        statusContext={railStatusContext}
+      />
     </ClinicalCommandWorkspace>
   );
 }
