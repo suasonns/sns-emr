@@ -16677,14 +16677,45 @@ const SECTION_CONFIGS = {
       // Historical Findings" -- same Overview-gate pattern as
       // Respiratory/Infection (see `respiratoryOverview` precedent).
       // Organization only; no existing field renamed/removed/reclassified.
-      { title: "GI Overview", category: "core", fields: [
+      // SNS Layout Standard v1.1 Section 9 fix (2026-10): "Last BM Date"
+      // used to live in its own single-field "Bowel Basics" card, which is
+      // the exact pattern Section 9 prohibits ("Do not create a nested
+      // card for a single label and one short control"). Merged into this
+      // card instead of removed -- same `lastBM` path, same input type,
+      // same always-visible (non-conditional) rendering the 2026-10-23
+      // "GI Progressive Visibility Revision" directive required, so no
+      // field, value, or visibility behavior changes; only the card
+      // boundary that wrapped it does.
+      // SNS Layout Standard v1.1 Section 12 fix (2026-10): the comment
+      // above has always claimed GI Overview follows the Respiratory/
+      // Infection Overview precedent, but unlike `respiratoryOverview` and
+      // `infectionOverview` it was missing `fullWidth: true` -- so it sat
+      // in the same 3-column "core" row as the much taller "Abdominal /
+      // Bowel Assessment" card, leaving most of its own column empty
+      // beneath it (the exact >40%-unused-row condition Section 12.2
+      // prohibits). Adding `fullWidth: true` now actually matches the
+      // precedent the comment already described; no field/value change.
+      { title: "GI Overview", category: "core", fullWidth: true, fields: [
         { type: "segmented", label: "GI Overview", path: "gastrointestinalOverview", options: [
           "No Current GI Concern",
           "Existing GI Findings Review",
           "New or Worsening GI Findings",
         ]},
+        { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
       ]},
-      { title: "Constipation — Auto-Suggested from Last BM Date", category: "core", customRenderer: "constipationAutoAssess" },
+      // LAYOUT AUDIT FIX (SNS_LAYOUT_STANDARD_V1_1, same pattern as the
+      // Cardiovascular "core" bucket fix above) -- Constipation-Auto and
+      // Abdominal / Bowel Assessment are now the only two remaining
+      // non-full-width "core" cards; the auto-fit category grid would
+      // otherwise pack them into a 2-column row, but Constipation-Auto's
+      // short banner content next to Abdominal/Bowel's much longer field
+      // set produces the same >40%-unused-column condition Overview had.
+      // `fullWidth: true` stacks both as their own full-width rows
+      // instead (no side-by-side mismatch), and gives Abdominal / Bowel
+      // Assessment's own internal field grid the full container width to
+      // pack more of its fields per row -- reducing scroll height rather
+      // than adding it. No field/value/clinical change.
+      { title: "Constipation — Auto-Suggested from Last BM Date", category: "core", fullWidth: true, customRenderer: "constipationAutoAssess" },
       { title: "GI Symptoms", category: "symptoms", fields: [
         // OWNER DIRECTIVE (2026-10-29) "GI Rework -- All Clinical Choices
         // Must Use SNS Pills" -- converted from `type: "radio"` (large
@@ -16708,7 +16739,7 @@ const SECTION_CONFIGS = {
         // only after Last BM Size = Unable To Determine or the nurse
         // manually opens Additional Bowel Details below. Mild
         // Constipation alone now reveals nothing further -- Last BM Date
-        // lives in the always-visible Bowel Basics card below instead.
+        // lives in the always-visible GI Overview card above instead.
         { type: "segmented", label: "Last BM Size", path: "lastBMSize", options: ["Small", "Medium", "Large", "Unable To Determine"] },
         { type: "segmented", label: "Straining", path: "straining", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "segmented", label: "Stool Character", path: "stoolConsistency", options: ["Formed", "Soft", "Loose", "Watery", "Unable To Determine"] },
@@ -16721,11 +16752,14 @@ const SECTION_CONFIGS = {
       // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision"
       // -- Last BM Date is one of the six fields required in the default
       // view; it now lives in its own always-visible card instead of
-      // inside the Abdominal / Bowel Assessment card below (which is
-      // hidden by default). Same `lastBM` path, no data moved/renamed.
-      { title: "Bowel Basics", category: "core", fields: [
-        { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
-      ]},
+      // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision"
+      // -- Last BM Date is one of the six fields required in the default
+      // view; it is always visible (not gated behind the Abdominal /
+      // Bowel Assessment card below, which is hidden by default). SNS
+      // Layout Standard v1.1 Section 9 fix (2026-10) folded its former
+      // standalone "Bowel Basics" card into the "GI Overview" card above
+      // -- same `lastBM` path, no data moved/renamed, still always
+      // rendered, only the single-field card wrapper was removed.
       { title: "GI Documentation Guidance", category: "symptoms", customRenderer: "giDocumentationGuidance" },
       // OWNER DIRECTIVE (2026-10-06) "GI Rework -- Remaining Legacy
       // Controls" -- the last 5 `radio`/`checkbox`/`checkboxGroup` fields
@@ -16736,7 +16770,7 @@ const SECTION_CONFIGS = {
       // (Ascites: legacy boolean `true` -> "Yes" / `false`|unset -> "" via
       // normalizeTriState, identical to the Feeding Tube/Ostomy precedent
       // above) -- visual-only swap, no data shape change.
-      { title: "Abdominal / Bowel Assessment", category: "core", fields: [
+      { title: "Abdominal / Bowel Assessment", category: "core", fullWidth: true, fields: [
         { type: "segmented", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
         { type: "segmented", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
         { type: "segmentedTriState", label: "Ascites", path: "ascites" },
