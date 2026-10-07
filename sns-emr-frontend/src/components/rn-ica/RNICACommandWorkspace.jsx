@@ -226,7 +226,7 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
 // only: a compact identity/status bar, the 13-screen tab strip, the screen's
 // own content, and the save/lock controls -- there is no old-workspace
 // content behind it.
-function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, density, onChangeDensity, children }) {
+function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, density, onChangeDensity, updateAssessmentContext, children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   return (
     <div className={`rnica-screen rnica-screen--${density || "compact"}`}>
@@ -274,7 +274,18 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
           density={density}
           onChangeDensity={onChangeDensity}
         />
-        <main className="rnica-screen__content">{children}</main>
+        <main className="rnica-screen__content">
+          {/* R3 Command Workspace parity repair: the 6 dedicated RNICA
+              screens (Patient Story, HOPE Administrative Review, Evidence
+              & Intake, Pain/Symptom Burden, Diagnosis & LCD, Body Systems)
+              each early-return their own <RnicaScreenShell> tree, bypassing
+              the generic detail layout below where updateAssessmentContext
+              was originally wired. Rendering it once here, in the one
+              shell every dedicated screen shares, restores true parity
+              without duplicating the banner/POC JSX at each call site. */}
+          {updateAssessmentContext}
+          {children}
+        </main>
       </div>
 
       <RnicaWorkflowSheet
@@ -312,6 +323,13 @@ export default function RNICACommandWorkspace({
   bodySystemsStructuredFindings,
   visitRecorder,
   alerts,
+  // R3 Command Workspace parity repair (Owner Directive): pre-built JSX
+  // (UpdateAssessmentContextBanner + PlanOfCareReviewPanel from RNICA.jsx)
+  // giving this view the same Update Assessment change-of-condition
+  // context and assessment-scoped Plan of Care review gate the classic
+  // view already has. Same pass-a-built-node pattern as `alerts`/
+  // `visitRecorder` above -- no second implementation lives here.
+  updateAssessmentContext,
   onSelect,
   onSave,
   onLock,
@@ -509,6 +527,7 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="patientStory"
+        updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -552,6 +571,7 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="hopeAdministrativeReview"
+        updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -597,6 +617,7 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="evidenceIntake"
+        updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -651,6 +672,7 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="painSymptomBurden"
+        updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -693,6 +715,7 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="diagnosisLcd"
+        updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -752,6 +775,7 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="bodySystems"
+        updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
         onExitPilot={exitPilot}
         saving={saving}
@@ -970,6 +994,7 @@ export default function RNICACommandWorkspace({
                 </div>
               )}
               {alerts}
+              {updateAssessmentContext}
               {activeScreen?.key === "evidenceIntake" && (
                 <EvidenceIntakeAlertBanner
                   errorKeys={errorKeys}

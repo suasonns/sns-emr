@@ -871,7 +871,7 @@ const INITIAL_FORM = {
     nausea: "", vomiting: "", vomitingOccurrences24h: "", diarrhea: "", constipation: "",
     straining: "",
     stoolConsistency: "",
-    bowelSounds: "", abdomen: "", ascites: false, abdominalGirth: "",
+    bowelSounds: "", abdomen: "", ascites: "", abdominalGirth: "",
     stoolCharacter: [],
     bowelStatus: "", bowelFrequency: "", reasonBowelRegimenNotInitiated: "", lastBM: "",
     lastBMSize: "",
@@ -7697,6 +7697,77 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   );
 }
 
+// R3 Command Workspace parity repair (Owner Directive): single source of
+// truth for the Update Assessment "change of condition" context banner and
+// the assessment-scoped Plan of Care review gate. Classic RNICA and
+// RNICACommandWorkspace both render these exact components (RNICA.jsx
+// builds the JSX once and passes it down as a prop to the Command
+// Workspace, the same pattern already used for `alerts`/`visitRecorder`)
+// so there is exactly one implementation of the banner copy and exactly
+// one implementation of the save-first POC gate, not two independently
+// maintained renderings.
+export function isPlanOfCareReviewGated(assessmentId) {
+  return !assessmentId;
+}
+
+// Single, shared source-context label resolver (Owner Directive: "Source
+// visit context displays correctly" / "Direct History Action" / visit-note
+// provenance). Derived only from data this app actually records --
+// `changeOfConditionContext.source` plus, for the Visit Notes entry point,
+// the originating visit note's own `form_type` (VISIT_NOTE_FORM_TYPES in
+// src/api/visitNotes.ts). This repo has no distinct "PRN visit" form type
+// today (only ASSESS and ROUTINE_VISIT are full-body RN visit forms), so
+// rather than fabricate a "PRN RN Visit" classification the data cannot
+// support, a routine visit resolves to "Routine RN Visit" and any other
+// full-body RN visit form resolves to a generic "RN Visit" label.
+export function resolveChangeOfConditionSourceLabel(changeOfConditionContext) {
+  if (!changeOfConditionContext) return null;
+  if (changeOfConditionContext.source === "DIRECT_HISTORY_ACTION") return "Direct History Action";
+  if (changeOfConditionContext.source === "VISIT_NOTE_CHANGE_OF_CONDITION") {
+    return changeOfConditionContext.sourceVisitType === "ROUTINE_VISIT" ? "Routine RN Visit" : "RN Visit";
+  }
+  return null;
+}
+
+export function UpdateAssessmentContextBanner({ changeOfConditionContext, styles, COLORS }) {
+  if (!changeOfConditionContext) return null;
+  const sourceLabel = resolveChangeOfConditionSourceLabel(changeOfConditionContext);
+  return (
+    <div style={{ ...styles.warningBox, background: COLORS.bg, borderColor: COLORS.border, color: COLORS.dark, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 11.5, marginBottom: 2 }}>Update Assessment — Change of Condition</div>
+      <div style={{ fontSize: 11.5 }}>
+        Reason: {changeOfConditionContext.reasonLabel || changeOfConditionContext.reasonCode}
+        {changeOfConditionContext.reasonDetail ? ` — ${changeOfConditionContext.reasonDetail}` : ""}
+      </div>
+      {sourceLabel ? (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>Source: {sourceLabel}</div>
+      ) : null}
+      {changeOfConditionContext.originatingVisitDate ? (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          Identified during Visit Note dated {changeOfConditionContext.originatingVisitDate}. The source Visit Note remains unchanged.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function PlanOfCareReviewPanel({ assessmentId, styles, COLORS }) {
+  return (
+    <div style={{ ...styles.card, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: COLORS.dark, marginBottom: 8 }}>
+        Plan of Care Review
+      </div>
+      {isPlanOfCareReviewGated(assessmentId) ? (
+        <div style={{ fontSize: 11.5, color: COLORS.dark, opacity: 0.75 }}>
+          Save the Update Assessment before adding or revising assessment-linked Plan of Care items.
+        </div>
+      ) : (
+        <MasterPocReviewCard assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+      )}
+    </div>
+  );
+}
+
 // SECTION 12 — Post-lock amendments. The Lock button itself (see handleLock)
 // runs the same finalization-readiness check the backend enforces
 // server-side (rnica_finalization_service.py) and, if anything is missing,
@@ -11471,7 +11542,14 @@ export function computeGastrointestinalRequiresFollowUp(d = {}) {
   const constipationWithStraining = isModOrSevere(d.constipation) && isModOrSevere(d.straining);
   const diarrheaWithWateryOutput = isModOrSevere(d.diarrhea) && d.stoolConsistency === "Watery";
   const vomitingWithBurden = isModOrSevere(d.vomiting) && Number.isFinite(vomitingOccurrences) && vomitingOccurrences >= 3;
-  const concerningExamFinding = ["Distended", "Rigid", "Tender"].includes(d.abdomen) || Boolean(d.ascites);
+  // OWNER DIRECTIVE (2026-10-06) "GI Rework -- Remaining Legacy Controls"
+  // -- ascites converted from a plain boolean checkbox to the shared
+  // segmentedTriState ("Yes"/"No"/""); normalizeTriState keeps accepting
+  // a pre-existing legacy `true` value too, so historical records still
+  // surface this finding exactly as before. A plain `Boolean(d.ascites)`
+  // would wrongly treat the new "No" string as present (non-empty string
+  // is truthy), so this must check the normalized value explicitly.
+  const concerningExamFinding = ["Distended", "Rigid", "Tender"].includes(d.abdomen) || normalizeTriState(d.ascites) === "Yes";
   const symptomBurden = constipationWithStraining || diarrheaWithWateryOutput || vomitingWithBurden || concerningExamFinding;
   const bowelRegimenConcern = Boolean((d.reasonBowelRegimenNotInitiated || "").trim());
   const decliningStatus = d.clinicalStatusChange === "GI-Related Decline Observed Since Prior Assessment"
@@ -16557,13 +16635,22 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
       ]},
       { title: "GI Documentation Guidance", category: "symptoms", customRenderer: "giDocumentationGuidance" },
+      // OWNER DIRECTIVE (2026-10-06) "GI Rework -- Remaining Legacy
+      // Controls" -- the last 5 `radio`/`checkbox`/`checkboxGroup` fields
+      // in this card converted to the same SNS pill primitives (`segmented`
+      // for single-select, `segmentedTriState` for present/absent,
+      // `pillGroup` for multi-select) already used by every other field in
+      // this card and section. Same `path`s, same stored option strings
+      // (Ascites: legacy boolean `true` -> "Yes" / `false`|unset -> "" via
+      // normalizeTriState, identical to the Feeding Tube/Ostomy precedent
+      // above) -- visual-only swap, no data shape change.
       { title: "Abdominal / Bowel Assessment", category: "core", fields: [
-        { type: "radio", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
-        { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
-        { type: "checkbox", label: "Ascites", path: "ascites" },
+        { type: "segmented", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
+        { type: "segmented", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
+        { type: "segmentedTriState", label: "Ascites", path: "ascites" },
         { type: "input", label: "Abdominal Girth", path: "abdominalGirth" },
-        { type: "checkboxGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
-        { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
+        { type: "pillGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
+        { type: "segmented", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
         { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
         { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
@@ -17173,7 +17260,12 @@ const SECTION_CONFIGS = {
 // defaults so that partial/older records (missing nested keys added later)
 // don't crash rendering. Arrays are taken wholesale from `saved` when
 // present (not merged element-wise); plain objects are merged key-by-key.
-function deepMergeFormData(defaults, saved) {
+// R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): exported so
+// tests can verify, deterministically, that an unknown extra key such as
+// changeOfConditionContext placed into form_data survives a reload-merge
+// against INITIAL_FORM unchanged -- this is the entire reason zero schema
+// change is sufficient for persisting that context.
+export function deepMergeFormData(defaults, saved) {
   if (saved === undefined || saved === null) return defaults;
   if (Array.isArray(defaults) || Array.isArray(saved)) {
     return Array.isArray(saved) ? saved : defaults;
@@ -17438,7 +17530,7 @@ function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, p
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined }) {
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined, forceNewDraft = false, initialAssessmentType = undefined, changeOfConditionContext = null, onAssessmentCreated = undefined }) {
   const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
@@ -17476,8 +17568,19 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       return next;
     });
   };
-  const jumpToSection = (key) => {
+  // `forceOpen: true` is used when navigation is jumping to a *child* field
+  // inside a section (the section must stay open to reveal that field).
+  // Otherwise, re-selecting the section that's already active and open
+  // collapses it — the same open/close toggle as the in-page header row,
+  // just reachable from workflow navigation too.
+  const jumpToSection = (key, { forceOpen = false } = {}) => {
+    const alreadyActiveAndOpen = activeSection === key && !collapsedSections.has(key);
+    const willCollapse = alreadyActiveAndOpen && !forceOpen;
     setActiveSection(key);
+    if (willCollapse) {
+      toggleSection(key);
+      return;
+    }
     setCollapsedSections((prev) => {
       if (!prev.has(key)) return prev;
       const next = new Set(prev);
@@ -18054,7 +18157,9 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [dismissStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
 
   const isOngoing = mode === "ongoing";
-  const [assessmentType, setAssessmentType] = useState("update");
+  const [assessmentType, setAssessmentType] = useState(
+    initialAssessmentType === "update" || initialAssessmentType === "recert" ? initialAssessmentType : "update"
+  );
   const isUpdateAssessment = isOngoing && assessmentType === "update";
   // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
   // CMS SFV/HOPE labeling applies at HOPE Admission AND at a genuine HOPE
@@ -18440,6 +18545,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // Load existing assessment
   useEffect(() => {
     const activePatientId = resolvedPatientId || patientId;
+
+    // R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): a
+    // forced-new Update draft must start completely blank. It must NOT
+    // fall through to the patient-lookup fallback below, which returns the
+    // patient's most recent same-type record -- that fallback is exactly
+    // the original "no path to create a new Update assessment" defect.
+    // changeOfConditionContext (if provided) is stored as a plain extra key
+    // inside the existing form_data JSON contract -- no schema change.
+    if (forceNewDraft) {
+      setAssessmentId(null);
+      setLocked(false);
+      setLockedAt(null);
+      const blankForm = JSON.parse(JSON.stringify(INITIAL_FORM));
+      setFormData(changeOfConditionContext ? { ...blankForm, changeOfConditionContext } : blankForm);
+      setIntelligence(null);
+      setIntelligenceError("");
+      setStructuredFieldProvenance([]);
+      setAssessmentLoaded(true);
+      return undefined;
+    }
+
     if (!existingAssessmentId && !activePatientId) {
       setAssessmentLoaded(true);
       return undefined;
@@ -18497,7 +18623,22 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     return () => {
       mounted = false;
     };
-  }, [assessmentType, existingAssessmentId, isOngoing, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
+  }, [assessmentType, changeOfConditionContext, existingAssessmentId, forceNewDraft, isOngoing, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
+
+  // R3: fire onAssessmentCreated exactly once per forced-new-draft instance,
+  // the moment the first save gives this blank draft a real assessmentId.
+  // A fresh forceNewDraft instance always gets a new component `key` from
+  // NursingAssessmentBoard.jsx, so this ref starts correctly scoped.
+  const forceNewDraftActiveRef = useRef(forceNewDraft);
+  useEffect(() => {
+    forceNewDraftActiveRef.current = forceNewDraft;
+  }, [forceNewDraft]);
+  useEffect(() => {
+    if (assessmentId && forceNewDraftActiveRef.current && typeof onAssessmentCreated === "function") {
+      forceNewDraftActiveRef.current = false;
+      onAssessmentCreated(assessmentId);
+    }
+  }, [assessmentId, onAssessmentCreated]);
 
   useEffect(() => {
     if (assessmentId) {
@@ -19369,6 +19510,20 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               )}
             </>
           )}
+          // R3 Command Workspace parity repair (Owner Directive): the exact
+          // same UpdateAssessmentContextBanner + PlanOfCareReviewPanel
+          // components rendered in the classic view above, built here with
+          // the same formData.changeOfConditionContext / assessmentId /
+          // styles / COLORS already in scope for this render. No second
+          // implementation, no new POC logic -- Command Workspace simply
+          // receives the identical JSX as a prop, the same pattern already
+          // used for `alerts` and `visitRecorder` above.
+          updateAssessmentContext={(
+            <>
+              <UpdateAssessmentContextBanner changeOfConditionContext={formData.changeOfConditionContext} styles={styles} COLORS={COLORS} />
+              <PlanOfCareReviewPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+            </>
+          )}
           onSelect={setActiveSection}
           onSave={handleSave}
           onLock={handleLock}
@@ -19500,6 +19655,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         patientIdProp={patientId}
       />
 
+      <UpdateAssessmentContextBanner changeOfConditionContext={formData.changeOfConditionContext} styles={styles} COLORS={COLORS} />
+
+      {/* R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): Section 11
+          Plan of Care review, rendered in-form and scoped to the assessment
+          currently open in THIS workspace -- reusing the existing, already-built
+          MasterPocReviewCard exactly as PatientChart.jsx does, with zero new POC
+          logic. Prior to this, the chart-level card always resolved to the
+          patient's Admission assessment regardless of which assessment was open.
+          (Command Workspace parity repair: this is now the single shared
+          PlanOfCareReviewPanel also passed into RNICACommandWorkspace below.) */}
+      <PlanOfCareReviewPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+
       {(patientSummaryError || pageError) && (
         <div style={styles.warningBox}>
           {patientSummaryError && <div>Patient summary: {patientSummaryError}</div>}
@@ -19565,7 +19732,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             if (!match) return;
 
             if (match.parent) {
-              jumpToSection(match.parent);
+              jumpToSection(match.parent, { forceOpen: true });
               setTimeout(() => {
                 const el = document.getElementById(match.scrollTarget);
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });

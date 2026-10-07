@@ -4,6 +4,7 @@ import { getRnicaColors, getRnicaStyles } from "../theme/clinicalDesign";
 import { getCurrentUser } from "../api/session";
 import { getSupervisorySchedule } from "../api/supervisorySchedule";
 import { ContinuousCareLogSection } from "./RNICA";
+import { CHANGE_OF_CONDITION_REASONS, stageNewUpdateAssessmentRequest } from "../intake/NursingAssessmentBoard";
 import {
   listSfvRequirements,
   completeSfvRequirement,
@@ -61,6 +62,13 @@ const DEFAULT_CONTENT = {
   // HOPE J2053 symptom impact, captured on the SFV completion visit
   // (see SymptomFollowUpVisitSection / J2053_SOURCE_OF_TRUTH_ANALYSIS.md).
   symptom_impact: null,
+  // R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): records the
+  // RN's change-of-condition determination for this visit, and whether it
+  // led to a linked Update Assessment. This is documentation of the
+  // determination made during THIS visit note -- it never rewrites or
+  // deletes the note; the Update Assessment is a separate record that
+  // references this visit as its originating context.
+  change_of_condition_review: null,
   pain: { controlled: "", pain_level: null, other_observation: "" },
   vitals: {
     temperature: "",
@@ -1289,7 +1297,7 @@ export function SymptomFollowUpVisitSection({ patientId, visitId, isFinalized, s
 }
 
 
-function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, styles, COLORS }) {
+export function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, styles, COLORS }) {
   const [content, setContent] = useState(DEFAULT_CONTENT);
   const [visitStatus, setVisitStatus] = useState(null);
   const [comparableHistory, setComparableHistory] = useState([]);
@@ -1302,6 +1310,7 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
   const [validationErrors, setValidationErrors] = useState([]);
   const [activeSectionId, setActiveSectionId] = useState("top");
   const [compactNav, setCompactNav] = useState(typeof window !== "undefined" ? window.innerWidth < 1080 : false);
+  const [updateAssessmentError, setUpdateAssessmentError] = useState("");
 
   const currentUser = useMemo(() => getCurrentUser(), []);
 
@@ -1398,6 +1407,48 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
       .finally(() => setSaving(false));
   };
 
+  // R3 (Owner Directive, "RNICA Update/HUV Creation Workflow", clarified by
+  // the OWNER CLARIFICATION reframing the question away from HOPE/HUV
+  // calendar windows and toward clinical need): records the RN's
+  // determination on THIS visit note (saved via the normal handleSave path,
+  // same as any other field -- no new API), then, only if the RN confirms,
+  // stages a new Update Assessment request for the Nursing Assessment tab
+  // to pick up. This never edits or deletes the visit note itself.
+  const setChangeOfConditionField = (patch) => {
+    setContent((current) => ({
+      ...current,
+      change_of_condition_review: { ...(current.change_of_condition_review || {}), ...patch },
+    }));
+  };
+
+  const handleCompleteUpdateAssessment = () => {
+    const review = content.change_of_condition_review || {};
+    setUpdateAssessmentError("");
+    try {
+      stageNewUpdateAssessmentRequest(patientId, {
+        reasonCode: review.reasonCode,
+        reasonDetail: review.reasonDetail,
+        source: "VISIT_NOTE_CHANGE_OF_CONDITION",
+        sourceVisitType: content.form_type || null,
+        originatingVisitId: visitId,
+        originatingVisitDate: content.visit_date || null,
+      });
+      setChangeOfConditionField({ updateAssessmentStarted: true, updateAssessmentStartedAt: new Date().toISOString() });
+      updateVisitNote(visitId, {
+        ...content,
+        change_of_condition_review: {
+          ...review,
+          updateAssessmentStarted: true,
+          updateAssessmentStartedAt: new Date().toISOString(),
+        },
+      })
+        .then((record) => persistResponse(record, "Update Assessment started. Open the Nursing Assessment tab to continue documenting it."))
+        .catch((reason) => setError(reason.message || "Unable to save this visit note."));
+    } catch (err) {
+      setUpdateAssessmentError(err?.message || "Unable to start the Update Assessment.");
+    }
+  };
+
   const handleSignAndSubmit = () => {
     const errors = showSupervision ? validateSupervisoryReview(content, supervisoryContext) : [];
     if (errors.length) {
@@ -1440,6 +1491,94 @@ function VisitNoteEditor({ visitId, discipline, patientId, onSaved, onCancel, st
       <Section anchorId={anchor("since-last")}>
         <SinceLastComparableVisitCard comparisonState={comparisonState} onJump={scrollToSection} styles={styles} COLORS={COLORS} />
       </Section>
+
+      {isFullBody && normalizedDiscipline === "RN" && !isDeathVisit && !isCC ? (
+        <div style={{ ...styles.card }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: COLORS.dark, marginBottom: 6 }}>Change of Condition Review</div>
+          <div style={{ fontSize: 12.5, color: COLORS.gray || COLORS.dark, marginBottom: 10 }}>
+            Does the patient have a new condition, worsening condition, severe symptom requiring continued management,
+            or another clinical change that may require review of the Plan of Care before the next scheduled review?
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: 10 }}>
+            {[
+              { value: "YES", label: "Yes" },
+              { value: "NO", label: "No" },
+              { value: "UNABLE_TO_DETERMINE", label: "Unable to Determine" },
+            ].map((option) => (
+              <button
+                key={option.value}
+                type="button"
+                disabled={isFinalized}
+                onClick={() => setChangeOfConditionField({ determination: option.value })}
+                style={{
+                  padding: "6px 14px",
+                  borderRadius: 999,
+                  border: content.change_of_condition_review?.determination === option.value ? `1px solid ${COLORS.primary || "#0d9488"}` : `1px solid ${COLORS.border || "#1F2937"}`,
+                  background: content.change_of_condition_review?.determination === option.value ? (COLORS.primaryBg || "rgba(13, 148, 136, 0.12)") : "transparent",
+                  color: COLORS.dark, fontSize: 12, fontWeight: 600, cursor: isFinalized ? "default" : "pointer",
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+
+          {content.change_of_condition_review?.determination === "YES" && !content.change_of_condition_review?.updateAssessmentStarted ? (
+            <div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+                {CHANGE_OF_CONDITION_REASONS.map((reason) => (
+                  <button
+                    key={reason.value}
+                    type="button"
+                    disabled={isFinalized}
+                    onClick={() => setChangeOfConditionField({ reasonCode: reason.value })}
+                    style={{
+                      padding: "6px 12px",
+                      borderRadius: 999,
+                      border: content.change_of_condition_review?.reasonCode === reason.value ? `1px solid ${COLORS.primary || "#0d9488"}` : `1px solid ${COLORS.border || "#1F2937"}`,
+                      background: content.change_of_condition_review?.reasonCode === reason.value ? (COLORS.primaryBg || "rgba(13, 148, 136, 0.12)") : "transparent",
+                      color: COLORS.dark, fontSize: 12, fontWeight: 600, cursor: isFinalized ? "default" : "pointer",
+                    }}
+                  >
+                    {reason.label}
+                  </button>
+                ))}
+              </div>
+              {content.change_of_condition_review?.reasonCode === "OTHER" && (
+                <FormTextarea
+                  label="Reason detail"
+                  value={content.change_of_condition_review?.reasonDetail || ""}
+                  onChange={(v) => setChangeOfConditionField({ reasonDetail: v })}
+                  disabled={isFinalized}
+                  styles={styles}
+                  rows={2}
+                />
+              )}
+              {updateAssessmentError ? <div style={{ color: COLORS.error || "#ef4444", fontSize: 12, marginBottom: 8 }}>{updateAssessmentError}</div> : null}
+              <button
+                type="button"
+                disabled={isFinalized || !content.change_of_condition_review?.reasonCode}
+                onClick={handleCompleteUpdateAssessment}
+                style={{
+                  padding: "9px 16px", borderRadius: 8, border: "none",
+                  background: COLORS.primary || "#0d9488", color: "#fff", fontSize: 12.5, fontWeight: 700,
+                  cursor: (isFinalized || !content.change_of_condition_review?.reasonCode) ? "default" : "pointer",
+                  opacity: (isFinalized || !content.change_of_condition_review?.reasonCode) ? 0.6 : 1,
+                }}
+              >
+                Complete Update Assessment
+              </button>
+            </div>
+          ) : null}
+
+          {content.change_of_condition_review?.updateAssessmentStarted ? (
+            <div style={styles.infoBox}>
+              An Update Assessment was started from this visit on {new Date(content.change_of_condition_review.updateAssessmentStartedAt).toLocaleString()}.
+              Open the Nursing Assessment tab to continue documenting it. This visit note remains unchanged.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
 
       <Section anchorId={anchor("symptom-follow-up")}>
         <SymptomFollowUpVisitSection
