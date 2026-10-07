@@ -17656,6 +17656,30 @@ function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, p
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
+// OWNER DIRECTIVE (2026-10-30) "Accordion Collapse Defect A Fix" -- pure,
+// directly unit-testable transition function mirroring `jumpToSection`'s
+// actual collapse/open decision exactly (jumpToSection below calls this,
+// not a reimplementation, so a passing unit test is proof of the real
+// component's behavior). Open/closed state lives ONLY in
+// `collapsedSections`; `activeSection` never participates in the
+// collapse decision -- it is reported back purely for the caller to set
+// as a side effect.
+export function computeJumpToSectionResult(key, collapsedSectionsSet, { forceOpen = false } = {}) {
+  const alreadyOpen = !collapsedSectionsSet.has(key);
+  const willCollapse = alreadyOpen && !forceOpen;
+  let nextCollapsedSections;
+  if (willCollapse) {
+    nextCollapsedSections = new Set(collapsedSectionsSet);
+    nextCollapsedSections.add(key);
+  } else if (collapsedSectionsSet.has(key)) {
+    nextCollapsedSections = new Set(collapsedSectionsSet);
+    nextCollapsedSections.delete(key);
+  } else {
+    nextCollapsedSections = collapsedSectionsSet;
+  }
+  return { willCollapse, shouldScrollIntoView: !willCollapse, collapsedSections: nextCollapsedSections };
+}
+
 export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined, forceNewDraft = false, initialAssessmentType = undefined, changeOfConditionContext = null, onAssessmentCreated = undefined }) {
   const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
@@ -17696,26 +17720,33 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   };
   // `forceOpen: true` is used when navigation is jumping to a *child* field
   // inside a section (the section must stay open to reveal that field).
-  // Otherwise, re-selecting the section that's already active and open
-  // collapses it — the same open/close toggle as the in-page header row,
-  // just reachable from workflow navigation too.
+  // Otherwise, re-selecting a section that's already open collapses it —
+  // the same open/close toggle as the in-page header row, just reachable
+  // from workflow navigation too.
+  //
+  // OWNER DIRECTIVE (2026-10-30) "Accordion Collapse Defect A Fix" --
+  // previously this gated the collapse on `activeSection === key`, a
+  // second, independent piece of state that tracks navigation focus (it
+  // also drives the validation panel/SFV banner scoping) and is NOT the
+  // open/closed source of truth. Since `activeSection` changes to
+  // whatever section was visited most recently, re-clicking the ORIGINAL
+  // section's sidebar nav item after visiting any other section could
+  // never satisfy `activeSection === key` again, so it could never
+  // collapse via the sidebar -- only the in-content header's
+  // `toggleSection(key)` (no `activeSection` dependency) ever reliably
+  // closed an open section. Both entry points now read the exact same
+  // `collapsedSections` Set as the single source of truth for open/closed
+  // state; `activeSection` continues to update below for focus/validation
+  // purposes only and no longer participates in the collapse decision.
   const jumpToSection = (key, { forceOpen = false } = {}) => {
-    const alreadyActiveAndOpen = activeSection === key && !collapsedSections.has(key);
-    const willCollapse = alreadyActiveAndOpen && !forceOpen;
+    const result = computeJumpToSectionResult(key, collapsedSections, { forceOpen });
     setActiveSection(key);
-    if (willCollapse) {
-      toggleSection(key);
-      return;
+    setCollapsedSections(result.collapsedSections);
+    if (result.shouldScrollIntoView) {
+      requestAnimationFrame(() => {
+        sectionRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
     }
-    setCollapsedSections((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-    requestAnimationFrame(() => {
-      sectionRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
   };
   const [assessmentId, setAssessmentId] = useState(existingAssessmentId || null);
   const [saving, setSaving] = useState(false);
