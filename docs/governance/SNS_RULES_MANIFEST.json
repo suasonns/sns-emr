@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "authorityModel": {
+    "type": "complementary-constitutions",
+    "repositoryProcessAuthority": "docs/development/SNS_REPOSITORY_FIRST_IMPLEMENTATION_CONSTITUTION.md",
+    "clinicalComplianceAuthority": "docs/tenant-platform/SNS_CONSTITUTION.md",
+    "conflictRegister": "docs/governance/SNS_RULE_CONFLICT_REGISTER.md"
+  },
+  "mandatoryFiles": [
+    {
+      "path": "docs/development/SNS_REPOSITORY_FIRST_IMPLEMENTATION_CONSTITUTION.md",
+      "category": "constitution",
+      "mandatory": true
+    },
+    {
+      "path": "docs/tenant-platform/SNS_CONSTITUTION.md",
+      "category": "constitution",
+      "mandatory": true
+    },
+    {
+      "path": "AGENTS.md",
+      "category": "entry-point",
+      "mandatory": true
+    },
+    {
+      "path": ".github/copilot-instructions.md",
+      "category": "copilot",
+      "mandatory": true
+    },
+    {
+      "path": "docs/governance/SNS_RULES_MANIFEST.json",
+      "category": "manifest",
+      "mandatory": true
+    },
+    {
+      "path": "docs/governance/SNS_GOVERNANCE_IMPLEMENTATION_GUIDE.md",
+      "category": "governance",
+      "mandatory": true
+    },
+    {
+      "path": "docs/governance/SNS_RULE_CONFLICT_REGISTER.md",
+      "category": "governance",
+      "mandatory": true
+    },
+    {
+      "path": "docs/governance/SNS_CLINICAL_ARCHITECTURE.md",
+      "category": "clinical-architecture",
+      "mandatory": true
+    },
+    {
+      "path": "docs/governance/SNS_DATA_HANDLING_RULES.md",
+      "category": "data-safety",
+      "mandatory": true
+    },
+    {
+      "path": "docs/governance/SNS_WORKTREE_PROTOCOL.md",
+      "category": "worktree",
+      "mandatory": true
+    },
+    {
+      "path": "scripts/verify-sns-worktree-rules.mjs",
+      "category": "verification",
+      "mandatory": true
+    },
+    {
+      "path": "scripts/sns-worktree-preflight.mjs",
+      "category": "preflight",
+      "mandatory": true
+    },
+    {
+      "path": "scripts/verify-sns-worktree-rules.test.mjs",
+      "category": "verification-test",
+      "mandatory": true
+    },
+    {
+      "path": ".github/workflows/sns-governance.yml",
+      "category": "ci",
+      "mandatory": true
+    }
+  ],
+  "featureAuthorities": [
+    {
+      "name": "Body Systems engineering specification",
+      "path": "docs/design/body-systems-figma/SNS_Body_Systems_Engineering_Specification.md",
+      "requiredWhen": "Body Systems work"
+    },
+    {
+      "name": "Body Systems design references",
+      "path": "docs/design/body-systems-figma/",
+      "requiredWhen": "Body Systems UI work"
+    },
+    {
+      "name": "Canonical Body Systems domain",
+      "path": "sns-emr-frontend/src/domain/body-systems/",
+      "requiredWhen": "Body Systems implementation"
+    },
+    {
+      "name": "RNICA navigation specification",
+      "path": "docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md",
+      "requiredWhen": "RNICA navigation work"
+    }
+  ]
+}
