@@ -12685,6 +12685,73 @@ function respiratoryHasAnyPreservedData(d) {
   });
 }
 
+// OWNER DIRECTIVE (2026-10-30) "GI Progressive Visibility Defect B Fix" --
+// card titles gated by `gastrointestinalOverview` (see the
+// `sectionKey === "gastrointestinal"` gate alongside the Cardiovascular/
+// Respiratory/Infection precedents above). "GI Overview" and "Notes" are
+// never included here -- they are always visible per the existing GI
+// directives and are excluded from the gate entirely before this list is
+// consulted.
+const GI_OVERVIEW_HIDEABLE_CARDS = [
+  "Constipation — Auto-Suggested from Last BM Date",
+  "GI Symptoms",
+  "GI Documentation Guidance",
+  "Abdominal / Bowel Assessment",
+  "Feeding Devices",
+];
+// Flat field-path list per hideable GI card title, used only by the
+// "No Current GI Concern" gate to detect whether that specific card
+// already holds previously documented data (same reversibility-safety
+// pattern as `cardiovascularCardHasDocumentedData` -- a card with real
+// data never silently disappears; it falls through to a single-line
+// "previously documented" banner instead). "GI Documentation Guidance"
+// is a pure informational banner with no field of its own -- it is
+// always safe to hide outright, so it has no entry here.
+const GI_OVERVIEW_CARD_FIELD_PATHS = {
+  "Constipation — Auto-Suggested from Last BM Date": ["constipation"],
+  "GI Symptoms": [
+    "nausea", "vomiting", "vomitingOccurrences24h", "diarrhea", "constipation",
+    "lastBMSize", "straining", "stoolConsistency", "giInformationSource",
+  ],
+  "Abdominal / Bowel Assessment": [
+    "bowelSounds", "abdomen", "ascites", "abdominalGirth", "stoolCharacter",
+    "bowelStatus", "bowelFrequency", "reasonBowelRegimenNotInitiated",
+  ],
+  "Feeding Devices": ["feedingTube.present", "feedingTube.type", "ostomy.present", "ostomy.type"],
+};
+function giCardHasDocumentedData(d, cardTitle) {
+  const paths = GI_OVERVIEW_CARD_FIELD_PATHS[cardTitle] || [];
+  return paths.some((p) => {
+    const existing = getNestedValue(d, p);
+    return Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+  });
+}
+
+// Exported, directly unit-testable mirror of the card-filtering `if
+// (sectionKey === "gastrointestinal" ...)` gate above -- called from
+// that exact render code (not a parallel reimplementation), so a
+// passing unit test proves the real gate's behavior. Returns:
+//   "hide"        -- card renders nothing (zero layout space)
+//   "banner"      -- card renders only the single-line "previously
+//                    documented" preserved-findings banner
+//   "pass-through" -- card renders normally (unaffected by this gate)
+export function computeGiOverviewCardGate(cardTitle, data) {
+  if (cardTitle === "GI Overview" || cardTitle === "Notes") return "pass-through";
+  if (data?.gastrointestinalOverview !== "No Current GI Concern") return "pass-through";
+  if (cardTitle === "Clinical Status Change") return "hide";
+  if (!GI_OVERVIEW_HIDEABLE_CARDS.includes(cardTitle)) return "pass-through";
+  return giCardHasDocumentedData(data, cardTitle) ? "banner" : "hide";
+}
+
+// Exported, directly unit-testable mirror of the "New or Worsening GI
+// Findings" force-open rule applied to the Abdominal / Bowel Assessment
+// card and its sibling conditional GI Symptoms fields (both read this
+// same boolean, see the render code below).
+export function giOverviewForcesFullExam(data) {
+  return data?.gastrointestinalOverview === "New or Worsening GI Findings";
+}
+
+
 // OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" -- "A
 // nurse can immediately answer: Am I reviewing? or Am I documenting?"
 // This is the Review half of that split: a compact, read-only clinical
@@ -13573,6 +13640,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "gastrointestinal" && card.title !== "GI Overview" && card.title !== "Notes") {
+          const giGateAction = computeGiOverviewCardGate(card.title, data);
+          if (giGateAction === "hide") return null;
+          if (giGateAction === "banner") {
+            return (
+              <Card key={ci} title={card.title} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  Previously documented findings exist for this card. Select "Existing GI Findings Review" above to review or continue documenting.
+                </div>
+              </Card>
+            );
+          }
+        }
+
         if (sectionKey === "gastrointestinal" && card.title === "Abdominal / Bowel Assessment") {
           // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
           // Revision, Additional Bowel Details" -- the full exam-detail
@@ -13588,7 +13669,13 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           // always states the reason so the nurse never wonders why the
           // card suddenly expanded.
           const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
-          const manuallyOpened = Boolean(data?.giShowAdditionalBowelDetails);
+          // OWNER DIRECTIVE (2026-10-30) "GI Progressive Visibility Defect
+          // B Fix" -- "New or Worsening GI Findings" requires the complete
+          // exam (every field, no per-field filter), matching the
+          // Respiratory/Infection "New or Worsening" precedent, so it
+          // force-opens this card regardless of the individual auto-open
+          // triggers below.
+          const manuallyOpened = Boolean(data?.giShowAdditionalBowelDetails) || giOverviewForcesFullExam(data);
           const autoOpenReason = data?.lastBMSize === "Unable To Determine" ? "Last BM Size is Unable To Determine"
             : isModOrSevere(data?.straining) ? "Straining is documented as Moderate/Severe"
             : data?.stoolConsistency === "Watery" ? "Stool Character is documented as Watery"
@@ -14510,7 +14597,12 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 // in the always-visible Bowel Basics card below).
                 const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
                 const diarrheaDocumented = Boolean(cardData.diarrhea) && cardData.diarrhea !== "None";
-                const manuallyOpened = Boolean(cardData.giShowAdditionalBowelDetails);
+                // OWNER DIRECTIVE (2026-10-30) "GI Progressive Visibility
+                // Defect B Fix" -- "New or Worsening GI Findings" reveals
+                // every conditional field in this card too (complete
+                // symptom-impact documentation), same force-open rule as
+                // the Abdominal / Bowel Assessment card above.
+                const manuallyOpened = Boolean(cardData.giShowAdditionalBowelDetails) || giOverviewForcesFullExam(cardData);
                 if (field.path === "lastBMSize" && !isModOrSevere(cardData.constipation) && !manuallyOpened) {
                   return null;
                 }
