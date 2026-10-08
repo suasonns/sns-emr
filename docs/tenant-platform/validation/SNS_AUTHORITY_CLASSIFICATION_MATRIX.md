@@ -1,8 +1,8 @@
 # SNS Authority Classification Matrix
 
-**Document ID:** SNS-GOV-AUTHORITY-001  
-**Status:** Product governance baseline, pending legal/compliance confirmation where marked  
-**Jurisdictions:** United States federal Medicare hospice; California hospice agencies; SNS internal product and operational policy  
+**Document ID:** SNS-GOV-AUTHORITY-001
+**Status:** Product governance baseline, pending legal/compliance confirmation where marked
+**Jurisdictions:** United States federal Medicare hospice; California hospice agencies; SNS internal product and operational policy
 **Verification date:** October 8, 2026
 
 ## Classification key
