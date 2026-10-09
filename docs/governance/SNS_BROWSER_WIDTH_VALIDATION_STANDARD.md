@@ -71,11 +71,23 @@ Use the recovered Playwright-based rendering pattern — see
 Selenium, Puppeteer, or another browser-testing/visual-regression
 framework without architectural review.
 
-## 6. SCOPE
+## 6. SCOPE — PLATFORM-WIDE, NOT BODY-SYSTEMS-SPECIFIC
 
-Required before approving: BodyShieldShell, Body Systems Registry,
-Neurological, Respiratory, Cardiovascular, Integumentary, Review By
-Exception, Nurse Review, and any other major SNS clinical UI redesign.
+This is an **SNS platform-wide standard**: required before approving
+any major SNS UI redesign or new workflow, including without
+limitation:
+
+- Clinical: BodyShieldShell, Body Systems Registry, Neurological,
+  Respiratory, Cardiovascular, Integumentary, Review By Exception,
+  Nurse Review, Admissions, Recertifications, Visits, HOPE, Plans of
+  Care, Orders, Tasks
+- Reports and dashboards: clinical, QA, compliance, executive
+- Tenant Owner / Biller platform: Claims, Collections, Financial
+  Reporting, Executive Reporting
+- Administrator UI and configuration screens
+- Any responsive-layout or typography change
+- Any new browser-validation work
+- Any future SNS module
 
 ## 7. PROVENANCE
 

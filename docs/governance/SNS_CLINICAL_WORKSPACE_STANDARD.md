@@ -35,13 +35,24 @@ viewport matrix defined in `SNS_BROWSER_WIDTH_VALIDATION_STANDARD.md`
 (ultrawide 3440, desktop 1920/1440, laptop 1366/1280, tablet 1024, phone
 430/390), covering all five supported environments in §1.
 
-## 4. SCOPE
+## 4. SCOPE — PLATFORM-WIDE, NOT BODY-SYSTEMS-SPECIFIC
 
-Applies to all current and future SNS clinical screens, including but
-not limited to: RNICA, Body Systems Registry, BodyShieldShell,
-Neurological, Respiratory, Cardiovascular, Integumentary, Review By
-Exception, Nurse Review, Admissions, Recertifications, and general
-clinical workspace layouts.
+This is an **SNS platform-wide standard**. The 34-inch ultrawide/15"
+laptop/13" laptop/iPad/iPhone validation matrix applies equally to
+clinical screens and to Owner, Biller, Administrator, QA, Compliance,
+and Executive interfaces — it is not a Body Systems-specific rule.
+Applies to all current and future SNS screens, including but not
+limited to:
+
+- Clinical: RNICA, Body Systems Registry, BodyShieldShell,
+  Neurological, Respiratory, Cardiovascular, Integumentary, Review By
+  Exception, Nurse Review, Admissions, Recertifications, Visits, HOPE,
+  Plans of Care, Orders, Tasks
+- Reports and dashboards: clinical, QA, compliance, executive
+- Tenant Owner / Biller platform: Claims, Collections, Financial
+  Reporting, Executive Reporting
+- Administrator UI and configuration screens
+- Any future SNS module
 
 ## 5. RELATED STANDARDS
 

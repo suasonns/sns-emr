@@ -62,12 +62,20 @@ integration) is a separate, explicit governance/engineering decision
 and is **not authorized by this document alone**. This standard records
 the recommended *pattern* only.
 
-## 5. SCOPE
+## 5. SCOPE — PLATFORM-WIDE, NOT BODY-SYSTEMS-SPECIFIC
 
-Required validation tool for: BodyShieldShell, Body Systems Registry,
-Neurological, Respiratory, Cardiovascular, Integumentary, Review By
-Exception, Nurse Review, and any other major SNS clinical UI redesign,
-per `SNS_BROWSER_WIDTH_VALIDATION_STANDARD.md`.
+This is an **SNS platform-wide standard**: required browser-validation
+tool for any major SNS interface, including without limitation:
+
+- Clinical: BodyShieldShell, Body Systems Registry, Neurological,
+  Respiratory, Cardiovascular, Integumentary, Review By Exception,
+  Nurse Review, Admissions, Recertifications, Visits, HOPE, Plans of
+  Care, Orders, Tasks
+- Reports and dashboards: clinical, QA, compliance, executive
+- Tenant Owner / Biller platform: Claims, Collections, Financial
+  Reporting, Executive Reporting
+- Administrator UI and configuration screens
+- Any future SNS module
 
 ## 6. PROVENANCE
 

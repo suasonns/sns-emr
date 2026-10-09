@@ -82,13 +82,24 @@ visible simultaneously.
 control, force every control to an arbitrary max-width, or maximize
 density regardless of readability.
 
-## 7. SCOPE — FUTURE BODY SYSTEMS WORK
+## 7. SCOPE — PLATFORM-WIDE, NOT BODY-SYSTEMS-SPECIFIC
 
-This standard governs evaluation of: BodyShieldShell, Body Systems
-Registry, Neurological, Respiratory, Cardiovascular, Integumentary,
-Review By Exception, and Nurse Review, in addition to RN
-Assessments/Admissions/Recertifications and general clinical workspace
-layouts. Priority order for these reviews:
+This standard is an **SNS platform-wide standard**, not a Body Systems-
+specific rule. Readability, workflow efficiency, documentation fatigue,
+and "No Wasted Space" apply to every SNS interface, not only clinical
+forms. Scope includes, without limitation:
+
+- Clinical platform: RNICA, Body Systems Registry, BodyShieldShell,
+  Neurological, Respiratory, Cardiovascular, Integumentary, Review By
+  Exception, Nurse Review, Admissions, Recertifications, Visits, HOPE,
+  Plans of Care, Orders, Tasks
+- Reports and dashboards (clinical, QA, compliance, executive)
+- Tenant Owner / Biller platform: Claims, Collections, Financial
+  Reporting, Executive Reporting
+- Administrator UI and configuration screens
+- Any future SNS module
+
+Priority order for these reviews:
 
 1. Readability
 2. Simultaneous visibility
