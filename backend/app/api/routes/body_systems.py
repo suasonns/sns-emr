@@ -1,14 +1,17 @@
 """Body Systems — Respiratory proof-of-pattern API endpoints.
 
-Backs the frontend Respiratory panel (sns-emr-frontend/src/domain/body-systems
-/respiratoryFieldInventory.ts, respiratoryWorkflowRules.ts) with real
-persistence (app/models/body_systems.py). Intentionally minimal for the
-proof-of-pattern milestone: find-or-create the current draft assessment,
-and save it. Situation classification and exception derivation remain the
-frontend domain layer's responsibility (respiratoryWorkflowRules.ts is the
-single source of truth for that business logic); the backend persists
+Backs the Body Systems Workspace's approved `RespiratorySystemPanel.tsx`
+(sns-emr-frontend/src/features/body-systems-workspace/systems/respiratory/)
+with real persistence (app/models/body_systems.py). Intentionally minimal
+for the proof-of-pattern milestone: find-or-create the current draft
+assessment, and save it. Situation classification and exception derivation
+remain the frontend domain layer's responsibility; the backend persists
 whatever the client computed and enforces only structural/concurrency/
-authorization rules.
+authorization rules. The frontend's single source of truth for that mapping
+is `respiratoryPersistenceMapping.ts` (Workspace-scoped, typed) -- the
+earlier `respiratoryWorkflowRules.ts` it might otherwise reference was a
+different, HOPE-worktree implementation that was deliberately not imported
+into this integration branch; it never shipped here.
 
 Permission model: deliberately reuses the SAME pattern already used by RN
 ICA's own save/update/lock endpoints (app/api/visits.py) -- tenant +
@@ -76,6 +79,18 @@ class SaveRespiratoryDraftRequest(BaseModel):
     summary: Optional[str] = None
     reviewState: str = "in_progress"
     reviewExceptions: list[ReviewExceptionIn] = Field(default_factory=list)
+    # Unable-to-Assess limitation sub-fields (AssessmentLimitation, spec
+    # section 4.2). Only scope/reason/assessedPortion/followUpRequired have
+    # a backend column today (SystemAssessment.limitation_*); timing/
+    # contingency and responsibleClinicianId are frontend-domain-typed but
+    # have no backend destination yet and are intentionally NOT accepted
+    # here -- see the Respiratory persistence mapping module
+    # (respiratoryPersistenceMapping.ts) BACKEND_DESTINATION_MISSING entries
+    # for the exact two fields and the reason.
+    limitationScope: Optional[list[str]] = None
+    limitationReason: Optional[str] = None
+    limitationAssessedPortion: Optional[str] = None
+    limitationFollowUpRequired: Optional[bool] = None
     # Optimistic concurrency (spec section 12): the client must send back
     # the version it last read. A mismatch means someone else saved in
     # between -- reject rather than silently overwrite their write.
@@ -154,6 +169,14 @@ def _serialize_system_assessment(system_assessment: SystemAssessment, open_excep
         "reviewState": system_assessment.review_state,
         "data": dict(system_assessment.data or {}),
         "summary": system_assessment.summary,
+        "limitationScope": list(system_assessment.limitation_scope) if system_assessment.limitation_scope else None,
+        "limitationReason": system_assessment.limitation_reason,
+        "limitationAssessedPortion": system_assessment.limitation_assessed_portion,
+        "limitationFollowUpRequired": (
+            _text_to_bool(system_assessment.limitation_follow_up_required)
+            if system_assessment.limitation_follow_up_required is not None
+            else None
+        ),
         "version": system_assessment.version,
         "updatedAt": system_assessment.updated_at.isoformat() if system_assessment.updated_at else None,
         "openReviewExceptions": [
@@ -167,6 +190,19 @@ def _serialize_system_assessment(system_assessment: SystemAssessment, open_excep
             for exception in open_exceptions
         ],
     }
+
+
+def _text_to_bool(value: str) -> bool:
+    """Reversible string<->bool transform for `limitation_follow_up_required`
+    (a Text column, not Boolean -- see app/models/body_systems.py). Stores
+    exactly "true"/"false"; any other stored value is a data error, not a
+    silent default, so it raises rather than guessing.
+    """
+    if value == "true":
+        return True
+    if value == "false":
+        return False
+    raise ValueError(f"Unexpected limitation_follow_up_required value: {value!r}")
 
 
 def _open_exceptions_for(db: Session, assessment_id: uuid.UUID, system: str) -> list[ReviewException]:
@@ -246,6 +282,14 @@ def save_respiratory_draft(
     system_assessment.data = dict(payload.data)
     system_assessment.summary = payload.summary
     system_assessment.review_state = payload.reviewState
+    system_assessment.limitation_scope = list(payload.limitationScope) if payload.limitationScope is not None else None
+    system_assessment.limitation_reason = payload.limitationReason
+    system_assessment.limitation_assessed_portion = payload.limitationAssessedPortion
+    system_assessment.limitation_follow_up_required = (
+        ("true" if payload.limitationFollowUpRequired else "false")
+        if payload.limitationFollowUpRequired is not None
+        else None
+    )
     system_assessment.version = (system_assessment.version or 1) + 1
     system_assessment.assessed_by = (
         uuid.UUID(str(getattr(current_user, "user_id", None) or getattr(current_user, "id", None)))

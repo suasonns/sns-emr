@@ -94,6 +94,52 @@ class TestSaveRespiratoryDraft:
         )
         assert response.status_code == 422
 
+    def test_saves_and_returns_unable_to_assess_limitation_fields(self, client, db_session, rn_headers, tenant):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={
+                "situation": "unable_to_assess",
+                "data": {},
+                "limitationScope": ["dyspnea", "lung_sounds"],
+                "limitationReason": "Patient declined exam",
+                "limitationAssessedPortion": "Visual observation only",
+                "limitationFollowUpRequired": True,
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["limitationScope"] == ["dyspnea", "lung_sounds"]
+        assert body["limitationReason"] == "Patient declined exam"
+        assert body["limitationAssessedPortion"] == "Visual observation only"
+        assert body["limitationFollowUpRequired"] is True
+
+        # The persisted read-back (GET) must match the save response exactly.
+        reloaded = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
+        assert reloaded["limitationScope"] == ["dyspnea", "lung_sounds"]
+        assert reloaded["limitationReason"] == "Patient declined exam"
+        assert reloaded["limitationFollowUpRequired"] is True
+
+    def test_limitation_fields_default_to_none_when_not_sent(self, client, db_session, rn_headers, tenant):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={"situation": "stable_existing", "data": {"dyspnea": "none"}},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["limitationScope"] is None
+        assert body["limitationReason"] is None
+        assert body["limitationAssessedPortion"] is None
+        assert body["limitationFollowUpRequired"] is None
+
     def test_stale_version_is_rejected(self, client, db_session, rn_headers, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
         current = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
