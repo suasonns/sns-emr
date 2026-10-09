@@ -159,12 +159,19 @@ export function BodyShieldShell({
     if (loaded.situation) {
       state.setSituation("respiratory", loaded.situation as AssessmentSituation);
     }
-    if (loaded.limitationReason || (loaded.limitationScope && loaded.limitationScope.length > 0)) {
+    if (
+      loaded.limitationReason ||
+      (loaded.limitationScope && loaded.limitationScope.length > 0) ||
+      loaded.limitationResponsibleClinicianId ||
+      loaded.limitationTimingOrContingency
+    ) {
       state.setLimitation("respiratory", {
         scope: loaded.limitationScope ?? [],
         reason: loaded.limitationReason ?? "",
         assessedPortion: loaded.limitationAssessedPortion ?? undefined,
         followUpRequired: loaded.limitationFollowUpRequired ?? false,
+        responsibleClinicianId: loaded.limitationResponsibleClinicianId ?? undefined,
+        timingOrContingency: loaded.limitationTimingOrContingency ?? undefined,
       });
     }
     setRespiratoryValues((prev) => ({ ...prev, ...(loaded.data as Partial<RespiratoryFieldValues>) }));
@@ -182,6 +189,8 @@ export function BodyShieldShell({
         limitationReason: respiratoryState.limitation?.reason ?? null,
         limitationAssessedPortion: respiratoryState.limitation?.assessedPortion ?? null,
         limitationFollowUpRequired: respiratoryState.limitation?.followUpRequired ?? null,
+        limitationResponsibleClinicianId: respiratoryState.limitation?.responsibleClinicianId ?? null,
+        limitationTimingOrContingency: respiratoryState.limitation?.timingOrContingency ?? null,
       })
       .catch(() => {
         // Status/errorMessage already reflect the failure; nothing further

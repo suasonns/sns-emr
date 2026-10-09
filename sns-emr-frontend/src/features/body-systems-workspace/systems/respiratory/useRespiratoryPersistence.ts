@@ -16,10 +16,12 @@
  * the caller already computed (via `useBodySystemsAssessmentState` /
  * `respiratoryPersistenceMapping.ts`) and reports what happened.
  *
- * Known gap (see respiratoryPersistenceMapping.ts BACKEND_DESTINATION_MISSING
- * entries): `limitation.responsibleClinicianId` and
- * `limitation.timingOrContingency` are intentionally NOT included in the
- * save payload below -- there is no backend column/field for them yet.
+ * Phase F1: `limitation.responsibleClinicianId` and
+ * `limitation.timingOrContingency` now have real backend destinations
+ * (migration c3b1d9e0f4a7) and are accepted/round-tripped by this hook's
+ * generic `save(input)` pass-through like every other limitation field --
+ * see respiratoryPersistenceMapping.ts (no remaining
+ * BACKEND_DESTINATION_MISSING entries).
  *
  * Known gap: the current GET/PUT endpoints only operate on "the current
  * draft assessment" (find-or-create) and carry no historical/read-only

@@ -39,6 +39,8 @@ function makeAssessment(overrides: Partial<RespiratoryAssessmentDTO> = {}): Resp
     limitationReason: null,
     limitationAssessedPortion: null,
     limitationFollowUpRequired: null,
+    limitationResponsibleClinicianId: null,
+    limitationTimingOrContingency: null,
     version: 1,
     updatedAt: null,
     openReviewExceptions: [],

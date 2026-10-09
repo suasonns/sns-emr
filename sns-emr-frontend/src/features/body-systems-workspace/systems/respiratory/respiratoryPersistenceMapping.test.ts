@@ -117,23 +117,21 @@ describe("RESPIRATORY_PERSISTENCE_MAPPING", () => {
     expect(entry?.backendDestination).toContain("limitation_follow_up_required");
   });
 
-  it("13. classifies limitation.responsibleClinicianId as BACKEND_DESTINATION_MISSING with a null destination", () => {
+  it("13. classifies limitation.responsibleClinicianId as DIRECT_BACKEND_MAPPING to limitation_responsible_clinician_id", () => {
     const entry = findRespiratoryMappingEntry("limitation.responsibleClinicianId");
-    expect(entry?.category).toBe("BACKEND_DESTINATION_MISSING");
-    expect(entry?.backendDestination).toBeNull();
+    expect(entry?.category).toBe("DIRECT_BACKEND_MAPPING");
+    expect(entry?.backendDestination).toContain("limitation_responsible_clinician_id");
   });
 
-  it("14. classifies limitation.timingOrContingency as BACKEND_DESTINATION_MISSING with a null destination", () => {
+  it("14. classifies limitation.timingOrContingency as DIRECT_BACKEND_MAPPING to limitation_timing_or_contingency", () => {
     const entry = findRespiratoryMappingEntry("limitation.timingOrContingency");
-    expect(entry?.category).toBe("BACKEND_DESTINATION_MISSING");
-    expect(entry?.backendDestination).toBeNull();
+    expect(entry?.category).toBe("DIRECT_BACKEND_MAPPING");
+    expect(entry?.backendDestination).toContain("limitation_timing_or_contingency");
   });
 
-  it("15. has exactly two BACKEND_DESTINATION_MISSING entries (no more, no fewer)", () => {
+  it("15. has zero BACKEND_DESTINATION_MISSING entries (Phase F1 closed the last two gaps)", () => {
     const missing = RESPIRATORY_PERSISTENCE_MAPPING.filter((e) => e.category === "BACKEND_DESTINATION_MISSING");
-    expect(missing.map((e) => e.field).sort()).toEqual(
-      ["limitation.responsibleClinicianId", "limitation.timingOrContingency"].sort(),
-    );
+    expect(missing).toEqual([]);
   });
 
   it("16. every DIRECT_BACKEND_MAPPING / TRANSFORMED_MAPPING entry has a non-null backendDestination", () => {

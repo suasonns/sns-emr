@@ -133,6 +133,15 @@ class SystemAssessment(Base):
     limitation_reason = Column(Text, nullable=True)
     limitation_assessed_portion = Column(Text, nullable=True)
     limitation_follow_up_required = Column(Text, nullable=True)
+    # Added for Phase F1 (limitation destination-gap closure): the approved
+    # Unable-to-Assess model also requires a responsible clinician and an
+    # explicit timing/contingency, neither of which had a backend column
+    # before this migration. `limitation_responsible_clinician_id` reuses
+    # the exact same "nullable UUID FK to users.id" convention already used
+    # by `assessed_by`/`recorded_by`/`signed_by`/`resolved_by` above, rather
+    # than inventing a new clinician-identity type.
+    limitation_responsible_clinician_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=True, index=True)
+    limitation_timing_or_contingency = Column(Text, nullable=True)
     # Verified clinical field values for this system (e.g. the Respiratory
     # field inventory in respiratoryFieldInventory.ts), keyed by fieldId.
     # See module docstring: reuses RnicaAssessment.form_data's JSONB-blob

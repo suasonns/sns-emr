@@ -27,15 +27,17 @@ export interface RespiratoryAssessmentDTO {
   reviewState: SystemReviewState;
   data: Record<string, unknown>;
   summary: string | null;
-  // Unable-to-Assess limitation sub-fields (AssessmentLimitation). Only
-  // these four have a backend column (SystemAssessment.limitation_*);
-  // `responsibleClinicianId`/`timingOrContingency` are domain-typed on the
-  // frontend but have no backend destination yet -- see
-  // respiratoryPersistenceMapping.ts BACKEND_DESTINATION_MISSING entries.
+  // Unable-to-Assess limitation sub-fields (AssessmentLimitation). All six
+  // now have a backend column (SystemAssessment.limitation_*) -- the last
+  // two (responsibleClinicianId/timingOrContingency) were added in Phase
+  // F1 (migration c3b1d9e0f4a7). See respiratoryPersistenceMapping.ts for
+  // the authoritative field-by-field classification.
   limitationScope: string[] | null;
   limitationReason: string | null;
   limitationAssessedPortion: string | null;
   limitationFollowUpRequired: boolean | null;
+  limitationResponsibleClinicianId: string | null;
+  limitationTimingOrContingency: string | null;
   version: number;
   updatedAt: string | null;
   openReviewExceptions: RespiratoryReviewExceptionDTO[];
@@ -56,6 +58,8 @@ export interface SaveRespiratoryDraftPayload {
   limitationReason?: string | null;
   limitationAssessedPortion?: string | null;
   limitationFollowUpRequired?: boolean | null;
+  limitationResponsibleClinicianId?: string | null;
+  limitationTimingOrContingency?: string | null;
   expectedVersion?: number;
 }
 

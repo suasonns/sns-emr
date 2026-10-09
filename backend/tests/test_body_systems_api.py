@@ -5,7 +5,9 @@ from datetime import date
 
 from app.models.body_systems import BodySystemsAssessment, SystemAssessment
 from app.models.patient import Patient
-from tests.conftest import _test_tenant_id
+from app.models.tenant import Tenant
+from app.models.user import User
+from tests.conftest import TEST_USER_ID, _test_tenant_id
 
 
 def _make_patient(db_session, tenant_id):
@@ -218,3 +220,133 @@ class TestSaveRespiratoryDraft:
             .count()
         )
         assert remaining == 1  # the resolved one is still there, untouched
+
+
+class TestLimitationResponsibleClinicianAndTiming:
+    """Phase F1: closes the two BACKEND_DESTINATION_MISSING limitation
+    sub-fields (responsibleClinicianId, timingOrContingency) identified in
+    respiratoryPersistenceMapping.ts. See migration c3b1d9e0f4a7.
+    """
+
+    def test_persists_and_round_trips_responsible_clinician_and_timing(
+        self, client, db_session, rn_headers, tenant
+    ):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={
+                "situation": "unable_to_assess",
+                "data": {},
+                "limitationFollowUpRequired": True,
+                "limitationResponsibleClinicianId": str(TEST_USER_ID),
+                "limitationTimingOrContingency": "Reassess at next scheduled visit in 48 hours.",
+            },
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["limitationResponsibleClinicianId"] == str(TEST_USER_ID)
+        assert body["limitationTimingOrContingency"] == "Reassess at next scheduled visit in 48 hours."
+
+        # The persisted read-back (GET) must match the save response exactly.
+        reloaded = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
+        assert reloaded["limitationResponsibleClinicianId"] == str(TEST_USER_ID)
+        assert reloaded["limitationTimingOrContingency"] == "Reassess at next scheduled visit in 48 hours."
+
+    def test_fields_default_to_none_when_not_sent(self, client, db_session, rn_headers, tenant):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={"situation": "stable_existing", "data": {"dyspnea": "none"}},
+        )
+
+        assert response.status_code == 200
+        body = response.json()
+        assert body["limitationResponsibleClinicianId"] is None
+        assert body["limitationTimingOrContingency"] is None
+
+    def test_malformed_clinician_id_is_rejected(self, client, db_session, rn_headers, tenant):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={"data": {}, "limitationResponsibleClinicianId": "not-a-uuid"},
+        )
+        assert response.status_code == 422
+
+    def test_unknown_clinician_id_is_rejected(self, client, db_session, rn_headers, tenant):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={"data": {}, "limitationResponsibleClinicianId": str(uuid.uuid4())},
+        )
+        assert response.status_code == 422
+
+    def test_cross_tenant_clinician_id_is_rejected(self, client, db_session, rn_headers, tenant):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+
+        other_tenant_id = uuid.uuid4()
+        other_tenant = db_session.get(Tenant, str(other_tenant_id))
+        if other_tenant is None:
+            db_session.add(
+                Tenant(
+                    id=str(other_tenant_id),
+                    legal_name="Other Hospice",
+                    display_name="Other Hospice",
+                    npi="9876543210",
+                    tenant_type="DEV",
+                    status="ACTIVE",
+                )
+            )
+            db_session.commit()
+        other_tenant_user_id = uuid.uuid4()
+        db_session.add(
+            User(
+                id=other_tenant_user_id,
+                tenant_id=other_tenant_id,
+                email=f"other-{other_tenant_user_id}@sns.local",
+                full_name="Other Tenant Clinician",
+                role="RN",
+                active=True,
+            )
+        )
+        db_session.commit()
+
+        response = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={"data": {}, "limitationResponsibleClinicianId": str(other_tenant_user_id)},
+        )
+        assert response.status_code == 422
+
+    def test_stale_version_still_rejected_even_with_valid_clinician(
+        self, client, db_session, rn_headers, tenant
+    ):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        current = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
+        assert current["version"] == 1
+
+        client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={"data": {"dyspnea": "none"}, "expectedVersion": 1},
+        )
+
+        stale_retry = client.put(
+            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            headers=rn_headers,
+            json={
+                "data": {"dyspnea": "mild"},
+                "expectedVersion": 1,
+                "limitationResponsibleClinicianId": str(TEST_USER_ID),
+            },
+        )
+        assert stale_retry.status_code == 409

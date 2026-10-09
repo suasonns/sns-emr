@@ -127,21 +127,18 @@ export const RESPIRATORY_PERSISTENCE_MAPPING: readonly RespiratoryFieldMappingEn
   },
   {
     field: "limitation.responsibleClinicianId",
-    category: "BACKEND_DESTINATION_MISSING",
-    backendDestination: null,
+    category: "DIRECT_BACKEND_MAPPING",
+    backendDestination: "SystemAssessment.limitation_responsible_clinician_id (UUID FK -> users.id)",
     note:
-      "No column on SystemAssessment and no field on SaveRespiratoryDraftRequest. Captured in the panel's Unable-to-Assess " +
-      "form (local component state) but NOT included in the save payload -- it is not persisted and is lost on reload. " +
-      "Reported, not silently invented a column/migration for.",
+      "Phase F1: added via migration c3b1d9e0f4a7. Server validates the UUID is well-formed and references an existing " +
+      "clinician in the SAME tenant; malformed/unknown/cross-tenant references are rejected with HTTP 422 rather than " +
+      "silently persisted or silently dropped.",
   },
   {
     field: "limitation.timingOrContingency",
-    category: "BACKEND_DESTINATION_MISSING",
-    backendDestination: null,
-    note:
-      "No column on SystemAssessment and no field on SaveRespiratoryDraftRequest. Captured in the panel's Unable-to-Assess " +
-      "form (local component state) but NOT included in the save payload -- it is not persisted and is lost on reload. " +
-      "Reported, not silently invented a column/migration for.",
+    category: "DIRECT_BACKEND_MAPPING",
+    backendDestination: "SystemAssessment.limitation_timing_or_contingency (Text)",
+    note: "Phase F1: added via migration c3b1d9e0f4a7. Free-text column; round-trips unchanged.",
   },
 ] as const;
 

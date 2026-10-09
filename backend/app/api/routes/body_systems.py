@@ -51,6 +51,7 @@ from app.models.body_systems import (
     ReviewException,
     SystemAssessment,
 )
+from app.models.user import User
 from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/visits/body-systems", tags=["body-systems"])
@@ -80,17 +81,16 @@ class SaveRespiratoryDraftRequest(BaseModel):
     reviewState: str = "in_progress"
     reviewExceptions: list[ReviewExceptionIn] = Field(default_factory=list)
     # Unable-to-Assess limitation sub-fields (AssessmentLimitation, spec
-    # section 4.2). Only scope/reason/assessedPortion/followUpRequired have
-    # a backend column today (SystemAssessment.limitation_*); timing/
-    # contingency and responsibleClinicianId are frontend-domain-typed but
-    # have no backend destination yet and are intentionally NOT accepted
-    # here -- see the Respiratory persistence mapping module
-    # (respiratoryPersistenceMapping.ts) BACKEND_DESTINATION_MISSING entries
-    # for the exact two fields and the reason.
+    # section 4.2). All six now have a backend destination
+    # (system_assessments.limitation_* -- see c3b1d9e0f4a7 for the two
+    # added in Phase F1) -- see respiratoryPersistenceMapping.ts for the
+    # authoritative field-by-field classification.
     limitationScope: Optional[list[str]] = None
     limitationReason: Optional[str] = None
     limitationAssessedPortion: Optional[str] = None
     limitationFollowUpRequired: Optional[bool] = None
+    limitationResponsibleClinicianId: Optional[str] = None
+    limitationTimingOrContingency: Optional[str] = None
     # Optimistic concurrency (spec section 12): the client must send back
     # the version it last read. A mismatch means someone else saved in
     # between -- reject rather than silently overwrite their write.
@@ -177,6 +177,12 @@ def _serialize_system_assessment(system_assessment: SystemAssessment, open_excep
             if system_assessment.limitation_follow_up_required is not None
             else None
         ),
+        "limitationResponsibleClinicianId": (
+            str(system_assessment.limitation_responsible_clinician_id)
+            if system_assessment.limitation_responsible_clinician_id
+            else None
+        ),
+        "limitationTimingOrContingency": system_assessment.limitation_timing_or_contingency,
         "version": system_assessment.version,
         "updatedAt": system_assessment.updated_at.isoformat() if system_assessment.updated_at else None,
         "openReviewExceptions": [
@@ -203,6 +209,38 @@ def _text_to_bool(value: str) -> bool:
     if value == "false":
         return False
     raise ValueError(f"Unexpected limitation_follow_up_required value: {value!r}")
+
+
+def _resolve_responsible_clinician(db: Session, raw_id: Optional[str], tenant_id: uuid.UUID) -> Optional[uuid.UUID]:
+    """Validates `limitationResponsibleClinicianId` before it is persisted.
+
+    Unlike assessed_by/recorded_by/signed_by (always the current authenticated
+    user), this field lets a clinician assign follow-up to a DIFFERENT staff
+    member, so it must be independently validated: malformed UUID, unknown
+    user, or cross-tenant reference are all rejected with the same 422 (not
+    distinguished, so a caller cannot use this endpoint to probe which user
+    IDs exist in another tenant).
+    """
+    if raw_id is None:
+        return None
+    try:
+        clinician_uuid = uuid.UUID(raw_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=422, detail="limitationResponsibleClinicianId must be a valid UUID"
+        ) from None
+
+    clinician = (
+        db.query(User)
+        .filter(User.id == clinician_uuid, User.tenant_id == tenant_id)
+        .first()
+    )
+    if clinician is None:
+        raise HTTPException(
+            status_code=422,
+            detail="limitationResponsibleClinicianId must reference an existing clinician in this tenant",
+        )
+    return clinician_uuid
 
 
 def _open_exceptions_for(db: Session, assessment_id: uuid.UUID, system: str) -> list[ReviewException]:
@@ -269,6 +307,10 @@ def save_respiratory_draft(
     assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
     system_assessment = _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
 
+    responsible_clinician_id = _resolve_responsible_clinician(
+        db, payload.limitationResponsibleClinicianId, patient.tenant_id
+    )
+
     if payload.expectedVersion is not None and payload.expectedVersion != system_assessment.version:
         raise HTTPException(
             status_code=409,
@@ -290,6 +332,8 @@ def save_respiratory_draft(
         if payload.limitationFollowUpRequired is not None
         else None
     )
+    system_assessment.limitation_responsible_clinician_id = responsible_clinician_id
+    system_assessment.limitation_timing_or_contingency = payload.limitationTimingOrContingency
     system_assessment.version = (system_assessment.version or 1) + 1
     system_assessment.assessed_by = (
         uuid.UUID(str(getattr(current_user, "user_id", None) or getattr(current_user, "id", None)))
