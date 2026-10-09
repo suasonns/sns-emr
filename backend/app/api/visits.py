@@ -1132,6 +1132,48 @@ def update_rnica_assessment(
                 "to request a traceable addendum instead of modifying signed content."
             ),
         )
+    # Reason-for-assessment (assessment_type) immutability -- server-side,
+    # not just the UI's disabled toggle. The UI never sends a purpose key
+    # on this endpoint once an assessment exists (see api.updateRNICAAssessment
+    # in RNICA.jsx), so this only fires on a direct/out-of-band API call
+    # attempting to switch an existing record's purpose (e.g. Update ->
+    # Recertification) after the "first write" boundary. Rejected with a
+    # structured 409 and an audit_log entry (no clinical narrative) rather
+    # than silently ignored, so a mismatched-purpose attempt is traceable.
+    # This reuses the existing assessment_type field/normalizer; it is not
+    # a second locking framework.
+    requested_assessment_subtype = (payload or {}).get("assessmentSubtype")
+    requested_assessment_type = (payload or {}).get("assessmentType")
+    if requested_assessment_subtype is not None or requested_assessment_type is not None:
+        requested_normalized = _normalize_rnica_assessment_type(
+            requested_assessment_subtype,
+            requested_assessment_type,
+            default=record.assessment_type or RNICA_ADMISSION_TYPE,
+        )
+        current_normalized = (record.assessment_type or RNICA_ADMISSION_TYPE).strip().upper()
+        if requested_normalized != current_normalized:
+            db.info["tenant_id"] = record.tenant_id
+            _safe_log_event(
+                db=db,
+                user_id=getattr(current_user, "id", None) or getattr(current_user, "user_id", None),
+                action="RNICA_ASSESSMENT_TYPE_CHANGE_REJECTED",
+                entity_type="rnica_assessment",
+                entity_id=record.id,
+                metadata={
+                    "patientId": str(record.patient_id),
+                    "currentAssessmentType": current_normalized,
+                    "requestedAssessmentType": requested_normalized,
+                },
+            )
+            db.commit()
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Reason for assessment cannot be changed after the first save. "
+                    "This assessment was created as "
+                    f"{current_normalized} and cannot be switched to {requested_normalized}."
+                ),
+            )
     form_data = _normalize_rnica_lcd_detection((payload or {}).get("formData") or record.form_data or {})
     record.form_data = form_data
     record.status = "DRAFT"
