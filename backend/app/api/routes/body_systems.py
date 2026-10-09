@@ -1,0 +1,304 @@
+"""Body Systems — Respiratory proof-of-pattern API endpoints.
+
+Backs the frontend Respiratory panel (sns-emr-frontend/src/domain/body-systems
+/respiratoryFieldInventory.ts, respiratoryWorkflowRules.ts) with real
+persistence (app/models/body_systems.py). Intentionally minimal for the
+proof-of-pattern milestone: find-or-create the current draft assessment,
+and save it. Situation classification and exception derivation remain the
+frontend domain layer's responsibility (respiratoryWorkflowRules.ts is the
+single source of truth for that business logic); the backend persists
+whatever the client computed and enforces only structural/concurrency/
+authorization rules.
+
+Permission model: deliberately reuses the SAME pattern already used by RN
+ICA's own save/update/lock endpoints (app/api/visits.py) -- tenant +
+care-team authorization via `get_authorized_patient`, with NO separate
+per-action role allow-list. RNICA's save/update/lock endpoints were
+inspected and confirmed to gate access this same way (patient-access
+authorization only), so Body Systems draft save follows the identical,
+already-established convention rather than inventing a new role list (the
+ORDER_SIGNER_ROLES / AMENDMENT_APPROVAL_ROLES precedent found elsewhere in
+the codebase gates a different, narrower class of action -- physician
+order signature and amendment approval -- not routine clinical
+documentation saves).
+
+Audit: every save calls `app.services.audit_logger.log_event`, the same
+non-blocking audit mechanism RNICA uses (`_safe_log_event` wraps it there;
+this module calls it directly since Body Systems writes are not on an
+error-sensitive hot path).
+"""
+from __future__ import annotations
+
+import uuid
+from typing import Any, Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Security
+from pydantic import BaseModel, Field
+from sqlalchemy.orm import Session
+
+from app.core.database import SessionLocal
+from app.core.patient_access import get_authorized_patient
+from app.core.security import CurrentUser, get_current_user
+from app.models.body_systems import (
+    ASSESSMENT_SITUATIONS,
+    BodySystemsAssessment,
+    EXCEPTION_BLOCKING_LEVELS,
+    EXCEPTION_TYPES,
+    REVIEW_STATES,
+    ReviewException,
+    SystemAssessment,
+)
+from app.services.audit_logger import log_event
+
+router = APIRouter(prefix="/visits/body-systems", tags=["body-systems"])
+
+RESPIRATORY_SYSTEM = "respiratory"
+
+
+def get_db():
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+class ReviewExceptionIn(BaseModel):
+    type: str
+    message: str
+    blockingLevel: str
+    fieldPath: Optional[str] = None
+
+
+class SaveRespiratoryDraftRequest(BaseModel):
+    situation: Optional[str] = None
+    data: dict[str, Any] = Field(default_factory=dict)
+    summary: Optional[str] = None
+    reviewState: str = "in_progress"
+    reviewExceptions: list[ReviewExceptionIn] = Field(default_factory=list)
+    # Optimistic concurrency (spec section 12): the client must send back
+    # the version it last read. A mismatch means someone else saved in
+    # between -- reject rather than silently overwrite their write.
+    expectedVersion: Optional[int] = None
+
+
+def _user_id(current_user: CurrentUser) -> Optional[str]:
+    raw = getattr(current_user, "user_id", None) or getattr(current_user, "id", None)
+    return str(raw) if raw else None
+
+
+def _get_or_create_current_assessment(db: Session, patient_id: uuid.UUID, tenant_id: uuid.UUID) -> BodySystemsAssessment:
+    """Returns the patient's most recent non-signed Body Systems assessment,
+    creating a fresh draft if none exists yet. A patient has at most one
+    "current" (not yet signed) assessment at a time for this proof-of-pattern
+    milestone -- once signed, the next save starts a new one.
+    """
+    assessment = (
+        db.query(BodySystemsAssessment)
+        .filter(
+            BodySystemsAssessment.patient_id == patient_id,
+            BodySystemsAssessment.tenant_id == tenant_id,
+            BodySystemsAssessment.status != "signed",
+        )
+        .order_by(BodySystemsAssessment.started_at.desc())
+        .first()
+    )
+    if assessment is not None:
+        return assessment
+
+    assessment = BodySystemsAssessment(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        visit_mode="routine_rn",
+        status="draft",
+    )
+    db.add(assessment)
+    db.commit()
+    db.refresh(assessment)
+    return assessment
+
+
+def _get_or_create_system_assessment(
+    db: Session, assessment: BodySystemsAssessment, system: str
+) -> SystemAssessment:
+    system_assessment = (
+        db.query(SystemAssessment)
+        .filter(
+            SystemAssessment.body_systems_assessment_id == assessment.id,
+            SystemAssessment.system == system,
+        )
+        .first()
+    )
+    if system_assessment is not None:
+        return system_assessment
+
+    system_assessment = SystemAssessment(
+        id=uuid.uuid4(),
+        tenant_id=assessment.tenant_id,
+        body_systems_assessment_id=assessment.id,
+        system=system,
+    )
+    db.add(system_assessment)
+    db.commit()
+    db.refresh(system_assessment)
+    return system_assessment
+
+
+def _serialize_system_assessment(system_assessment: SystemAssessment, open_exceptions: list[ReviewException]) -> dict:
+    return {
+        "id": str(system_assessment.id),
+        "bodySystemsAssessmentId": str(system_assessment.body_systems_assessment_id),
+        "system": system_assessment.system,
+        "situation": system_assessment.situation,
+        "reviewState": system_assessment.review_state,
+        "data": dict(system_assessment.data or {}),
+        "summary": system_assessment.summary,
+        "version": system_assessment.version,
+        "updatedAt": system_assessment.updated_at.isoformat() if system_assessment.updated_at else None,
+        "openReviewExceptions": [
+            {
+                "id": str(exception.id),
+                "type": exception.type,
+                "message": exception.message,
+                "blockingLevel": exception.blocking_level,
+                "fieldPath": exception.field_path,
+            }
+            for exception in open_exceptions
+        ],
+    }
+
+
+def _open_exceptions_for(db: Session, assessment_id: uuid.UUID, system: str) -> list[ReviewException]:
+    return (
+        db.query(ReviewException)
+        .filter(
+            ReviewException.body_systems_assessment_id == assessment_id,
+            ReviewException.system == system,
+            ReviewException.status == "open",
+        )
+        .all()
+    )
+
+
+@router.get("/patients/{patient_id}/respiratory")
+def get_current_respiratory_assessment(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
+    system_assessment = _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
+    open_exceptions = _open_exceptions_for(db, assessment.id, RESPIRATORY_SYSTEM)
+
+    return {
+        "bodySystemsAssessmentId": str(assessment.id),
+        "assessmentStatus": assessment.status,
+        **_serialize_system_assessment(system_assessment, open_exceptions),
+    }
+
+
+@router.put("/patients/{patient_id}/respiratory")
+def save_respiratory_draft(
+    patient_id: str,
+    payload: SaveRespiratoryDraftRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    if payload.situation is not None and payload.situation not in ASSESSMENT_SITUATIONS:
+        raise HTTPException(status_code=422, detail=f"situation must be one of {ASSESSMENT_SITUATIONS}")
+    if payload.reviewState not in REVIEW_STATES:
+        raise HTTPException(status_code=422, detail=f"reviewState must be one of {REVIEW_STATES}")
+    for exception_in in payload.reviewExceptions:
+        if exception_in.type not in EXCEPTION_TYPES:
+            raise HTTPException(status_code=422, detail=f"reviewExceptions[].type must be one of {EXCEPTION_TYPES}")
+        if exception_in.blockingLevel not in EXCEPTION_BLOCKING_LEVELS:
+            raise HTTPException(
+                status_code=422,
+                detail=f"reviewExceptions[].blockingLevel must be one of {EXCEPTION_BLOCKING_LEVELS}",
+            )
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
+    system_assessment = _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
+
+    if payload.expectedVersion is not None and payload.expectedVersion != system_assessment.version:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This Respiratory assessment was updated by someone else since you last loaded it. "
+                "Reload the latest version before saving again."
+            ),
+        )
+
+    system_assessment.situation = payload.situation
+    system_assessment.data = dict(payload.data)
+    system_assessment.summary = payload.summary
+    system_assessment.review_state = payload.reviewState
+    system_assessment.version = (system_assessment.version or 1) + 1
+    system_assessment.assessed_by = (
+        uuid.UUID(str(getattr(current_user, "user_id", None) or getattr(current_user, "id", None)))
+        if (getattr(current_user, "user_id", None) or getattr(current_user, "id", None))
+        else None
+    )
+
+    # Replace the auto-derived OPEN exception set for this system with what
+    # the client computed (respiratoryWorkflowRules.buildRespiratoryExceptions).
+    # Exceptions a clinician has already resolved/waived are left untouched --
+    # only ones still "open" are superseded by a fresh save.
+    previously_open = _open_exceptions_for(db, assessment.id, RESPIRATORY_SYSTEM)
+    for exception in previously_open:
+        db.delete(exception)
+    for incoming in payload.reviewExceptions:
+        db.add(
+            ReviewException(
+                id=uuid.uuid4(),
+                tenant_id=assessment.tenant_id,
+                body_systems_assessment_id=assessment.id,
+                system=RESPIRATORY_SYSTEM,
+                type=incoming.type,
+                field_path=incoming.fieldPath,
+                message=incoming.message,
+                blocking_level=incoming.blockingLevel,
+                status="open",
+            )
+        )
+
+    db.commit()
+    db.refresh(system_assessment)
+
+    db.info["tenant_id"] = str(assessment.tenant_id)
+    log_event(
+        user_id=_user_id(current_user),
+        tenant_id=str(assessment.tenant_id),
+        role=getattr(current_user, "role", None),
+        action="body_systems.respiratory.save_draft",
+        entity_type="system_assessment",
+        entity_id=str(system_assessment.id),
+        metadata={
+            "patientId": str(patient_uuid),
+            "bodySystemsAssessmentId": str(assessment.id),
+            "situation": system_assessment.situation,
+            "reviewState": system_assessment.review_state,
+            "openExceptionCount": len(payload.reviewExceptions),
+        },
+        db=db,
+    )
+
+    open_exceptions = _open_exceptions_for(db, assessment.id, RESPIRATORY_SYSTEM)
+    return {
+        "bodySystemsAssessmentId": str(assessment.id),
+        "assessmentStatus": assessment.status,
+        **_serialize_system_assessment(system_assessment, open_exceptions),
+    }
