@@ -30,7 +30,7 @@ describe("BodyShieldShell", () => {
     screen.getByText("Compare dated current evidence with dated prior-period evidence.");
   });
 
-  it("selecting Neurological shows the pilot panel; selecting Cardiovascular, Gastrointestinal, and Genitourinary show their pilot panels; selecting a non-pilot system shows the Phase 2 placeholder", () => {
+  it("selecting Neurological shows the pilot panel; selecting Cardiovascular, Nutrition, Gastrointestinal, and Genitourinary show their pilot panels; selecting a non-pilot system shows the Phase 2 placeholder", () => {
     render(
       <BodyShieldShell patientId="patient-1" visitId="visit-1" bodySystemsAssessmentId="assessment-1" />,
     );
@@ -42,6 +42,10 @@ describe("BodyShieldShell", () => {
     fireEvent.click(screen.getByText("Stable existing"));
     screen.getByText("Edema severity");
 
+    fireEvent.click(screen.getAllByText("Nutrition")[0]);
+    fireEvent.click(screen.getByText("Stable existing"));
+    screen.getByText("Swallowing / nutritional burden");
+
     fireEvent.click(screen.getAllByText("Gastrointestinal")[0]);
     fireEvent.click(screen.getByText("Stable existing"));
     screen.getByText("Bowel pattern");
@@ -50,7 +54,7 @@ describe("BodyShieldShell", () => {
     fireEvent.click(screen.getByText("Stable existing"));
     screen.getByText("Catheter status");
 
-    fireEvent.click(screen.getAllByText("Nutrition")[0]);
+    fireEvent.click(screen.getAllByText("Musculoskeletal")[0]);
     screen.getByText(/Phase 2 scope/);
   });
 });

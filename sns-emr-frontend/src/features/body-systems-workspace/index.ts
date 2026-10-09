@@ -47,6 +47,11 @@ export {
   INITIAL_GENITOURINARY_FIELD_VALUES,
   type GenitourinaryFieldValues,
 } from "./systems/genitourinary/GenitourinarySystemPanel";
+export {
+  NutritionSystemPanel,
+  INITIAL_NUTRITION_FIELD_VALUES,
+  type NutritionFieldValues,
+} from "./systems/nutrition/NutritionSystemPanel";
 
 export {
   useBodySystemsAssessmentState,

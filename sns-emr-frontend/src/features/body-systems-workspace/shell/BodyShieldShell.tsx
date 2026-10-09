@@ -43,6 +43,11 @@ import {
   INITIAL_GENITOURINARY_FIELD_VALUES,
   type GenitourinaryFieldValues,
 } from "../systems/genitourinary/GenitourinarySystemPanel";
+import {
+  NutritionSystemPanel,
+  INITIAL_NUTRITION_FIELD_VALUES,
+  type NutritionFieldValues,
+} from "../systems/nutrition/NutritionSystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -56,6 +61,7 @@ const PILOT_SYSTEMS: readonly BodySystemCode[] = [
   "neurological",
   "respiratory",
   "cardiovascular",
+  "nutrition",
   "gastrointestinal",
   "genitourinary",
 ];
@@ -89,6 +95,9 @@ export function BodyShieldShell({
   );
   const [genitourinaryValues, setGenitourinaryValues] = useState<GenitourinaryFieldValues>(
     INITIAL_GENITOURINARY_FIELD_VALUES,
+  );
+  const [nutritionValues, setNutritionValues] = useState<NutritionFieldValues>(
+    INITIAL_NUTRITION_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -214,6 +223,18 @@ export function BodyShieldShell({
             missingRequirements={state.missingRequirementsFor("genitourinary")}
             values={genitourinaryValues}
             onChange={setGenitourinaryValues}
+          />
+        )}
+
+        {state.selectedSystem === "nutrition" && (
+          <NutritionSystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("nutrition", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("nutrition", key)}
+            onLimitationChange={(limitation) => state.setLimitation("nutrition", limitation)}
+            missingRequirements={state.missingRequirementsFor("nutrition")}
+            values={nutritionValues}
+            onChange={setNutritionValues}
           />
         )}
 
