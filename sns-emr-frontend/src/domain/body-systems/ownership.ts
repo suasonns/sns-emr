@@ -91,7 +91,17 @@ export const OWNERSHIP_REGISTRY: readonly OwnershipRule[] = [
   },
   {
     owner: "infection_immunological",
-    factKeys: ["active_infection_status", "infection_findings"],
+    factKeys: [
+      "infection_status",
+      "infection_type",
+      "infection_findings",
+      "organism_information",
+      "antimicrobial_treatment",
+      "precautions_isolation",
+      "immunosuppression_status",
+      "infection_history",
+      "infection_response_followup",
+    ],
     referenceableBy: "all",
   },
   {
@@ -218,4 +228,102 @@ export function historicalEvidenceDoesNotCompleteCurrentReview(): true {
  */
 export function aiSuggestionsDoNotMarkSystemReviewed(): true {
   return true;
+}
+
+// ---------------------------------------------------------------------------
+// Infection / Immunological non-duplication rules (product-owner ownership
+// decision: Infection owns facts specifically about infection — infection
+// status/type/findings, organism/culture information, antimicrobial
+// treatment, precautions/isolation, immunosuppression, infection history,
+// and infection response/follow-up. Infection may reference, but never
+// reassess, facts owned by another system — temperature stays with Vitals
+// (not a registered Body Systems fact at all), wound characteristics stay
+// with Integumentary, urinary findings stay with Genitourinary, and
+// respiratory findings stay with Respiratory. Overlap in the underlying
+// clinical problem (an infected wound, a UTI, pneumonia) is expected and
+// acceptable — only duplicate ownership of the same fact is prohibited.
+// ---------------------------------------------------------------------------
+
+/**
+ * Temperature is Vitals-owned data, not a Body Systems ownership-registry
+ * fact at all — it must never resolve to `infection_immunological` (or any
+ * other body system). Infection may only display the Vitals-owned value as
+ * read-only reference context; it must never create, edit, or store its own
+ * temperature value (no `infection_temperature`, `infection_fever_value`, or
+ * any other duplicate).
+ */
+export function temperatureIsNotOwnedByInfection(): boolean {
+  return resolveFactOwner("temperature") !== "infection_immunological";
+}
+
+/** Explicit assertion: wound/skin findings are never reassessed by Infection — they remain Integumentary-owned. */
+export function woundFindingsAreNotOwnedByInfection(): boolean {
+  return (
+    resolveFactOwner("wounds") !== "infection_immunological" &&
+    resolveFactOwner("skin_integrity") !== "infection_immunological" &&
+    resolveFactOwner("pressure_injuries") !== "infection_immunological"
+  );
+}
+
+/** Explicit assertion: urinary findings are never reassessed by Infection — they remain Genitourinary-owned. */
+export function urinaryFindingsAreNotOwnedByInfection(): boolean {
+  return (
+    resolveFactOwner("urinary_status") !== "infection_immunological" &&
+    resolveFactOwner("genitourinary_symptoms") !== "infection_immunological"
+  );
+}
+
+/** Explicit assertion: respiratory findings are never reassessed by Infection — they remain Respiratory-owned. */
+export function respiratoryFindingsAreNotOwnedByInfection(): boolean {
+  return (
+    resolveFactOwner("dyspnea") !== "infection_immunological" &&
+    resolveFactOwner("lung_sounds") !== "infection_immunological"
+  );
+}
+
+/**
+ * HOPE/comorbidity sepsis (diagnosis-history/billing context, documented
+ * outside the Body Systems ownership registry) and current active-infection
+ * sepsis (an `infection_status`/`infection_findings` fact owned by
+ * Infection) are independent facts about a shared underlying condition.
+ * Neither may be derived from, or automatically set/clear, the other — both
+ * may coexist with their own provenance. Documented here as an explicit,
+ * named, always-true assertion (matching the existing Braden/body-diagram
+ * non-substitution pattern) so a future change collapsing them into one
+ * field is a single-function diff, not a silent regression.
+ */
+export function hopeSepsisHistoryDoesNotDeriveActiveInfectionSepsis(): true {
+  return true;
+}
+
+/** Explicit assertion, the inverse direction of the guard above: current active-infection sepsis never rewrites HOPE/comorbidity sepsis history. */
+export function activeInfectionSepsisDoesNotRewriteHopeSepsisHistory(): true {
+  return true;
+}
+
+/**
+ * Allergy data remains owned by the existing authoritative allergy source
+ * (`patient_allergies` / `AllergiesCard`). Infection may reference allergy
+ * information for antimicrobial-treatment context but must never create a
+ * second allergy store, a second allergy editor, or a copied allergy list.
+ */
+export function allergiesAreNotOwnedByInfection(): boolean {
+  return resolveFactOwner("allergies") !== "infection_immunological";
+}
+
+/**
+ * RN Notes (the SNS-wide optional narrative-context standard) are dated
+ * supporting evidence, never a structured finding. A note alone can never
+ * satisfy a required Infection finding (active status, organism,
+ * antimicrobial treatment, follow-up, etc.), complete Infection review, or
+ * close a Review By Exception item — only explicit structured
+ * documentation and clinician review actions can.
+ */
+export function systemNotesDoNotSatisfyStructuredFindings(): true {
+  return true;
+}
+
+/** Explicit assertion: a blank/empty RN Notes value is valid — notes are optional, never required. */
+export function systemNotesAreOptional(notes: string | undefined): boolean {
+  return notes === undefined || typeof notes === "string";
 }

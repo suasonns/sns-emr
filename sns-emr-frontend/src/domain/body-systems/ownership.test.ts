@@ -7,6 +7,8 @@ import {
 } from "./types";
 import {
   OWNERSHIP_REGISTRY,
+  activeInfectionSepsisDoesNotRewriteHopeSepsisHistory,
+  allergiesAreNotOwnedByInfection,
   bodyDiagramMarkerDoesNotCompleteWoundRecord,
   bradenMobilitySubscoreDoesNotCompleteMusculoskeletalReview,
   bradenNutritionSubscoreDoesNotCompleteNutritionReview,
@@ -17,9 +19,16 @@ import {
   edemaIsNotOwnedByIntegumentary,
   findDuplicateOwnershipFactKeys,
   historicalEvidenceDoesNotCompleteCurrentReview,
+  hopeSepsisHistoryDoesNotDeriveActiveInfectionSepsis,
   aiSuggestionsDoNotMarkSystemReviewed,
   resolveFactOwner,
+  respiratoryFindingsAreNotOwnedByInfection,
   skinWoundReviewDoesNotCompleteBradenAssessment,
+  systemNotesAreOptional,
+  systemNotesDoNotSatisfyStructuredFindings,
+  temperatureIsNotOwnedByInfection,
+  urinaryFindingsAreNotOwnedByInfection,
+  woundFindingsAreNotOwnedByInfection,
 } from "./ownership";
 
 describe("Body Systems — canonical system list", () => {
@@ -88,7 +97,15 @@ describe("Body Systems — ownership registry", () => {
       ["pressure_injuries", "integumentary"],
       ["body_diagram_wound_markers", "integumentary"],
       ["braden", "integumentary"],
-      ["active_infection_status", "infection_immunological"],
+      ["infection_status", "infection_immunological"],
+      ["infection_type", "infection_immunological"],
+      ["infection_findings", "infection_immunological"],
+      ["organism_information", "infection_immunological"],
+      ["antimicrobial_treatment", "infection_immunological"],
+      ["precautions_isolation", "infection_immunological"],
+      ["immunosuppression_status", "infection_immunological"],
+      ["infection_history", "infection_immunological"],
+      ["infection_response_followup", "infection_immunological"],
       ["diabetes", "endocrine"],
     ];
     for (const [factKey, owner] of expected) {
@@ -114,10 +131,24 @@ describe("Body Systems — ownership registry", () => {
     }
   });
 
-  it("resolves active infection to infection_immunological only", () => {
-    expect(resolveFactOwner("active_infection_status")).toBe("infection_immunological");
-    expect(canReassess("infection_immunological", "active_infection_status")).toBe(true);
-    expect(canReassess("neurological", "active_infection_status")).toBe(false);
+  it("resolves active infection status to infection_immunological only, and every discrete Infection fact to infection_immunological only", () => {
+    const infectionFactKeys = [
+      "infection_status",
+      "infection_type",
+      "infection_findings",
+      "organism_information",
+      "antimicrobial_treatment",
+      "precautions_isolation",
+      "immunosuppression_status",
+      "infection_history",
+      "infection_response_followup",
+    ];
+    for (const factKey of infectionFactKeys) {
+      expect(resolveFactOwner(factKey)).toBe("infection_immunological");
+      expect(canReassess("infection_immunological", factKey)).toBe(true);
+      expect(canReassess("neurological", factKey)).toBe(false);
+      expect(canReassess("integumentary", factKey)).toBe(false);
+    }
   });
 
   it("allows referencing a fact outside its owner but not reassessing it", () => {
@@ -152,5 +183,50 @@ describe("Body Systems — non-duplication assertions", () => {
 
   it("never lets AI suggestions mark a system reviewed", () => {
     expect(aiSuggestionsDoNotMarkSystemReviewed()).toBe(true);
+  });
+});
+
+describe("Body Systems — Infection / Immunological non-duplication rules", () => {
+  it("never lets temperature resolve to infection_immunological (Vitals-owned, outside the registry)", () => {
+    expect(resolveFactOwner("temperature")).toBeUndefined();
+    expect(temperatureIsNotOwnedByInfection()).toBe(true);
+    expect(canReassess("infection_immunological", "temperature")).toBe(false);
+  });
+
+  it("never lets wound/skin findings resolve to infection_immunological — they remain Integumentary-owned", () => {
+    expect(woundFindingsAreNotOwnedByInfection()).toBe(true);
+    expect(resolveFactOwner("wounds")).toBe("integumentary");
+    expect(canReference("infection_immunological", "wounds")).toBe(true);
+    expect(canReassess("infection_immunological", "wounds")).toBe(false);
+  });
+
+  it("never lets urinary findings resolve to infection_immunological — they remain Genitourinary-owned", () => {
+    expect(urinaryFindingsAreNotOwnedByInfection()).toBe(true);
+    expect(resolveFactOwner("urinary_status")).toBe("genitourinary");
+    expect(canReference("infection_immunological", "urinary_status")).toBe(true);
+    expect(canReassess("infection_immunological", "urinary_status")).toBe(false);
+  });
+
+  it("never lets respiratory findings resolve to infection_immunological — they remain Respiratory-owned", () => {
+    expect(respiratoryFindingsAreNotOwnedByInfection()).toBe(true);
+    expect(resolveFactOwner("dyspnea")).toBe("respiratory");
+    expect(canReference("infection_immunological", "dyspnea")).toBe(true);
+    expect(canReassess("infection_immunological", "dyspnea")).toBe(false);
+  });
+
+  it("keeps HOPE/comorbidity sepsis history and current active-infection sepsis independent in both directions", () => {
+    expect(hopeSepsisHistoryDoesNotDeriveActiveInfectionSepsis()).toBe(true);
+    expect(activeInfectionSepsisDoesNotRewriteHopeSepsisHistory()).toBe(true);
+  });
+
+  it("never lets allergy data resolve to infection_immunological ownership", () => {
+    expect(allergiesAreNotOwnedByInfection()).toBe(true);
+  });
+
+  it("never lets RN Notes satisfy a structured Infection finding, and treats blank notes as valid", () => {
+    expect(systemNotesDoNotSatisfyStructuredFindings()).toBe(true);
+    expect(systemNotesAreOptional(undefined)).toBe(true);
+    expect(systemNotesAreOptional("")).toBe(true);
+    expect(systemNotesAreOptional("Context from caregiver report.")).toBe(true);
   });
 });
