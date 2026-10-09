@@ -33,6 +33,11 @@ import {
   INITIAL_CARDIOVASCULAR_FIELD_VALUES,
   type CardiovascularFieldValues,
 } from "../systems/cardiovascular/CardiovascularSystemPanel";
+import {
+  GastrointestinalSystemPanel,
+  INITIAL_GASTROINTESTINAL_FIELD_VALUES,
+  type GastrointestinalFieldValues,
+} from "../systems/gastrointestinal/GastrointestinalSystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -42,7 +47,12 @@ const VISIT_MODE_TABS: { value: VisitMode; label: string }[] = [
   { value: "recertification", label: "Recertification" },
 ];
 
-const PILOT_SYSTEMS: readonly BodySystemCode[] = ["neurological", "respiratory", "cardiovascular"];
+const PILOT_SYSTEMS: readonly BodySystemCode[] = [
+  "neurological",
+  "respiratory",
+  "cardiovascular",
+  "gastrointestinal",
+];
 
 export interface BodyShieldShellProps {
   patientId: string;
@@ -67,6 +77,9 @@ export function BodyShieldShell({
   );
   const [cardiovascularValues, setCardiovascularValues] = useState<CardiovascularFieldValues>(
     INITIAL_CARDIOVASCULAR_FIELD_VALUES,
+  );
+  const [gastrointestinalValues, setGastrointestinalValues] = useState<GastrointestinalFieldValues>(
+    INITIAL_GASTROINTESTINAL_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -168,6 +181,18 @@ export function BodyShieldShell({
             missingRequirements={state.missingRequirementsFor("cardiovascular")}
             values={cardiovascularValues}
             onChange={setCardiovascularValues}
+          />
+        )}
+
+        {state.selectedSystem === "gastrointestinal" && (
+          <GastrointestinalSystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("gastrointestinal", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("gastrointestinal", key)}
+            onLimitationChange={(limitation) => state.setLimitation("gastrointestinal", limitation)}
+            missingRequirements={state.missingRequirementsFor("gastrointestinal")}
+            values={gastrointestinalValues}
+            onChange={setGastrointestinalValues}
           />
         )}
 

@@ -37,6 +37,11 @@ export {
   INITIAL_CARDIOVASCULAR_FIELD_VALUES,
   type CardiovascularFieldValues,
 } from "./systems/cardiovascular/CardiovascularSystemPanel";
+export {
+  GastrointestinalSystemPanel,
+  INITIAL_GASTROINTESTINAL_FIELD_VALUES,
+  type GastrointestinalFieldValues,
+} from "./systems/gastrointestinal/GastrointestinalSystemPanel";
 
 export {
   useBodySystemsAssessmentState,
