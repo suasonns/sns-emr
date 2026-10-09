@@ -1,0 +1,63 @@
+/* OWNER DECISION (2026-10-06) "Body Systems Architecture Review" -- shared
+   presentational shell styling. Follows the same token/spacing
+   conventions as RNICACommandWorkspace.css's .rnica-bodysystems__* rules
+   (compact spacing, SNS border/radius tokens) so a system rendered
+   through the shell is visually consistent with the rest of Body
+   Systems once Pass 2+ wires real systems into it. */
+
+.body-system-shell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.body-system-shell__header-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.body-system-shell__header-icon {
+  font-size: 1.1rem;
+}
+
+.body-system-shell__header-name {
+  font-weight: 600;
+}
+
+.body-system-shell__header-status,
+.body-system-shell__header-count {
+  font-size: 0.75rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: 9999px;
+  border: 1px solid var(--sns-border, #1F2937);
+  color: var(--sns-muted-foreground, #94A3B8);
+}
+
+.body-system-shell__header-summary {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--sns-muted-foreground, #94A3B8);
+}
+
+.body-system-shell__assessment-state,
+.body-system-shell__essential-findings,
+.body-system-shell__change-since-prior,
+.body-system-shell__triggered-detail,
+.body-system-shell__notes,
+.body-system-shell__poc-action {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.body-system-shell__triggered-detail {
+  border-left: 2px solid var(--sns-border, #1F2937);
+  padding-left: 0.75rem;
+}
+
+.body-system-shell__poc-action {
+  align-items: flex-start;
+}

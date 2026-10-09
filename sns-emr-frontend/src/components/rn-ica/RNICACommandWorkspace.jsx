@@ -321,6 +321,7 @@ export default function RNICACommandWorkspace({
   renderWorkspaceSections,
   bodySystemsAccordionItems,
   bodySystemsStructuredFindings,
+  generatedBodySystemsSummary,
   visitRecorder,
   alerts,
   // R3 Command Workspace parity repair (Owner Directive): pre-built JSX
@@ -407,6 +408,16 @@ export default function RNICACommandWorkspace({
   // auto-tracks whether findings exist; once the user manually toggles it
   // that explicit choice is respected until they toggle again.
   const [findingsRailExpanded, setFindingsRailExpanded] = useState(null);
+  // OWNER DIRECTIVE (2026-10-06) "System-Wide Body-System Simplification"
+  // Pass 1 -- bulk Expand all/Collapse all/Findings controls require a
+  // controlled Accordion (previously uncontrolled; Radix managed open
+  // state internally). `null` preserves the original per-item default
+  // (every item starts open, matching the prior uncontrolled behavior)
+  // until the nurse uses a bulk control or toggles an item by hand, at
+  // which point this becomes the single source of truth. Presentation
+  // state only -- never read by save/validation/HOPE/SFV/POC logic.
+  const [openBodySystems, setOpenBodySystems] = useState(null);
+  const [bodySystemsBulkActionStatus, setBodySystemsBulkActionStatus] = useState("");
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
@@ -768,6 +779,30 @@ export default function RNICACommandWorkspace({
     // collapsed it. `findingsRailExpanded` (state) is the explicit
     // override; `null` defers to this auto behavior.
     const railExpanded = findingsRailExpanded === null ? findingsCount > 0 : findingsRailExpanded;
+    // OWNER DIRECTIVE (2026-10-06) Pass 1 -- bulk control key sets. Findings
+    // keys reuse the exact same `bodySystemsStructuredFindings` groups the
+    // right rail already renders (a system "has findings" iff its group's
+    // `findings.length > 0`); no new finding computation is introduced.
+    const allBodySystemKeys = (bodySystemsAccordionItems || []).map((item) => item.key);
+    const findingsBodySystemKeys = findingsGroups.filter((g) => (g.findings?.length || 0) > 0).map((g) => g.key);
+    const currentOpenBodySystems = openBodySystems === null ? allBodySystemKeys : openBodySystems;
+    const runBodySystemsBulkAction = (label, keys) => {
+      setOpenBodySystems(keys);
+      setBodySystemsBulkActionStatus(`${label}: ${keys.length} of ${allBodySystemKeys.length} systems open.`);
+    };
+    // Pass 2, Section 11/14 -- "navigate-to-system" behavior shared by the
+    // simplified rail entries and the generated ROS links below. Opens
+    // (without closing any other already-open system) and scrolls the
+    // target system's existing accordion item into view; never creates a
+    // second navigation/route concept.
+    const navigateToBodySystem = (key) => {
+      const next = Array.from(new Set([...(currentOpenBodySystems || []), key]));
+      setOpenBodySystems(next);
+      setBodySystemsBulkActionStatus("");
+      requestAnimationFrame(() => {
+        document.getElementById(`rnica-bodysystem-${key}`)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
     return (
       <RnicaScreenShell
         patient={patientWithAdmissionFacts}
@@ -796,10 +831,40 @@ export default function RNICACommandWorkspace({
                 className="rnica-bodysystems__progress"
               />
               <span className="rnica-bodysystems__status-count">{reviewedCount} of {totalSystems} Systems Reviewed</span>
+              {/* OWNER DIRECTIVE (2026-10-06) "System-Wide Body-System
+                  Simplification" Pass 1 -- presentation-only bulk controls.
+                  They only call setOpenBodySystems (local accordion UI
+                  state); they never touch formData, reviewed/completion
+                  flags, POC, HOPE, SFV, or autosave. Concise text labels
+                  per the owner's explicit "do not use icon-only controls". */}
+              <div className="rnica-bodysystems__bulk-controls" role="group" aria-label="Body system expand and collapse controls">
+                <button type="button" className="rnica-bodysystems__bulk-btn" onClick={() => runBodySystemsBulkAction("Expand all", allBodySystemKeys)}>
+                  Expand all
+                </button>
+                <button type="button" className="rnica-bodysystems__bulk-btn" onClick={() => runBodySystemsBulkAction("Collapse all", [])}>
+                  Collapse all
+                </button>
+                <button type="button" className="rnica-bodysystems__bulk-btn" onClick={() => runBodySystemsBulkAction("Findings", findingsBodySystemKeys)}>
+                  Findings
+                </button>
+              </div>
+              {/* Needs Attention is intentionally NOT implemented -- only
+                  Neurological and Cardiovascular compute a richer
+                  "Review Required" status today; the other 8 systems only
+                  have a plain reviewed/not-started boolean. Per owner
+                  directive, do not invent clinical concern from "Not
+                  Started". Returning this dependency separately rather
+                  than guessing a definition. */}
+              <span className="sr-only" role="status" aria-live="polite">{bodySystemsBulkActionStatus}</span>
             </div>
-            <Accordion type="multiple" className="rnica-bodysystems__accordion">
+            <Accordion
+              type="multiple"
+              className="rnica-bodysystems__accordion"
+              value={currentOpenBodySystems}
+              onValueChange={(next) => { setOpenBodySystems(next); setBodySystemsBulkActionStatus(""); }}
+            >
               {(bodySystemsAccordionItems || []).map((item) => (
-                <AccordionItem key={item.key} value={item.key} className="rnica-bodysystems__item">
+                <AccordionItem key={item.key} value={item.key} id={`rnica-bodysystem-${item.key}`} className="rnica-bodysystems__item">
                   <AccordionTrigger className="rnica-bodysystems__trigger">
                     <span className="rnica-bodysystems__trigger-label">
                       <span aria-hidden="true">{item.icon}</span> {item.label}
@@ -819,6 +884,49 @@ export default function RNICACommandWorkspace({
                 </AccordionItem>
               ))}
             </Accordion>
+            {/* Pass 2, Section 12 -- Generated Body Systems Summary
+                (RENAMED from "Review of Systems Summary" per owner
+                design correction 2026-10-06: this is not a true ROS --
+                it is a read-only restatement of confirmed current
+                findings already documented in Body Systems, not a
+                symptom-review interview). Two-system (Neurological,
+                Cardiovascular) only per the owner's explicit Pass 2
+                scope; every other body system is intentionally left out
+                of this container for now. Each line is recomputed
+                straight from current structured data via
+                computeBodySystemFindings -- the same already-charted-
+                field-only function that drives the Structured Findings
+                rail -- never from header/rail presentation text, warning
+                banners, or workflow/review-gate messaging, so there is
+                no second stored clinical dataset and no drift risk.
+                Source-linked (click label to jump to that system); never
+                editable from here. */}
+            {generatedBodySystemsSummary?.length ? (
+              <ShadcnCard className="rnica-bodysystems__body-summary" aria-label="Body Systems Summary">
+                <ShadcnCardHeader>
+                  <ShadcnCardTitle>Body Systems Summary</ShadcnCardTitle>
+                  <span className="rnica-bodysystems__body-summary-subtitle">Generated from current Body Systems documentation</span>
+                </ShadcnCardHeader>
+                <ShadcnCardContent>
+                  <dl className="rnica-bodysystems__body-summary-list">
+                    {generatedBodySystemsSummary.map((entry) => (
+                      <div key={entry.key} className="rnica-bodysystems__body-summary-row">
+                        <dt>
+                          <button
+                            type="button"
+                            className="rnica-bodysystems__body-summary-link"
+                            onClick={() => navigateToBodySystem(entry.key)}
+                          >
+                            {entry.label}
+                          </button>
+                        </dt>
+                        <dd>{entry.statement}</dd>
+                      </div>
+                    ))}
+                  </dl>
+                </ShadcnCardContent>
+              </ShadcnCard>
+            ) : null}
           </div>
           {/* GitHub Directive (2026-09-28) Section 4/32 -- when empty,
               collapse to a narrow rail with a compact count instead of
@@ -852,22 +960,44 @@ export default function RNICACommandWorkspace({
                       strings, same source fields -- grouping/labels only. */}
                   {findingsGroups.length ? (
                     <div className="rnica-bodysystems__findings-groups">
-                      {findingsGroups.map((group) => (
-                        <div key={group.key} className="rnica-bodysystems__findings-group">
-                          <div className="rnica-bodysystems__findings-group-header">
-                            <span aria-hidden="true">{group.icon}</span>
-                            <span className="rnica-bodysystems__findings-group-label">{group.label}</span>
-                            <ShadcnBadge variant="neutral" className="rnica-bodysystems__findings-group-count">
-                              {group.findings.length}
-                            </ShadcnBadge>
+                      {findingsGroups.map((group) => {
+                        // Pass 2, Section 11 -- Neurological and
+                        // Cardiovascular get the simplified rail entry
+                        // (system name + count + ONE concise current
+                        // finding, navigation only); the other 8 systems
+                        // are untouched and keep their full bullet list.
+                        const simplified = group.key === "neurological" || group.key === "cardiovascular";
+                        return (
+                          <div key={group.key} className="rnica-bodysystems__findings-group">
+                            <div className="rnica-bodysystems__findings-group-header">
+                              <span aria-hidden="true">{group.icon}</span>
+                              {simplified ? (
+                                <button
+                                  type="button"
+                                  className="rnica-bodysystems__findings-group-label rnica-bodysystems__findings-group-label--link"
+                                  onClick={() => navigateToBodySystem(group.key)}
+                                >
+                                  {group.label}
+                                </button>
+                              ) : (
+                                <span className="rnica-bodysystems__findings-group-label">{group.label}</span>
+                              )}
+                              <ShadcnBadge variant="neutral" className="rnica-bodysystems__findings-group-count">
+                                {group.findings.length}
+                              </ShadcnBadge>
+                            </div>
+                            {simplified ? (
+                              <p className="rnica-bodysystems__findings-concise">{group.findings[0]}</p>
+                            ) : (
+                              <ul className="rnica-bodysystems__findings-list">
+                                {group.findings.map((finding, idx) => (
+                                  <li key={idx}>{finding}</li>
+                                ))}
+                              </ul>
+                            )}
                           </div>
-                          <ul className="rnica-bodysystems__findings-list">
-                            {group.findings.map((finding, idx) => (
-                              <li key={idx}>{finding}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   ) : (
                     <p className="rnica-bodysystems__findings-empty">No structured findings documented yet.</p>

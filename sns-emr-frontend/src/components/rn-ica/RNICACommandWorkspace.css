@@ -945,6 +945,29 @@
   white-space: nowrap;
 }
 
+/* OWNER DIRECTIVE (2026-10-06) "System-Wide Body-System Simplification"
+   Pass 1 -- concise text bulk controls, placed directly beside System
+   Assessment Status per the owner's explicit placement requirement. */
+.rnica-bodysystems__bulk-controls {
+  display: flex;
+  gap: 0.4rem;
+  margin-left: auto;
+}
+
+.rnica-bodysystems__bulk-btn {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-ink);
+  background: var(--sns-surface, transparent);
+  border: 1px solid var(--sns-border);
+  border-radius: 0.35rem;
+  padding: 0.3rem 0.6rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__bulk-btn:hover { background: var(--sns-border); }
+.rnica-bodysystems__bulk-btn:focus-visible { outline: 2px solid var(--sns-teal); outline-offset: 1px; }
+
 .rnica-bodysystems__accordion {
   border: 1px solid var(--sns-border);
   border-radius: 0.5rem;
@@ -995,6 +1018,70 @@
 .rnica-bodysystems__findings-group-count {
   margin-left: auto;
   font-size: 10px;
+}
+
+.rnica-bodysystems__findings-group-label--link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  text-transform: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.rnica-bodysystems__findings-concise {
+  margin: 0;
+  font-size: 11.5px;
+  color: var(--sns-text);
+}
+
+.rnica-bodysystems__body-summary {
+  margin-top: 1rem;
+}
+
+.rnica-bodysystems__body-summary-subtitle {
+  display: block;
+  font-size: 11px;
+  color: var(--sns-text-muted, var(--sns-text));
+  font-weight: 400;
+}
+
+.rnica-bodysystems__body-summary-list {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.rnica-bodysystems__body-summary-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.rnica-bodysystems__body-summary-row dt {
+  font: 700 12px Inter, sans-serif;
+}
+
+.rnica-bodysystems__body-summary-row dd {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--sns-text);
+}
+
+.rnica-bodysystems__body-summary-link {
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 .rnica-bodysystems__findings-list {

@@ -116,6 +116,29 @@ module.exports = {
         'ai-btn': '0 2px 8px rgba(45, 212, 191, 0.08)',
         topbar: '0 4px 12px -6px rgba(0, 0, 0, 0.15)',
       },
+      // Required by src/components/ui/accordion.tsx (Radix AccordionContent),
+      // which applies `animate-[accordion-up_200ms_ease-out]` /
+      // `animate-[accordion-down_200ms_ease-out]` keyed off Radix's
+      // `--radix-accordion-content-height` custom property. Without these
+      // keyframes defined, the animation name never resolves, so the
+      // content panel's height never collapses on close -- every Accordion
+      // built on this primitive (e.g. RNICACommandWorkspace's Body Systems
+      // screen) visually stays open even though aria-expanded/data-state
+      // correctly toggle to "closed".
+      keyframes: {
+        'accordion-down': {
+          from: { height: '0' },
+          to: { height: 'var(--radix-accordion-content-height)' },
+        },
+        'accordion-up': {
+          from: { height: 'var(--radix-accordion-content-height)' },
+          to: { height: '0' },
+        },
+      },
+      animation: {
+        'accordion-down': 'accordion-down 200ms ease-out',
+        'accordion-up': 'accordion-up 200ms ease-out',
+      },
     },
   },
   plugins: [],

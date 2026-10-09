@@ -43,6 +43,12 @@ import {
   findContributingConditionCrossReferences,
 } from "./rn-ica/diagnosis-lcd/diagnosisLogic";
 import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
+// OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2 --
+// shared presentational shell (Pass 1 infrastructure, owner-accepted) now
+// wired into production Neurological + Cardiovascular only. See
+// rn-ica/BodySystemShell.jsx for the enforced 7-slot canonical order and
+// rn-ica/GeneratedReviewOfSystems.jsx for the read-only 2-system summary.
+import { BodySystemShell, BodySystemShellHeader } from "./rn-ica/BodySystemShell";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -887,6 +893,14 @@ const INITIAL_FORM = {
     // crossed yet (Phase 1 spec "Nurse manually opens additional bowel
     // details"). Never itself a clinical finding.
     giShowAdditionalBowelDetails: false,
+    // OWNER DIRECTIVE (2026-10-06) "GI Review/Edit Split" -- UI-only
+    // workflow flag, same purpose/precedent as
+    // `respiratoryExistingFindingsEditMode` / `infectionExistingFindingsEditMode`
+    // (excluded from every summary/findings-count helper). Default false
+    // so "Existing GI Findings Review" always opens on the compact
+    // review summary; becomes true only after the nurse clicks "Edit
+    // Existing Findings", resets to false on leaving that Overview path.
+    gastrointestinalExistingFindingsEditMode: false,
   },
 
   // ─── 12. NUTRITION ────────────────────────────────
@@ -11965,6 +11979,31 @@ export function computeNeurologicalWorkflowStatus(d) {
     : { code: "in_progress", label: "In Progress", variant: "neutral" };
 }
 
+// OWNER DIRECTIVE (2026-10-06) "Neurological Usability Review" -- stable
+// findings must consume less screen space than active findings. SNS
+// Cognitive Screen detail (Word Repetition/Recall/Temporal Orientation)
+// and Communication/Sensory detail (Hearing/Vision/Sensory Deficits/
+// Sensory Aids) auto-collapse behind a one-line summary when the patient
+// is documented stable (No Current Concern / Existing Findings Stable)
+// AND no actionable finding already exists -- reusing the same
+// `neurologicalHasActionablePocFinding` proxy already used to gate the
+// generic "+ Add to POC" button (Bounded Compatibility Increment,
+// 2026-09-28), not a new concept. Any of the following forces the detail
+// back open: New/Worsening selected, an actionable finding already
+// documented, cognitive screen review recommended/incomplete, or the
+// nurse manually expanding the card (the existing collapsible chevron is
+// untouched and always reversible). "Unable to Assess" is intentionally
+// excluded -- that path still needs the full detail visible to document
+// why.
+export function neuroShouldAutoCollapseDetail(d = {}) {
+  if (!["No Current Neurological Concern", "Existing Neurological Findings Stable"].includes(d.neuroOverview)) return false;
+  if (neurologicalHasActionablePocFinding(d)) return false;
+  const cognitive = computeSnsCognitiveScreen(d.cognitiveScreen);
+  if (cognitive.completionStatus === "COMPLETE" && cognitive.interpretation?.reviewRecommended) return false;
+  if (cognitive.completionStatus === "PARTIAL") return false;
+  return true;
+}
+
 // OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28, Contradiction
 // 6) -- legacy `pulseQuality` was a single combined value conflating
 // Rhythm/Rate/Strength (the Cardiovascular equivalent of Neurological's
@@ -12467,10 +12506,22 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
   }
   if (sectionKey === "neurological") {
     const narrative = computeNeurologicalNarrative(sectionData || {});
+    // OWNER DIRECTIVE (2026-10-06) "System-Wide Body-System
+    // Simplification" -- duplicate-status correction. `requiresFollowUp`
+    // previously mirrored `primaryIssues.length > 0`, the exact same
+    // condition that already renders the bullet list directly below it
+    // in the Summary banner -- the "Requires Follow-Up" flag carried no
+    // information the bullet list didn't already show. Now sourced from
+    // `neurologicalHasActionablePocFinding`, the same authoritative
+    // current-evidence test already used to decide whether the POC
+    // "Add" control is offered, so the flag and the bullet list can
+    // legitimately disagree (e.g. a stable historical finding still
+    // listed in `primaryIssues` for context, but nothing currently
+    // actionable) instead of always being redundant with each other.
     return {
       status: narrative || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
       primaryIssues,
-      requiresFollowUp: primaryIssues.length > 0,
+      requiresFollowUp: neurologicalHasActionablePocFinding(sectionData || {}),
     };
   }
   if (sectionKey === "cardiovascular") {
@@ -12492,10 +12543,19 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
     const fallbackStatus = overviewSignalsFindings
       ? (primaryIssues.length > 0 ? "Findings Present" : "Cardiovascular Findings Documented -- Review Pending")
       : (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented");
+    // OWNER DIRECTIVE (2026-10-06) "System-Wide Body-System
+    // Simplification" -- same duplicate-status correction as
+    // Neurological above. `primaryIssues.length > 0` is dropped from
+    // this flag (it only duplicated the bullet list rendered right
+    // below); `cardiovascularHasActionablePocFinding` is the same
+    // current-evidence test already used for the POC "Add" control.
+    // `overviewSignalsFindings` is kept as-is -- it is a genuinely
+    // distinct signal (Overview itself is incomplete/abnormal), not a
+    // restatement of the bullet list.
     return {
       status: narrative || fallbackStatus,
       primaryIssues,
-      requiresFollowUp: primaryIssues.length > 0 || overviewSignalsFindings,
+      requiresFollowUp: cardiovascularHasActionablePocFinding(sectionData || {}) || overviewSignalsFindings,
     };
   }
   // OWNER-APPROVED "Respiratory Overview Workflow Reorganization"
@@ -12950,6 +13010,101 @@ function InfectionFindingsReviewSummary({ data, onEdit }) {
       ) : (
         <p className="rnica-bodysystem-workspace__card-summary">
           No previously documented infection findings to review yet.
+        </p>
+      )}
+      <div className="rnica-resp-review-summary__actions">
+        <button type="button" className="rnica-chip-action-btn" onClick={onEdit}>
+          Edit Existing Findings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// OWNER DIRECTIVE (2026-10-06) "GI Review/Edit Split" -- built on the
+// exact same proven pattern as `respiratorySummaryLine` /
+// `infectionSummaryLine` above: a flat, read-only label/value list drawn
+// ONLY from fields already stored by the canonical GI editor below (no
+// second data path, no new fields). Order follows the GI card order
+// (Symptoms -> Bowel/Abdominal -> Feeding/Ostomy -> Clinical Status) so
+// the review reads like a condensed walk-through of the same chart.
+function gastrointestinalSummaryLine(d) {
+  const lines = [];
+  const symptomSeverities = [
+    ["Nausea", d.nausea], ["Vomiting", d.vomiting],
+    ["Diarrhea", d.diarrhea], ["Constipation", d.constipation],
+  ].filter(([, v]) => v && v !== "None");
+  if (symptomSeverities.length > 0) {
+    lines.push({ label: "GI Symptoms", value: symptomSeverities.map(([k, v]) => `${k}: ${v}`).join(", ") });
+  }
+  if (d.vomitingOccurrences24h) {
+    lines.push({ label: "Vomiting Occurrences (24h)", value: d.vomitingOccurrences24h });
+  }
+  if (d.lastBM) {
+    lines.push({ label: "Last BM Date", value: d.lastBM });
+  }
+  if (d.lastBMSize) {
+    lines.push({ label: "Last BM Size", value: d.lastBMSize });
+  }
+  if (d.straining) {
+    lines.push({ label: "Straining", value: d.straining });
+  }
+  if (d.stoolConsistency) {
+    lines.push({ label: "Stool Character", value: d.stoolConsistency });
+  }
+  if (d.bowelSounds) {
+    lines.push({ label: "Bowel Sounds", value: d.bowelSounds });
+  }
+  if (d.abdomen) {
+    lines.push({ label: "Abdomen", value: d.abdomen });
+  }
+  if (d.ascites) {
+    lines.push({ label: "Ascites", value: d.ascites });
+  }
+  if (d.bowelStatus) {
+    lines.push({ label: "Bowel Status", value: d.bowelStatus });
+  }
+  if ((d.stoolCharacter || []).length > 0) {
+    lines.push({ label: "Stool", value: d.stoolCharacter.join(", ") });
+  }
+  const feedingTube = d.feedingTube || {};
+  if (feedingTube.present === "Yes" || feedingTube.present === true) {
+    lines.push({ label: "Feeding Tube", value: feedingTube.type || "Present" });
+  }
+  const ostomy = d.ostomy || {};
+  if (ostomy.present === "Yes" || ostomy.present === true) {
+    lines.push({ label: "Ostomy", value: ostomy.type || "Present" });
+  }
+  if (d.clinicalStatusChange) {
+    lines.push({ label: "Clinical Status", value: d.clinicalStatusChange });
+  }
+  // OWNER DIRECTIVE precedent (Infection "Existing Findings Review Is A
+  // True Review Screen") -- the editable Notes textarea is hidden during
+  // pure review (see GI_REVIEW_HIDEABLE_CARDS below), so a previously
+  // documented note must still surface here read-only; nothing
+  // documented is ever silently dropped from review.
+  if (d.notes) {
+    lines.push({ label: "Notes", value: d.notes });
+  }
+  return lines;
+}
+
+function GastrointestinalFindingsReviewSummary({ data, onEdit }) {
+  const lines = gastrointestinalSummaryLine(data);
+  return (
+    <div className="rnica-resp-review-summary">
+      {lines.length > 0 ? (
+        <div className="rnica-resp-review-summary__grid">
+          {lines.map((line) => (
+            <div className="rnica-resp-review-summary__row" key={line.label}>
+              <span className="rnica-resp-review-summary__label">{line.label}</span>
+              <span className="rnica-resp-review-summary__value">{line.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rnica-bodysystem-workspace__card-summary">
+          No previously documented GI findings to review yet.
         </p>
       )}
       <div className="rnica-resp-review-summary__actions">
@@ -13654,6 +13809,53 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           }
         }
 
+        // OWNER DIRECTIVE (2026-10-06) "GI Review/Edit Split" -- supersedes
+        // the prior "pass-through" treatment of "Existing GI Findings
+        // Review" (owner-confirmed defect: that state rendered the exact
+        // same full intake as "New or Worsening GI Findings"). Built on the
+        // identical, already-shipped Respiratory/Infection Review/Edit
+        // Split pattern immediately above (RESP_HIDEABLE_CARDS /
+        // GastrointestinalFindingsReviewSummary): the same single
+        // canonical GI editor (GI_OVERVIEW_HIDEABLE_CARDS, defined once in
+        // config, never duplicated) is hidden during pure review and
+        // replaced by ONE compact read-only summary with an explicit "Edit
+        // Existing Findings" action that flips
+        // `gastrointestinalExistingFindingsEditMode`. Only "New or
+        // Worsening GI Findings" (document change) and Existing Review +
+        // edit-mode (explicit nurse action) reach the canonical editor.
+        // "No Current GI Concern" is handled entirely by the gate above
+        // and is unaffected by this block (its cards already return
+        // "hide"/"banner" before reaching here).
+        if (sectionKey === "gastrointestinal" && card.title !== "GI Overview" && card.title !== "Notes"
+            && data.gastrointestinalOverview === "Existing GI Findings Review") {
+          const giEditingExisting = Boolean(data.gastrointestinalExistingFindingsEditMode);
+          if (!giEditingExisting && GI_OVERVIEW_HIDEABLE_CARDS.includes(card.title)) {
+            // Render the review summary exactly once, in place of the
+            // first hideable card's slot (matches Respiratory's "Dyspnea /
+            // SOB" precedent), so it sits in the same vertical position
+            // the editor would occupy; the remaining hideable cards simply
+            // don't render (no second copy, no empty placeholders).
+            // Clinical Status Change is intentionally excluded from
+            // GI_OVERVIEW_HIDEABLE_CARDS and stays visible/editable here --
+            // the nurse's conclusion about current GI status is still
+            // being actively recorded even during a review visit.
+            if (card.title === "Constipation — Auto-Suggested from Last BM Date") {
+              return (
+                <Card key={ci} title="GI Findings Review" fullWidth bare={isBodySystemWorkspace}>
+                  <GastrointestinalFindingsReviewSummary
+                    data={cardData}
+                    onEdit={() => u("gastrointestinalExistingFindingsEditMode", true)}
+                  />
+                </Card>
+              );
+            }
+            return null;
+          }
+          // giEditingExisting: fall through to the canonical editor cards
+          // below exactly like "New or Worsening GI Findings" -- the one
+          // and only GI editor, never duplicated.
+        }
+
         if (sectionKey === "gastrointestinal" && card.title === "Abdominal / Bowel Assessment") {
           // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
           // Revision, Additional Bowel Details" -- the full exam-detail
@@ -13931,14 +14133,27 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   : `Score ${cognitive.screen.rawScore} of ${cognitive.screen.maxScore}${cognitive.screen.interpretation ? ` · ${cognitive.screen.interpretation.label}` : ""} · ${reviewStatusLabel === "Review Recommended" ? "Review recommended" : "No review needed"}`}
             </p>
           );
+          // OWNER DIRECTIVE (2026-10-06) "Neurological Usability Review" --
+          // collapse the three select fields behind the headerSummary line
+          // whenever the patient is documented stable with no actionable
+          // finding (see `neuroShouldAutoCollapseDetail`); New/Worsening,
+          // an actionable finding, or an incomplete/review-recommended
+          // screen all force it back open. The nurse's own chevron click
+          // remains fully reversible either way. `key` forces a clean
+          // remount when this flag flips (same pattern as Cardiovascular's
+          // `cvPath1PreservedCard` below) so a stale collapsed state never
+          // lingers after the Overview answer changes.
+          const neuroCognitiveDetailCollapsed = neuroShouldAutoCollapseDetail(cardData);
           return (
             <Card
-              key={ci}
+              key={neuroCognitiveDetailCollapsed ? `${ci}-neuro-collapsed` : ci}
               title={card.title}
               importance={card.importance}
               bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}
               fullWidth={Boolean(card.fullWidth)}
               summary={headerSummary}
+              collapsible={neuroCognitiveDetailCollapsed}
+              defaultCollapsed={neuroCognitiveDetailCollapsed}
             >
               <div className="rnica-bodysystem-workspace__fields rnica-cognitive-screen__fields">
                 {screenFields.map((f) => (
@@ -14009,6 +14224,23 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             </p>
           );
         }
+        // OWNER DIRECTIVE (2026-10-06) "Neurological Usability Review" --
+        // Hearing/Vision/Sensory Deficits/Sensory Aids are detail fields,
+        // not the headline Communication status, so this whole card
+        // auto-collapses behind a one-line summary under the exact same
+        // `neuroShouldAutoCollapseDetail` rule as SNS Cognitive Screen
+        // above -- never when New/Worsening is selected, an actionable
+        // finding already exists, or the nurse manually expands it.
+        const neuroCommSensoryCollapsed = sectionKey === "neurological" && card.title === "Communication and Sensory" && neuroShouldAutoCollapseDetail(data);
+        if (neuroCommSensoryCollapsed) {
+          const commStable = !data.communication || ["Normal", "Clear"].includes(data.communication);
+          cardSummary = (
+            <p className="rnica-bodysystem-workspace__card-summary">
+              {commStable ? "Communication clear. " : `Communication: ${data.communication}. `}
+              No sensory concern currently flagged. Click to review or document.
+            </p>
+          );
+        }
         // OWNER DIRECTIVE (2026-10-18) "Respiratory-Specific Workflow
         // Rebuild" -- Respiratory's five clinical cards are never
         // rendered as a collapsed duplicate for "No Current Respiratory
@@ -14033,7 +14265,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             // longer has an equivalent flag -- its five clinical cards
             // simply hide outright instead of rendering a collapsed
             // duplicate; see the card-level hide guard above.)
-            key={cvPath1PreservedCard ? `${ci}-cv-preserved` : ci}
+            key={cvPath1PreservedCard ? `${ci}-cv-preserved` : neuroCommSensoryCollapsed ? `${ci}-neuro-comm-collapsed` : ci}
             id={card.id}
             title={card.title}
             hopeCode={card.hopeCode}
@@ -14054,8 +14286,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             // collapsed by default" requirement was silently not applying.
             // The bare-card render branch already respects
             // collapsible/collapsed correctly; only this gate was wrong.
-            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard}
-            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard}
+            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard || neuroCommSensoryCollapsed}
+            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard || neuroCommSensoryCollapsed}
           >
             {isPainNumericToolCard && (
               <NumericPainScale
@@ -14154,8 +14386,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 instead of vanishing -- see cvPath1PreservedCard above). It
                 only appears when there is something to point to; a
                 brand-new "no concern" record with nothing preserved shows
-                nothing extra, preserving today's fast Path 1 experience. */}
-            {sectionKey === "cardiovascular" && card.title === "Cardiovascular Overview" &&
+                nothing extra, preserving today's fast Path 1 experience.
+                PASS 2 DUPLICATE REMOVAL (owner directive) -- suppressed
+                inside the shared shell (`!isBodySystemWorkspace`): the
+                shell's Triggered Detail slot already shows this exact
+                "Collapsed — ... click to review" message per-card (see
+                cvPath1PreservedCard), so repeating it here a second time
+                was the owner-identified duplicate. The classic
+                (non-pilot) render is unaffected. */}
+            {!isBodySystemWorkspace && sectionKey === "cardiovascular" && card.title === "Cardiovascular Overview" &&
               data.cardiovascularOverview === "No Current Cardiovascular Concern" &&
               cardiovascularHasPreservedAbnormalFinding(cardData) && (
               <div className="rnica-cv-preserved-findings-banner" role="status">
@@ -15061,14 +15300,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const bodySystemSummary = isBodySystemWorkspace
     ? computeBodySystemSummary(sectionKey, data, { allergyAlerts: uiProfile.infectionAllergyAlerts })
     : null;
-  // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
-  // #4 -- "Display SNS Cognitive Screen result inside Summary". The raw
-  // score already appears in `bodySystemSummary.primaryIssues` (via
-  // `computeBodySystemFindings`), but that bullet list has no room for the
-  // human-readable interpretation (e.g. "Clinical review recommended");
-  // this reuses the same authoritative `computeNeurologicalCognitiveSummary`
-  // the SNS Cognitive Screen card itself renders, computing nothing new.
-  const neuroCognitiveSummaryForBanner = sectionKey === "neurological" ? computeNeurologicalCognitiveSummary(data) : null;
+  // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2
+  // -- the Summary banner's Neurological-only "SNS Cognitive Screen:
+  // Score X of Y" restatement is removed along with the rest of the
+  // Summary banner for Neurological (see `useBodySystemShell` below): the
+  // same score/interpretation is still shown exactly once, inside the
+  // "SNS Cognitive Screen" card itself (now in the shell's Essential
+  // Findings slot) via its own `headerSummary` line -- not a second,
+  // duplicate restatement.
 
   const bodySystemGroupedContent = isBodySystemWorkspace
     ? BODY_SYSTEM_CATEGORY_ORDER.map((category) => {
@@ -15085,6 +15324,106 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         );
       })
     : null;
+
+  // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2
+  // -- Neurological and Cardiovascular now assemble into the shared
+  // BodySystemShell (rn-ica/BodySystemShell.jsx) instead of the generic
+  // category-grouped layout + large Summary card above. Respiratory,
+  // Infection, Gastrointestinal, Nutrition, Endocrine, Genitourinary,
+  // Musculoskeletal, and Skin are NOT touched by this flag -- they keep
+  // using `bodySystemGroupedContent` + the Summary banner below, byte-for-
+  // byte unchanged.
+  //
+  // Reuses the exact same already-rendered `cardsContent` entries (same
+  // field components, same gating, same collapse/expand mechanisms, same
+  // POC triggers) -- only re-buckets them by card title into the shell's
+  // 7 fixed slots instead of the category-grouped boxes. No field, path,
+  // option, or stored-value change.
+  const useBodySystemShell = isBodySystemWorkspace && (sectionKey === "neurological" || sectionKey === "cardiovascular");
+  const cardsByTitle = useBodySystemShell
+    ? resolvedCards.reduce((acc, card, ci) => {
+        acc[card.title] = cardsContent[ci];
+        return acc;
+      }, {})
+    : null;
+  // The AccordionTrigger (RNICACommandWorkspace.jsx) already shows this
+  // body system's icon, name, and workflow-status badge above this
+  // content -- the shell header here carries ONLY the one concise summary
+  // line (Owner Decision: "no duplicate status"), reusing the same
+  // `bodySystemSummary.status` text the removed Summary banner used to
+  // show, not a new computation.
+  const bodySystemShellHeader = bodySystemSummary
+    ? <BodySystemShellHeader summaryLine={bodySystemSummary.status} />
+    : null;
+  const bodySystemShellPoc = POC_ENABLED_SECTIONS.has(sectionKey) ? (
+    <PocSectionControls
+      assessmentId={assessmentId}
+      sectionKey={sectionKey}
+      cardTitle={title}
+      styles={styles}
+      COLORS={COLORS}
+      {...(sectionKey === "neurological"
+        ? {
+            canAdd: neurologicalHasActionablePocFinding(data || {}),
+            suggestedFinding: neurologicalHasActionablePocFinding(data || {}),
+          }
+        : sectionKey === "cardiovascular"
+        ? {
+            canAdd: cardiovascularHasActionablePocFinding(data || {}),
+            suggestedFinding: cardiovascularHasActionablePocFinding(data || {}),
+          }
+        : null)}
+    />
+  ) : null;
+  const bodySystemShellContent = !useBodySystemShell ? null : sectionKey === "neurological" ? (
+    <BodySystemShell
+      header={bodySystemShellHeader}
+      assessmentState={cardsByTitle["Neurological Overview"]}
+      essentialFindings={[
+        cardsByTitle["Consciousness"],
+        cardsByTitle["Orientation"],
+        cardsByTitle["SNS Cognitive Screen"],
+      ].filter(Boolean)}
+      // Relocated out of the now-removed Summary banner (Pass 2 Duplicate-
+      // Removal Map: "Overall Change Since Prior Assessment") into its own
+      // canonical Change Since Prior slot. Same `clinicalStatusChange`
+      // path, same `NEURO_OVERALL_CHANGE_OPTIONS`, same `u()` write --
+      // writer/reader audit found no second/conflicting path for this
+      // concept, only a misplaced single control.
+      changeSincePrior={
+        <div className="rnica-bodysystem-shell__change-since-prior">
+          <FormSegmented
+            label="Overall Change Since Prior Assessment"
+            value={data.clinicalStatusChange}
+            onChange={(v) => u("clinicalStatusChange", v)}
+            options={NEURO_OVERALL_CHANGE_OPTIONS}
+            compact
+          />
+        </div>
+      }
+      triggeredDetail={[
+        cardsByTitle["Sleep / Responsiveness"],
+        cardsByTitle["Communication and Sensory"],
+        cardsByTitle["Cognitive / Behavioral Findings"],
+        cardsByTitle["Psychiatric History"],
+      ].filter(Boolean)}
+      notes={cardsByTitle["Notes"]}
+      pocAction={bodySystemShellPoc}
+    />
+  ) : (
+    <BodySystemShell
+      header={bodySystemShellHeader}
+      assessmentState={cardsByTitle["Cardiovascular Overview"]}
+      changeSincePrior={cardsByTitle["Clinical Status Change"]}
+      triggeredDetail={[
+        cardsByTitle["Circulation & Perfusion"],
+        cardsByTitle["Cardiovascular Symptoms"],
+        cardsByTitle["Cardiac Devices"],
+      ].filter(Boolean)}
+      notes={cardsByTitle["Cardiovascular Notes"]}
+      pocAction={bodySystemShellPoc}
+    />
+  );
 
   return (
     <>
@@ -15114,7 +15453,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // field, path, or behavior change.
         <ShadcnCard className="rnica-bodysystem-workspace" data-section={sectionKey} {...(sectionKey === "cardiovascular" ? { "data-cv-overview": data.cardiovascularOverview || "none" } : null)}>
           <ShadcnCardContent className="rnica-bodysystem-workspace__content">
-            {bodySystemSummary && (
+            {useBodySystemShell ? bodySystemShellContent : null}
+            {bodySystemSummary && !useBodySystemShell && (
               <div
                 // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy
                 // Pass" item #1 -- Neurological's Summary must read as the
@@ -15155,67 +15495,10 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 {bodySystemSummary.requiresFollowUp && (
                   <p className="rnica-bodysystem-summary__flag">Requires Follow-Up</p>
                 )}
-                {/* OWNER DIRECTIVE (2026-10-04) "Neurological Review
-                    Efficiency Pass" item #4 -- "Incorporate Overall Change
-                    into the Summary layer". Same unchanged
-                    `clinicalStatusChange` path/options
-                    (NEURO_OVERALL_CHANGE_OPTIONS) and `u()` write
-                    previously used by the now-removed standalone "Overall
-                    Change Since Prior Assessment" card; only relocated to
-                    render inside the prominent Summary banner instead of
-                    its own card lower down, since "is this patient
-                    declining?" belongs with the 5-second headline. Scoped
-                    to sectionKey === "neurological" only -- no other Body
-                    System's Summary banner gains this control. */}
-                {sectionKey === "neurological" && (
-                  <div className="rnica-bodysystem-summary__overall-change">
-                    <FormSegmented
-                      label="Overall Change Since Prior Assessment"
-                      value={data.clinicalStatusChange}
-                      onChange={(v) => u("clinicalStatusChange", v)}
-                      options={NEURO_OVERALL_CHANGE_OPTIONS}
-                      compact
-                    />
-                  </div>
-                )}
-                {/* OWNER DIRECTIVE (2026-10-04) "Neurological Density
-                    Optimization" item #4 -- SNS Cognitive Screen result
-                    surfaced inside the Summary banner itself, not only
-                    inside its now-collapsed accordion card lower down.
-                    Same `computeNeurologicalCognitiveSummary` data the
-                    card renders; read-only, nothing new computed. */}
-                {sectionKey === "neurological" && neuroCognitiveSummaryForBanner && neuroCognitiveSummaryForBanner.screen.completionStatus !== "NOT_STARTED" && (
-                  <p className="rnica-bodysystem-summary__cognitive-screen">
-                    SNS Cognitive Screen:{" "}
-                    {neuroCognitiveSummaryForBanner.screen.completionStatus === "COMPLETE"
-                      ? `${neuroCognitiveSummaryForBanner.screen.rawScore} of ${neuroCognitiveSummaryForBanner.screen.maxScore}`
-                      : "Incomplete"}
-                    {neuroCognitiveSummaryForBanner.screen.interpretation && ` — ${neuroCognitiveSummaryForBanner.screen.interpretation.label}`}
-                  </p>
-                )}
               </div>
             )}
-            {bodySystemGroupedContent}
-            {POC_ENABLED_SECTIONS.has(sectionKey) && (
-              <PocSectionControls
-                assessmentId={assessmentId}
-                sectionKey={sectionKey}
-                cardTitle={title}
-                styles={styles}
-                COLORS={COLORS}
-                {...(sectionKey === "neurological"
-                  ? {
-                      canAdd: neurologicalHasActionablePocFinding(data || {}),
-                      suggestedFinding: neurologicalHasActionablePocFinding(data || {}),
-                    }
-                  : sectionKey === "cardiovascular"
-                  ? {
-                      canAdd: cardiovascularHasActionablePocFinding(data || {}),
-                      suggestedFinding: cardiovascularHasActionablePocFinding(data || {}),
-                    }
-                  : null)}
-              />
-            )}
+            {!useBodySystemShell && bodySystemGroupedContent}
+            {!useBodySystemShell && bodySystemShellPoc}
           </ShadcnCardContent>
         </ShadcnCard>
       ) : (
@@ -19451,20 +19734,12 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           formData?.[key],
           key === "infection" ? { allergyAlerts: infectionAllergyAlerts } : undefined,
         );
-        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
-        // item #5 -- "Expand Structured Findings ... Review Status".
-        // Reuses the exact same `computeNeurologicalWorkflowStatus` the
-        // Body Systems accordion trigger already shows as its Reviewed/
-        // Not-started badge (Bounded Compatibility Increment, 2026-09-28)
-        // -- nothing new computed, no new concept invented. Appended last
-        // so it never reorders the clinical findings above it; omitted
-        // when the Overview question hasn't been answered yet (status
-        // would just read "Not Started" for an otherwise-empty system,
-        // which is already obvious from the group not rendering at all).
-        if (key === "neurological" && formData?.neurological?.neuroOverview) {
-          const workflowStatus = computeNeurologicalWorkflowStatus(formData.neurological);
-          findings.push(`Review status: ${workflowStatus.label}.`);
-        }
+        // OWNER DIRECTIVE (Pass 2, Duplicate Removal Section 4/11) -- the
+        // "Review status: <label>" bullet duplicated the exact same badge
+        // already shown on the accordion trigger (and now the shared
+        // shell header) via computeNeurologicalWorkflowStatus. The rail is
+        // no longer a second place that status renders; the badge stays
+        // authoritative in exactly one place (the system header).
         return {
           key,
           label: meta?.label || key,
@@ -19474,6 +19749,47 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       })
       .filter((group) => group.findings.length > 0);
   }, [formData, infectionAllergyAlerts]);
+
+  // Body Systems Summary (Pass 2, Section 12 -- RENAMED per owner design
+  // correction 2026-10-06: "STOP CALLING IT REVIEW OF SYSTEMS. This is
+  // not a true ROS.") -- a read-only, deterministic one-line-per-system
+  // restatement of CONFIRMED CURRENT FINDINGS ONLY. Built from
+  // computeBodySystemFindings(key, sectionData) -- the exact same
+  // already-documented-field restatement function that drives the
+  // Structured Findings rail -- NOT computeBodySystemSummary().status,
+  // which was found to leak workflow/review-gate messaging (e.g. "Stored
+  // cardiovascular findings require review before No Current
+  // Cardiovascular Concern can be confirmed.") into what must be a pure
+  // clinical-findings summary. computeBodySystemFindings only ever
+  // returns sentences built from a single already-charted field (e.g.
+  // "Edema documented.", "Orientation: Oriented x4.") -- never workflow
+  // guidance, review instructions, or warning/banner text.
+  // It intentionally does NOT read any rendered header/rail text (per
+  // the owner's "Do not read header presentation text" / "Do not read
+  // Structured Findings rail text" rules) -- it recomputes straight from
+  // formData so there is no second stored clinical dataset, nothing to
+  // keep in sync, and no drift risk.
+  // Pass 2 scope is limited to Neurological and Cardiovascular only; the
+  // other 8 systems are intentionally NOT included yet (owner directive:
+  // "For Pass 2 include only: Neurological, Cardiovascular").
+  const generatedBodySystemsSummary = useMemo(() => {
+    return ["neurological", "cardiovascular"].map((key) => {
+      const meta = RNICA_BODY_SYSTEM_SIDEBAR_ITEMS.find((m) => m.key === key);
+      const sectionData = formData?.[key];
+      const assessed = hasAnyDocumentedValue(sectionData);
+      const findings = computeBodySystemFindings(key, sectionData || {});
+      return {
+        key,
+        label: meta?.label || key,
+        assessed,
+        // No confirmed current findings yet -- a neutral "not yet
+        // documented" statement, never workflow/review-gate language.
+        statement: findings.length > 0
+          ? findings.join(" ")
+          : `${meta?.label || key} assessment not yet documented.`,
+      };
+    });
+  }, [formData]);
 
   if (workspacePilot) {
     const ownSecondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
@@ -19603,6 +19919,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           renderWorkspaceSections={renderWorkspaceSections}
           bodySystemsAccordionItems={bodySystemsAccordionItems}
           bodySystemsStructuredFindings={bodySystemsStructuredFindings}
+          generatedBodySystemsSummary={generatedBodySystemsSummary}
           // Approved "Pain & Symptom Burden" summary screen data (Phase B
           // reference implementation, same pattern as Patient Story/
           // Evidence & Intake/HOPE Administrative Review): read-only
