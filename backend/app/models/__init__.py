@@ -68,6 +68,7 @@ from app.models.notification import Notification
 from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
 from app.models.body_systems import BodySystemsAssessment, SystemAssessment, ReviewException
+from app.models.body_systems_amendment import BodySystemsAmendment
 from app.models.admission_action_request import AdmissionActionRequest
 from app.models.plan_of_care import PlanOfCare
 from app.models.poc import POCProblem, POCGoal, POCIntervention

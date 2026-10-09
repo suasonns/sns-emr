@@ -13,22 +13,31 @@ earlier `respiratoryWorkflowRules.ts` it might otherwise reference was a
 different, HOPE-worktree implementation that was deliberately not imported
 into this integration branch; it never shipped here.
 
-Permission model: deliberately reuses the SAME pattern already used by RN
-ICA's own save/update/lock endpoints (app/api/visits.py) -- tenant +
-care-team authorization via `get_authorized_patient`, with NO separate
-per-action role allow-list. RNICA's save/update/lock endpoints were
-inspected and confirmed to gate access this same way (patient-access
-authorization only), so Body Systems draft save follows the identical,
-already-established convention rather than inventing a new role list (the
-ORDER_SIGNER_ROLES / AMENDMENT_APPROVAL_ROLES precedent found elsewhere in
-the codebase gates a different, narrower class of action -- physician
-order signature and amendment approval -- not routine clinical
-documentation saves).
+Permission model: ordinary draft save/read deliberately reuses the SAME
+pattern already used by RN ICA's own save/update/lock endpoints
+(app/api/visits.py) -- tenant + care-team authorization via
+`get_authorized_patient`, with NO separate per-action role allow-list.
+RNICA's save/update/lock endpoints were inspected and confirmed to gate
+access this same way (patient-access authorization only), so Body Systems
+draft save follows the identical, already-established convention rather
+than inventing a new role list.
+
+Correction/amendment endpoints (added for compliance remediation blocker
+A -- "never destroy, always append" correction history) are the one
+exception: deciding (approve/deny) an amendment reuses the EXISTING
+`AMENDMENT_APPROVAL_ROLES` role allow-list already governing RNICA
+amendment decisions, imported directly from app/api/visits.py rather than
+redefined, so the two workflows cannot silently drift apart on who may
+decide a correction. See app/models/body_systems_amendment.py and
+app/services/body_systems_amendment_service.py for the full design.
 
 Audit: every save calls `app.services.audit_logger.log_event`, the same
 non-blocking audit mechanism RNICA uses (`_safe_log_event` wraps it there;
 this module calls it directly since Body Systems writes are not on an
-error-sensitive hot path).
+error-sensitive hot path). Amendment submit/approve/deny calls
+`app.services.audit_events.audit_event` (the same helper
+`rnica_amendment_service.py` uses) so correction history is independently
+auditable from ordinary draft saves.
 """
 from __future__ import annotations
 
@@ -52,7 +61,22 @@ from app.models.body_systems import (
     SystemAssessment,
 )
 from app.models.user import User
+# Reuses the SAME review-authority set that already governs RNICA amendment
+# decisions (SECTION 12 Amendment Infrastructure) -- app/api/visits.py has
+# no reference to this module, so importing from it here carries no
+# circular-import risk. Imported directly rather than redefined so the two
+# amendment workflows can never silently drift apart on who may approve/
+# deny a correction.
+from app.api.visits import AMENDMENT_APPROVAL_ROLES
+from app.services.audit_events import audit_event
 from app.services.audit_logger import log_event
+from app.services.body_systems_amendment_service import (
+    BodySystemsAmendmentError,
+    approve_amendment,
+    create_amendment,
+    deny_amendment,
+    list_amendments,
+)
 
 router = APIRouter(prefix="/visits/body-systems", tags=["body-systems"])
 
@@ -72,6 +96,24 @@ class ReviewExceptionIn(BaseModel):
     message: str
     blockingLevel: str
     fieldPath: Optional[str] = None
+
+
+class BodySystemsAmendmentRequest(BaseModel):
+    """A correction/amendment request against a system assessment. Never
+    overwrites the original content -- see app/models/body_systems_amendment.py.
+    """
+
+    fieldReference: Optional[str] = None
+    amendmentCategory: str
+    reasonCode: str
+    requestedChange: str
+    requestSource: str = "STAFF"
+    originalValueSnapshot: Optional[Any] = None
+    proposedValue: Optional[Any] = None
+
+
+class BodySystemsAmendmentDecisionRequest(BaseModel):
+    decisionReason: Optional[str] = None
 
 
 class SaveRespiratoryDraftRequest(BaseModel):
@@ -307,11 +349,60 @@ def save_respiratory_draft(
     assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
     system_assessment = _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
 
+    # Draft-vs-authenticated boundary (compliance remediation blocker A).
+    # `_get_or_create_current_assessment` already excludes "signed"
+    # assessments from being reused as "current" -- a new draft row is
+    # created instead, so a signed assessment's own system_assessments rows
+    # are never reachable here at all. This additional check covers the
+    # other non-draft statuses in ASSESSMENT_STATUSES ("ready_for_review",
+    # "recorded"): once an assessment has left "draft", ordinary field
+    # overwrite is rejected and the amendment workflow below
+    # (POST .../correction-request) must be used instead. No route in this
+    # milestone currently transitions status away from "draft", so this is
+    # presently a dormant, forward-looking guard -- documented here rather
+    # than silently omitted, per the project's own escape hatch for
+    # draft-only features.
+    if assessment.status != "draft":
+        audit_event(
+            db=db,
+            action="body_systems.respiratory.direct_edit_rejected",
+            entity_type="system_assessment",
+            entity_id=str(system_assessment.id),
+            user_id=_user_id(current_user),
+            tenant_id=str(assessment.tenant_id),
+            role=getattr(current_user, "role", None),
+            meta={"patientId": str(patient_uuid), "assessmentStatus": assessment.status},
+        )
+        db.commit()
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "This Body Systems assessment has left draft status "
+                f"(current status: {assessment.status!r}). Direct field edits are no longer "
+                "permitted; submit a correction/amendment request instead."
+            ),
+        )
+
     responsible_clinician_id = _resolve_responsible_clinician(
         db, payload.limitationResponsibleClinicianId, patient.tenant_id
     )
 
     if payload.expectedVersion is not None and payload.expectedVersion != system_assessment.version:
+        audit_event(
+            db=db,
+            action="body_systems.respiratory.stale_write_rejected",
+            entity_type="system_assessment",
+            entity_id=str(system_assessment.id),
+            user_id=_user_id(current_user),
+            tenant_id=str(assessment.tenant_id),
+            role=getattr(current_user, "role", None),
+            meta={
+                "patientId": str(patient_uuid),
+                "expectedVersion": payload.expectedVersion,
+                "actualVersion": system_assessment.version,
+            },
+        )
+        db.commit()
         raise HTTPException(
             status_code=409,
             detail=(
@@ -390,3 +481,159 @@ def save_respiratory_draft(
         "assessmentStatus": assessment.status,
         **_serialize_system_assessment(system_assessment, open_exceptions),
     }
+
+
+# ---------------------------------------------------------------------------
+# Correction/amendment endpoints (compliance remediation blocker A).
+#
+# "Never destroy, always append": these endpoints never modify
+# `system_assessments` rows directly. They create/decide
+# `body_systems_amendments` rows that reference a system assessment by id,
+# exactly mirroring the RNICA SECTION 12 amendment workflow
+# (app/api/visits.py's /rnica/{assessment_id}/correction-request family).
+# ---------------------------------------------------------------------------
+
+
+def _resolve_system_assessment_or_404(db: Session, patient: Any, patient_uuid: uuid.UUID) -> SystemAssessment:
+    assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
+    return _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
+
+
+@router.post("/patients/{patient_id}/respiratory/correction-request", status_code=201)
+def submit_respiratory_amendment(
+    patient_id: str,
+    payload: BodySystemsAmendmentRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    system_assessment = _resolve_system_assessment_or_404(db, patient, patient_uuid)
+
+    user_id = getattr(current_user, "user_id", None) or getattr(current_user, "id", None)
+
+    try:
+        record = create_amendment(
+            db,
+            tenant_id=patient.tenant_id,
+            patient_id=patient_uuid,
+            system_assessment_id=system_assessment.id,
+            system=RESPIRATORY_SYSTEM,
+            user_id=user_id,
+            field_reference=payload.fieldReference,
+            amendment_category=payload.amendmentCategory,
+            reason_code=payload.reasonCode,
+            requested_change=payload.requestedChange,
+            request_source=payload.requestSource,
+            original_value_snapshot=payload.originalValueSnapshot,
+            proposed_value=payload.proposedValue,
+        )
+    except BodySystemsAmendmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return record
+
+
+@router.get("/patients/{patient_id}/respiratory/amendments")
+def get_respiratory_amendments(
+    patient_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    system_assessment = _resolve_system_assessment_or_404(db, patient, patient_uuid)
+
+    amendments = list_amendments(db, tenant_id=patient.tenant_id, system_assessment_id=system_assessment.id)
+    return {"systemAssessmentId": str(system_assessment.id), "amendments": amendments}
+
+
+def _require_amendment_decision_role(current_user: CurrentUser) -> None:
+    # Same normalization RNICA's approve/deny endpoints apply before
+    # comparing against AMENDMENT_APPROVAL_ROLES (app/api/visits.py).
+    actor_role = str(getattr(current_user, "role", "SYSTEM") or "SYSTEM").strip().upper()
+    if actor_role not in AMENDMENT_APPROVAL_ROLES:
+        raise HTTPException(
+            status_code=403,
+            detail="DPCS, DPCS Designee, Case Manager, or Supervisor approval is required to decide an amendment.",
+        )
+
+
+@router.post("/patients/{patient_id}/respiratory/amendments/{amendment_id}/approve")
+def approve_respiratory_amendment(
+    patient_id: str,
+    amendment_id: str,
+    payload: BodySystemsAmendmentDecisionRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    _require_amendment_decision_role(current_user)
+
+    try:
+        amendment_uuid = uuid.UUID(amendment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="amendment_id must be a valid UUID") from None
+
+    user_id = getattr(current_user, "user_id", None) or getattr(current_user, "id", None)
+    try:
+        return approve_amendment(
+            db,
+            tenant_id=patient.tenant_id,
+            amendment_id=amendment_uuid,
+            user_id=user_id,
+            decision_reason=payload.decisionReason,
+        )
+    except BodySystemsAmendmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
+@router.post("/patients/{patient_id}/respiratory/amendments/{amendment_id}/deny")
+def deny_respiratory_amendment(
+    patient_id: str,
+    amendment_id: str,
+    payload: BodySystemsAmendmentDecisionRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+
+    patient = get_authorized_patient(db, patient_uuid, current_user)
+    _require_amendment_decision_role(current_user)
+
+    try:
+        amendment_uuid = uuid.UUID(amendment_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="amendment_id must be a valid UUID") from None
+
+    if not payload.decisionReason or not payload.decisionReason.strip():
+        raise HTTPException(status_code=422, detail="decisionReason is required to deny an amendment")
+
+    user_id = getattr(current_user, "user_id", None) or getattr(current_user, "id", None)
+    try:
+        return deny_amendment(
+            db,
+            tenant_id=patient.tenant_id,
+            amendment_id=amendment_uuid,
+            user_id=user_id,
+            decision_reason=payload.decisionReason,
+        )
+    except BodySystemsAmendmentError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
