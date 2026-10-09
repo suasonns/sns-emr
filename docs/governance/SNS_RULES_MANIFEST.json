@@ -103,6 +103,26 @@
       "name": "RNICA shadcn/ui adoption rule",
       "path": "docs/governance/SNS_RNICA_SHADCN_UI_ADOPTION_RULE.md",
       "requiredWhen": "RNICA UI component implementation using shadcn/ui primitives"
+    },
+    {
+      "name": "SNS Clinical Readability Standard",
+      "path": "docs/governance/SNS_CLINICAL_READABILITY_STANDARD.md",
+      "requiredWhen": "Body Systems, RN Assessments, Review By Exception, Nurse Review, Admissions, Recertifications, or any clinical workspace layout/typography work"
+    },
+    {
+      "name": "SNS Clinical Workspace Standard",
+      "path": "docs/governance/SNS_CLINICAL_WORKSPACE_STANDARD.md",
+      "requiredWhen": "Any viewport/device-support decision for clinical UI (ultrawide, laptop, tablet, phone)"
+    },
+    {
+      "name": "SNS Browser Width Validation Standard",
+      "path": "docs/governance/SNS_BROWSER_WIDTH_VALIDATION_STANDARD.md",
+      "requiredWhen": "Approving any major SNS clinical UI redesign, including Body Systems, Neurological, Respiratory, Cardiovascular, Integumentary, Review By Exception, Nurse Review"
+    },
+    {
+      "name": "SNS Playwright Validation Standard",
+      "path": "docs/governance/SNS_PLAYWRIGHT_VALIDATION_STANDARD.md",
+      "requiredWhen": "Selecting or using a browser-automation/visual-validation tool for SNS clinical UI work"
     }
   ]
 }
