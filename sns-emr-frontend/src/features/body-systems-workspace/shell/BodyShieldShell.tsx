@@ -60,6 +60,11 @@ import {
   INITIAL_INTEGUMENTARY_FIELD_VALUES,
   type IntegumentaryFieldValues,
 } from "../systems/integumentary/IntegumentarySystemPanel";
+import {
+  InfectionSystemPanel,
+  INITIAL_INFECTION_FIELD_VALUES,
+  type InfectionFieldValues,
+} from "../systems/infection/InfectionSystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -78,6 +83,7 @@ const PILOT_SYSTEMS: readonly BodySystemCode[] = [
   "genitourinary",
   "musculoskeletal",
   "integumentary",
+  "infection_immunological",
 ];
 
 export interface BodyShieldShellProps {
@@ -118,6 +124,9 @@ export function BodyShieldShell({
   );
   const [integumentaryValues, setIntegumentaryValues] = useState<IntegumentaryFieldValues>(
     INITIAL_INTEGUMENTARY_FIELD_VALUES,
+  );
+  const [infectionValues, setInfectionValues] = useState<InfectionFieldValues>(
+    INITIAL_INFECTION_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -280,6 +289,32 @@ export function BodyShieldShell({
             missingRequirements={state.missingRequirementsFor("integumentary")}
             values={integumentaryValues}
             onChange={setIntegumentaryValues}
+          />
+        )}
+
+        {state.selectedSystem === "infection_immunological" && (
+          <InfectionSystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("infection_immunological", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("infection_immunological", key)}
+            onLimitationChange={(limitation) => state.setLimitation("infection_immunological", limitation)}
+            missingRequirements={state.missingRequirementsFor("infection_immunological")}
+            values={infectionValues}
+            onChange={setInfectionValues}
+            crossSystemContext={{
+              woundSummary:
+                integumentaryValues.wounds.length > 0
+                  ? integumentaryValues.wounds
+                      .map((wound) => `${wound.woundType || "Wound"} — ${wound.locationText || "location pending"}`)
+                      .join("; ")
+                  : undefined,
+              urinarySummary: genitourinaryValues.urinarySymptomSeverity
+                ? `Urinary symptom severity: ${genitourinaryValues.urinarySymptomSeverity}`
+                : undefined,
+              respiratorySummary: respiratoryValues.sobSeverity
+                ? `SOB severity: ${respiratoryValues.sobSeverity}`
+                : undefined,
+            }}
           />
         )}
 

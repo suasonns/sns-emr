@@ -30,7 +30,7 @@ describe("BodyShieldShell", () => {
     screen.getByText("Compare dated current evidence with dated prior-period evidence.");
   });
 
-  it("selecting Neurological shows the pilot panel; selecting Cardiovascular, Nutrition, Gastrointestinal, Genitourinary, Musculoskeletal, and Integumentary show their pilot panels; selecting a non-pilot system shows the Phase 2 placeholder", () => {
+  it("selecting Neurological shows the pilot panel; selecting Cardiovascular, Nutrition, Gastrointestinal, Genitourinary, Musculoskeletal, Integumentary, and Infection / Immunological show their pilot panels; selecting a non-pilot system shows the Phase 2 placeholder", () => {
     render(
       <BodyShieldShell patientId="patient-1" visitId="visit-1" bodySystemsAssessmentId="assessment-1" />,
     );
@@ -63,6 +63,10 @@ describe("BodyShieldShell", () => {
     screen.getByText("Skin impairments present");
 
     fireEvent.click(screen.getAllByText("Infection / Immunological")[0]);
+    fireEvent.click(screen.getByText("Stable existing"));
+    screen.getByText("Infection status");
+
+    fireEvent.click(screen.getAllByText("Endocrine")[0]);
     screen.getByText(/Phase 2 scope/);
   });
 });

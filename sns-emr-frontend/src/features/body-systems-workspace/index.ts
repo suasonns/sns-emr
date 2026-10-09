@@ -67,6 +67,15 @@ export {
   type WoundBodyDiagramMarker,
   type BradenSubState,
 } from "./systems/integumentary/IntegumentarySystemPanel";
+export {
+  InfectionSystemPanel,
+  INITIAL_INFECTION_FIELD_VALUES,
+  type InfectionFieldValues,
+  type InfectionCrossSystemContext,
+} from "./systems/infection/InfectionSystemPanel";
+
+export { SystemNotesSection, type SystemNotesSectionProps } from "./systems/shared/SystemNotesSection";
+
 
 export {
   useBodySystemsAssessmentState,
