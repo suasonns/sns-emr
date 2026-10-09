@@ -6,8 +6,10 @@
  * status, and desktop/mobile layout selection. Contains no clinical
  * business logic of its own — situation rules, requirement rules, and
  * exception rules all come from `src/domain/body-systems`; system-specific
- * fields come from the pilot panels (Neurological, Respiratory) or a
- * Phase 2 placeholder for the remaining eight systems.
+ * fields come from the pilot panels (Neurological, Respiratory,
+ * Cardiovascular, Gastrointestinal, Genitourinary, Nutrition,
+ * Musculoskeletal, Integumentary) or a Phase 2 placeholder for the
+ * remaining systems.
  */
 import * as React from "react";
 import { useState } from "react";
@@ -53,6 +55,11 @@ import {
   INITIAL_MUSCULOSKELETAL_FIELD_VALUES,
   type MusculoskeletalFieldValues,
 } from "../systems/musculoskeletal/MusculoskeletalSystemPanel";
+import {
+  IntegumentarySystemPanel,
+  INITIAL_INTEGUMENTARY_FIELD_VALUES,
+  type IntegumentaryFieldValues,
+} from "../systems/integumentary/IntegumentarySystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -70,6 +77,7 @@ const PILOT_SYSTEMS: readonly BodySystemCode[] = [
   "gastrointestinal",
   "genitourinary",
   "musculoskeletal",
+  "integumentary",
 ];
 
 export interface BodyShieldShellProps {
@@ -107,6 +115,9 @@ export function BodyShieldShell({
   );
   const [musculoskeletalValues, setMusculoskeletalValues] = useState<MusculoskeletalFieldValues>(
     INITIAL_MUSCULOSKELETAL_FIELD_VALUES,
+  );
+  const [integumentaryValues, setIntegumentaryValues] = useState<IntegumentaryFieldValues>(
+    INITIAL_INTEGUMENTARY_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -256,6 +267,19 @@ export function BodyShieldShell({
             missingRequirements={state.missingRequirementsFor("musculoskeletal")}
             values={musculoskeletalValues}
             onChange={setMusculoskeletalValues}
+          />
+        )}
+
+        {state.selectedSystem === "integumentary" && (
+          <IntegumentarySystemPanel
+            patientId={patientId}
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("integumentary", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("integumentary", key)}
+            onLimitationChange={(limitation) => state.setLimitation("integumentary", limitation)}
+            missingRequirements={state.missingRequirementsFor("integumentary")}
+            values={integumentaryValues}
+            onChange={setIntegumentaryValues}
           />
         )}
 

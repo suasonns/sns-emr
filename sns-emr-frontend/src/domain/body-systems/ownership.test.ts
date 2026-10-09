@@ -19,6 +19,7 @@ import {
   historicalEvidenceDoesNotCompleteCurrentReview,
   aiSuggestionsDoNotMarkSystemReviewed,
   resolveFactOwner,
+  skinWoundReviewDoesNotCompleteBradenAssessment,
 } from "./ownership";
 
 describe("Body Systems — canonical system list", () => {
@@ -139,6 +140,10 @@ describe("Body Systems — non-duplication assertions", () => {
 
   it("never lets a body-diagram marker alone complete a wound record", () => {
     expect(bodyDiagramMarkerDoesNotCompleteWoundRecord()).toBe(true);
+  });
+
+  it("never lets skin/wound review complete the Braden assessment (Integumentary owns both, so the guard runs in both directions)", () => {
+    expect(skinWoundReviewDoesNotCompleteBradenAssessment()).toBe(true);
   });
 
   it("never lets historical evidence mark a system reviewed", () => {

@@ -178,6 +178,19 @@ export function bradenNutritionSubscoreDoesNotCompleteNutritionReview(): true {
 }
 
 /**
+ * Integumentary owns both `skin_integrity`/`wounds` and `braden` itself, so
+ * the non-substitution guard runs in both directions: Braden does not
+ * complete skin/wound review (see `bradenSubscoresDoNotCompleteSystemReview`)
+ * AND skin/wound review does not complete Braden. Braden's six subscales
+ * and total are only ever set by an explicit RN Braden assessment, never
+ * derived from wound count, wound stage, wound dimensions, or any other
+ * skin/wound finding.
+ */
+export function skinWoundReviewDoesNotCompleteBradenAssessment(): true {
+  return true;
+}
+
+/**
  * A body-diagram wound marker is a location aid only. It never satisfies
  * wound documentation on its own — see `woundMarkerAloneSatisfiesWoundRecord`
  * in exceptionRules.ts for the corresponding validation guard.

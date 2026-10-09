@@ -57,6 +57,16 @@ export {
   INITIAL_MUSCULOSKELETAL_FIELD_VALUES,
   type MusculoskeletalFieldValues,
 } from "./systems/musculoskeletal/MusculoskeletalSystemPanel";
+export {
+  IntegumentarySystemPanel,
+  INITIAL_INTEGUMENTARY_FIELD_VALUES,
+  createWoundSubState,
+  type IntegumentaryFieldValues,
+  type WoundSubState,
+  type WoundPhotoEvidence,
+  type WoundBodyDiagramMarker,
+  type BradenSubState,
+} from "./systems/integumentary/IntegumentarySystemPanel";
 
 export {
   useBodySystemsAssessmentState,
