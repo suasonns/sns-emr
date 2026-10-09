@@ -10,6 +10,7 @@ import HopeReport from "./HopeReport";
 import mapRnIcaToHopeReport from "./hopeReportMapper";
 import { fetchDeclineOfStatusTrend } from "../api/facesheet";
 import { fetchDischargePlanning } from "../api/patientCharts";
+import { formatIcd10Code } from "../utils/formatIcd10";
 
 const COMPLIANCE_SECTION_KEY = "compliance";
 const SECTION_ITEMS = [
@@ -979,7 +980,7 @@ export default function ComplianceHopeBoard({
               <div style={styles.infoTile}>
                 <div style={styles.label}>Primary diagnosis</div>
                 <div style={styles.value}>
-                  {[diagnoses.primaryDiagnosis?.icd10, diagnoses.primaryDiagnosis?.description].filter(Boolean).join(" — ") || "—"}
+                  {[formatIcd10Code(diagnoses.primaryDiagnosis?.icd10), diagnoses.primaryDiagnosis?.description].filter(Boolean).join(" — ") || "—"}
                 </div>
               </div>
               <div style={styles.infoTile}>

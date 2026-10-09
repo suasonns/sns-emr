@@ -17,7 +17,18 @@ const SHARED_BODY_SYSTEM_CONFIG = [
       label: "Neurological",
       formSection: "neurological",
       regulator: "HOPE",
-      hope: ["N0500", "N0510", "N0520"],
+      // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction":
+      // N0500/N0510/N0520 are the official HOPE Scheduled Opioid / PRN
+      // Opioid / Bowel Regimen items (Section N medications -- see
+      // docs/compliance/hope/HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv and
+      // hopeReportMapper.js:717-719, sourced from `medications.*`), not a
+      // cognitive/BIMS item -- HOPE has no cognitive-interview item at
+      // all. Declaring them here (same bug class as P3-016/M1190 in
+      // RNICA.jsx SIDEBAR_CONFIG) made the Neurological sidebar HOPE
+      // complete/incomplete badge flip based on unrelated Medications
+      // data. Neurological's SNS Cognitive Screen is an internal clinical
+      // screen, not a HOPE item, so it declares no HOPE codes here.
+      hope: [],
       icon: "🧠",
       color: "green",
       sfv: true,

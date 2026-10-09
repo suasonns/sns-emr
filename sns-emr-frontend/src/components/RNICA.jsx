@@ -28,8 +28,46 @@ import AdmissionActionCenterDrawer, {
 } from "./AdmissionActionCenterDrawer";
 import {
   RNICA_ASSESSMENT_MODULES,
+  UPDATE_HIDDEN_ROUTE_KEYS,
   validateBodyMapRegions,
 } from "./rn-ica/rnIcaClinicalNavigation";
+import { LANGUAGE_OPTIONS, ETHNICITY_OPTIONS, RACE_OPTIONS } from "./rn-ica/hope-admin-review/HopeAdministrativeReview";
+import { derivePainAssessmentMode, computeAiPainNotes, computePainOverdueAlerts } from "./rn-ica/pain-symptom-burden/painLogic";
+import {
+  CONTRIBUTING_CONDITION_STATUS_OPTIONS,
+  CONTRIBUTING_CONDITION_STATUSES_REQUIRING_RATIONALE,
+  CONTRIBUTING_CONDITION_SOURCE_OPTIONS,
+  isContributingConditionIncomplete,
+  findExactDuplicateContributingCondition,
+  findProbableDuplicateContributingConditions,
+  findContributingConditionCrossReferences,
+} from "./rn-ica/diagnosis-lcd/diagnosisLogic";
+import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
+import { Checkbox } from "./ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as ShadcnCardTitle, CardContent as ShadcnCardContent } from "./ui/card";
+import { Badge as ShadcnBadge } from "./ui/badge";
+import { Progress as ShadcnProgress } from "./ui/progress";
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
+import { Input as ShadcnInput } from "./ui/input";
+import { Textarea as ShadcnTextarea } from "./ui/textarea";
+import { ToggleGroup, ToggleGroupItem } from "./ui/toggle-group";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "./ui/dialog";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription, SheetFooter } from "./ui/sheet";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "./ui/tabs";
+import { Alert, AlertTitle, AlertDescription } from "./ui/alert";
+import { Tooltip, TooltipTrigger, TooltipContent, TooltipProvider } from "./ui/tooltip";
+import {
+  AlertDialog,
+  AlertDialogContent,
+  AlertDialogHeader,
+  AlertDialogFooter,
+  AlertDialogTitle,
+  AlertDialogDescription,
+  AlertDialogAction,
+  AlertDialogCancel,
+} from "./ui/alert-dialog";
 import { fetchPatientSummary } from "../api/patientCharts";
 import { fetchCensusWorkspace } from "../api/census";
 import { listSfvRequirements } from "../api/sfv";
@@ -122,6 +160,7 @@ import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
+import { resolveReferralRecommendation } from "../intake/referralRecommendation";
 import {
   buildClinicalNarrative,
   DISEASE_TRAJECTORY_OPTIONS,
@@ -130,7 +169,9 @@ import {
 } from "../intake/clinicalNarrativeBuilder";
 
 import { getActivePatientId, setActivePatientId, clearActivePatientId } from "../utils/activePatient";
+import { formatIcd10Code } from "../utils/formatIcd10";
 import MedicationNameInput from "./MedicationNameInput";
+import Icd10DiagnosisInput from "./Icd10DiagnosisInput";
 import VisitRecorderCard from "./VisitRecorderCard";
 import RNICACommandWorkspace from "./rn-ica/RNICACommandWorkspace";
 // getRnicaColors/getRnicaStyles live in ../theme/clinicalDesign — the single shared
@@ -161,6 +202,18 @@ const SYMPTOM_IMPACT_CHECKLIST = [
 const SYMPTOM_SEVERITY_LABEL = { "0": "None", "1": "Mild", "2": "Moderate", "3": "Severe" };
 
 const AssessmentModeContext = React.createContext("ica");
+// OWNER DIRECTIVE (2026-10-29) "GI Symptom Follow-Up Visit CMS Compliance
+// Correction" -- CMS requires a qualifying HOPE timepoint (HOPE Admission,
+// HUV1, or HUV2) before Moderate/Severe J2051 symptom impact may be
+// labeled a CMS SFV requirement; the pre-existing `mode === "ongoing"`
+// check could not distinguish a genuine HOPE Update Visit (assessmentType
+// "update", i.e. HUV1/HUV2) from a non-HOPE Recertification assessment
+// (assessmentType "recert") -- both set mode="ongoing". This context
+// carries that distinction so HopeTag/SfvTag and the SFV-required banners
+// can tell the two apart. Defaults to true (matches the default mode
+// "ica", which is always HOPE-qualifying) so any consumer rendered
+// outside a Provider keeps the pre-existing (CMS-labeled) behavior.
+const QualifyingHopeTimepointContext = React.createContext(true);
 
 const NAV_SECTIONS = [
   "Patient Demographics", "Vitals", "Pain Assessment", "Symptom Impact",
@@ -255,7 +308,10 @@ const FORM_REGISTRY = [
   "admissionsOrder", "referrals", "finalization",
 ];
 
-const UPDATE_HIDDEN_ROUTE_KEYS = new Set(["admissionsOrder", "sfv"]);
+// UPDATE_HIDDEN_ROUTE_KEYS is imported from rnIcaClinicalNavigation.js --
+// a single shared source of truth with validateRnIcaClinicalNavigation's
+// expected-route computation (issue #166 fix) so the two can never drift
+// apart again.
 const UPDATE_HIDDEN_SIDEBAR_KEYS = new Set(["advancedCarePlanning", "admissionsOrder", "sfv"]);
 
 // ════════════════════════════════════════════════════════════════
@@ -372,6 +428,12 @@ const INITIAL_FORM = {
   demographics: {
     firstName: "", lastName: "", dob: "", gender: "",
     race: [], ethnicity: [], preferredLanguage: "", needsInterpreter: false,
+    // A1005/A1010 source-attribution: recorded only when "Patient unable to
+    // respond" is selected for that item, per CMS HOPE guidance -- when
+    // another source supplies race/ethnicity, that source is documented
+    // alongside the coded categories (owner design decision 2026-09-25).
+    raceInformationSource: "", raceInformationSourceOther: "",
+    ethnicityInformationSource: "", ethnicityInformationSourceOther: "",
     religion: "", maritalStatus: "", militaryService: "", phone: "", alternatePhone: "",
     address: { street: "", city: "", state: "", zip: "", county: "" },
     emergencyContact: { name: "", relationship: "", phone: "" },
@@ -384,6 +446,19 @@ const INITIAL_FORM = {
       healthStatus: "", anxietyLevel: "",
       ableToAdministerMeds: "", willingToProvideCare: "",
       pcgConcerns: "",
+      // Cross-checked directly against real HospiceMD "Communications & Other
+      // Factors > PCG" section (2026-09-25 owner-provided screenshots): these
+      // 4 fields match that section 1:1. PCG education needs are intentionally
+      // NOT duplicated here — the existing Teaching Needs module (moduleKey
+      // "teachingNeeds", DEFAULT_EDUCATION_TOPICS) already covers "Teach
+      // Patient/Family/PCG" with all 4 HospiceMD topics (Hospice, Disease
+      // process, Medication, Advance directive) as a superset.
+      participatesInCare: "", // Is PCG able to participate in care?
+      signLanguageInterpreterNeeded: "", // If PCG hard of hearing/deaf, sign-language interpreter needed?
+      householdChildren: "", // Any young children at home?
+      householdChildrenDetail: "",
+      householdPets: "", // Any pets? (If yes, specify)
+      householdPetsDetail: "",
       // CDPH Caregiver Evaluation (Gap #2 — elevated for survey visibility)
       caregiverEvaluation: {
         physicalAbility: "",
@@ -396,6 +471,16 @@ const INITIAL_FORM = {
         supportSystemAdequacy: "",
         evaluationNotes: "",
       },
+    },
+    // Patient's own medication self-administration capability — cross-checked
+    // against real HospiceMD "Communications & Other Factors > Patient"
+    // section: "Is Patient able to safely administer meds?" + "If No, who is
+    // able to safely administer meds to Patient?" Distinct from the PCG's own
+    // ableToAdministerMeds above (that is the caregiver's capability, this is
+    // the patient's).
+    medicationSafety: {
+      selfAdministersMeds: "",
+      medsAdministeredBy: "",
     },
     livingSituation: {
       siteOfService: "", admittedFrom: "",
@@ -451,6 +536,11 @@ const INITIAL_FORM = {
     standardizedPainToolType: "",
     comprehensiveAssessmentCompleted: false,
     comprehensiveAssessmentDate: "",
+    // [2026-10-03] Populated only when the nurse explicitly documents a
+    // comprehensive-assessment date different from the RNICA visit date
+    // (see ComprehensivePainAssessmentDateField + the auto-sync effect
+    // near handleLock). Empty = date stays auto-synced to the visit date.
+    comprehensiveAssessmentDateOverrideReason: "",
     assessmentTool: "",
     painIntensity: { current: "", worst: "", best: "", acceptable: "" },
     painLocation: [], painCharacter: [], painRadiation: "",
@@ -469,6 +559,13 @@ const INITIAL_FORM = {
   },
 
   // ─── 4. SYMPTOM IMPACT ─────────────────────────────
+  // No RN-facing UI (owner correction 2026-09-25: pain, dyspnea, GI, and
+  // anxiety/agitation severity are each documented exactly once in their
+  // true owning section -- Pain, Respiratory, GI, Neuro/Mental Status --
+  // never re-asked here). This object is a derived/computed store only,
+  // kept in sync live by a background effect, so HOPE J2051 export, SFV
+  // symptom logic, and reporting continue to work off a single source
+  // of truth.
   symptomImpact: {
     pain: "", shortnessOfBreath: "", anxiety: "",
     nausea: "", vomiting: "", diarrhea: "",
@@ -481,6 +578,13 @@ const INITIAL_FORM = {
     primaryDiagnosis: { icd10: "", description: "", onsetDate: "", hopeDiagnosisCategory: "" },
     secondaryDiagnoses: [],
     comorbidities: [],
+    // Disease & LCD Workflow Specification, Phase 1 / Option A — manually-
+    // documented conditions distinct from Primary/Secondary/HOPE
+    // Comorbidities, each carrying an explicit contribution-to-terminal-
+    // prognosis / contribution-to-clinical-burden judgment. See
+    // ContributingConditionsCard + diagnosisLogic.js for the full shape,
+    // validation, and cross-reference rules.
+    contributingConditions: [],
     terminalPrognosis: "",
     diseaseTrajectory: "",
     lcdEligibilityNarrative: "",
@@ -579,21 +683,71 @@ const INITIAL_FORM = {
       nighttimeSymptoms: [], response: "",
       notes: "",
     },
-    hopeItems: { n0500: "", n0510: "", n0520: "" },
+    // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+    // this was previously stored as `hopeItems: { n0500, n0510, n0520 }`
+    // and tagged with those HOPE item codes. docs/compliance/hope/
+    // HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv (sourced from the actual HOPE
+    // Guidance Manual v1.02) identifies N0500/N0510/N0520 as Scheduled
+    // Opioid / PRN Opioid / Bowel Regimen (Section N medications -- see
+    // hopeReportMapper.js:717-719, correctly sourced from `medications.*`
+    // and never read from here). HOPE has no cognitive-interview item at
+    // all, so this is an SNS-internal clinical screen, not a HOPE item --
+    // renamed out of `hopeItems` into its own namespace so it can never be
+    // mistaken for (or serialized as) an official HOPE code again. Legacy
+    // `hopeItems.n0500/n0510/n0520` values are moved here automatically by
+    // migrateNeurologicalCognitiveData() on load (see deepMergeFormData
+    // call site) -- see computeSnsCognitiveScreen for the one authoritative
+    // score calculation every consumer (Summary/Cognitive Summary/
+    // Structured Findings/Finalization) must use.
+    cognitiveScreen: {
+      instrument: "SNS_COGNITIVE_SCREEN_V1",
+      repetition: "", recall: "", temporalOrientation: "",
+    },
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 8. CARDIOVASCULAR ────────────────────────────
   cardiovascular: {
+    // OWNER-APPROVED "Cardiovascular Overview Gate" (2026-09-28) --
+    // presentation-only workflow gate, same pattern as Neurological's
+    // `neuroOverview`. Not a clinical finding by itself.
+    cardiovascularOverview: "",
+    cardiovascularUnableToAssessReason: "",
+    cardiovascularUnableToAssessOther: "",
     bpSymptoms: [],
+    // OWNER CORRECTION (2026-09-28 Contradiction 4) -- "BP Status" and
+    // "Orthostatic Finding" are two independent single-select fields
+    // (Hypotensive + Orthostatic-Present is a valid combination). The
+    // legacy multi-select `bpSymptoms` array above is preserved untouched
+    // (never rewritten); resolveBpLegacyDisplay reads it for display only
+    // when unambiguous (a contradictory legacy array is surfaced as a
+    // review-required note instead of being silently collapsed).
+    bpStatus: "",
+    orthostaticFinding: "",
     pulseSites: [],
     pulseQuality: "",
+    // OWNER-APPROVED "Pulse Redesign" (2026-09-28) -- Rhythm/Rate/
+    // Strength are independently selectable. Legacy `pulseQuality` above
+    // is preserved untouched and read-aliased into whichever of these
+    // three dimensions it belongs to when the corresponding new field is
+    // still blank (see PULSE_LEGACY_DIMENSION below).
+    pulseRhythm: "", pulseRate: "", pulseStrength: "",
     edema: { present: "", location: [], severity: "", pitting: "" },
     chestPain: { present: "", type: "", frequency: "" },
     peripheralCirculation: "", heartSounds: "", jvd: "",
     skinColor: "", pacemaker: false, internalDefibrillator: false,
+    // OWNER DIRECTIVE (2026-10-04) "Ontology-First Free-Text Review" --
+    // Skin Color/Heart Sounds/Peripheral Circulation move from unrestricted
+    // free text to structured findings (ontology-recognizable by the
+    // Intelligence Harvester) while preserving free-text capability. These
+    // three *Other paths hold the optional nurse-note detail, shown only
+    // when the structured field's value is "Other" -- same convention as
+    // the existing cardiovascularUnableToAssessOther companion field.
+    skinColorOther: "", heartSoundsOther: "", peripheralCirculationOther: "",
     varicoseVeins: false, centralVenousLine: false,
     coolExtremities: false, stasisUlcer: false,
+    fatigue: "", dizziness: "", syncope: "", cardiacDyspnea: false,
     // Objective heart-failure finding drafted from evidence text (H&P,
     // referral, uploaded documents, or transcript) via the shared
     // StructuredFinding contract's CV_HEART_FAILURE_* concepts. Deliberately
@@ -604,10 +758,26 @@ const INITIAL_FORM = {
     heartFailurePresent: false,
     heartFailureType: [],
     notes: "",
+    clinicalStatusChange: "",
+    // Directive (2026-09-28) "Cardiovascular Layout Consolidation" Section
+    // 13 -- Path 2 ("Existing Cardiovascular Findings Review") clinician
+    // confirmation. A new, independent boolean; never rewrites author or
+    // timestamp, never touches any existing finding, and is not required
+    // on any other Overview path.
+    cardiovascularFindingsConfirmedThisVisit: false,
   },
 
   // ─── 9. RESPIRATORY ───────────────────────────────
   respiratory: {
+    // OWNER-APPROVED "Respiratory Overview Workflow Reorganization"
+    // (2026-10-06) -- same triage pattern as Cardiovascular's Overview
+    // Gate (see `cardiovascularOverview` above): a workflow/organization
+    // addition only. No existing respiratory field is renamed, removed,
+    // or reclassified; `respiratoryOverview` and its two reason
+    // companion fields are the only new fields added by this directive.
+    respiratoryOverview: "",
+    respiratoryUnableToAssessReason: "",
+    respiratoryUnableToAssessOther: "",
     sobSeverity: "", exertionLevel: "",
     shortnessOfBreathScreened: false, screeningDate: "",
     treatmentInitiated: false, treatmentDate: "", treatmentDeclined: false,
@@ -624,34 +794,99 @@ const INITIAL_FORM = {
       tracheostomyType: "", tracheostomySize: "",
     },
     notes: "",
+    clinicalStatusChange: "",
+    // OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" --
+    // UI-only workflow flag, not a clinical finding (excluded from every
+    // summary/findings-count helper below). Default false so "Existing
+    // Respiratory Findings Review" always opens on the concise summary;
+    // becomes true only while the nurse has explicitly clicked "Edit
+    // Existing Findings" (see RespiratoryFindingsReviewSummary / the
+    // render-loop guard in renderGenericSection), and resets to false
+    // when they click "Back to Review".
+    respiratoryExistingFindingsEditMode: false,
   },
 
   // ─── 10. INFECTION ────────────────────────────────
+  // OWNER-APPROVED "Infection Hospice Workflow Optimization" (2026-10-20)
+  // -- same Overview-gate / single-canonical-editor pattern already
+  // shipped for Cardiovascular and Respiratory (see `respiratoryOverview`
+  // above). `infectionOverview` and its two Unable-to-Assess companion
+  // fields are organization-only additions; no existing field below is
+  // renamed, removed, or reclassified. The remaining new fields
+  // (`currentInfectionOther`, `immunosuppressionReason`/`Other`,
+  // `antibioticTherapyStatus`/`MedicationName`/`TreatmentEffective`,
+  // `infectionHistoryTypes`/`Other`) are additive structured-entry
+  // fields approved in the same directive -- "smallest safe enhancement",
+  // no ontology/taxonomy expansion, no field removed.
   infection: {
     allergies: [],
     allergyDetails: "",
+    infectionOverview: "",
+    infectionUnableToAssessReason: "",
+    infectionUnableToAssessOther: "",
     currentInfections: [],
+    currentInfectionOther: "",
     antibioticResistantInfection: [],
     historyOfResistantInfections: [],
     immunosuppressed: false,
+    immunosuppressionReason: "",
+    immunosuppressionReasonOther: "",
     antibioticUse: false,
+    antibioticTherapyStatus: "",
+    antibioticMedicationName: "",
+    antibioticTreatmentEffective: "",
     temperature: "",
     recurrentInfection: false,
     infectionHistory: "",
+    infectionHistoryTypes: [],
+    infectionHistoryOther: "",
     precautions: [],
     notes: "",
+    clinicalStatusChange: "",
+    // OWNER-APPROVED "Infection Hospice Workflow Optimization"
+    // (2026-10-20) -- UI-only workflow flag, same purpose as
+    // `respiratoryExistingFindingsEditMode` (excluded from every
+    // summary/findings-count helper). Default false so "Existing
+    // Infection Findings Review" always opens on the compact review
+    // summary; becomes true only after the nurse clicks "Edit Existing
+    // Findings", resets to false on leaving that Overview path.
+    infectionExistingFindingsEditMode: false,
   },
 
   // ─── 11. GASTROINTESTINAL ─────────────────────────
+  // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" -- same
+  // Overview-gate pattern already shipped for Cardiovascular/Respiratory/
+  // Infection (see `respiratoryOverview`/`infectionOverview` above).
+  // `gastrointestinalOverview` is an organization-only addition; no
+  // existing field below is renamed, removed, or reclassified. The
+  // conditional bowel-detail fields (`lastBMSize`, `straining`,
+  // `stoolConsistency`, `giInformationSource`) and the UI-only
+  // `giShowAdditionalBowelDetails` toggle are additive, minimal-required-
+  // field additions approved in the same directive -- they stay hidden
+  // in the render loop below until the nurse documents a Mild/Moderate/
+  // Severe symptom (see the conditional-field guard in the render loop)
+  // so routine/normal GI documentation stays under one minute.
   gastrointestinal: {
+    gastrointestinalOverview: "",
     nausea: "", vomiting: "", vomitingOccurrences24h: "", diarrhea: "", constipation: "",
-    bowelSounds: "", abdomen: "", ascites: false, abdominalGirth: "",
+    straining: "",
+    stoolConsistency: "",
+    bowelSounds: "", abdomen: "", ascites: "", abdominalGirth: "",
     stoolCharacter: [],
     bowelStatus: "", bowelFrequency: "", reasonBowelRegimenNotInitiated: "", lastBM: "",
+    lastBMSize: "",
+    giInformationSource: "",
     continence: "",
-    feedingTube: { present: false, type: "", site: "" },
-    ostomy: { present: false, type: "", condition: "" },
+    feedingTube: { present: "", type: "", site: "" },
+    ostomy: { present: "", type: "", condition: "" },
     notes: "",
+    clinicalStatusChange: "",
+    // UI-only workflow flag (excluded from every summary/findings-count
+    // helper below) -- lets the nurse manually open the conditional
+    // bowel-detail fields even when no severity threshold has been
+    // crossed yet (Phase 1 spec "Nurse manually opens additional bowel
+    // details"). Never itself a clinical finding.
+    giShowAdditionalBowelDetails: false,
   },
 
   // ─── 12. NUTRITION ────────────────────────────────
@@ -663,6 +898,7 @@ const INITIAL_FORM = {
     nutritionalSupplements: "",
     npoStatus: "", artificialFeeding: [], oralCavityFindings: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 13. ENDOCRINE ────────────────────────────────
@@ -679,6 +915,7 @@ const INITIAL_FORM = {
     symptomSeverity: {},
     currentEndocrineMeds: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 14. GENITOURINARY ────────────────────────────
@@ -696,6 +933,7 @@ const INITIAL_FORM = {
     reproductive: { concerns: [], notes: "" },
     bladderManagement: [],
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 15. MUSCULOSKELETAL ──────────────────────────
@@ -728,6 +966,7 @@ const INITIAL_FORM = {
       transferring: "", eating: "", grooming: "",
     },
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 16. SKIN ─────────────────────────────────────
@@ -735,6 +974,9 @@ const INITIAL_FORM = {
     skinConditionsPresent: false,
     skinStatus: [], skinTurgor: "",
     skinBodySites: [],
+    skinMoisture: "", skinTemperature: "", skinColorFinding: "",
+    skinEdema: { severity: "", location: "" },
+    additionalSkinFindings: [],
     braden: {
       sensoryPerception: "", moisture: "", activity: "",
       mobility: "", nutrition: "", frictionShear: "", total: "",
@@ -744,6 +986,7 @@ const INITIAL_FORM = {
     woundImpairment: "",
     pressureReliefMeasures: [], repositioningPlan: "",
     notes: "",
+    clinicalStatusChange: "",
   },
 
   // ─── 17. IMMINENT DEATH ───────────────────────────
@@ -794,40 +1037,49 @@ const INITIAL_FORM = {
 
   // ─── 20. PSYCHOSOCIAL ─────────────────────────────
   psychosocial: {
-    familySocialSupport: "",
-    primarySupportPerson: "", supportRelationship: "",
-    patientConcerns: [],
-    caregiverFamilyConcerns: [],
-    distressRating: "",
-    psychosocialHistory: [],
-    copingAssessment: "", copingNotes: "",
-    interventionPlan: [],
-    socialWorkVisitNeeded: false,
+    // Referral-determination workflow (owner design correction 2026-09-25,
+    // refined 2026-09-25): Psychosocial is NOT a standalone discipline
+    // assessment -- the RN documents findings only; SNS derives the MSW
+    // Recommended YES/NO from those findings (display-only, never stored --
+    // see referralRecommendation.js). The RN records only the Family
+    // Response. When Recommended=YES and Family Response=Refused, the
+    // Referral Refused record below captures who refused, when, and why
+    // (RN follow-up responsibility changes on refusal).
+    referralIndicators: [],
+    familyResponse: "", // Accepted / Refused / Deferred
+    refusal: { date: "", personRefusing: "", relationship: "", reason: "", recordedBy: "" },
     notes: "",
   },
 
   // ─── 21. SPIRITUAL ────────────────────────────────
   spiritual: {
-    patientActiveInFaithTradition: false,
-    patientFaith: "",
-    caregiverActiveInFaithTradition: false,
-    caregiverFaith: "",
-    spiritualConcerns: [],
-    spiritualDistressRating: "",
-    concernsDiscussed: false,
+    // Referral-determination workflow (owner design correction 2026-09-25,
+    // refined 2026-09-25): Spiritual is NOT a Chaplain assessment -- the RN
+    // documents findings only; SNS derives the Spiritual Care Recommended
+    // YES/NO (display-only, never stored). The RN records only the Family
+    // Response, plus a Referral Refused record on refusal. F3000
+    // (HOPE-required) is retained verbatim.
+    religiousPreference: "",
+    clergyInvolvement: "", // Not involved / Community clergy involved / Facility chaplain involved / Both
+    referralIndicators: [],
+    familyResponse: "", // Accepted / Refused / Deferred
+    refusal: { date: "", personRefusing: "", relationship: "", reason: "", recordedBy: "" },
     concernsAskedStatus: "", // HOPE F3000 A: 0 No / 1 Yes-discussed / 2 Yes-refused
-    concernsDiscussedDate: "",
-    chaplainNeeded: false,
+    concernsDiscussedDate: "", // HOPE F3000 B
     notes: "",
   },
 
   // ─── 22. BEREAVEMENT ──────────────────────────────
   bereavement: {
-    patientConcerns: [],
-    caregiverConcerns: [],
-    bereavementRisk: "",
+    // Referral-determination workflow (owner design correction 2026-09-25,
+    // refined 2026-09-25): Bereavement is NOT bereavement-counseling
+    // documentation -- the RN documents risk factors only; SNS derives the
+    // Bereavement Follow-Up Recommended YES/NO (display-only, never
+    // stored). The RN records only the Family Response, plus a Referral
+    // Refused record on refusal.
     riskFactors: [],
-    bereavementVisitNeeded: false,
+    familyResponse: "", // Accepted / Refused / Deferred
+    refusal: { date: "", personRefusing: "", relationship: "", reason: "", recordedBy: "" },
     notes: "",
   },
 
@@ -946,10 +1198,18 @@ const api = {
 // 4. VALIDATION
 // ════════════════════════════════════════════════════════════════
 
-function validateRNICA(formData, mode = "ica") {
+function validateRNICA(formData, mode = "ica", assessmentType = undefined) {
   const errors = {};
   const warnings = {};
-  const includeHopeRequirements = mode !== "ongoing";
+  // Owner directive (GI SFV CMS Compliance Correction, includeHopeRequirements
+  // defect review): this must use the SAME qualifying-HOPE-timepoint formula
+  // as the render path (isQualifyingHopeTimepoint, RNICA.jsx ~line 18054),
+  // not a standalone mode==="ongoing" check. A generic "ongoing" mode covers
+  // both genuine HUV1/HUV2 Update visits (which DO require HOPE fields) and
+  // non-HOPE Recertification visits (which do not) -- both call sites
+  // already pass assessmentType; it was previously silently ignored here.
+  const includeHopeRequirements =
+    mode === "ica" || (mode === "ongoing" && assessmentType === "update");
   const requireAdmissionOrders = mode === "ica";
 
   // Demographics ? required fields
@@ -1061,9 +1321,12 @@ function validateRNICA(formData, mode = "ica") {
       warnings["performanceStatus"] = "HOPE M1190: At least PPS or KPS required";
     }
 
-    // Neurological ? BIMS N0500-N0520
-    if (!formData.neurological.hopeItems.n0500) {
-      warnings["neurological.hopeItems.n0500"] = "HOPE N0500: BIMS repetition required";
+    // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+    // this is an SNS-internal cognitive screen, not a HOPE item (N0500 is
+    // the official HOPE Scheduled-Opioid item). See cognitiveScreen in
+    // INITIAL_FORM.neurological and computeSnsCognitiveScreen.
+    if (!formData.neurological.cognitiveScreen.repetition) {
+      warnings["neurological.cognitiveScreen.repetition"] = "SNS Cognitive Screen: Word Repetition response required";
     }
 
     // Imminent Death ? J0050
@@ -1078,8 +1341,8 @@ function validateRNICA(formData, mode = "ica") {
   }
 
   // Psychosocial ? Suicide/self-harm safety documentation (CDPH: complete, accurate documentation required)
-  if (formData.psychosocial.patientConcerns?.includes("Suicide concerns") && !formData.psychosocial.notes?.trim()) {
-    warnings["psychosocial.notes"] = "Safety: Suicide concerns indicated — document safety assessment/plan in Psychosocial Notes";
+  if (formData.psychosocial.referralIndicators?.includes("Suicide/self-harm risk indicated") && !formData.psychosocial.notes?.trim()) {
+    warnings["psychosocial.notes"] = "Safety: Suicide/self-harm risk indicated — document safety assessment/plan in Notes";
   }
 
   // SECTION 10 — Clinical Narrative & Disease Trajectory. The frozen
@@ -1147,20 +1410,42 @@ function describeStructuredFindingDestinations(conceptCode) {
 
 // Tag components
 function HopeTag({ code }) {
-  const mode = useContext(AssessmentModeContext);
+  // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+  // was `mode === "ongoing"`, which hid this tag during a genuine HOPE
+  // Update Visit (HUV1/HUV2, assessmentType "update") exactly the same as
+  // a non-HOPE Recertification (assessmentType "recert"). HOPE J-item
+  // tags apply throughout the first 30 days of service (Admission + HUV1
+  // + HUV2), not only on the Admission assessment.
+  const isQualifyingHopeTimepoint = useContext(QualifyingHopeTimepointContext);
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  if (mode === "ongoing") return null;
+  if (!isQualifyingHopeTimepoint) return null;
   return <span style={styles.hopeTag}>HOPE {code}</span>;
 }
 function SfvTag() {
-  const mode = useContext(AssessmentModeContext);
+  // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+  // (1) same HUV1/HUV2-vs-Recert fix as HopeTag above; (2) "STATIC UI
+  // LABEL" requirement: the static per-field tag means "this symptom
+  // participates in HOPE SFV rules" -- it must never read as if an SFV
+  // has already been activated, so the loud red "SFV Trigger" label is
+  // replaced with the neutral "SFV" label plus an accessible tooltip.
+  // Active-SFV-state badges remain a SEPARATE, differently-styled
+  // element (the sfvStatus.required banners below), unaffected by this
+  // change.
+  const isQualifyingHopeTimepoint = useContext(QualifyingHopeTimepointContext);
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  if (mode === "ongoing") return null;
-  return <span style={styles.sfvTag}>SFV Trigger</span>;
+  if (!isQualifyingHopeTimepoint) return null;
+  return (
+    <span
+      style={styles.sfvNeutralTag}
+      title="Moderate or severe symptom impact during a HOPE Admission or HUV requires an in-person SFV within two calendar days."
+    >
+      SFV
+    </span>
+  );
 }
 function CmsTag({ label }) {
   const { mode: themeMode } = useThemeMode();
@@ -1170,18 +1455,18 @@ function CmsTag({ label }) {
 }
 
 // Form field components
-function FormInput({ label, value, onChange, type = "text", placeholder, required, hopeCode, ...rest }) {
+function FormInput({ label, value, onChange, type = "text", placeholder, required, hopeCode, compact, ...rest }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <input
-        style={styles.input} type={type} value={value || ""}
+      <ShadcnInput
+        type={type} value={value || ""}
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder} {...rest}
       />
@@ -1189,39 +1474,120 @@ function FormInput({ label, value, onChange, type = "text", placeholder, require
   );
 }
 
-function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled }) {
+function FormTextarea({ label, value, onChange, placeholder, rows = 3, disabled, compact, autoGrow = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item #7 --
+  // "auto-growing textareas starting at 2 rows" for Additional Cognitive
+  // Observations/Neurological Notes: a small `rows`-sized box by default
+  // (keeps the collapsed-at-a-glance density win from the prior pass) that
+  // grows with typed/charted content instead of relying on the browser's
+  // native scrollbar once text exceeds the box. Opt-in via `autoGrow` so
+  // every other FormTextarea call site (dozens, across every section)
+  // keeps its exact current fixed-height behavior unchanged.
+  const taRef = useRef(null);
+  const resize = useCallback(() => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = `${el.scrollHeight}px`;
+  }, []);
+  useEffect(() => {
+    if (autoGrow) resize();
+  }, [autoGrow, value, resize]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>{label}</label>
-      <textarea
-        style={{ ...styles.textarea, minHeight: rows * 24 }} value={value || ""}
-        onChange={(e) => onChange(e.target.value)} placeholder={placeholder} disabled={disabled}
+      <ShadcnTextarea
+        ref={autoGrow ? taRef : undefined}
+        style={autoGrow ? { minHeight: rows * 24, height: rows * 24, overflow: "hidden", resize: "none" } : { minHeight: rows * 24 }}
+        value={value || ""}
+        onChange={(e) => { onChange(e.target.value); if (autoGrow) resize(); }}
+        placeholder={placeholder} disabled={disabled}
       />
     </div>
   );
 }
 
-function FormSelect({ label, value, onChange, options, required, hopeCode, disabled }) {
+// Structured-charting alternative to a pure narrative textarea: tap a
+// preset phrase to add/remove it from the same underlying string field
+// (semicolon-joined), instead of free typing. Same path/data type as a
+// plain textarea -- no schema change, no new field -- just a faster
+// click-to-chart entry path. The textarea stays available underneath for
+// anything a preset doesn't cover.
+function FormQuickPickTextarea({ label, value, onChange, presets = [], placeholder, rows = 2, compact }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  const parts = (value || "").split(";").map((s) => s.trim()).filter(Boolean);
+  const togglePreset = (preset) => {
+    const has = parts.includes(preset);
+    const next = has ? parts.filter((p) => p !== preset) : [...parts, preset];
+    onChange(next.join("; "));
+  };
+  return (
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
+      <label style={styles.label}>{label}</label>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 6 }}>
+        {presets.map((preset) => {
+          const selected = parts.includes(preset);
+          return (
+            <button
+              key={preset}
+              type="button"
+              onClick={() => togglePreset(preset)}
+              style={{
+                borderRadius: 999,
+                border: selected ? `1px solid ${COLORS.teal}` : `1px solid ${COLORS.border}`,
+                background: selected ? COLORS.teal : "transparent",
+                // Bug fix (Pain Sheet UI polish pass): COLORS.text does not
+                // exist in the getRnicaColors token map (only COLORS.dark
+                // does), so this silently fell back to an inherited/near-
+                // black color in dark mode -- e.g. "Effect on Function or
+                // Quality of Life" presets reading dark-on-dark. COLORS.dark
+                // is the correct legible primary-text token (same one the
+                // adjacent pillGroup fields render with).
+                color: selected ? "#fff" : COLORS.dark,
+                fontSize: 11,
+                fontWeight: 700,
+                padding: "4px 10px",
+                cursor: "pointer",
+              }}
+            >
+              {preset}
+            </button>
+          );
+        })}
+      </div>
+      <ShadcnTextarea
+        style={{ minHeight: rows * 24 }} value={value || ""}
+        onChange={(e) => onChange(e.target.value)} placeholder={placeholder || "Add detail not covered by the presets above (optional)"}
+      />
+    </div>
+  );
+}
+
+function FormSelect({ label, value, onChange, options, required, hopeCode, disabled, compact }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
-    <div style={styles.formGroup}>
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
       <label style={styles.label}>
         {label} {required && <span style={{ color: COLORS.error }}>*</span>}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <select style={styles.select} value={value || ""} onChange={(e) => onChange(e.target.value)} disabled={disabled}>
-        <option value="">— Select —</option>
-        {options.map((opt) => (
-          <option key={typeof opt === "string" ? opt : opt.value} value={typeof opt === "string" ? opt : opt.value}>
-            {typeof opt === "string" ? opt : opt.label}
-          </option>
-        ))}
-      </select>
+      <Select value={value || undefined} onValueChange={onChange} disabled={disabled}>
+        <SelectTrigger><SelectValue placeholder="— Select —" /></SelectTrigger>
+        <SelectContent>
+          {options.map((opt) => {
+            const val = typeof opt === "string" ? opt : opt.value;
+            const lbl = typeof opt === "string" ? opt : opt.label;
+            return <SelectItem key={val} value={val}>{lbl}</SelectItem>;
+          })}
+        </SelectContent>
+      </Select>
     </div>
   );
 }
@@ -1237,18 +1603,48 @@ function FormRadioGroup({ label, value, onChange, options, hopeCode, sfv }) {
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
         {sfv && <> <SfvTag /></>}
       </label>
-      <div style={styles.radioGroup}>
+      <RadioGroup style={styles.radioGroup} value={value ?? undefined} onValueChange={onChange}>
         {options.map((opt) => {
           const val = typeof opt === "string" ? opt : opt.value;
           const lbl = typeof opt === "string" ? opt : opt.label;
           return (
             <label key={val} style={styles.radioLabel}>
-              <input type="radio" checked={value === val} onChange={() => onChange(val)} />
+              <RadioGroupItem value={val} />
               {lbl}
             </label>
           );
         })}
-      </div>
+      </RadioGroup>
+    </div>
+  );
+}
+
+// GitHub Directive (2026-09-28) Critical Finding #4 -- progressive
+// disclosure for single-select fields whose full option list creates
+// "too many choices displayed simultaneously." Renders two large primary
+// buttons; only when the current/selected value falls outside
+// `normalValues` does a second, compact detail row of the remaining
+// options appear. Both tiers write to the SAME field path -- no new field,
+// no option removed, so every existing stored value (including legacy
+// detail strings) round-trips exactly as before.
+function FormGatedRadio({ label, value, onChange, primaryOptions, normalValues, detailOptions, hopeCode }) {
+  // Bounded Compatibility Increment Section 13 -- primaryOptions may now
+  // contain {value,label} display-adapter entries (matching FormSegmented's
+  // existing convention, e.g. Communication's stored "Normal" displaying as
+  // "No Current Communication Concern"). Only VALUES drive the gating
+  // logic below; stored data and detail-reveal behavior are unchanged.
+  const primaryValues = primaryOptions.map((opt) => (typeof opt === "string" ? opt : opt.value));
+  const isDetailValue = Boolean(value) && !primaryValues.includes(value) && !normalValues.includes(value);
+  const primaryValue = isDetailValue ? primaryValues[1] : (normalValues.includes(value) ? primaryValues[0] : value);
+  const showDetail = isDetailValue || primaryValue === primaryValues[1];
+  return (
+    <div>
+      <FormSegmented label={label} value={primaryValue} onChange={onChange} options={primaryOptions} hopeCode={hopeCode} />
+      {showDetail && (
+        <div style={{ marginTop: 4, marginLeft: 12, paddingLeft: 8, borderLeft: "2px solid var(--rnica-border, #d0d5dd)" }}>
+          <FormSegmented label={`${label} — Detail`} value={isDetailValue ? value : undefined} onChange={onChange} options={detailOptions} />
+        </div>
+      )}
     </div>
   );
 }
@@ -1291,17 +1687,17 @@ function FormTriState({ label, value, onChange, hopeCode }) {
         {label}
         {hopeCode && <> <HopeTag code={hopeCode} /></>}
       </label>
-      <div style={styles.radioGroup}>
+      <RadioGroup style={styles.radioGroup} value={normalized || "unassessed"} onValueChange={(v) => onChange(v === "unassessed" ? "" : v)}>
         {options.map((opt) => (
           <label key={opt.value || "unassessed"} style={{
             ...styles.radioLabel,
             ...(opt.value === "" && normalized === "" ? { color: COLORS.gray, fontStyle: "italic" } : {}),
           }}>
-            <input type="radio" checked={normalized === opt.value} onChange={() => onChange(opt.value)} />
+            <RadioGroupItem value={opt.value || "unassessed"} />
             {opt.label}
           </label>
         ))}
-      </div>
+      </RadioGroup>
     </div>
   );
 }
@@ -1326,8 +1722,8 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
           const lbl = typeof opt === "string" ? opt : opt.label;
           return (
             <label key={val} style={styles.checkboxLabel}>
-              <input type="checkbox" checked={values.includes(val)} onChange={() => toggle(val)} />
-              {lbl}
+              <Checkbox checked={values.includes(val)} onCheckedChange={() => toggle(val)} />
+              <span>{lbl}</span>
             </label>
           );
         })}
@@ -1336,15 +1732,132 @@ function FormCheckboxGroup({ label, values = [], onChange, options, hopeCode }) 
   );
 }
 
+// GitHub UI Directive (2026-09-28) -- compact segmented-control replacement
+// for FormRadioGroup's larger circular-radio rows, opt-in only via
+// `type: "segmented"` on a field config (FormRadioGroup itself is
+// untouched and keeps rendering exactly as before everywhere it is still
+// used, so no other Body System or assessment screen changes visually).
+// Same single-value/onChange contract as FormRadioGroup -- no data shape
+// change. Optional `aliases` lets a legacy/duplicate stored value (e.g.
+// "Awake") render as an already-existing canonical option (e.g. "Alert")
+// selected, without ever writing the alias again and without removing the
+// legacy value from the option list or backend concept registry.
+function FormSegmented({ label, value, onChange, options, hopeCode, sfv, aliases, compact }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  const displayValue = (aliases && aliases[value]) || value;
+  // GitHub Directive (2026-09-28) Section 37/40 guardrail -- an option can
+  // be retired from the visible control (e.g. duplicate concepts like
+  // "Hearing aid" moving to Sensory Aids) without ever deleting a
+  // patient's previously stored value. When the stored value no longer
+  // matches any current option, show a small review chip instead of
+  // silently rendering "nothing selected" -- the raw value is untouched.
+  const hasLegacyValue = Boolean(displayValue) && !options.some((opt) => (typeof opt === "string" ? opt : opt.value) === displayValue);
+  return (
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
+      <label style={styles.label}>
+        {label}
+        {hopeCode && <> <HopeTag code={hopeCode} /></>}
+        {sfv && <> <SfvTag /></>}
+      </label>
+      {/* shadcn/ui ToggleGroup (Radix), type="single" -- compact mutually
+          exclusive clinical-status chip row. Re-clicking the selected chip
+          deselects it (Radix's native single-type behavior), preserving the
+          existing "" unselected-default convention used throughout this
+          file without any extra onClick interception. */}
+      <ToggleGroup type="single" aria-label={label} value={displayValue || ""} onValueChange={(v) => onChange(v ?? "")}>
+        {options.map((opt) => {
+          const val = typeof opt === "string" ? opt : opt.value;
+          const lbl = typeof opt === "string" ? opt : opt.label;
+          return (
+            <ToggleGroupItem key={val} value={val}>
+              {lbl}
+            </ToggleGroupItem>
+          );
+        })}
+      </ToggleGroup>
+      {hasLegacyValue && (
+        <span
+          title="This value was previously recorded but is no longer offered as an option. The stored value has not been changed."
+          className="ml-1 inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+        >
+          ⚠ Previously recorded: “{displayValue}”
+        </span>
+      )}
+    </div>
+  );
+}
+
+// Compact multi-select pill row, opt-in via `type: "pillGroup"`. Same
+// array-value/onChange contract as FormCheckboxGroup (untouched, still
+// used everywhere else) -- purely a denser visual for Body Systems.
+function FormPillGroup({ label, values = [], onChange, options, hopeCode, compact }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
+  return (
+    <div style={compact ? { ...styles.formGroup, marginBottom: 2 } : styles.formGroup}>
+      <label style={styles.label}>
+        {label}
+        {hopeCode && <> <HopeTag code={hopeCode} /></>}
+      </label>
+      {/* shadcn/ui ToggleGroup (Radix), type="multiple" -- independent
+          multi-select findings/interventions chip row. */}
+      <ToggleGroup type="multiple" aria-label={label} value={values} onValueChange={(v) => onChange(v ?? [])}>
+        {options.map((opt) => {
+          const val = typeof opt === "string" ? opt : opt.value;
+          const lbl = typeof opt === "string" ? opt : opt.label;
+          return (
+            <ToggleGroupItem key={val} value={val}>
+              {lbl}
+            </ToggleGroupItem>
+          );
+        })}
+      </ToggleGroup>
+    </div>
+  );
+}
+
+
 function FormCheckbox({ label, checked, onChange, disabled = false }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
   return (
     <label style={{ ...styles.checkboxLabel, ...styles.formGroup, opacity: disabled ? 0.55 : 1, cursor: disabled ? "not-allowed" : "pointer" }}>
-      <input type="checkbox" checked={checked || false} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <Checkbox checked={checked || false} disabled={disabled} onCheckedChange={onChange} />
       <span style={{ fontSize: 13, fontWeight: 500 }}>{label}</span>
     </label>
+  );
+}
+
+// GitHub UI Directive (2026-09-28) -- "checkbox should never be larger
+// than the text it represents." Single yes/no findings (e.g. "Motor
+// Deficit Present") no longer render as a large square Checkbox next to
+// a separate label; they render as one compact toggle pill, same visual
+// language/size as FormSegmented/FormPillGroup. Same boolean value/
+// onChange(bool) contract as FormCheckbox -- no data shape change.
+function FormBooleanPill({ label, checked, onChange, disabled = false }) {
+  const { mode: themeMode } = useThemeMode();
+  const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
+  const isChecked = Boolean(checked);
+  return (
+    <button
+      type="button" aria-pressed={isChecked} disabled={disabled}
+      className="rnica-segment-btn"
+      onClick={() => onChange(!isChecked)}
+      style={{
+        padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+        cursor: disabled ? "not-allowed" : "pointer", opacity: disabled ? 0.55 : 1,
+        border: `1px solid ${isChecked ? COLORS.teal : COLORS.border}`,
+        background: isChecked ? COLORS.teal : "transparent",
+        color: isChecked ? COLORS.textOnTeal : COLORS.dark,
+        fontWeight: isChecked ? 700 : 500, whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </button>
   );
 }
 
@@ -1516,7 +2029,11 @@ function buildClientLcdFacts(formData) {
   const kps = normalizeLcdNumber(formData?.performanceStatus?.kps);
   const dressingScore = normalizeLcdNumber(formData?.musculoskeletal?.adl?.dressing);
   const bathingScore = normalizeLcdNumber(formData?.musculoskeletal?.adl?.bathing);
-  const hasContinenceEvidence = Boolean(urinaryStatus || bowelStatus || formData?.genitourinary?.catheter?.present || formData?.gastrointestinal?.ostomy?.present);
+  // OWNER DIRECTIVE (2026-10-29) "GI Rework" -- ostomy.present now stores
+  // "Yes"/"No"/"" (segmentedTriState); normalizeTriState also accepts a
+  // pre-existing legacy boolean `true`, so LCD scoring on historical
+  // records is unaffected.
+  const hasContinenceEvidence = Boolean(urinaryStatus || bowelStatus || formData?.genitourinary?.catheter?.present) || normalizeTriState(formData?.gastrointestinal?.ostomy?.present) === "Yes";
   const hasWeightLossEvidence = weightLoss.lbs !== null || weightLoss.percent !== null;
 
   return {
@@ -1537,7 +2054,7 @@ function buildClientLcdFacts(formData) {
           ["stress incontinence", "urge incontinence", "functional incontinence", "total incontinence", "catheterized"].includes(urinaryStatus)
           || bowelStatus === "incontinent"
           || Boolean(formData?.genitourinary?.catheter?.present)
-          || Boolean(formData?.gastrointestinal?.ostomy?.present)
+          || normalizeTriState(formData?.gastrointestinal?.ostomy?.present) === "Yes"
         )
       : null,
     is_bedbound: mobilityStatus ? mobilityStatus === "bedbound" : null,
@@ -1902,9 +2419,13 @@ function LcdEligibilityCard({ diagnosesData, fullFormData, updateField, styles, 
       {orderedGroupSummaries.map(({ group, met, unmet, unknown }) => {
         const groupResult = groupResults.find((item) => item.group_id === group.group_id);
         const needsReview = unmet + unknown > 0;
-        const groupOpen = !workspacePilot
-          || expandedGroups.has(group.group_id)
-          || (needsReview && !collapsedGroups.has(group.group_id));
+        // FR-007: LCD groups are collapsed by default in the pilot
+        // workspace -- expand only on explicit RN toggle. (Previously a
+        // group needing review auto-expanded; the owner directive is
+        // explicit that collapsed-by-default applies unconditionally, so
+        // the RN reviews the met/unmet/unknown counts first and opens a
+        // group deliberately.)
+        const groupOpen = !workspacePilot || expandedGroups.has(group.group_id);
         const groupBadges = (
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
             {workspacePilot && <span className="rnica-lcd-group__count">{met} met · {unmet} unmet · {unknown} unknown</span>}
@@ -2185,6 +2706,142 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
   );
 }
 
+// Shared chip visual language (Pain Character / Neuropathic
+// Characteristics / Aggravating / Relieving Factors use the exact same
+// recipe via ui/toggle-group.tsx's ToggleGroupItem). Reused directly as a
+// plain-button className here (rather than ToggleGroupItem) wherever a
+// chip needs per-item disabled/detected decoration that Radix's grouped
+// value-diffing doesn't support cleanly -- same classes, same
+// data-state="on"/"off" selected styling, so it is visually identical.
+const RNICA_CHIP_CLASS =
+  "inline-flex items-center gap-1 whitespace-nowrap rounded-full border px-[9px] py-[2px] text-[11px] leading-[1.6] " +
+  "bg-transparent border-rnica-border text-rnica-text font-medium transition-colors hover:border-rnica-teal " +
+  "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-rnica-focusRing " +
+  "disabled:cursor-not-allowed disabled:opacity-40 " +
+  "data-[state=on]:border-rnica-teal data-[state=on]:bg-rnica-teal data-[state=on]:text-rnica-textInverse data-[state=on]:font-bold";
+
+// Small reusable "info" affordance -- converts an explanatory paragraph
+// into a hover/focus tooltip instead of permanent on-screen text, per the
+// "convert explanations to info tooltips" directive already applied to
+// Comorbidities/Pain/Neuro. Wraps its own TooltipProvider so it can be
+// dropped in anywhere without depending on a root-level provider.
+function InfoTooltip({ text }) {
+  return (
+    <TooltipProvider delayDuration={200}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            type="button"
+            aria-label="More information"
+            className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full border border-rnica-border text-[10px] font-semibold leading-none text-rnica-muted hover:border-rnica-teal hover:text-rnica-teal"
+          >
+            i
+          </button>
+        </TooltipTrigger>
+        <TooltipContent className="max-w-[260px] text-left normal-case">{text}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
+
+// Determines what removing a secondary-diagnosis row would change
+// downstream (HopeComorbiditiesCard's ICD-10 category auto-detect dots,
+// which can feed the LCD Evidence Summary + "Comorbidities reviewed"
+// verification item) so the remove action can ask for confirmation only
+// when removal is not a no-op. Mirrors HopeComorbiditiesCard's own
+// `autoDetected` derivation exactly (categorizeIcd10 over every OTHER
+// row's icd10) -- keep the two in sync if that logic ever changes.
+function describeSecondaryDiagnosisRemovalImpact(rows, idx, hope) {
+  const target = rows[idx];
+  if (!target) return null;
+  const remaining = rows.filter((_, i) => i !== idx);
+  const detectedBefore = new Set();
+  rows.forEach((dx) => {
+    const cat = categorizeIcd10(dx?.icd10);
+    if (cat) detectedBefore.add(cat.key);
+  });
+  const detectedAfter = new Set();
+  remaining.forEach((dx) => {
+    const cat = categorizeIcd10(dx?.icd10);
+    if (cat) detectedAfter.add(cat.key);
+  });
+  const lostCategories = [...detectedBefore].filter((key) => !detectedAfter.has(key) && hope?.[key]);
+  const wasOnlyDiagnosis = rows.filter((dx) => dx?.icd10 || dx?.description).length === 1 && (target.icd10 || target.description);
+  if (lostCategories.length === 0 && !wasOnlyDiagnosis) return null;
+  const categoryLabels = lostCategories
+    .map((key) => HOPE_COMORBIDITY_CATEGORIES.find((c) => c.key === key)?.shortLabel || HOPE_COMORBIDITY_CATEGORIES.find((c) => c.key === key)?.label)
+    .filter(Boolean);
+  return { categoryLabels, wasOnlyDiagnosis };
+}
+
+// A single secondary-diagnosis row's search box, mirroring
+// PrimaryTerminalDiagnosisCard's merged "Search Diagnosis or ICD-10"
+// control -- one Icd10DiagnosisInput fills both icd10 + description in
+// one action instead of two separate manually-typed fields. Extracted to
+// its own component (rather than inline in the rows.map below) so each
+// row can hold its own local "what the RN is currently typing" state
+// without violating the rules of hooks across a dynamic-length list.
+function SecondaryDiagnosisSearchRow({ row, idx, updateRow, onRequestRemove, styles, COLORS }) {
+  const [searchText, setSearchText] = useState(() => (
+    row.description ? `${row.description}${row.icd10 ? ` (${formatIcd10Code(row.icd10)})` : ""}` : formatIcd10Code(row.icd10 || "")
+  ));
+
+  const handleSelectSuggestion = (suggestion) => {
+    // Combine both field updates into one updateRow call -- two sequential
+    // single-field calls would each compute their new array from the same
+    // stale closure-captured `rows`, so the second call's result silently
+    // overwrites the first (see the identical fix in
+    // ContributingConditionRow.handleSelectSuggestion).
+    updateRow(idx, { icd10: suggestion.icd10_code, description: suggestion.diagnosis_description });
+  };
+
+  // Flex "card" (not a fixed-width grid column) so the row wraps its own
+  // content on narrow sheets instead of overflowing the editor's column
+  // boundary -- the search input shrinks/grows while the toggle + remove
+  // affordance stay a fixed size and drop to their own line if needed.
+  return (
+    <div className="rnica-diagnosis-card" role="row">
+      <div className="rnica-diagnosis-card__search" role="cell">
+        <Icd10DiagnosisInput
+          value={searchText}
+          onChange={setSearchText}
+          onSelectSuggestion={handleSelectSuggestion}
+          colors={{ cardBg: COLORS.white, border: COLORS.border, label: COLORS.gray, white: COLORS.dark }}
+          inputStyle={styles.input}
+          placeholder="Search diagnosis or ICD-10…"
+        />
+      </div>
+      <div className="rnica-diagnosis-card__related" role="cell">
+        <button
+          type="button"
+          className={RNICA_CHIP_CLASS}
+          data-state={row.relatedToTerminal !== false ? "on" : "off"}
+          onClick={() => updateRow(idx, "relatedToTerminal", true)}
+        >
+          Related
+        </button>
+        <button
+          type="button"
+          className={RNICA_CHIP_CLASS}
+          data-state={row.relatedToTerminal === false ? "on" : "off"}
+          onClick={() => updateRow(idx, "relatedToTerminal", false)}
+        >
+          Unrelated
+        </button>
+      </div>
+      <button
+        type="button"
+        className="rnica-diagnosis-card__remove"
+        title="Remove this secondary diagnosis"
+        aria-label="Remove this secondary diagnosis"
+        onClick={() => onRequestRemove(idx)}
+      >
+        <span aria-hidden="true">×</span>
+      </button>
+    </div>
+  );
+}
+
 // ════════════════════════════════════════════════════════════════
 // SECONDARY DIAGNOSES — add/edit/remove list (feeds HOPE comorbidity
 // auto-detection below and hopeReportMapper.js diagnosisEntries()).
@@ -2192,7 +2849,9 @@ function ClinicalNarrativeCard({ diagnosesData, fullFormData, updateField, style
 function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const rows = diagnosesData?.secondaryDiagnoses || [];
   const [showAll, setShowAll] = useState(false);
+  const [pendingRemoveIdx, setPendingRemoveIdx] = useState(null);
   const visibleRows = workspacePilot && !showAll ? rows.slice(0, 7) : rows;
+  const hope = diagnosesData?.hopeComorbidities || {};
 
   const setRows = (next) => updateField("secondaryDiagnoses", next);
 
@@ -2202,62 +2861,51 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
   };
 
   const updateRow = (idx, field, value) => {
-    setRows(rows.map((row, i) => (i === idx ? { ...row, [field]: value } : row)));
+    const patch = typeof field === "object" && field !== null ? field : { [field]: value };
+    setRows(rows.map((row, i) => (i === idx ? { ...row, ...patch } : row)));
   };
 
   const removeRow = (idx) => setRows(rows.filter((_, i) => i !== idx));
+
+  // Empty/never-touched rows (just added, nothing searched yet) have no
+  // downstream impact -- remove them immediately instead of interrupting
+  // with a confirmation for a diagnosis that was never really "added".
+  const requestRemove = (idx) => {
+    const row = rows[idx];
+    const impact = row?.icd10 || row?.description ? describeSecondaryDiagnosisRemovalImpact(rows, idx, hope) : null;
+    if (impact) {
+      setPendingRemoveIdx(idx);
+    } else {
+      removeRow(idx);
+    }
+  };
+
+  const pendingImpact = pendingRemoveIdx !== null ? describeSecondaryDiagnosisRemovalImpact(rows, pendingRemoveIdx, hope) : null;
 
   if (workspacePilot) {
     return (
       <div className="rnica-diagnosis-ledger">
         <div className="rnica-diagnosis-ledger__summary">
-          <p>
-            Active diagnoses contributing to the plan of care. Related status does not add a diagnosis to the HOPE comorbidity checklist.
-          </p>
+          <span className="rnica-diagnosis-ledger__heading">
+            Secondary Diagnoses
+            <InfoTooltip text="Active diagnoses contributing to the plan of care. Related status does not add a diagnosis to the HOPE comorbidity checklist." />
+          </span>
           <strong>{rows.length} {rows.length === 1 ? "diagnosis" : "diagnoses"}</strong>
         </div>
         {rows.length === 0 ? (
           <div className="rnica-diagnosis-ledger__empty">No secondary diagnoses added yet.</div>
         ) : (
-          <div className="rnica-diagnosis-ledger__table" role="table" aria-label="Secondary diagnoses">
-            <div className="rnica-diagnosis-ledger__header" role="row">
-              <span role="columnheader">ICD-10</span>
-              <span role="columnheader">Description</span>
-              <span role="columnheader">Terminal related</span>
-              <span role="columnheader">Action</span>
-            </div>
+          <div className="rnica-diagnosis-cards" aria-label="Secondary diagnoses">
             {visibleRows.map((row, idx) => (
-              <div className="rnica-diagnosis-ledger__row" role="row" key={idx}>
-                <div role="cell">
-                  <input
-                    aria-label={`Secondary diagnosis ${idx + 1} ICD-10 code`}
-                    placeholder="ICD-10"
-                    value={row.icd10 || ""}
-                    onChange={(event) => updateRow(idx, "icd10", event.target.value)}
-                  />
-                </div>
-                <div role="cell">
-                  <input
-                    aria-label={`Secondary diagnosis ${idx + 1} description`}
-                    placeholder="Description"
-                    value={row.description || ""}
-                    onChange={(event) => updateRow(idx, "description", event.target.value)}
-                  />
-                </div>
-                <label role="cell" className="rnica-diagnosis-ledger__related">
-                  <input
-                    type="checkbox"
-                    checked={row.relatedToTerminal !== false}
-                    onChange={(event) => updateRow(idx, "relatedToTerminal", event.target.checked)}
-                  />
-                  <span>{row.relatedToTerminal !== false ? "Related" : "Not related"}</span>
-                </label>
-                <div role="cell">
-                  <button type="button" className="rnica-diagnosis-ledger__remove" onClick={() => removeRow(idx)}>
-                    Remove
-                  </button>
-                </div>
-              </div>
+              <SecondaryDiagnosisSearchRow
+                key={idx}
+                row={row}
+                idx={idx}
+                updateRow={updateRow}
+                onRequestRemove={requestRemove}
+                styles={styles}
+                COLORS={COLORS}
+              />
             ))}
           </div>
         )}
@@ -2269,6 +2917,40 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
             </button>
           )}
         </div>
+
+        <AlertDialog open={pendingRemoveIdx !== null} onOpenChange={(next) => { if (!next) setPendingRemoveIdx(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this secondary diagnosis?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingImpact?.categoryLabels?.length > 0 && (
+                  <>
+                    This diagnosis is the only one currently detecting the{" "}
+                    <strong>{pendingImpact.categoryLabels.join(", ")}</strong> comorbidit{pendingImpact.categoryLabels.length === 1 ? "y" : "ies"}{" "}
+                    checked below. The checked box will remain, but its auto-detected support will be removed.
+                  </>
+                )}
+                {pendingImpact?.wasOnlyDiagnosis && (
+                  <>
+                    {pendingImpact?.categoryLabels?.length > 0 ? " Also, this" : "This"} is the only secondary diagnosis documented, so
+                    removing it will clear the "Secondary diagnoses reviewed" verification item and the LCD Evidence Summary.
+                  </>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingRemoveIdx(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  removeRow(pendingRemoveIdx);
+                  setPendingRemoveIdx(null);
+                }}
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     );
   }
@@ -2329,6 +3011,356 @@ function SecondaryDiagnosesCard({ diagnosesData, updateField, styles, COLORS, wo
       <button type="button" style={{ ...styles.btnSecondary, marginTop: 10 }} onClick={addRow}>
         + Add Secondary Diagnosis
       </button>
+    </div>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// CONTRIBUTING CONDITIONS — Disease & LCD Workflow Specification, Phase 1
+// / Option A (owner directive). Manually-documented conditions that are
+// distinct from the Primary Diagnosis, Secondary Diagnoses, and the HOPE
+// Comorbidities checklist, each carrying an explicit clinician judgment
+// (CONTRIBUTES_TO_TERMINAL_PROGNOSIS / CONTRIBUTES_TO_CLINICAL_BURDEN /
+// DOES_NOT_MATERIALLY_CONTRIBUTE / UNABLE_TO_DETERMINE). Persisted at
+// diagnoses.contributingConditions (array) -- the established
+// formData.diagnoses.* JSONB namespace already used by every other field
+// on this screen; no new table/column/migration.
+//
+// Documenting a condition here NEVER auto-adds it to Secondary Diagnoses
+// and NEVER auto-checks a HOPE comorbidity box, in either direction --
+// only nonblocking "already documented elsewhere" cross-reference notices
+// are shown (findContributingConditionCrossReferences). An exact ICD-10
+// duplicate within this list is blocked outright at selection time; a
+// "probable" duplicate (same HOPE category, different code) is a
+// nonblocking warning only, per owner directive ("warn, never silently
+// merge"). Zero conditions is a valid, fully-complete state.
+// ════════════════════════════════════════════════════════════════
+function ContributingConditionRow({ condition, diagnosesData, onChange, onRequestRemove, styles, COLORS }) {
+  const [searchText, setSearchText] = useState(() => (
+    condition.icdDescription
+      ? `${condition.icdDescription}${condition.icdCode ? ` (${formatIcd10Code(condition.icdCode)})` : ""}`
+      : formatIcd10Code(condition.icdCode || "")
+  ));
+  const [duplicateError, setDuplicateError] = useState("");
+
+  const requiresRationale = CONTRIBUTING_CONDITION_STATUSES_REQUIRING_RATIONALE.has(condition.contributionStatus);
+  const incomplete = isContributingConditionIncomplete(condition);
+  const crossRefs = condition.icdCode
+    ? findContributingConditionCrossReferences(diagnosesData, condition.icdCode)
+    : null;
+  const probableDuplicates = condition.icdCode
+    ? findProbableDuplicateContributingConditions(diagnosesData?.contributingConditions, condition.icdCode, condition.id)
+    : [];
+
+  const handleSelectSuggestion = (suggestion) => {
+    const existing = findExactDuplicateContributingCondition(
+      diagnosesData?.contributingConditions,
+      suggestion.icd10_code,
+      condition.id,
+    );
+    if (existing) {
+      setDuplicateError(
+        `${formatIcd10Code(suggestion.icd10_code)} is already documented as a contributing condition` +
+          `${existing.icdDescription ? ` (${existing.icdDescription})` : ""}. Edit the existing entry instead of adding a duplicate.`,
+      );
+      return;
+    }
+    setDuplicateError("");
+    // Apply both fields in a single patch -- two separate onChange("field", value)
+    // calls here would each read the same pre-update `rows` closure in the
+    // parent's touch() helper, so the second call would silently clobber the
+    // first (icdCode would be lost, leaving only icdDescription persisted).
+    onChange({ icdCode: suggestion.icd10_code, icdDescription: suggestion.diagnosis_description });
+  };
+
+  return (
+    <div className="rnica-contributing-card" role="group" aria-label="Contributing condition">
+      <div className="rnica-contributing-card__row1">
+        <div className="rnica-diagnosis-card__search" role="cell">
+          <Icd10DiagnosisInput
+            value={searchText}
+            onChange={setSearchText}
+            onSelectSuggestion={handleSelectSuggestion}
+            colors={{ cardBg: COLORS.white, border: COLORS.border, label: COLORS.gray, white: COLORS.dark }}
+            inputStyle={styles.input}
+            placeholder="Search diagnosis or ICD-10…"
+          />
+        </div>
+        <Select value={condition.sourceType || "CLINICIAN_ENTERED"} onValueChange={(v) => onChange("sourceType", v)}>
+          <SelectTrigger className="h-8 w-[220px] shrink-0 text-[12px]"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {CONTRIBUTING_CONDITION_SOURCE_OPTIONS.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <button
+          type="button"
+          className="rnica-diagnosis-card__remove"
+          title="Remove this contributing condition"
+          aria-label="Remove this contributing condition"
+          onClick={onRequestRemove}
+        >
+          <span aria-hidden="true">×</span>
+        </button>
+      </div>
+
+      {duplicateError && <div className="rnica-contributing-card__error" role="alert">{duplicateError}</div>}
+
+      <div className="rnica-contributing-card__statuses" role="group" aria-label="Contribution status">
+        {CONTRIBUTING_CONDITION_STATUS_OPTIONS.map((opt) => (
+          <button
+            key={opt.value}
+            type="button"
+            className={RNICA_CHIP_CLASS}
+            data-state={condition.contributionStatus === opt.value ? "on" : "off"}
+            onClick={() => onChange("contributionStatus", opt.value)}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      {requiresRationale && (
+        <textarea
+          className="rnica-contributing-card__rationale"
+          style={{ ...styles.input, minHeight: 56, resize: "vertical", width: "100%" }}
+          placeholder="Clinical rationale (required for this status)…"
+          value={condition.clinicalRationale || ""}
+          onChange={(e) => onChange("clinicalRationale", e.target.value)}
+        />
+      )}
+
+      {(probableDuplicates.length > 0 || crossRefs?.inSecondaryDiagnoses || crossRefs?.hopeCategoryChecked) && (
+        <div className="rnica-contributing-card__notice">
+          {crossRefs?.inSecondaryDiagnoses && "Already documented as a Secondary Diagnosis. "}
+          {crossRefs?.hopeCategoryChecked &&
+            `Overlaps a checked HOPE comorbidity category (${crossRefs.hopeCategory?.shortLabel || crossRefs.hopeCategory?.label}). `}
+          {probableDuplicates.length > 0 &&
+            "Another contributing condition in the same comorbidity category is already documented — confirm this is a distinct condition, not a duplicate entry."}
+        </div>
+      )}
+
+      {incomplete && (
+        <div className="rnica-contributing-card__incomplete">
+          Incomplete — select a diagnosis and a contribution status{requiresRationale ? ", plus a clinical rationale" : ""} to finish documenting this condition.
+        </div>
+      )}
+
+      {(condition.createdByName || condition.updatedByName) && (
+        <div className="rnica-contributing-card__meta">
+          {condition.createdByName &&
+            `Added by ${condition.createdByName}${condition.createdAt ? ` on ${new Date(condition.createdAt).toLocaleDateString()}` : ""}`}
+          {condition.updatedByName && condition.updatedAt && condition.updatedAt !== condition.createdAt &&
+            ` · Updated by ${condition.updatedByName} on ${new Date(condition.updatedAt).toLocaleDateString()}`}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function makeContributingConditionId() {
+  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") return crypto.randomUUID();
+  return `cc-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function ContributingConditionsCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
+  const rows = diagnosesData?.contributingConditions || [];
+  const [pendingRemoveId, setPendingRemoveId] = useState(null);
+
+  const setRows = (next) => updateField("contributingConditions", next);
+  const currentUserName = () => {
+    const user = getCurrentUser();
+    return user?.full_name || user?.name || "";
+  };
+
+  const addRow = () => {
+    const nowIso = new Date().toISOString();
+    setRows([
+      ...rows,
+      {
+        id: makeContributingConditionId(),
+        icdCode: "",
+        icdDescription: "",
+        contributionStatus: "",
+        clinicalRationale: "",
+        sourceType: "CLINICIAN_ENTERED",
+        active: true,
+        createdByName: currentUserName(),
+        createdAt: nowIso,
+        updatedByName: currentUserName(),
+        updatedAt: nowIso,
+      },
+    ]);
+  };
+
+  const touch = (idx, patch) => {
+    const nowIso = new Date().toISOString();
+    setRows(rows.map((row, i) => (i === idx ? { ...row, ...patch, updatedByName: currentUserName(), updatedAt: nowIso } : row)));
+  };
+
+  // Empty/never-touched rows (just added, nothing searched yet) have no
+  // documentation to lose -- remove outright instead of interrupting with
+  // a confirmation, mirroring SecondaryDiagnosesCard's identical rule.
+  // Any row that was actually documented is soft-removed (active: false)
+  // rather than deleted outright, so the audit trail is preserved.
+  const requestRemove = (idx) => {
+    const row = rows[idx];
+    if (!row?.icdCode && !row?.icdDescription) {
+      setRows(rows.filter((_, i) => i !== idx));
+      return;
+    }
+    setPendingRemoveId(row.id);
+  };
+
+  const confirmRemove = () => {
+    const idx = rows.findIndex((row) => row.id === pendingRemoveId);
+    if (idx === -1) { setPendingRemoveId(null); return; }
+    const nowIso = new Date().toISOString();
+    setRows(rows.map((row, i) => (i === idx ? {
+      ...row,
+      active: false,
+      removedByName: currentUserName(),
+      removedAt: nowIso,
+    } : row)));
+    setPendingRemoveId(null);
+  };
+
+  const activeRows = rows.filter((row) => row.active !== false);
+  const pendingRow = rows.find((row) => row.id === pendingRemoveId);
+
+  if (workspacePilot) {
+    return (
+      <div className="rnica-diagnosis-ledger">
+        <div className="rnica-diagnosis-ledger__summary">
+          <span className="rnica-diagnosis-ledger__heading">
+            Contributing Conditions
+            <InfoTooltip text="Conditions that are not the Primary Diagnosis, a Secondary Diagnosis, or a checked HOPE Comorbidity, but that materially affect terminal prognosis or clinical burden. Documenting a condition here never auto-adds it elsewhere, and zero documented conditions is a valid state." />
+          </span>
+          <strong>{activeRows.length} documented</strong>
+        </div>
+        {activeRows.length === 0 ? (
+          <div className="rnica-diagnosis-ledger__empty">No contributing conditions documented. This is valid — not every patient has one.</div>
+        ) : (
+          <div className="rnica-diagnosis-cards" aria-label="Contributing conditions">
+            {rows.map((row, idx) => (row.active === false ? null : (
+              <ContributingConditionRow
+                key={row.id || idx}
+                condition={row}
+                diagnosesData={diagnosesData}
+                onChange={(field, value) => touch(idx, typeof field === "object" && field !== null ? field : { [field]: value })}
+                onRequestRemove={() => requestRemove(idx)}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )))}
+          </div>
+        )}
+        <div className="rnica-diagnosis-ledger__actions">
+          <button type="button" onClick={addRow}>+ Add contributing condition</button>
+        </div>
+
+        <AlertDialog open={pendingRemoveId !== null} onOpenChange={(next) => { if (!next) setPendingRemoveId(null); }}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove this contributing condition?</AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingRow?.icdDescription || pendingRow?.icdCode
+                  ? `"${pendingRow.icdDescription || formatIcd10Code(pendingRow.icdCode)}" will be removed from Contributing Conditions. The entry is kept in the audit history, not permanently erased.`
+                  : "This entry will be removed."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel onClick={() => setPendingRemoveId(null)}>Cancel</AlertDialogCancel>
+              <AlertDialogAction onClick={confirmRemove}>Remove</AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </div>
+    );
+  }
+
+  // Legacy (non-pilot) rendering -- plain inline-styled rows, no chip/Sheet
+  // visual language, consistent with every other legacy branch on this
+  // screen. Same data, same validation, same cross-reference notices.
+  return (
+    <div>
+      <p style={{ fontSize: 12, color: COLORS.gray, marginTop: -4, marginBottom: 10 }}>
+        Conditions that are not the Primary Diagnosis, a Secondary Diagnosis, or a checked HOPE
+        Comorbidity, but that materially affect terminal prognosis or clinical burden. Documenting
+        a condition here never auto-adds it to Secondary Diagnoses or the HOPE checklist.
+      </p>
+      {activeRows.length === 0 && (
+        <div style={{ fontSize: 12.5, color: COLORS.gray, fontStyle: "italic", marginBottom: 10 }}>
+          No contributing conditions documented.
+        </div>
+      )}
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {rows.map((row, idx) => {
+          if (row.active === false) return null;
+          const requiresRationale = CONTRIBUTING_CONDITION_STATUSES_REQUIRING_RATIONALE.has(row.contributionStatus);
+          const incomplete = isContributingConditionIncomplete(row);
+          return (
+            <div key={row.id || idx} style={{ padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg }}>
+              <div style={{ display: "grid", gridTemplateColumns: "140px minmax(0, 1fr) auto", gap: 10, alignItems: "center", marginBottom: 8 }}>
+                <input
+                  style={styles.input}
+                  placeholder="ICD-10"
+                  value={row.icdCode || ""}
+                  onChange={(e) => touch(idx, { icdCode: e.target.value })}
+                />
+                <input
+                  style={styles.input}
+                  placeholder="Description"
+                  value={row.icdDescription || ""}
+                  onChange={(e) => touch(idx, { icdDescription: e.target.value })}
+                />
+                <button type="button" style={{ ...styles.btnDanger, padding: "6px 10px" }} onClick={() => requestRemove(idx)}>
+                  Remove
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 8 }}>
+                <select style={styles.input} value={row.contributionStatus || ""} onChange={(e) => touch(idx, { contributionStatus: e.target.value })}>
+                  <option value="">— select contribution status —</option>
+                  {CONTRIBUTING_CONDITION_STATUS_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+                <select style={styles.input} value={row.sourceType || "CLINICIAN_ENTERED"} onChange={(e) => touch(idx, { sourceType: e.target.value })}>
+                  {CONTRIBUTING_CONDITION_SOURCE_OPTIONS.map((opt) => (
+                    <option key={opt.value} value={opt.value}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+              {requiresRationale && (
+                <textarea
+                  style={{ ...styles.input, minHeight: 56, resize: "vertical", width: "100%" }}
+                  placeholder="Clinical rationale (required for this status)…"
+                  value={row.clinicalRationale || ""}
+                  onChange={(e) => touch(idx, { clinicalRationale: e.target.value })}
+                />
+              )}
+              {incomplete && (
+                <p style={{ fontSize: 11.5, color: COLORS.red || "#DC2626", marginTop: 6 }}>
+                  Incomplete — select a diagnosis and a contribution status{requiresRationale ? ", plus a clinical rationale" : ""}.
+                </p>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <button type="button" style={{ ...styles.btnSecondary, marginTop: 10 }} onClick={addRow}>
+        + Add Contributing Condition
+      </button>
+      {pendingRemoveId !== null && (
+        <div style={{ marginTop: 10, padding: 10, border: `1px solid ${COLORS.border}`, borderRadius: 8, background: COLORS.bg }}>
+          <p style={{ fontSize: 12.5, marginBottom: 8 }}>
+            Remove {pendingRow?.icdDescription || formatIcd10Code(pendingRow?.icdCode || "") || "this entry"}?
+          </p>
+          <button type="button" style={{ ...styles.btnDanger, marginRight: 8 }} onClick={confirmRemove}>Remove</button>
+          <button type="button" style={styles.btnSecondary} onClick={() => setPendingRemoveId(null)}>Cancel</button>
+        </div>
+      )}
     </div>
   );
 }
@@ -2443,6 +3475,103 @@ const DME_ITEMS_WITH_SPECIFY = new Set(["Commode", "Other"]);
 
 const DME_STATUS_OPTIONS = ["", "Has", "Needs", "Ordered", "Delivered", "Declined", "N/A"];
 
+// Body Systems 9-part structure: shared "Clinical Status Change" options
+// used by every body system's Clinical Status Change card. Hospice-oriented
+// symptom-management/progression language -- NOT a disease-treatment
+// response workflow. Reflects nursing judgment of stability, improvement,
+// or decline in this system's symptoms/function since the prior
+// assessment. "Not Applicable" is included deliberately so nurses are
+// never forced to miscode when there is nothing to compare or manage.
+const CLINICAL_STATUS_CHANGE_OPTIONS = ["Stable / No Change", "Improving", "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment", "Not Applicable"];
+
+// GitHub Directive (2026-09-28) "Final Neurological Density and
+// Space-Utilization Plan" Section 10 -- Neurological's "Overall Change
+// Since Prior Assessment" needs its own, more granular option set
+// (Initial Assessment / trajectory language) distinct from the shared
+// CLINICAL_STATUS_CHANGE_OPTIONS above, which is reused by ~10 other
+// still-paused body systems (Cardiovascular, Respiratory, etc.) and must
+// not be edited in place. Same `clinicalStatusChange` path (each body
+// system has its own independent data namespace, so no collision), only
+// Neurological's field config points at this new constant.
+const NEURO_OVERALL_CHANGE_OPTIONS = ["Initial Assessment", "No Significant Change", "Improved", "Gradual Decline", "New or Worsening Concern", "Fluctuating", "Unable to Compare"];
+
+// GitHub Directive (2026-09-28) "Cardiovascular Control-Model Correction"
+// Section 4 -- Cardiovascular's own approved Clinical Status Change list,
+// following the same NEURO_OVERALL_CHANGE_OPTIONS precedent: a dedicated
+// constant so this change never touches the shared CLINICAL_STATUS_CHANGE_OPTIONS
+// still used by the other ~9 still-paused body systems. A record charted
+// under the OLD shared options (e.g. "Stable / No Change") is never
+// rewritten -- FormSegmented's existing "Previously recorded" chip
+// preserves and displays it read-only when it no longer matches this list.
+const CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS = ["Initial Assessment", "No Significant Change", "Improved", "Declining", "New or Worsening Finding", "Fluctuating", "Unable to Compare"];
+
+// OWNER DIRECTIVE (2026-10-18) "Legacy Checkbox/Radio Audit" -- same
+// precedent as NEURO_OVERALL_CHANGE_OPTIONS/CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS
+// above: Respiratory's Clinical Status Change was still pointed at the
+// shared CLINICAL_STATUS_CHANGE_OPTIONS constant and rendered via the
+// legacy `radio` control (checkbox-style squares), unlike every other
+// migrated body system. Dedicated constant with the IDENTICAL option
+// wording already in use -- no clinical content change, display/control
+// type only. A record charted under the shared options list round-trips
+// unchanged (same values, same `clinicalStatusChange` path).
+const RESPIRATORY_CLINICAL_STATUS_CHANGE_OPTIONS = ["Stable / No Change", "Improving", "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment", "Not Applicable"];
+
+// OWNER DIRECTIVE (2026-10-21) "Infection Language Standard Items 13-15"
+// -- Infection is an active clinical/infectious-process assessment, not a
+// general hospice symptom-trajectory review, so the generic hospice
+// "Stable / No Change"-family wording above is retired for Infection's
+// Clinical Status Change field specifically (does NOT touch
+// CLINICAL_STATUS_CHANGE_OPTIONS or any other body system's list).
+// Exactly five options, no sixth. Each label is paired with a stable,
+// machine-readable code (independent of display wording) for validators/
+// tests/reporting -- see `validateInfectionClinicalStatusSelection` and
+// `computeInfectionRequiresFollowUp` below.
+export const INFECTION_CLINICAL_STATUS_CODES = {
+  "Infection-Related Findings Reduced Since Prior Assessment": "infection_findings_reduced",
+  "Current Infection-Related Interventions Appear Effective": "infection_interventions_appear_effective",
+  "Infection-Related Decline Observed Since Prior Assessment": "infection_decline_observed",
+  "New Infection-Related Finding Since Prior Assessment": "infection_new_finding",
+  "Not Applicable": "not_applicable",
+};
+export const INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS = Object.keys(INFECTION_CLINICAL_STATUS_CODES);
+
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Clinical Status
+// Governance" -- same rationale as Infection's retirement of the generic
+// hospice "Stable / No Change"-family wording above: GI is an active
+// symptom-burden/elimination assessment, not a general trajectory review.
+// Exactly five options, no sixth, same shape as INFECTION_CLINICAL_STATUS_CODES
+// (does NOT touch CLINICAL_STATUS_CHANGE_OPTIONS or any other body
+// system's list).
+export const GASTROINTESTINAL_CLINICAL_STATUS_CODES = {
+  "GI-Related Findings Reduced Since Prior Assessment": "gi_findings_reduced",
+  "Current GI-Related Interventions Appear Effective": "gi_interventions_appear_effective",
+  "GI-Related Decline Observed Since Prior Assessment": "gi_decline_observed",
+  "New GI-Related Finding Since Prior Assessment": "gi_new_finding",
+  "Not Applicable": "not_applicable",
+};
+export const GASTROINTESTINAL_CLINICAL_STATUS_CHANGE_OPTIONS = Object.keys(GASTROINTESTINAL_CLINICAL_STATUS_CODES);
+
+// Item 15 "Legacy Compatibility" -- these terms are retired from
+// Infection's Clinical Status Change going forward (not offered, never
+// auto-selected, never auto-mapped onto a new option). A record already
+// holding one of these continues to display it untouched via
+// FormSegmented's existing "Previously recorded" read-only chip (the same
+// generic forward-only-migration mechanism already used by Cardiovascular
+// and Respiratory above) -- no separate preservation code is needed here,
+// and nothing below ever writes to or deletes the stored value.
+export const INFECTION_RETIRED_CLINICAL_STATUS_VALUES = [
+  "Stable", "Stable / No Change", "No Change",
+  "No Significant Change Since Prior Assessment", "Improving",
+  "Symptom Well-Managed", "Declining", "New Symptom Since Prior Assessment",
+  "Unable to Assess",
+];
+
+export function isRetiredInfectionClinicalStatusValue(value) {
+  if (!value) return false;
+  const norm = String(value).trim().toLowerCase();
+  return INFECTION_RETIRED_CLINICAL_STATUS_VALUES.some((r) => r.toLowerCase() === norm);
+}
+
 function DmeStatusCard({ data, updateField, styles, COLORS }) {
   const items = data?.dmeItems || [];
 
@@ -2510,20 +3639,20 @@ function DmeStatusCard({ data, updateField, styles, COLORS }) {
 // CMS carve-out for a second, distinct cancer diagnosis.
 // ════════════════════════════════════════════════════════════════
 const HOPE_COMORBIDITY_CATEGORIES = [
-  { key: "cancer", hopeCode: "I0100", label: "Cancer", group: "Cancer", regex: /^C\d/i },
-  { key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", group: "Heart/Circulation", regex: /^I50/i },
-  { key: "pvdPad", hopeCode: "I0900", label: "Peripheral Vascular Disease (PVD) or Peripheral Arterial Disease (PAD)", group: "Heart/Circulation", regex: /^I7[03]/i },
-  { key: "cardiovascularExclHF", hopeCode: "I0950", label: "Cardiovascular (excluding heart failure)", group: "Heart/Circulation", regex: /^I(1[0-3]|15|2[0-5])/i },
-  { key: "liverDisease", hopeCode: "I1101", label: "Liver disease (e.g., cirrhosis)", group: "Gastrointestinal", regex: /^K7[0-4]/i },
-  { key: "renalDisease", hopeCode: "I1510", label: "Renal disease", group: "Genitourinary", regex: /^(N18|N19)/i },
-  { key: "sepsis", hopeCode: "I2102", label: "Sepsis", group: "Infections", regex: /^A41/i },
-  { key: "diabetesMellitus", hopeCode: "I2900", label: "Diabetes Mellitus (DM)", group: "Metabolic", regex: /^E(0[89]|1[013])/i },
-  { key: "neuropathy", hopeCode: "I2910", label: "Neuropathy", group: "Metabolic", regex: /^(G6[023]|E1[013]\.4|E08\.4|E09\.4)/i },
-  { key: "stroke", hopeCode: "I4501", label: "Stroke", group: "Neurological", regex: /^(I6[0-3]|I65|I66|I69)/i },
-  { key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i },
-  { key: "neurologicalConditions", hopeCode: "I5150", label: "Neurological Conditions (e.g., Parkinson's disease, MS, ALS)", group: "Neurological", regex: /^(G20|G35|G12\.2)/i },
-  { key: "seizureDisorder", hopeCode: "I5401", label: "Seizure Disorder", group: "Neurological", regex: /^G40/i },
-  { key: "copd", hopeCode: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", group: "Pulmonary", regex: /^J44/i },
+  { key: "cancer", hopeCode: "I0100", label: "Cancer", shortLabel: "Cancer", group: "Cancer", regex: /^C\d/i },
+  { key: "heartFailure", hopeCode: "I0600", label: "Heart Failure (e.g., CHF, pulmonary edema)", shortLabel: "Heart Failure", group: "Heart/Circulation", regex: /^I50/i },
+  { key: "pvdPad", hopeCode: "I0900", label: "Peripheral Vascular Disease (PVD) or Peripheral Arterial Disease (PAD)", shortLabel: "PVD/PAD", group: "Heart/Circulation", regex: /^I7[03]/i },
+  { key: "cardiovascularExclHF", hopeCode: "I0950", label: "Cardiovascular (excluding heart failure)", shortLabel: "Cardiovascular Disease", group: "Heart/Circulation", regex: /^I(1[0-3]|15|2[0-5])/i },
+  { key: "liverDisease", hopeCode: "I1101", label: "Liver disease (e.g., cirrhosis)", shortLabel: "Liver Disease", group: "Gastrointestinal", regex: /^K7[0-4]/i },
+  { key: "renalDisease", hopeCode: "I1510", label: "Renal disease", shortLabel: "Renal Disease", group: "Genitourinary", regex: /^(N18|N19)/i },
+  { key: "sepsis", hopeCode: "I2102", label: "Sepsis", shortLabel: "Sepsis", group: "Infections", regex: /^A41/i },
+  { key: "diabetesMellitus", hopeCode: "I2900", label: "Diabetes Mellitus (DM)", shortLabel: "Diabetes", group: "Metabolic", regex: /^E(0[89]|1[013])/i },
+  { key: "neuropathy", hopeCode: "I2910", label: "Neuropathy", shortLabel: "Neuropathy", group: "Metabolic", regex: /^(G6[023]|E1[013]\.4|E08\.4|E09\.4)/i },
+  { key: "stroke", hopeCode: "I4501", label: "Stroke", shortLabel: "Stroke", group: "Neurological", regex: /^(I6[0-3]|I65|I66|I69)/i },
+  { key: "dementia", hopeCode: "I4801", label: "Dementia (including Alzheimer's disease)", shortLabel: "Dementia", group: "Neurological", regex: /^(F0[0-3]|G30|G31\.1)/i },
+  { key: "neurologicalConditions", hopeCode: "I5150", label: "Neurological Conditions (e.g., Parkinson's disease, MS, ALS)", shortLabel: "Parkinson's/MS/ALS", group: "Neurological", regex: /^(G20|G35|G12\.2)/i },
+  { key: "seizureDisorder", hopeCode: "I5401", label: "Seizure Disorder", shortLabel: "Seizure Disorder", group: "Neurological", regex: /^G40/i },
+  { key: "copd", hopeCode: "I6202", label: "Chronic Obstructive Pulmonary Disease (COPD)", shortLabel: "COPD", group: "Pulmonary", regex: /^J44/i },
 ];
 
 function matchesCategory(icd10, regex) {
@@ -2578,6 +3707,374 @@ function diagnosesIncludeCategory(diagnosesData, categoryKey) {
   );
 }
 
+// Explains WHY a disease-specific scale is currently visible, reusing the
+// exact same category regex/text match already used by
+// diagnosesIncludeCategory above (never re-derives its own matching rule).
+// Returns null when nothing matched (scale hidden) so callers can skip the
+// explanatory line entirely.
+function describeScaleTrigger(diagnosesData, categoryKey) {
+  const category = HOPE_COMORBIDITY_CATEGORIES.find((cat) => cat.key === categoryKey);
+  if (!category) return null;
+  const primary = diagnosesData?.primaryDiagnosis;
+  if (matchesCategory(primary?.icd10, category.regex) || matchesCategoryText(primary?.description, categoryKey)) {
+    return `Primary diagnosis: ${primary?.description || formatIcd10Code(primary?.icd10) || category.label}`;
+  }
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  const match = secondaryDx.find(
+    (dx) => matchesCategory(dx?.icd10, category.regex) || matchesCategoryText(dx?.description, categoryKey),
+  );
+  if (match) {
+    return `Secondary diagnosis: ${match.description || formatIcd10Code(match.icd10) || category.label}`;
+  }
+  return null;
+}
+
+// ════════════════════════════════════════════════════════════════
+// FUNCTIONAL STATUS — diagnosis-aware scale layout (owner directive:
+// "RNICA Functional Status Context-Aware Scale Visibility", finalized by
+// the owner's "NOT APPROVED YET" layout revision). PPS/KPS are core
+// hospice scales (always shown, unchanged); ECOG/FAST/NYHA remain gated
+// by the existing diagnosesIncludeCategory logic above — nothing about
+// that gating changes here, only how the visible scales are presented
+// (compact shadcn/ui cards instead of one full-width card per scale) and
+// how the RN is told WHY a scale is/isn't showing. Pilot-mode only —
+// legacy (workspacePilot=false) keeps rendering every card through the
+// original card.fields generic renderer, completely untouched.
+// ════════════════════════════════════════════════════════════════
+const PERFORMANCE_SCALE_META = {
+  pps: { isPercent: true },
+  kps: { isPercent: true },
+  ecog: { isPercent: false, hint: "cancer" },
+  fast: { isPercent: false, hint: "dementia" },
+  nyha: { isPercent: false, hint: "heartFailure" },
+};
+
+const PERFORMANCE_SCALE_TITLES = {
+  "Palliative Performance Scale (PPS)": "pps",
+  "Karnofsky Performance Scale (KPS)": "kps",
+  "ECOG Performance Status": "ecog",
+  "FAST Scale (Dementia)": "fast",
+  "NYHA Classification (Heart Failure)": "nyha",
+};
+
+// One compact card per scale: score dropdown + single-row justification
+// instead of the old full-width stacked layout, plus (for disease-specific
+// scales) a one-line explanation of which diagnosis made it visible.
+function PerformanceScaleCard({ scaleKey, card, data, update, diagnosesData }) {
+  const meta = PERFORMANCE_SCALE_META[scaleKey] || {};
+  const [scoreField, justificationField] = card.fields;
+  const scoreValue = getNestedValue(data, scoreField.path);
+  const justificationValue = getNestedValue(data, justificationField.path);
+  const percent = meta.isPercent && scoreValue ? parseInt(scoreValue, 10) : null;
+  const trigger = meta.hint ? describeScaleTrigger(diagnosesData, meta.hint) : null;
+  // Owner directive (2026-10-04) "Never assume users remember the meaning
+  // of PPS, KPS, FAST, NYHA, or ECOG values" -- every documented score is
+  // paired with an automatically-derived plain-language interpretation and
+  // clinical-significance note (see performanceScaleInterpretations.js).
+  // This is purely presentational/derived from the score already on
+  // record; it is never itself stored, and the clinician's own
+  // justification field below is completely unaffected.
+  const interpretation = getScaleInterpretation(scaleKey, scoreValue);
+
+  return (
+    <ShadcnCard className="rnica-scale-card">
+      <ShadcnCardHeader>
+        <ShadcnCardTitle>
+          {card.title}
+          {card.hopeCode && <HopeTag code={card.hopeCode} />}
+        </ShadcnCardTitle>
+        <ShadcnBadge variant={scoreValue ? "teal" : "neutral"}>{scoreValue || "Not documented"}</ShadcnBadge>
+      </ShadcnCardHeader>
+      <ShadcnCardContent>
+        {trigger && <div className="rnica-scale-card__trigger">Shown because of — {trigger}</div>}
+        {percent !== null && <ShadcnProgress value={percent} className="rnica-scale-card__progress" />}
+        {interpretation && (
+          <div className="rnica-scale-card__interpretation" role="note">
+            <div className="rnica-scale-card__interpretation-headline">{interpretation.interpretation}</div>
+            <div className="rnica-scale-card__interpretation-significance">{interpretation.significance}</div>
+          </div>
+        )}
+        <div className="rnica-scale-card__row">
+          <FormSelect
+            label={scoreField.label}
+            value={scoreValue}
+            onChange={(v) => update(scoreField.path, v)}
+            options={scoreField.options}
+          />
+          {justificationField.type === "textarea" ? (
+            <FormTextarea
+              label={justificationField.label}
+              value={justificationValue}
+              onChange={(v) => update(justificationField.path, v)}
+              rows={1}
+            />
+          ) : (
+            <FormInput
+              label={justificationField.label}
+              value={justificationValue}
+              onChange={(v) => update(justificationField.path, v)}
+            />
+          )}
+        </div>
+      </ShadcnCardContent>
+    </ShadcnCard>
+  );
+}
+
+// Top-of-screen transparency banner: shows the diagnoses driving scale
+// visibility and which scales are currently active, so the RN never has to
+// wonder why FAST/ECOG/NYHA did or didn't appear (owner: "The screen
+// should explain itself").
+function FunctionalStatusSummaryCard({ diagnosesData, showEcog, showFast, showNyha }) {
+  const primary = diagnosesData?.primaryDiagnosis;
+  const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
+  const primaryLabel = primary?.description || (primary?.icd10 ? formatIcd10Code(primary.icd10) : "") || "Not documented";
+  const secondaryLabel = secondaryDx.length
+    ? secondaryDx.map((dx) => dx.description || (dx.icd10 ? formatIcd10Code(dx.icd10) : "")).filter(Boolean).join(", ") || "Not documented"
+    : "None documented";
+  const activeScales = ["PPS", "KPS", showEcog && "ECOG", showFast && "FAST", showNyha && "NYHA"].filter(Boolean);
+
+  return (
+    <ShadcnCard className="rnica-functional-summary">
+      <ShadcnCardHeader><ShadcnCardTitle>Functional Status Summary</ShadcnCardTitle></ShadcnCardHeader>
+      <ShadcnCardContent>
+        <div className="rnica-functional-summary__grid">
+          <div>
+            <div className="rnica-functional-summary__label">Primary Diagnosis</div>
+            <div className="rnica-functional-summary__value">{primaryLabel}</div>
+          </div>
+          <div>
+            <div className="rnica-functional-summary__label">Secondary Diagnosis</div>
+            <div className="rnica-functional-summary__value">{secondaryLabel}</div>
+          </div>
+          <div>
+            <div className="rnica-functional-summary__label">Active Scales</div>
+            <div className="rnica-functional-summary__badges">
+              {activeScales.map((scale) => <ShadcnBadge key={scale} variant="teal">{scale}</ShadcnBadge>)}
+            </div>
+          </div>
+        </div>
+      </ShadcnCardContent>
+    </ShadcnCard>
+  );
+}
+
+// Compact single-row ADL grid (replaces the old one-select-per-row stack)
+// plus a plain, non-AI, selection-derived summary sentence -- built only
+// from the RN's own documented scores, per owner: "No AI interpretation
+// required." Reads/writes the same adl.* fields via `update` (dataSection
+// still resolves to musculoskeletal, unchanged storage/ownership).
+const ADL_SUMMARY_PHRASES = {
+  bathing: "bathing", dressing: "dressing", toileting: "toileting",
+  transferring: "transfers", eating: "eating", grooming: "grooming",
+};
+
+function buildAdlSummaryText(data) {
+  const adl = data?.adl || {};
+  const scored = Object.entries(ADL_SUMMARY_PHRASES)
+    .map(([key, phrase]) => ({ phrase, score: adl[key] !== undefined && adl[key] !== "" ? parseInt(adl[key], 10) : null }))
+    .filter((item) => Number.isFinite(item.score));
+  if (!scored.length) return "";
+  const extensive = scored.filter((item) => item.score >= 4).map((item) => item.phrase);
+  const independent = scored.filter((item) => item.score === 0).map((item) => item.phrase);
+  const parts = [];
+  if (extensive.length) parts.push(`Patient requires extensive assistance with ${extensive.join(", ")}.`);
+  if (independent.length) parts.push(`Patient remains independent with ${independent.join(", ")}.`);
+  return parts.join(" ");
+}
+
+function AdlSummaryGrid({ card, data, update }) {
+  const summary = buildAdlSummaryText(data);
+  return (
+    <>
+      <div className="rnica-adl-grid">
+        {card.fields.map((field) => (
+          <div key={field.path} className="rnica-adl-grid__item">
+            <FormSelect
+              label={field.label}
+              value={getNestedValue(data, field.path)}
+              onChange={(v) => update(field.path, v)}
+              options={field.options}
+            />
+          </div>
+        ))}
+      </div>
+      {summary && <div className="rnica-adl-grid__summary"><strong>ADL Summary — </strong>{summary}</div>}
+    </>
+  );
+}
+
+// Read-only reference card: Mobility/Transfer is documented on the
+// Musculoskeletal (Body Systems) screen (musculoskeletal.mobility.*), not
+// duplicated here as an editable field -- this only surfaces it inside
+// Functional Status for context, per the owner's approved page structure.
+// Never writes back into formData; a pure display of already-owned data.
+function MobilityTransferSummaryCard({ fullFormData }) {
+  const mobility = fullFormData?.musculoskeletal?.mobility || {};
+  const hasAny = mobility.ambulatoryStatus || mobility.transferAbility || mobility.endurance;
+  return (
+    <ShadcnCard className="rnica-functional-summary">
+      <ShadcnCardHeader><ShadcnCardTitle>Mobility &amp; Transfer</ShadcnCardTitle></ShadcnCardHeader>
+      <ShadcnCardContent>
+        {hasAny ? (
+          <div className="rnica-functional-summary__grid">
+            <div>
+              <div className="rnica-functional-summary__label">Ambulatory Status</div>
+              <div className="rnica-functional-summary__value">{mobility.ambulatoryStatus || "—"}</div>
+            </div>
+            <div>
+              <div className="rnica-functional-summary__label">Transfer Ability</div>
+              <div className="rnica-functional-summary__value">{mobility.transferAbility || "—"}</div>
+            </div>
+            <div>
+              <div className="rnica-functional-summary__label">Endurance</div>
+              <div className="rnica-functional-summary__value">{mobility.endurance || "—"}</div>
+            </div>
+          </div>
+        ) : (
+          <div className="rnica-info-note">Not yet documented on Body Systems → Musculoskeletal.</div>
+        )}
+        <div className="rnica-info-note" style={{ marginTop: 8 }}>
+          Documented on Body Systems → Musculoskeletal; shown here for context only.
+        </div>
+      </ShadcnCardContent>
+    </ShadcnCard>
+  );
+}
+
+// ── RNICA Diagnosis & LCD Workspace Optimization (owner-approved
+// implementation directive, GitHub issue "RNICA Diagnosis & LCD Workspace
+// Optimization") ──────────────────────────────────────────────────────
+// HOPE I0010 Principal Diagnosis Category options -- unchanged CMS
+// response set (01-09, 99), now shared by the merged diagnosis-search
+// card below instead of living inline on the removed "Primary Diagnosis"
+// field config.
+const HOPE_PRINCIPAL_DIAGNOSIS_CATEGORY_OPTIONS = [
+  { value: "01", label: "01 — Cancer" },
+  { value: "02", label: "02 — Dementia (including Alzheimer's disease)" },
+  { value: "03", label: "03 — Neurological Condition (e.g., Parkinson's disease, MS, ALS)" },
+  { value: "04", label: "04 — Stroke" },
+  { value: "05", label: "05 — Chronic Obstructive Pulmonary Disease (COPD)" },
+  { value: "06", label: "06 — Cardiovascular (excluding heart failure)" },
+  { value: "07", label: "07 — Heart Failure" },
+  { value: "08", label: "08 — Liver Disease" },
+  { value: "09", label: "09 — Renal Disease" },
+  { value: "99", label: "99 — None of the above" },
+];
+
+// Maps the same ICD-10 category regexes already used for HOPE comorbidity
+// detection (HOPE_COMORBIDITY_CATEGORIES/categorizeIcd10 above) to the
+// distinct I0010 Principal Diagnosis Category code set. Reuses existing
+// categorization instead of duplicating regexes (only the categories that
+// have a direct I0010 equivalent are mapped; anything else is left for the
+// RN to pick manually rather than guessing "99").
+const I0010_CATEGORY_BY_COMORBIDITY_KEY = {
+  cancer: "01",
+  dementia: "02",
+  neurologicalConditions: "03",
+  stroke: "04",
+  copd: "05",
+  cardiovascularExclHF: "06",
+  heartFailure: "07",
+  liverDisease: "08",
+  renalDisease: "09",
+};
+
+function deriveHopeDiagnosisCategory(icd10) {
+  const category = categorizeIcd10(icd10);
+  if (!category) return "";
+  return I0010_CATEGORY_BY_COMORBIDITY_KEY[category.key] || "";
+}
+
+// FR-003/FR-004: replaces the separate "Primary Diagnosis" (ICD-10 Code +
+// Description + HOPE Category fields) and "Terminal Prognosis" cards with
+// one compact, single-source-of-truth container. A diagnosis/ICD-10 search
+// control (reusing the same Icd10DiagnosisInput/searchIcd10Diagnoses
+// typeahead already used on the Face Sheet) fills ICD-10 + Description in
+// one action; HOPE Category is auto-suggested from the selected code (via
+// the existing categorization regexes) but is always RN-editable and is
+// never overwritten once a value is on file. LCD Pathway is not a field
+// here -- it is already auto-detected from primaryDiagnosis.icd10/
+// description by LcdEligibilityCard's existing effect the moment this
+// card's search fills those fields, so no new logic is introduced for it.
+// Terminal Prognosis (6 months or less / More than 6 months /
+// Undetermined) remains a plain RN-selected field, embedded in this same
+// container instead of a separate card -- it is a clinical judgment, not a
+// fact of the diagnosis, so it is intentionally never auto-filled.
+function PrimaryTerminalDiagnosisCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
+  const primary = diagnosesData?.primaryDiagnosis || {};
+  const [searchText, setSearchText] = useState(() => (
+    primary.description
+      ? `${primary.description}${primary.icd10 ? ` (${formatIcd10Code(primary.icd10)})` : ""}`
+      : formatIcd10Code(primary.icd10 || "")
+  ));
+
+  const setPrimary = (field, value) => updateField(`primaryDiagnosis.${field}`, value);
+
+  const handleSelectSuggestion = (suggestion) => {
+    setPrimary("icd10", suggestion.icd10_code);
+    setPrimary("description", suggestion.diagnosis_description);
+    // Auto-suggest HOPE category from the selected code, but never
+    // silently overwrite a category the RN already documented.
+    if (!primary.hopeDiagnosisCategory) {
+      const derived = deriveHopeDiagnosisCategory(suggestion.icd10_code);
+      if (derived) setPrimary("hopeDiagnosisCategory", derived);
+    }
+  };
+
+  const summaryLabel = HOPE_PRINCIPAL_DIAGNOSIS_CATEGORY_OPTIONS.find((o) => o.value === primary.hopeDiagnosisCategory)?.label;
+
+  return (
+    <div className={workspacePilot ? "rnica-primary-dx" : undefined}>
+      <div style={styles.formGroup}>
+        <label style={styles.label}>Search Diagnosis or ICD-10</label>
+        <Icd10DiagnosisInput
+          value={searchText}
+          onChange={setSearchText}
+          onSelectSuggestion={handleSelectSuggestion}
+          colors={{ cardBg: COLORS.white, border: COLORS.border, label: COLORS.gray, white: COLORS.dark }}
+          inputStyle={styles.input}
+          placeholder="e.g. Metastatic Breast Cancer, Lung Cancer, C50.919, CHF, ALS, COPD…"
+        />
+      </div>
+
+      {(primary.description || primary.icd10) && (
+        <div className={workspacePilot ? "rnica-primary-dx__summary" : undefined} style={{ ...styles.infoBox, marginTop: 8, marginBottom: 12 }}>
+          <div style={{ fontWeight: 700, fontSize: 13, color: COLORS.dark }}>{primary.description || "Description not documented"}</div>
+          <div style={{ fontSize: 12, color: COLORS.gray, marginTop: 2 }}>
+            {primary.icd10 && <span>ICD-10: {formatIcd10Code(primary.icd10)}</span>}
+            {primary.icd10 && summaryLabel && <span> · </span>}
+            {summaryLabel && <span>HOPE: {summaryLabel}</span>}
+          </div>
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
+        <FormInput
+          label="Onset Date"
+          type="date"
+          value={primary.onsetDate || ""}
+          onChange={(v) => setPrimary("onsetDate", v)}
+        />
+        <FormSelect
+          label="HOPE Principal Diagnosis Category (I0010)"
+          required
+          value={primary.hopeDiagnosisCategory || ""}
+          onChange={(v) => setPrimary("hopeDiagnosisCategory", v)}
+          options={HOPE_PRINCIPAL_DIAGNOSIS_CATEGORY_OPTIONS}
+        />
+        <FormSelect
+          label="Terminal Prognosis"
+          hopeCode="J0050"
+          value={diagnosesData?.terminalPrognosis || ""}
+          onChange={(v) => updateField("terminalPrognosis", v)}
+          options={["6 months or less", "More than 6 months", "Undetermined"]}
+        />
+      </div>
+    </div>
+  );
+}
+
 function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, workspacePilot = false }) {
   const primaryIcd10 = diagnosesData?.primaryDiagnosis?.icd10 || "";
   const secondaryDx = diagnosesData?.secondaryDiagnoses || [];
@@ -2601,24 +4098,206 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
 
   const setHope = (key, value) => updateField(`hopeComorbidities.${key}`, value);
 
-  const groups = useMemo(() => {
+  // Whether a category is checked (accounting for the Principal Diagnosis
+  // exclusion/cancer carve-out) -- shared by the top summary and each
+  // category row below so both agree on what "checked" means.
+  const isCategoryChecked = (cat) => {
+    const isPrincipal = principalCategory?.key === cat.key;
+    const detected = autoDetected.has(cat.key);
+    const cancerException = cat.key === "cancer" && isPrincipal && detected;
+    const excluded = isPrincipal && !cancerException;
+    return excluded ? false : Boolean(hope[cat.key]);
+  };
+
+  // Legacy (non-pilot) grouping/order is unchanged -- single-column,
+  // always-expanded category sections, exactly as before this redesign.
+  const legacyGroups = useMemo(() => {
     const order = ["Cancer", "Heart/Circulation", "Gastrointestinal", "Genitourinary", "Infections", "Metabolic", "Neurological", "Pulmonary"];
     return order
-      .map((group) => ({ group, categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group) }))
+      .map((group) => ({ group, heading: group, categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group) }))
       .filter((g) => g.categories.length);
   }, []);
 
+  // Pilot (RNICA workspace) presentation: a fixed 3-column clinical
+  // checklist grid instead of single-column stacking, per owner directive
+  // -- Row 1 Cardiac/Pulmonary/Neurological, Row 2 GI/GU/Metabolic,
+  // Row 3 Infection/Cancer/Other. Same HOPE_COMORBIDITY_CATEGORIES data,
+  // same checked/excluded logic -- presentation-only reorder + relabel.
+  const pilotColumns = useMemo(() => {
+    const order = [
+      { group: "Heart/Circulation", heading: "Cardiac" },
+      { group: "Pulmonary", heading: "Pulmonary" },
+      { group: "Neurological", heading: "Neurological" },
+      { group: "Gastrointestinal", heading: "GI" },
+      { group: "Genitourinary", heading: "GU" },
+      { group: "Metabolic", heading: "Metabolic" },
+      { group: "Infections", heading: "Infection" },
+      { group: "Cancer", heading: "Cancer" },
+    ];
+    return order.map(({ group, heading }) => ({
+      group,
+      heading,
+      categories: HOPE_COMORBIDITY_CATEGORIES.filter((c) => c.group === group),
+    }));
+  }, []);
+
+  const groups = workspacePilot ? pilotColumns : legacyGroups;
+
+  // ──────────────────────────────────────────────────────────────
+  // Pilot (RNICA workspace) presentation: chip/card-based selection,
+  // matching the Pain/Neuro visual language (same chip recipe as Pain
+  // Character / Neuropathic Characteristics / Aggravating / Relieving
+  // Factors -- RNICA_CHIP_CLASS). Replaces the checkbox-driven legacy
+  // rows with full-card chips: selected = filled accent background,
+  // unselected = outline only. Same HOPE_COMORBIDITY_CATEGORIES data,
+  // same checked/excluded/auto-detect logic as legacy -- presentation
+  // only, no new fields, no schema change.
+  // ──────────────────────────────────────────────────────────────
+  if (workspacePilot) {
+    const selectedCategories = HOPE_COMORBIDITY_CATEGORIES.filter(isCategoryChecked);
+    const selectedCount = selectedCategories.length + (hope.other ? 1 : 0);
+
+    return (
+      <div className="rnica-comorbidity-panel rnica-comorbidity-panel--chips">
+        <div className="rnica-comorbidity-guidance" style={styles.infoBox}>
+          Check all comorbid/coexisting conditions addressed in the plan of care. Do not check a
+          category already coded as the Principal Diagnosis — exception: a second, distinct
+          cancer diagnosis.
+        </div>
+
+        {/* Selected Comorbidities surface at the top as removable chips,
+            same pattern as Pain's selected-findings summary. */}
+        <div className="rnica-comorbidity-selected">
+          <span className="rnica-comorbidity-selected__label">Selected ({selectedCount})</span>
+          <div className="rnica-comorbidity-selected__chips">
+            {selectedCount === 0 ? (
+              <span className="rnica-comorbidity-selected__empty">None selected yet</span>
+            ) : (
+              <>
+                {selectedCategories.map((cat) => (
+                  <button
+                    key={cat.key}
+                    type="button"
+                    className={RNICA_CHIP_CLASS}
+                    data-state="on"
+                    title="Remove"
+                    onClick={() => setHope(cat.key, false)}
+                  >
+                    {cat.shortLabel || cat.label}
+                    <span aria-hidden="true">×</span>
+                  </button>
+                ))}
+                {hope.other && (
+                  <button
+                    type="button"
+                    className={RNICA_CHIP_CLASS}
+                    data-state="on"
+                    title="Remove"
+                    onClick={() => setHope("other", false)}
+                  >
+                    Other Medical Condition
+                    <span aria-hidden="true">×</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <div className="rnica-comorbidity-grid">
+          {groups.map(({ group, heading, categories }) => {
+            const excludedCat = categories.find((cat) => {
+              const isPrincipal = principalCategory?.key === cat.key;
+              const cancerException = cat.key === "cancer" && isPrincipal && autoDetected.has(cat.key);
+              return isPrincipal && !cancerException;
+            });
+            return (
+              <div key={group} className="rnica-comorbidity-group">
+                <div className="rnica-comorbidity-group__heading">{heading}</div>
+                <div className="rnica-comorbidity-group__chips">
+                  {categories.map((cat) => {
+                    const isPrincipal = principalCategory?.key === cat.key;
+                    const detected = autoDetected.has(cat.key);
+                    // CMS carve-out: cancer may be both the Principal Diagnosis and a
+                    // checked comorbidity if the patient has a second, distinct cancer.
+                    const cancerException = cat.key === "cancer" && isPrincipal && detected;
+                    const excluded = isPrincipal && !cancerException;
+                    const checked = excluded ? false : Boolean(hope[cat.key]);
+                    return (
+                      <button
+                        key={cat.key}
+                        type="button"
+                        className={RNICA_CHIP_CLASS}
+                        data-state={checked ? "on" : "off"}
+                        disabled={excluded}
+                        title={excluded ? "Already coded as Principal Diagnosis — not double-entered per HOPE guidance." : `HOPE ${cat.hopeCode}`}
+                        onClick={() => setHope(cat.key, !checked)}
+                      >
+                        {cat.shortLabel || cat.label}
+                        {detected && (
+                          <span className="rnica-comorbidity-chip__detected" aria-hidden="true" title="Detected from secondary diagnoses">•</span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+                {excludedCat && (
+                  <div className="rnica-comorbidity-group__note">
+                    {excludedCat.shortLabel || excludedCat.label} excluded — already coded as Principal Diagnosis.
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* "Other" participates in the same grid flow as a regular
+              category column (Row 3, 3rd column). */}
+          <div className="rnica-comorbidity-group">
+            <div className="rnica-comorbidity-group__heading">Other</div>
+            <div className="rnica-comorbidity-group__chips">
+              <button
+                type="button"
+                className={RNICA_CHIP_CLASS}
+                data-state={hope.other ? "on" : "off"}
+                title="HOPE I8005"
+                onClick={() => setHope("other", !hope.other)}
+              >
+                Other Medical Condition
+              </button>
+            </div>
+            {uncategorizedSecondary.length > 0 && (
+              <div className="rnica-comorbidity-group__note">
+                Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${formatIcd10Code(dx.icd10)} ${dx.description || ""}`.trim()).join("; ")}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <FormTextarea
+          label="Additional Note (optional)"
+          value={hope.additionalNote}
+          onChange={(v) => setHope("additionalNote", v)}
+          placeholder="Clarify any comorbidity coding decisions..."
+          rows={2}
+        />
+      </div>
+    );
+  }
+
+  // ──────────────────────────────────────────────────────────────
+  // Legacy (non-pilot) presentation -- unchanged checkbox-driven,
+  // single-column, always-expanded category sections.
+  // ──────────────────────────────────────────────────────────────
   return (
-    <div className={workspacePilot ? "rnica-comorbidity-panel" : undefined}>
-      <div className={workspacePilot ? "rnica-comorbidity-guidance" : undefined} style={styles.infoBox}>
+    <div>
+      <div style={styles.infoBox}>
         Per CMS HOPE guidance: check all comorbid/coexisting conditions addressed in the plan of
         care. <strong>Do not check a category already coded as the Principal Diagnosis</strong>{" "}
         — the exception is if the patient has a second, distinct cancer diagnosis.
       </div>
 
-      <div className={workspacePilot ? "rnica-comorbidity-grid" : undefined}>
       {groups.map(({ group, categories }) => (
-        <div key={group} className={workspacePilot ? "rnica-comorbidity-group" : undefined} style={{ marginBottom: 14 }}>
+        <div key={group} style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
             {group}
           </div>
@@ -2633,7 +4312,7 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
               const checked = excluded ? false : Boolean(hope[cat.key]);
 
               return (
-                <div key={cat.key} className={workspacePilot ? "rnica-comorbidity-option" : undefined} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div key={cat.key} style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                   <label
                     style={{
                       ...styles.checkboxLabel,
@@ -2642,11 +4321,10 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
                     }}
                     title={excluded ? "Already coded as Principal Diagnosis — not double-entered per HOPE guidance." : ""}
                   >
-                    <input
-                      type="checkbox"
+                    <Checkbox
                       checked={checked}
                       disabled={excluded}
-                      onChange={(e) => setHope(cat.key, e.target.checked)}
+                      onCheckedChange={(v) => setHope(cat.key, Boolean(v))}
                     />
                     <span>{cat.label}</span>
                   </label>
@@ -2674,20 +4352,18 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
           </div>
         </div>
       ))}
-      </div>
-
       <div style={{ marginBottom: 8 }}>
         <div style={{ fontSize: 12, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
           Other
         </div>
         <label style={styles.checkboxLabel}>
-          <input type="checkbox" checked={Boolean(hope.other)} onChange={(e) => setHope("other", e.target.checked)} />
+          <Checkbox checked={Boolean(hope.other)} onCheckedChange={(v) => setHope("other", Boolean(v))} />
           <span>Other Medical Condition</span>
         </label>
         <HopeTag code="I8005" />
         {uncategorizedSecondary.length > 0 && (
           <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
-            Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${dx.icd10} ${dx.description || ""}`.trim()).join("; ")}
+            Uncategorized secondary diagnoses: {uncategorizedSecondary.map((dx) => `${formatIcd10Code(dx.icd10)} ${dx.description || ""}`.trim()).join("; ")}
           </div>
         )}
       </div>
@@ -2702,6 +4378,18 @@ function HopeComorbiditiesCard({ diagnosesData, updateField, styles, COLORS, wor
     </div>
   );
 }
+
+// CMS HOPE J2051/J2053 Symptom Impact scale -- the full 5-value response
+// set (Not at all / Slight / Moderate / Severe / Not applicable), not the
+// collapsed 4-value None/Mild/Moderate/Severe set used previously. Codes
+// 0/1/2/3/9 match hopeReportMapper.js's IMPACT_MAP exactly.
+const SYMPTOM_IMPACT_OPTIONS = [
+  { value: "0", label: "0 — Not at all" },
+  { value: "1", label: "1 — Slight" },
+  { value: "2", label: "2 — Moderate" },
+  { value: "3", label: "3 — Severe" },
+  { value: "9", label: "9 — Not applicable" },
+];
 
 const PPS_ORDER = ["100%", "90%", "80%", "70%", "60%", "50%", "40%", "30%", "20%", "10%", "0%"];
 const FAST_ORDER = ["1", "2", "3", "4", "5", "6a", "6b", "6c", "6d", "6e", "7a", "7b", "7c", "7d", "7e", "7f"];
@@ -2888,11 +4576,131 @@ function DeclineTrackerCard({ patientId, assessmentId, performanceData, weight, 
   );
 }
 
+// Owner bug report (2026-09-25, HIGH severity, clinical data integrity):
+// switching the Temperature unit toggle must convert the stored numeric
+// value, not just relabel it (98.6 was staying "98.6" after switching to
+// °C instead of becoming 37.0). Standard clinical conversion formulas;
+// rounded to one decimal place, matching the field's normal precision.
+function convertTemperature(value, fromUnit, toUnit) {
+  if (value === "" || value === null || value === undefined) return value;
+  const num = Number(value);
+  if (Number.isNaN(num) || fromUnit === toUnit) return value;
+  const converted = fromUnit === "F" ? ((num - 32) * 5) / 9 : (num * 9) / 5 + 32;
+  return Math.round(converted * 10) / 10;
+}
+
 // Auto-calculates BMI from height (inches) and weight (lbs) so it is never
 // entered as an independent, unrelated manual value. The field remains
 // editable (RN can override), but is pre-populated/kept in sync whenever
 // height or weight change, and is still persisted at vitals.bmi in the
 // existing form_data JSONB model (no new storage location).
+// Vital signs are clinical *concepts*, not raw database columns — a nurse
+// reads "BP 120/80" as one measurement, not two independent numbers that
+// happen to live in separate fields. Each tile below groups the inputs that
+// make up a single clinical reading (e.g. Systolic/Diastolic under one
+// "Blood Pressure" label) so the whole panel can be scanned in <2 seconds.
+function VitalSignsClinicalCard({ data, updateField, styles, COLORS }) {
+  const tileStyle = {
+    border: `1px solid ${COLORS.border}`,
+    borderRadius: 8,
+    padding: "8px 10px",
+    background: COLORS.bg,
+    display: "flex",
+    flexDirection: "column",
+    gap: 5,
+    minWidth: 0,
+  };
+  const rowStyle = { display: "flex", alignItems: "center", gap: 6, flexWrap: "nowrap" };
+  const numInputStyle = { ...styles.input, width: 52, textAlign: "center", padding: "5px 4px", flex: "0 0 auto" };
+  const bpInputStyle = { ...styles.input, width: 46, textAlign: "center", padding: "5px 4px", flex: "0 0 auto", fontWeight: 700 };
+  const unitStyle = { fontSize: 10.5, color: COLORS.gray, fontWeight: 600, whiteSpace: "nowrap" };
+  const smallSelectStyle = { ...styles.select, fontSize: 10.5, padding: "3px 6px" };
+  const unitToggleBtn = (active) => ({
+    padding: "3px 7px", borderRadius: 5, fontSize: 10.5, fontWeight: 700, cursor: "pointer",
+    border: `1px solid ${active ? COLORS.teal : COLORS.border}`,
+    background: active ? COLORS.tealBg : "transparent",
+    color: active ? COLORS.tealDark : COLORS.gray,
+  });
+
+  const temperatureUnit = data?.temperatureUnit || "F";
+
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(170px, 1fr))", gap: 10 }}>
+      <div style={tileStyle}>
+        <label style={styles.label}>Temperature</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.temperature ?? ""} placeholder="98.6"
+            onChange={(e) => updateField("temperature", e.target.value)} />
+          <div style={{ display: "flex", gap: 4 }}>
+            {["F", "C"].map((u) => (
+              <button key={u} type="button" style={unitToggleBtn(temperatureUnit === u)}
+                onClick={() => {
+                  if (u === temperatureUnit) return;
+                  updateField("temperature", convertTemperature(data?.temperature, temperatureUnit, u));
+                  updateField("temperatureUnit", u);
+                }}>°{u}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={tileStyle}>
+        <label style={styles.label}>Pulse</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.pulse ?? ""}
+            onChange={(e) => updateField("pulse", e.target.value)} />
+          <span style={unitStyle}>bpm</span>
+        </div>
+        <select style={smallSelectStyle} value={data?.pulseQuality || ""}
+          onChange={(e) => updateField("pulseQuality", e.target.value)}>
+          <option value="">Quality — Select —</option>
+          {["Strong", "Weak", "Thready", "Bounding", "Irregular"].map((o) => (
+            <option key={o} value={o}>{o}</option>
+          ))}
+        </select>
+      </div>
+
+      <div style={tileStyle}>
+        <label style={styles.label}>Respirations</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.respirations ?? ""}
+            onChange={(e) => updateField("respirations", e.target.value)} />
+          <span style={unitStyle}>/min</span>
+        </div>
+      </div>
+
+      {/* Blood Pressure is ONE clinical measurement — Systolic/Diastolic
+          are rendered together under a single label, never as two
+          independent top-level fields. */}
+      <div style={tileStyle}>
+        <label style={styles.label}>Blood Pressure</label>
+        <div style={rowStyle}>
+          <input style={bpInputStyle} type="number" value={data?.bloodPressure?.systolic ?? ""} placeholder="120"
+            onChange={(e) => updateField("bloodPressure.systolic", e.target.value)} />
+          <span style={{ fontSize: 15, fontWeight: 800, color: COLORS.dark, lineHeight: 1 }}>/</span>
+          <input style={bpInputStyle} type="number" value={data?.bloodPressure?.diastolic ?? ""} placeholder="80"
+            onChange={(e) => updateField("bloodPressure.diastolic", e.target.value)} />
+          <span style={unitStyle}>mmHg</span>
+        </div>
+      </div>
+
+      <div style={tileStyle}>
+        <label style={styles.label}>Oxygen Saturation</label>
+        <div style={rowStyle}>
+          <input style={numInputStyle} type="number" value={data?.oxygenSaturation ?? ""}
+            onChange={(e) => updateField("oxygenSaturation", e.target.value)} />
+          <span style={unitStyle}>%</span>
+        </div>
+        <label style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: COLORS.dark, cursor: "pointer" }}>
+          <input type="checkbox" checked={!!data?.oxygenSaturationOnRA}
+            onChange={(e) => updateField("oxygenSaturationOnRA", e.target.checked)} />
+          On Room Air
+        </label>
+      </div>
+    </div>
+  );
+}
+
 function AnthropometricsAutoBmiCard({ data, updateField, styles, COLORS }) {
   const height = parseFloat(data?.height);
   const weight = parseFloat(data?.weight);
@@ -3078,12 +4886,89 @@ function WeightLossAutoCalcCard({ patientId, assessmentId, currentWeight, existi
   );
 }
 
+// Integumentary -> Treatment Summary (read-only).
+//
+// Per owner directive: Skin/Integumentary assessment findings live in
+// Body Systems; wound/skin TREATMENT (dressings, frequency, DME) stays
+// owned by Orders & POC / Tx-Meds-DME. There is no separate
+// WoundTreatment/TreatmentOrder backend entity in this codebase today —
+// confirmed by inspecting app/models and app/api/routes/rnica_poc.py: the
+// only structured "treatment" data already captured against the skin
+// section is the intervention_text on that section's Plan of Care
+// problems (the same PocSectionControls Add/View/Update/Resolve API
+// below). This component does not add a new data model or duplicate
+// entry; it only reads those existing records and displays the
+// intervention text as an "Active Treatments" list, with a link to the
+// real Orders & POC screen (the single source of truth) instead of
+// re-implementing treatment management inside Body Systems.
+function SkinTreatmentSummary({ assessmentId, patientId, styles, COLORS }) {
+  const [problems, setProblems] = useState(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (!assessmentId) return;
+    let cancelled = false;
+    setLoading(true);
+    viewRnicaSectionPoc(assessmentId, "skin")
+      .then((res) => {
+        if (!cancelled) setProblems(Array.isArray(res?.problems) ? res.problems : []);
+      })
+      .catch(() => {
+        if (!cancelled) setProblems([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assessmentId]);
+
+  const activeTreatments = (problems || []).filter(
+    (p) => p.status !== "RESOLVED" && p.intervention_text && p.intervention_text.trim()
+  );
+
+  if (loading) return null;
+  if (!problems || activeTreatments.length === 0) return null;
+
+  return (
+    <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}` }}>
+      <div style={{ fontSize: 11.5, fontWeight: 800, color: COLORS.gray, textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 6 }}>
+        Active Treatments
+      </div>
+      <ul style={{ margin: 0, paddingLeft: 16, fontSize: 12.5 }}>
+        {activeTreatments.map((p) => (
+          <li key={p.rule_key} style={{ marginBottom: 3 }}>{p.intervention_text}</li>
+        ))}
+      </ul>
+      <button
+        type="button"
+        onClick={() => window.open(`/plan-of-care?patientId=${encodeURIComponent(patientId || "")}#tx-meds-dme-supplies`, "_blank", "noopener")}
+        style={{
+          marginTop: 8, fontSize: 11, fontWeight: 700, padding: "5px 10px", borderRadius: 5,
+          border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+        }}
+      >
+        View Treatment Details →
+      </button>
+    </div>
+  );
+}
+
 // RN ICA -> Plan of Care controls for a single body-system subcard.
 // Add / View / Update / Resolve here all call the authoritative Plan of
 // Care document API (via backend app/services/rnica_poc_adapter.py) — this
 // component holds no POC state of its own beyond what it fetches on demand,
 // and never writes into RnicaAssessment.form_data.
-function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS }) {
+//
+// Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 --
+// `canAdd` (default true, so every existing section behaves exactly as
+// before) lets a caller hide the generic "+ Add to POC" button when no
+// confirmed actionable finding exists yet. `suggestedFinding`, when set,
+// renders a small "POC Review Suggested" indicator instead of silently
+// changing the button's own label -- the clinician still explicitly
+// clicks Add; nothing is auto-created.
+function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS, canAdd = true, suggestedFinding = false }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showList, setShowList] = useState(false);
   const [problems, setProblems] = useState(null);
@@ -3178,14 +5063,21 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
 
   return (
     <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+      {suggestedFinding && canAdd && !hasProblems && (
+        <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: COLORS.orange || "#b45309" }}>
+          POC Review Suggested
+        </p>
+      )}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button type="button" onClick={() => setShowAdd((v) => !v)} style={{
-          fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
-          border: `1px solid ${COLORS.teal}`, background: showAdd ? COLORS.teal : "transparent",
-          color: showAdd ? COLORS.white : COLORS.teal, cursor: "pointer",
-        }}>
-          + Add to POC
-        </button>
+        {canAdd && (
+          <button type="button" onClick={() => setShowAdd((v) => !v)} style={{
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+            border: `1px solid ${COLORS.teal}`, background: showAdd ? COLORS.teal : "transparent",
+            color: showAdd ? COLORS.white : COLORS.teal, cursor: "pointer",
+          }}>
+            + Add to POC
+          </button>
+        )}
         {hasProblems && (
           <button type="button" onClick={handleToggleList} style={{
             fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
@@ -5805,6 +7697,77 @@ export function MasterPocReviewCard({ assessmentId, styles, COLORS }) {
   );
 }
 
+// R3 Command Workspace parity repair (Owner Directive): single source of
+// truth for the Update Assessment "change of condition" context banner and
+// the assessment-scoped Plan of Care review gate. Classic RNICA and
+// RNICACommandWorkspace both render these exact components (RNICA.jsx
+// builds the JSX once and passes it down as a prop to the Command
+// Workspace, the same pattern already used for `alerts`/`visitRecorder`)
+// so there is exactly one implementation of the banner copy and exactly
+// one implementation of the save-first POC gate, not two independently
+// maintained renderings.
+export function isPlanOfCareReviewGated(assessmentId) {
+  return !assessmentId;
+}
+
+// Single, shared source-context label resolver (Owner Directive: "Source
+// visit context displays correctly" / "Direct History Action" / visit-note
+// provenance). Derived only from data this app actually records --
+// `changeOfConditionContext.source` plus, for the Visit Notes entry point,
+// the originating visit note's own `form_type` (VISIT_NOTE_FORM_TYPES in
+// src/api/visitNotes.ts). This repo has no distinct "PRN visit" form type
+// today (only ASSESS and ROUTINE_VISIT are full-body RN visit forms), so
+// rather than fabricate a "PRN RN Visit" classification the data cannot
+// support, a routine visit resolves to "Routine RN Visit" and any other
+// full-body RN visit form resolves to a generic "RN Visit" label.
+export function resolveChangeOfConditionSourceLabel(changeOfConditionContext) {
+  if (!changeOfConditionContext) return null;
+  if (changeOfConditionContext.source === "DIRECT_HISTORY_ACTION") return "Direct History Action";
+  if (changeOfConditionContext.source === "VISIT_NOTE_CHANGE_OF_CONDITION") {
+    return changeOfConditionContext.sourceVisitType === "ROUTINE_VISIT" ? "Routine RN Visit" : "RN Visit";
+  }
+  return null;
+}
+
+export function UpdateAssessmentContextBanner({ changeOfConditionContext, styles, COLORS }) {
+  if (!changeOfConditionContext) return null;
+  const sourceLabel = resolveChangeOfConditionSourceLabel(changeOfConditionContext);
+  return (
+    <div style={{ ...styles.warningBox, background: COLORS.bg, borderColor: COLORS.border, color: COLORS.dark, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 11.5, marginBottom: 2 }}>Update Assessment — Change of Condition</div>
+      <div style={{ fontSize: 11.5 }}>
+        Reason: {changeOfConditionContext.reasonLabel || changeOfConditionContext.reasonCode}
+        {changeOfConditionContext.reasonDetail ? ` — ${changeOfConditionContext.reasonDetail}` : ""}
+      </div>
+      {sourceLabel ? (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>Source: {sourceLabel}</div>
+      ) : null}
+      {changeOfConditionContext.originatingVisitDate ? (
+        <div style={{ fontSize: 11, opacity: 0.8 }}>
+          Identified during Visit Note dated {changeOfConditionContext.originatingVisitDate}. The source Visit Note remains unchanged.
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function PlanOfCareReviewPanel({ assessmentId, styles, COLORS }) {
+  return (
+    <div style={{ ...styles.card, marginBottom: 12 }}>
+      <div style={{ fontWeight: 700, fontSize: 13, color: COLORS.dark, marginBottom: 8 }}>
+        Plan of Care Review
+      </div>
+      {isPlanOfCareReviewGated(assessmentId) ? (
+        <div style={{ fontSize: 11.5, color: COLORS.dark, opacity: 0.75 }}>
+          Save the Update Assessment before adding or revising assessment-linked Plan of Care items.
+        </div>
+      ) : (
+        <MasterPocReviewCard assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+      )}
+    </div>
+  );
+}
+
 // SECTION 12 — Post-lock amendments. The Lock button itself (see handleLock)
 // runs the same finalization-readiness check the backend enforces
 // server-side (rnica_finalization_service.py) and, if anything is missing,
@@ -6187,6 +8150,350 @@ function ConstipationAutoAssessCard({ lastBM, diarrhea, existingValue, updateFie
   );
 }
 
+// Owner correction (2026-09-25): Symptom Impact / "Symptom Burden Matrix"
+// is no longer an RN-facing card at all -- each J2051 item is documented
+// once in its true owning section (Pain, Respiratory, GI, Neuro/Mental
+// Status). HOPE J2051 continues to be derived from those source fields
+// via the symptomImpact sync effect (see below); there is no card or
+// component to render here.
+
+// ── Referral-Determination Suggestion (Psychosocial / Spiritual /
+// Bereavement) ───────────────────────────────────────────────────────────
+// Owner design correction (2026-09-25, refined 2026-09-25): Psychosocial,
+// Spiritual, and Bereavement are referral-determination workflows, not
+// standalone discipline assessments, and the RN must NOT manually classify
+// referral priority (Routine/Priority/Urgent) -- that adds documentation
+// burden. The RN documents findings only; SNS derives a binary YES/NO
+// recommendation from those findings (resolveReferralRecommendation,
+// deterministic rule-based logic, not a real AI/ML call -- shared with
+// clinicalNarrativeBuilder.js). This card is purely informational and
+// writes nothing to formData: the RN confirms by acting on the
+// recommendation, then records the outcome via the section's own Family
+// Response field (Accepted / Refused / Deferred).
+const REFERRAL_DOMAIN_LABELS = {
+  psychosocial: "MSW Referral",
+  spiritual: "Spiritual Care Referral",
+  bereavement: "Bereavement Follow-Up",
+};
+
+function ReferralRecommendationCard({ domain, indicators, styles }) {
+  const recommendation = useMemo(() => resolveReferralRecommendation(indicators), [indicators]);
+  const label = REFERRAL_DOMAIN_LABELS[domain] || "Referral";
+
+  return (
+    <div style={styles.infoBox}>
+      SNS Recommendation: <strong>{label} Recommended — {recommendation.recommended ? "YES" : "NO"}</strong>
+      <div style={{ marginTop: 4 }}>{recommendation.reason}</div>
+      <div style={{ fontSize: 12, marginTop: 6, opacity: 0.8 }}>
+        This recommendation is informational only. RN judgment governs whether a referral is made; record the outcome below.
+      </div>
+    </div>
+  );
+}
+
+const REFERRAL_REFUSED_LABELS = {
+  psychosocial: "MSW",
+  spiritual: "Spiritual Care",
+  bereavement: "Bereavement Services",
+};
+
+// Referral Refusal record (owner requirement 2026-09-25): when SNS
+// recommends a referral (YES) and the RN records Family Response =
+// Refused, this materially changes RN follow-up responsibilities and must
+// be captured explicitly -- who refused, their relationship to the
+// patient, when, and why (optional) -- surfaced as an alert here and
+// restated in the Clinical Narrative (buildClinicalNarrative). RN identity
+// is captured automatically from the signed-in user, never re-typed.
+function ReferralRefusalCard({ domain, recommended, familyResponse, refusal, updateField, styles, COLORS }) {
+  if (!recommended || familyResponse !== "Refused") return null;
+  const label = REFERRAL_REFUSED_LABELS[domain] || "Referral";
+
+  const handleField = (field, value) => {
+    updateField(`refusal.${field}`, value);
+    if (!refusal?.recordedBy) {
+      const currentUser = getCurrentUser();
+      updateField("refusal.recordedBy", currentUser?.full_name || currentUser?.name || "");
+    }
+  };
+
+  return (
+    <div>
+      <div style={{ ...styles.infoBox, background: "#450a0a", borderColor: "#fb7185", color: "#fecaca" }}>
+        ⚠ {label} Referral Recommended — Family Refused {label}
+      </div>
+      <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Date</div>
+          <input type="date" value={refusal?.date || ""} onChange={(e) => handleField("date", e.target.value)} style={styles.input} />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Person Refusing</div>
+          <input type="text" value={refusal?.personRefusing || ""} onChange={(e) => handleField("personRefusing", e.target.value)} style={styles.input} placeholder="Name" />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Relationship to Patient</div>
+          <input type="text" value={refusal?.relationship || ""} onChange={(e) => handleField("relationship", e.target.value)} style={styles.input} placeholder="e.g. Spouse, Adult Child, POA" />
+        </label>
+        <label>
+          <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Reason (optional)</div>
+          <textarea value={refusal?.reason || ""} onChange={(e) => handleField("reason", e.target.value)} style={styles.textarea} />
+        </label>
+        {refusal?.recordedBy && (
+          <div style={{ fontSize: 12, color: COLORS.gray }}>Recorded by: {refusal.recordedBy}</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ── Pain Summary Layer (owner review 2026-09-26, superseded 2026-09-26
+// "FINAL OWNER REQUIREMENTS") ────────────────────────────────────────────
+// Read-only/derived cards that consume existing Pain documentation. Never
+// fabricate a value: every row either reflects an RN-entered field or is
+// omitted/"Not documented". AI Pain Analysis always renders (an honest
+// placeholder when nothing is grounded, so the feature is never
+// invisible). Overdue Alerts renders nothing at all (no card, no
+// placeholder) when no rule is triggered -- enforced by the branch-level
+// hide check in the card-render loop (search for "computePainOverdueAlerts").
+function SummaryRow({ label, value }) {
+  if (value === undefined || value === null || value === "") return null;
+  return (
+    <div style={{ display: "flex", gap: 10, padding: "6px 0", borderBottom: "1px solid rgba(148, 163, 184, 0.14)" }}>
+      <div style={{ flex: "0 0 40%", fontSize: 11, fontWeight: 600, color: "var(--sns-dim)" }}>{label}</div>
+      <div style={{ flex: 1, fontSize: 11, color: "var(--sns-white)" }}>{value}</div>
+    </div>
+  );
+}
+
+const joinList = (arr) => (Array.isArray(arr) && arr.length ? arr.join(", ") : "");
+
+// Section 15 "Clinical Summary" (formerly "Current Pain Summary"): omit
+// undocumented fields entirely rather than fabricating a value or a
+// default clinical statement.
+function PainAssessmentSummaryCard({ data, styles }) {
+  const currentPain = data?.currentPain;
+  const chronicHistory = data?.chronicPainHistory;
+  const rows = [];
+
+  if (data?.screenedForPain === "0") {
+    // Bug fix (2026-10-03): this used to hard-return here, hiding every
+    // other documented field whenever screenedForPain === "0" — producing
+    // a contradictory summary ("not assessed") on a screen that visibly
+    // showed assessment data (e.g. currentPain, intensity, location
+    // already filled in, perhaps from a prior screening answer that was
+    // later changed). The summary must never suppress real documented
+    // data; it only adds a banner, and only claims "nothing else is
+    // documented" when that is actually true.
+    const hasOtherPainEvidence = Boolean(
+      currentPain || data?.painActiveProblem ||
+      (data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "") ||
+      (data?.painLocation || []).length || (data?.painCharacter || []).length ||
+      data?.routinePainMedicationPresent === "1" || data?.breakthroughPainMedication === "1"
+    );
+    if (!hasOtherPainEvidence) {
+      rows.push(<div key="not-assessed" style={styles.infoBox}>Patient was not assessed for pain. Reason: {data?.reasonNotAssessed || "Not documented"}</div>);
+      return <div>{rows}</div>;
+    }
+    rows.push(<div key="screening-conflict" style={styles.infoBox}>Pain screening (HOPE J0900.A) is answered "No," but pain data is documented below — review for consistency before finalizing.</div>);
+  }
+
+  if (currentPain === "0") {
+    // Auto-generated statement is the exact fixed sentence the field value
+    // supports — it never implies current pain is present.
+    rows.push(<div key="denied" style={styles.infoBox}>Pain assessed. Patient denied current pain.</div>);
+  }
+
+  rows.push(<SummaryRow key="active" label="Pain Active Problem" value={{ "1": "Yes", "0": "No", "9": "Unable to determine" }[data?.painActiveProblem] || ""} />);
+  rows.push(<SummaryRow key="current-status" label="Current Pain" value={{ "1": "Yes", "0": "No / none reported", "9": "Unable to determine" }[currentPain] || ""} />);
+
+  if (currentPain === "1") {
+    rows.push(<SummaryRow key="intensity" label="Current Intensity" value={data?.painIntensity?.current !== undefined && data?.painIntensity?.current !== "" ? `${data.painIntensity.current}/10` : ""} />);
+    rows.push(<SummaryRow key="worst" label="Worst Pain (24h)" value={data?.painIntensity?.worst !== undefined && data?.painIntensity?.worst !== "" ? `${data.painIntensity.worst}/10` : ""} />);
+    rows.push(<SummaryRow key="location" label="Pain Location" value={joinList(data?.painLocation)} />);
+    rows.push(<SummaryRow key="character" label="Pain Character" value={joinList(data?.painCharacter)} />);
+    rows.push(<SummaryRow key="onset" label="Onset & Progression" value={data?.painOnsetProgression} />);
+    rows.push(<SummaryRow key="duration" label="Duration & Frequency" value={data?.painDurationFrequency} />);
+    rows.push(<SummaryRow key="agg" label="Aggravating Factors" value={joinList(data?.aggravatingFactors)} />);
+    rows.push(<SummaryRow key="rel" label="Relieving Factors" value={joinList(data?.relievingFactors)} />);
+    rows.push(<SummaryRow key="function" label="Effect on Function/QOL" value={data?.effectOnFunction} />);
+  }
+
+  rows.push(<SummaryRow key="chronic-history" label="Chronic/Recurrent Pain History" value={{ "1": "Present", "0": "None reported", "9": "Unknown", "unable": "Unable to determine" }[chronicHistory] || ""} />);
+
+  if (currentPain === "0" && chronicHistory === "1") {
+    rows.push(<SummaryRow key="condition" label="Chronic Pain Condition/Source" value={data?.chronicPainCondition} />);
+    rows.push(<SummaryRow key="baseline" label="Usual Baseline Level" value={data?.usualBaselinePainLevel} />);
+    rows.push(<SummaryRow key="tolerable" label="Tolerable Level" value={data?.tolerablePainLevel} />);
+    rows.push(<SummaryRow key="threshold" label="Intervention Threshold" value={data?.interventionThresholdLevel} />);
+    rows.push(<SummaryRow key="frequency" label="Usual Frequency/Pattern" value={data?.usualFrequencyPattern} />);
+    rows.push(<SummaryRow key="approach" label="Current Management Approach" value={joinList(data?.currentManagementApproach)} />);
+    rows.push(<SummaryRow key="control" label="Control Status" value={data?.controlStatus} />);
+  }
+
+  // Pain Management findings -- structured rows, each independently
+  // omitted when undocumented (Current Pain Summary displays what the RN
+  // documented; it is not the AI Pain Analysis, which is a separate,
+  // deferred component -- see AiPainAnalysisCard below).
+  rows.push(<SummaryRow key="routine-med" label="Routine Pain Medication" value={{ "1": "Yes", "0": "No", "9": "Unknown" }[data?.routinePainMedicationPresent] || ""} />);
+  if (data?.routinePainMedicationPresent === "1") {
+    rows.push(<SummaryRow key="med-type" label="Medication Type" value={data?.painMedicationType} />);
+    rows.push(<SummaryRow key="med-route" label="Route" value={joinList(data?.painMedicationRoute)} />);
+  }
+  rows.push(<SummaryRow key="breakthrough-med" label="Breakthrough Pain Medication" value={{ "1": "Yes", "0": "No", "9": "Unknown" }[data?.breakthroughPainMedication] || ""} />);
+  rows.push(<SummaryRow key="non-pharm" label="Non-Pharmacological Interventions" value={joinList(data?.nonPharmInterventions)} />);
+  rows.push(<SummaryRow key="effectiveness" label="Effectiveness" value={data?.painEffectivenessRating} />);
+  rows.push(<SummaryRow key="mgmt-notes" label="Pain Management Notes" value={data?.painManagementPlan} />);
+
+  return <div>{rows}</div>;
+}
+
+// Deterministic rule-based analysis (not a real AI/ML call — same pattern
+// as resolveReferralRecommendation): every note cites the RN-entered field
+// it came from. Returns [] when there is nothing grounded to say; the
+// render loop hides the card entirely in that case rather than showing an
+// empty panel (owner requirement: never show an AI conclusion with no
+// supporting data, never imply pain is present when denied).
+// Logic now lives in rn-ica/pain-symptom-burden/painLogic.js (single
+// source of truth also consumed by the approved Pain & Symptom Burden
+// summary screen) -- this is just the re-export call site.
+
+function AiPainAnalysisCard({ data, styles }) {
+  const notes = computeAiPainNotes(data);
+  if (notes.length === 0) return <div style={styles.infoBox}>Insufficient reviewed pain data for analysis.</div>;
+  return (
+    <div style={styles.infoBox}>
+      {notes.map((n, i) => (
+        <div key={i} style={{ marginBottom: i < notes.length - 1 ? 6 : 0 }}>
+          {n.text} <span style={{ opacity: 0.7, fontSize: 10 }}>(from {n.field})</span>
+        </div>
+      ))}
+      <div style={{ fontSize: 10, marginTop: 8, opacity: 0.75 }}>AI-suggested — RN review required. Not a documented order or completed assessment.</div>
+    </div>
+  );
+}
+
+// Section 17: only real, currently-implemented rules — no arbitrary
+// timing/deadline logic (no reassessment-overdue-by-N-days rule exists
+// yet, so it is intentionally not included here). Logic now lives in
+// rn-ica/pain-symptom-burden/painLogic.js (single source of truth also
+// consumed by the approved Pain & Symptom Burden summary screen).
+
+function PainOverdueAlertsCard({ data, painAssessmentMode, styles }) {
+  const alerts = computePainOverdueAlerts(data, painAssessmentMode);
+  if (alerts.length === 0) return null;
+  return (
+    <div style={styles.warningBox}>
+      <ul style={{ margin: 0, paddingLeft: 18 }}>
+        {alerts.map((a, i) => <li key={i} style={{ marginBottom: i < alerts.length - 1 ? 4 : 0 }}>{a}</li>)}
+      </ul>
+    </div>
+  );
+}
+
+// ── Pain Management medication harvesting (owner request 2026-09-26)
+// ─────────────────────────────────────────────────────────────────────
+// "Harvest existing medication information first. RN verifies. RN
+// supplements. Do not force duplicate medication documentation." This
+// derives suggested defaults from the patient's active medication list
+// (same listMedications API/data as the Medications tab) and only ever
+// pre-fills a field that the RN has not already answered — it never
+// overwrites an RN correction, and the RN can always change any value.
+const PAIN_OPIOID_KEYWORDS = [...CHHA_OPIOID_KEYWORDS, "percocet", "vicodin", "norco", "codeine", "tramadol", "ultram", "tapentadol", "nucynta", "buprenorphine", "butrans", "belbuca"];
+const PAIN_NONOPIOID_KEYWORDS = ["acetaminophen", "tylenol", "ibuprofen", "advil", "motrin", "naproxen", "aleve", "aspirin", "celecoxib", "celebrex", "ketorolac", "toradol", "gabapentin", "neurontin", "pregabalin", "lyrica", "duloxetine", "cymbalta", "lidocaine", "lidoderm", "diclofenac", "voltaren"];
+const PAIN_ROUTE_OPTIONS = ["Oral", "Patch", "Topical", "Pump", "Sublingual", "Rectal", "Other"];
+
+// [Redesign 2026-10-03 "Nursing Assessment Flow"] Fields that only apply
+// when the patient can verbally describe/report pain (painAssessmentMode
+// === "verbal"). Used as a per-field render gate on the merged "Pain
+// Character & Impact" card so neuropathic-pain fields on that same card
+// (which are NOT verbal-only) keep showing for non-verbal/pediatric
+// patients -- see the card-level comment at isPainCharacteristicsCard.
+const PAIN_VERBAL_ONLY_PATHS = new Set([
+  "painCharacter", "painOnsetProgression", "painDurationFrequency",
+  "aggravatingFactors", "relievingFactors", "effectOnFunction",
+]);
+
+function classifyPainMedicationRoute(routeText) {
+  const r = (routeText || "").toLowerCase();
+  if (r.includes("patch")) return "Patch";
+  if (r.includes("topical") || r.includes("cream") || r.includes("gel") || r.includes("ointment")) return "Topical";
+  if (r.includes("pump") || r.includes("iv") || r.includes("infusion")) return "Pump";
+  if (r.includes("sublingual") || r === "sl") return "Sublingual";
+  if (r.includes("rectal") || r === "pr") return "Rectal";
+  if (r.includes("oral") || r === "po") return "Oral";
+  return r ? "Other" : "";
+}
+
+function isBreakthroughFrequency(frequencyText) {
+  const f = (frequencyText || "").toLowerCase();
+  return f.includes("prn") || f.includes("as needed") || f.includes("breakthrough");
+}
+
+// Returns null when the medication list itself hasn't loaded/isn't
+// documented yet (never guess "No" from an empty/unloaded list).
+function harvestPainMedications(medications) {
+  if (!Array.isArray(medications)) return null;
+  const active = medications.filter((m) => !m.status || m.status === "active");
+  const painMeds = active.filter((m) => {
+    const name = (m.medication_name || "").toLowerCase();
+    return chhaTextIncludesAny(name, PAIN_OPIOID_KEYWORDS) || chhaTextIncludesAny(name, PAIN_NONOPIOID_KEYWORDS);
+  });
+  const hasOpioid = painMeds.some((m) => chhaTextIncludesAny((m.medication_name || "").toLowerCase(), PAIN_OPIOID_KEYWORDS));
+  const hasNonOpioid = painMeds.some((m) => chhaTextIncludesAny((m.medication_name || "").toLowerCase(), PAIN_NONOPIOID_KEYWORDS));
+  const routes = [...new Set(painMeds.map((m) => classifyPainMedicationRoute(m.route)).filter(Boolean))];
+  const breakthrough = painMeds.some((m) => isBreakthroughFrequency(m.frequency));
+  return {
+    documented: active.length > 0,
+    present: painMeds.length > 0,
+    type: hasOpioid && hasNonOpioid ? "Both" : hasOpioid ? "Opioid" : hasNonOpioid ? "Non-Opioid" : "",
+    routes,
+    breakthrough,
+    sourceMeds: painMeds.map((m) => `${m.medication_name}${m.route ? ` (${m.route})` : ""}${m.frequency ? ` — ${m.frequency}` : ""}`),
+  };
+}
+
+function PainMedicationHarvestBanner({ patientId, data, onApply, styles, COLORS }) {
+  const [meds, setMeds] = useState(null);
+  const applied = useRef(false);
+
+  useEffect(() => {
+    if (!patientId) return;
+    listMedications(patientId).then(setMeds).catch(() => setMeds([]));
+  }, [patientId]);
+
+  const harvest = meds ? harvestPainMedications(meds) : null;
+
+  useEffect(() => {
+    if (!harvest || applied.current) return;
+    applied.current = true;
+    if (!harvest.documented) return; // nothing to harvest from yet
+    const patch = {};
+    // Never overwrite a value the RN has already documented.
+    if (data?.routinePainMedicationPresent === undefined || data?.routinePainMedicationPresent === "") {
+      patch.routinePainMedicationPresent = harvest.present ? "1" : "0";
+    }
+    if (harvest.present && (data?.painMedicationType === undefined || data?.painMedicationType === "") && harvest.type) {
+      patch.painMedicationType = harvest.type;
+    }
+    if (harvest.present && (!data?.painMedicationRoute || data.painMedicationRoute.length === 0) && harvest.routes.length) {
+      patch.painMedicationRoute = harvest.routes;
+    }
+    if (harvest.present && (data?.breakthroughPainMedication === undefined || data?.breakthroughPainMedication === "")) {
+      patch.breakthroughPainMedication = harvest.breakthrough ? "1" : "0";
+    }
+    if (Object.keys(patch).length) onApply(patch);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [harvest]);
+
+  if (!harvest || !harvest.documented || !harvest.present) return null;
+  return (
+    <div style={{ ...styles.infoBox, marginBottom: 12, fontSize: 11.5 }}>
+      <strong>Harvested from medication list:</strong> {harvest.sourceMeds.join("; ")}.
+      Values below were pre-filled from this — verify and correct as needed.
+    </div>
+  );
+}
+
 const SEVERITY_COLORS = {
   CONTRAINDICATED: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
   MAJOR: { bg: "#450a0a", border: "#fb7185", text: "#fecaca" },
@@ -6201,11 +8508,70 @@ const SEVERITY_COLORS = {
 // listPatientAllergies/addPatientAllergy/removePatientAllergy API against
 // the same patient_allergies table, so an allergy entered in any one of
 // them appears in the other two immediately — no separate free-text field).
-export function AllergiesCard({ patientId, styles, COLORS }) {
+// OWNER-APPROVED "Infection Allergy Model Review" (2026-10-20) -- the
+// `allergen_type` column already exists on the shared `patient_allergies`
+// table and is already exposed as a user-selectable field in the
+// Facesheet's Structured Allergies panel (`StructuredAllergyList`,
+// PatientFacesheet.jsx) via this exact 4-value set. This is the smallest
+// safe enhancement: reuse the same values/labels here instead of
+// inventing a new taxonomy, so every surface reading/writing
+// `patient_allergies` finally agrees on what an allergy's type is.
+const ALLERGY_TYPE_OPTIONS = [
+  { value: "DRUG", label: "Medication" },
+  { value: "FOOD", label: "Food" },
+  { value: "ENVIRONMENTAL", label: "Environmental" },
+  { value: "OTHER", label: "Other / Sensitivity" },
+];
+
+// OWNER DIRECTIVE (2026-10-05) "All Documented Allergies Must Appear" --
+// used by the Infection Summary (and Structured Findings rail) so every
+// allergy already charted on this shared `patient_allergies` record shows
+// up there too, without inventing a second allergy data model. Sorted
+// most-severe-first so the clinically riskiest allergy always leads; the
+// system never hides a mild allergy, it only orders by severity.
+const ALLERGY_TYPE_SUMMARY_LABELS = {
+  DRUG: "Medication",
+  FOOD: "Food",
+  ENVIRONMENTAL: "Environmental",
+  OTHER: "Other/Sensitivity",
+};
+const ALLERGY_SEVERITY_RANK = { ANAPHYLAXIS: 0, SEVERE: 1, MODERATE: 2, MILD: 3 };
+const ALLERGY_SEVERITY_LABELS = { ANAPHYLAXIS: "Anaphylaxis", SEVERE: "Severe", MODERATE: "Moderate", MILD: "Mild" };
+function formatAllergyAlertLines(allergies) {
+  return (allergies || [])
+    .slice()
+    .sort((a, b) => (ALLERGY_SEVERITY_RANK[a.severity] ?? 4) - (ALLERGY_SEVERITY_RANK[b.severity] ?? 4))
+    .map((a) => {
+      const typeLabel = ALLERGY_TYPE_SUMMARY_LABELS[a.allergen_type] || "Allergy";
+      const severityLabel = ALLERGY_SEVERITY_LABELS[a.severity];
+      const sevPart = severityLabel ? ` (${severityLabel})` : "";
+      const reactionPart = a.reaction_description ? ` – ${a.reaction_description}` : "";
+      return `${typeLabel} allergy: ${a.allergen_text}${sevPart}${reactionPart}.`;
+    });
+}
+
+// OWNER DIRECTIVE (item 8) "No Duplicate Allergy Entry Workflows" --
+// normalizes an allergen for comparison purposes only (trim + lowercase);
+// the stored record always keeps the nurse's original text/casing.
+function normalizeAllergenText(text) {
+  return (text || "").trim().toLowerCase();
+}
+
+export function AllergiesCard({ patientId, styles, COLORS, onChanged, readOnly = false }) {
   const [allergies, setAllergies] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [allergyForm, setAllergyForm] = useState({ allergen_text: "", severity: "", reaction_description: "" });
+  const [allergyForm, setAllergyForm] = useState({ allergen_type: "DRUG", allergen_text: "", reaction_description: "", severity: "" });
   const [allergyError, setAllergyError] = useState("");
+  // OWNER DIRECTIVE (item 8) "Duplicate-prevention UI check" -- when the
+  // nurse tries to add an allergen that already matches an active entry
+  // (same normalized allergen text + same type), surface a confirmation
+  // instead of silently creating a second record. `duplicateMatch` holds
+  // the existing entry so the dialog can show it and let the nurse jump
+  // to it; the record is never auto-merged -- the nurse always makes an
+  // explicit choice (Cancel, Review Existing, or Add As New Entry).
+  const [duplicateMatch, setDuplicateMatch] = useState(null);
+  const [highlightedAllergyId, setHighlightedAllergyId] = useState(null);
+  const allergyRowRefs = useRef({});
 
   const reload = useCallback(() => {
     if (!patientId) return;
@@ -6223,81 +8589,233 @@ export function AllergiesCard({ patientId, styles, COLORS }) {
     reload();
   }, [reload]);
 
-  const handleAddAllergy = async () => {
-    if (!allergyForm.allergen_text.trim()) {
-      setAllergyError("Allergen is required.");
-      return;
-    }
+  // Performs the actual create call. Separated from handleAddAllergy so
+  // the duplicate-confirmation dialog's "Add As New Entry" action can
+  // call straight through after the nurse has made an explicit choice.
+  const submitNewAllergy = async () => {
     setAllergyError("");
     try {
       await addPatientAllergy(patientId, {
         allergen_text: allergyForm.allergen_text.trim(),
-        allergen_type: "DRUG",
+        allergen_type: allergyForm.allergen_type || "DRUG",
         severity: allergyForm.severity || undefined,
         reaction_description: allergyForm.reaction_description || undefined,
       });
-      setAllergyForm({ allergen_text: "", severity: "", reaction_description: "" });
+      // Fast Entry (owner directive) -- the allergy type quick-select
+      // persists across consecutive adds (e.g. documenting Milk, Eggs,
+      // Peanuts as Food back-to-back); only the allergen text/reaction
+      // reset, so the nurse never has to reselect the type for the next
+      // entry of the same category.
+      setAllergyForm((f) => ({ ...f, allergen_text: "", reaction_description: "" }));
+      setDuplicateMatch(null);
       reload();
+      // Keep the Infection Summary / Structured Findings rail in sync
+      // immediately -- otherwise a nurse who just documented an allergy
+      // would see it missing from the summary until the next page load.
+      onChanged?.();
     } catch (err) {
       console.error("Add allergy failed:", err);
       setAllergyError(err?.response?.data?.detail || "Unable to add allergy.");
     }
   };
 
+  // OWNER DIRECTIVE (item 8) "No Duplicate Allergy Entry Workflows" --
+  // before creating a new record, check for an active allergy that
+  // already matches on normalized allergen text + type. A match pauses
+  // submission and shows a confirmation dialog instead of silently
+  // creating a second record for the same allergen (which would make
+  // the grouped review list show the same allergen twice under one
+  // category). The nurse always decides explicitly: Cancel, jump to
+  // Review the existing entry, or deliberately Add As New Entry (e.g.
+  // to document a second, differently-severe reaction on file).
+  const handleAddAllergy = async () => {
+    if (!allergyForm.allergen_text.trim()) {
+      setAllergyError("Allergen is required.");
+      return;
+    }
+    setAllergyError("");
+    const normalizedNew = normalizeAllergenText(allergyForm.allergen_text);
+    const newType = allergyForm.allergen_type || "DRUG";
+    const existingMatch = allergies.find(
+      (a) => normalizeAllergenText(a.allergen_text) === normalizedNew && (a.allergen_type || "DRUG") === newType
+    );
+    if (existingMatch) {
+      setDuplicateMatch(existingMatch);
+      return;
+    }
+    await submitNewAllergy();
+  };
+
+  const handleReviewExistingAllergy = () => {
+    const match = duplicateMatch;
+    setDuplicateMatch(null);
+    if (!match) return;
+    setHighlightedAllergyId(match.allergy_id);
+    const node = allergyRowRefs.current[match.allergy_id];
+    node?.scrollIntoView?.({ behavior: "smooth", block: "center" });
+    window.setTimeout(() => setHighlightedAllergyId((id) => (id === match.allergy_id ? null : id)), 2500);
+  };
+
   const handleRemoveAllergy = async (allergyId) => {
     try {
       await removePatientAllergy(patientId, allergyId);
       reload();
+      onChanged?.();
     } catch (err) {
       console.error("Remove allergy failed:", err);
       window.alert("Unable to remove allergy.");
     }
   };
 
+  // OWNER CORRECTION (2026-10-05) "Allergies Are Not A Single Choice" --
+  // Allergy Type is a per-entry classification, never a section-level
+  // workflow mode. A patient commonly has allergies in several
+  // categories simultaneously (e.g. Penicillin + Milk + Latex), so the
+  // review display groups already-saved entries under one heading per
+  // category instead of a single flat list, and nothing here (including
+  // this grouping) is affected by the Infection Overview state -- the
+  // allergy profile is standing patient-safety data, not a per-visit
+  // infection finding. Empty categories are omitted entirely so the
+  // list stays short when a patient only has one or two allergy types.
+  const groupedAllergies = ALLERGY_TYPE_OPTIONS.map((opt) => ({
+    ...opt,
+    entries: allergies.filter((a) => (a.allergen_type || "DRUG") === opt.value),
+  })).filter((g) => g.entries.length > 0);
+
   return (
     <div>
-      <div style={{ ...styles.label, marginBottom: 8 }}>Documented Allergies</div>
+      <div style={{ ...styles.label, marginBottom: 8 }}>Current Allergy Profile</div>
       {loading && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>Loading…</div>}
       {!loading && allergies.length === 0 && <div style={{ fontSize: 12.5, color: COLORS.gray, marginBottom: 8 }}>No allergies documented.</div>}
-      {allergies.map((a) => (
-        <div key={a.allergy_id} style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0", fontSize: 12.5 }}>
-          <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
-          {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
-          {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
-          <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
-            Remove
-          </button>
+      {groupedAllergies.map((group) => (
+        <div key={group.value} style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.03em", textTransform: "uppercase", color: COLORS.teal, marginBottom: 4 }}>
+            {group.label === "Other / Sensitivity" ? "Other Sensitivities" : `${group.label} Allergies`} ({group.entries.length})
+          </div>
+          {group.entries.map((a) => (
+            <div
+              key={a.allergy_id}
+              ref={(node) => { allergyRowRefs.current[a.allergy_id] = node; }}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 8,
+                padding: "4px 6px",
+                fontSize: 12.5,
+                borderRadius: 4,
+                transition: "background-color 0.3s ease",
+                backgroundColor: highlightedAllergyId === a.allergy_id ? "#fde68a" : "transparent",
+              }}
+            >
+              <span style={{ fontWeight: 700, color: COLORS.dark }}>{a.allergen_text}</span>
+              {a.severity && <span style={{ color: COLORS.gray }}>({a.severity})</span>}
+              {a.reaction_description && <span style={{ color: COLORS.gray }}>— {a.reaction_description}</span>}
+              {!readOnly && (
+                <button type="button" onClick={() => handleRemoveAllergy(a.allergy_id)} style={{ ...styles.btnSecondary, padding: "2px 8px", fontSize: 11 }}>
+                  Remove
+                </button>
+              )}
+            </div>
+          ))}
         </div>
       ))}
-      <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-        <input
-          style={{ ...styles.input, width: 160 }}
-          placeholder="Allergen (e.g. penicillin)"
-          value={allergyForm.allergen_text}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
-        />
-        <select
-          style={{ ...styles.select, width: 130 }}
-          value={allergyForm.severity}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
+      {/* OWNER DIRECTIVE (item 8) "Duplicate-Prevention UI Check" -- shown
+          only when handleAddAllergy detects an active allergy already
+          matching on normalized allergen text + type. The nurse must
+          make an explicit choice; nothing is auto-merged or auto-saved.
+          Never reachable in readOnly mode (the add form below is hidden,
+          so handleAddAllergy can never be invoked), guarded here too for
+          defense-in-depth. */}
+      {!readOnly && duplicateMatch && (
+        <div
+          data-testid="allergy-duplicate-dialog"
+          style={{
+            border: `1px solid ${COLORS.warning || "#f59e0b"}`,
+            backgroundColor: "#fffbeb",
+            borderRadius: 6,
+            padding: "10px 12px",
+            marginTop: 8,
+            marginBottom: 4,
+            fontSize: 12.5,
+          }}
         >
-          <option value="">Severity</option>
-          <option value="MILD">Mild</option>
-          <option value="MODERATE">Moderate</option>
-          <option value="SEVERE">Severe</option>
-          <option value="ANAPHYLAXIS">Anaphylaxis</option>
-        </select>
-        <input
-          style={{ ...styles.input, width: 180 }}
-          placeholder="Reaction (optional)"
-          value={allergyForm.reaction_description}
-          onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
-        />
-        <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
-          + Add Allergy
-        </button>
-      </div>
-      {allergyError && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+          <div style={{ fontWeight: 700, color: "#92400e", marginBottom: 4 }}>This allergy is already documented</div>
+          <div style={{ color: "#78350f", marginBottom: 8 }}>
+            {ALLERGY_TYPE_SUMMARY_LABELS[duplicateMatch.allergen_type] || "Allergy"}: <strong>{duplicateMatch.allergen_text}</strong>
+            {duplicateMatch.severity ? ` (${ALLERGY_SEVERITY_LABELS[duplicateMatch.severity] || duplicateMatch.severity})` : ""}
+            {duplicateMatch.reaction_description ? ` — ${duplicateMatch.reaction_description}` : ""}
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button type="button" onClick={() => setDuplicateMatch(null)} style={{ ...styles.btnSecondary, padding: "4px 10px", fontSize: 12 }}>
+              Cancel
+            </button>
+            <button type="button" onClick={handleReviewExistingAllergy} style={{ ...styles.btnSecondary, padding: "4px 10px", fontSize: 12 }}>
+              Review Existing Allergy
+            </button>
+            <button type="button" onClick={submitNewAllergy} style={{ ...styles.btnSecondary, padding: "4px 10px", fontSize: 12 }}>
+              Add As New Entry
+            </button>
+          </div>
+        </div>
+      )}
+      {/* Review-screen rule (owner directive 2026-10-05, "Existing
+          Infection Findings Review Is A True Review Screen") -- when
+          rendered readOnly, the add-allergy form itself is hidden
+          entirely, not merely disabled; nothing here lets a reviewer
+          mistake "reviewing" for "editing". */}
+      {!readOnly && (
+        <>
+          {/* OWNER CORRECTION (2026-10-05) "Document The Allergy First,
+              Classify It Second" -- replaces the prior "quick fill type"
+              pill row, which forced the nurse to pick a category BEFORE
+              typing anything (computer-oriented: category -> allergen ->
+              save -> switch category -> next allergen). Allergen is now the
+              first field in reading/tab order; Type is a plain dropdown
+              immediately after it, defaulting to the last-used type so
+              consecutive same-type entries (Milk, Eggs, Peanuts) still need
+              no re-selection, but nothing requires choosing a category
+              before the nurse can start typing. Type remains a per-record
+              classification, never a section-wide mode -- unlimited
+              allergies across all four types may still be added back-to-back
+              in any order. */}
+          <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
+            <input
+              style={{ ...styles.input, width: 160 }}
+              placeholder="Allergen (e.g. penicillin)"
+              value={allergyForm.allergen_text}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_text: e.target.value }))}
+            />
+            <select
+              style={{ ...styles.select, width: 150 }}
+              value={allergyForm.allergen_type}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, allergen_type: e.target.value }))}
+            >
+              {ALLERGY_TYPE_OPTIONS.map((opt) => <option key={opt.value} value={opt.value}>{opt.label}</option>)}
+            </select>
+            <input
+              style={{ ...styles.input, width: 180 }}
+              placeholder="Reaction (optional)"
+              value={allergyForm.reaction_description}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, reaction_description: e.target.value }))}
+            />
+            <select
+              style={{ ...styles.select, width: 130 }}
+              value={allergyForm.severity}
+              onChange={(e) => setAllergyForm((f) => ({ ...f, severity: e.target.value }))}
+            >
+              <option value="">Severity</option>
+              <option value="MILD">Mild</option>
+              <option value="MODERATE">Moderate</option>
+              <option value="SEVERE">Severe</option>
+              <option value="ANAPHYLAXIS">Anaphylaxis</option>
+            </select>
+            <button type="button" onClick={handleAddAllergy} style={{ ...styles.btnSecondary, padding: "6px 12px", fontSize: 12.5 }}>
+              + Add Allergy
+            </button>
+          </div>
+          {allergyError && <div style={{ color: COLORS.error, fontSize: 12, marginTop: 4 }}>{allergyError}</div>}
+        </>
+      )}
     </div>
   );
 }
@@ -7691,6 +10209,155 @@ function BodyMap({ value = [], tone = "pain", patientType = "verbal", onPatientT
   );
 }
 
+// Owner directive (2026-10-03) "Comprehensive Pain Assessment Date
+// auto-population" -- the nurse no longer manually confirms a
+// "Comprehensive pain assessment completed" checkbox or re-enters a date;
+// the comprehensive assessment date defaults to (and is kept live in sync
+// with, via the useEffect near handleLock) the parent RNICA visit date
+// (`visitMeta.visitDate`). The only way the two values ever diverge is an
+// explicit, reason-documented override, entered through this component.
+// `comprehensiveAssessmentCompleted` (HOPE J0910.A) remains a real stored
+// field -- it is now derived automatically (true once a date is present)
+// by that same sync effect, instead of requiring separate manual entry.
+function ComprehensivePainAssessmentDateField({ label, value, parentVisitDate, overrideReason, hopeCode, onDateChange, onReasonChange, onClearOverride, styles, COLORS }) {
+  const [overriding, setOverriding] = useState(Boolean(overrideReason));
+  const displayDate = value || parentVisitDate;
+
+  if (!overriding) {
+    return (
+      <div style={styles.formGroup}>
+        <label style={styles.label}>
+          {label} {hopeCode && <> <HopeTag code={hopeCode} /></>}
+        </label>
+        <div style={{ display: "flex", alignItems: "baseline", gap: 10, flexWrap: "wrap" }}>
+          <span style={{ fontSize: 13.5, color: COLORS.dark, fontWeight: 600 }}>
+            {formatDate(displayDate)}
+          </span>
+          <span style={{ fontSize: 11, color: COLORS.gray }}>
+            (auto-filled from RNICA assessment date)
+          </span>
+          <button
+            type="button"
+            onClick={() => setOverriding(true)}
+            style={{
+              background: "none", border: "none", padding: 0, cursor: "pointer",
+              fontSize: 11.5, color: COLORS.teal, fontWeight: 600, textDecoration: "underline",
+            }}
+          >
+            Document a different date
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ ...styles.formGroup, border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10 }}>
+      <label style={styles.label}>
+        {label} {hopeCode && <> <HopeTag code={hopeCode} /></>}
+      </label>
+      <FormInput
+        label="Comprehensive assessment date (override)"
+        type="date"
+        value={value}
+        onChange={onDateChange}
+      />
+      <FormInput
+        label="Reason date differs from RNICA assessment date"
+        required
+        value={overrideReason}
+        onChange={onReasonChange}
+        placeholder="Required to document an override"
+      />
+      <button
+        type="button"
+        onClick={() => {
+          onClearOverride?.();
+          setOverriding(false);
+        }}
+        style={{
+          background: "none", border: "none", padding: 0, cursor: "pointer",
+          fontSize: 11.5, color: COLORS.gray, fontWeight: 600, textDecoration: "underline",
+        }}
+      >
+        Revert to RNICA assessment date
+      </button>
+    </div>
+  );
+}
+
+// Body map is a secondary interaction: the Pain screen's primary surface
+// only ever shows a one-line summary + "Edit body map" button. The full
+// interactive silhouette (BodyMap above) only exists inside this Dialog,
+// so it never consumes vertical space in the normal page flow -- opened
+// on demand, closed by default, same data/onToggle contract as before.
+function PainBodyMapDialogField({ value = [], onToggle, onClearAll, regionLabelById }) {
+  const [open, setOpen] = useState(false);
+  const selected = Array.isArray(value) ? value : [];
+  const summaryText = selected.length
+    ? selected.map((id) => regionLabelById?.[id] || id).join(", ")
+    : "No body map location documented";
+
+  return (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, flexWrap: "wrap" }}>
+      <div style={{ fontSize: 12, color: "var(--sns-text, inherit)", flex: 1, minWidth: 160 }}>
+        <strong style={{ fontWeight: 700 }}>Body map: </strong>{summaryText}
+      </div>
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="rnica-pain-bodymap-edit-btn"
+        style={{
+          borderRadius: 8,
+          border: "1px solid var(--sns-teal, #0d9488)",
+          background: "transparent",
+          // Bug fix (Pain Sheet UI polish pass): no color was set here, so
+          // the launch button silently inherited a near-black default and
+          // was nearly invisible against the dark theme. Brighter accent
+          // text (same teal used for the border) makes the trigger action
+          // immediately visible without changing the Body Map dialog itself.
+          color: "var(--sns-teal, #0d9488)",
+          fontSize: 11.5,
+          fontWeight: 700,
+          padding: "6px 12px",
+          cursor: "pointer",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {selected.length ? "Edit body map" : "Add body map location"}
+      </button>
+
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-xl">
+          <DialogHeader>
+            <DialogTitle>Pain — Body Map</DialogTitle>
+            <DialogDescription>Select every region where the patient reports or shows pain.</DialogDescription>
+          </DialogHeader>
+          <BodyMap value={selected} tone="pain" onToggle={onToggle} onClearAll={onClearAll} />
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              style={{
+                borderRadius: 8,
+                border: "1px solid var(--sns-teal, #0d9488)",
+                background: "var(--sns-teal, #0d9488)",
+                color: "#fff",
+                fontSize: 12.5,
+                fontWeight: 700,
+                padding: "8px 16px",
+                cursor: "pointer",
+              }}
+            >
+              Done
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 const ANTERIOR_REGIONS = [
   { id: "head_crown",          label: "Head (Crown)",            x: 90,  y: 25  },
   { id: "right_temple",        label: "Right Temple",            x: 78,  y: 26  },
@@ -7798,6 +10465,10 @@ const POSTERIOR_REGIONS = [
   { id: "left_sole",           label: "Left Sole",                x: 76,  y: 300 },
   { id: "right_sole",          label: "Right Sole",               x: 101, y: 300 },
 ];
+
+const BODY_MAP_REGION_LABEL_BY_ID = Object.fromEntries(
+  [...ANTERIOR_REGIONS, ...POSTERIOR_REGIONS].map((r) => [r.id, r.label])
+);
 
 const BODY_MAP_AUDIT = validateBodyMapRegions({
   anterior: ANTERIOR_REGIONS,
@@ -8055,26 +10726,116 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false, fullWidthWhenExpanded = false, compact = false, summary = null }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
-  return (
-    <div className="rnica-form-card" style={styles.card} id={id}>
-      <div className="rnica-form-card__title" style={{ ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8 }}>
-        {title}
-        {hopeCode && <HopeTag code={hopeCode} />}
-        {sfv && <SfvTag />}
-        {cms && <CmsTag label={cms} />}
+  // [OWNER REVIEW -- 2026-09-25] Pain Assessment Tool must default to
+  // collapsed: the 0-10 scale/protocol reference consumes excessive
+  // screen space and most RNs already know how to use it. Generic
+  // `collapsible` support on Card so any card can opt into this pattern
+  // without a bespoke wrapper.
+  const [collapsed, setCollapsed] = useState(collapsible && defaultCollapsed);
+  const titleRowContent = (
+    <>
+      {collapsible && <span aria-hidden="true" style={{ fontSize: 11, color: COLORS.label || COLORS.gray }}>{collapsed ? "►" : "▾"}</span>}
+      {title}
+      {hopeCode && <HopeTag code={hopeCode} />}
+      {sfv && <SfvTag />}
+      {cms && <CmsTag label={cms} />}
+    </>
+  );
+  const titleRowProps = {
+    className: "rnica-form-card__title",
+    style: { ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8, cursor: collapsible ? "pointer" : undefined },
+    onClick: collapsible ? () => setCollapsed((c) => !c) : undefined,
+    role: collapsible ? "button" : undefined,
+    tabIndex: collapsible ? 0 : undefined,
+    "aria-expanded": collapsible ? !collapsed : undefined,
+    onKeyDown: collapsible ? (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setCollapsed((c) => !c); } } : undefined,
+  };
+  // `bare` renders an inline group (title row + children only, no card
+  // box/border/shadow/margin) -- used to pack multiple sub-sections into
+  // one shared workspace Card instead of each getting its own bordered
+  // container. Same title/hopeCode/sfv/cms row and same children content;
+  // only the outer box chrome is removed.
+  // GitHub Directive (2026-09-28) Critical Finding #3 -- visual hierarchy:
+  // an optional "high"/"medium"/"low" importance modifier class so a card's
+  // weight (border/background emphasis) can reflect clinical importance
+  // instead of every section competing equally. Purely a CSS hook -- no
+  // behavior change when omitted.
+  const importanceClass = importance ? ` rnica-form-card--${importance}` : "";
+  // GitHub Directive (2026-09-28) "Final Neurological Density and
+  // Space-Utilization Plan" Section 11/21 -- some sub-sections (e.g.
+  // Sleep/Responsiveness, the merged Communication and Sensory card) must
+  // span the full workspace width instead of being squeezed into one
+  // column of the surrounding auto-fit grid alongside much shorter
+  // sub-sections (the "uneven column height" defect). Pure CSS hook.
+  // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Correction" --
+  // `fullWidthWhenExpanded` is an opt-in companion to `fullWidth` (default
+  // false, so every existing caller's layout is byte-for-byte unchanged):
+  // when a card is both collapsible and this flag is set, it stays
+  // compact/shares a row while collapsed, but claims the full row the
+  // moment a clinician opens it (same full-row CSS hook as `fullWidth`,
+  // just conditioned on live collapse state instead of being permanent).
+  const effectiveFullWidth = fullWidth || (fullWidthWhenExpanded && collapsible && !collapsed);
+  const fullWidthClass = effectiveFullWidth ? " rnica-bodysystem-workspace__group--full" : "";
+  if (bare) {
+    return (
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" --
+      // `data-card-title` is a presentation-only CSS hook (combined with
+      // the outer workspace's `data-section` attribute) so a specific
+      // sub-section of a specific Body System can be targeted for
+      // spacing/density without a bespoke class per card. No field, path,
+      // or behavior change.
+      <div className={`rnica-bodysystem-workspace__group${importanceClass}${fullWidthClass}`} id={id} data-card-title={title}>
+        <div {...titleRowProps}>{titleRowContent}</div>
+        {/* OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+            Pass" item #8 -- an optional always-visible auto-generated
+            summary line, rendered whether or not the card is collapsed
+            (unlike `children`, which the collapsible mechanism already
+            hides). Purely additive: no caller passes this prop except
+            the one card opted into the "compact summary + edit" pattern;
+            every other card's render is unchanged. */}
+        {summary}
+        {(!collapsible || !collapsed) && children}
       </div>
-      {children}
-    </div>
+    );
+  }
+  // Migrated onto the shadcn Card primitives (ShadcnCard/CardHeader/
+  // CardTitle/CardContent, restyled to the RNICA theme tokens) instead of
+  // a hand-rolled div -- same title/hopeCode/sfv/cms/collapsible/id
+  // contract, so none of the 28 modules' field configs change.
+  // [Pain density pass -- 2026-10] `compact` trims header/content padding
+  // (px-5/pt-4/py-4 -> px-4/pt-3/py-3). Opt-in only -- defaults to false so
+  // every other module's card chrome is byte-for-byte unchanged; only the
+  // Pain section passes compact=true (see renderGenericSection). No field,
+  // title, hopeCode, or content change -- padding only.
+  return (
+    <ShadcnCard id={id} className={`rnica-form-card${importanceClass}`}>
+      <ShadcnCardHeader className={compact ? "px-4 pt-3" : undefined}>
+        <ShadcnCardTitle {...titleRowProps}>{titleRowContent}</ShadcnCardTitle>
+      </ShadcnCardHeader>
+      {(!collapsible || !collapsed) && <ShadcnCardContent className={compact ? "px-4 py-3" : undefined}>{children}</ShadcnCardContent>}
+    </ShadcnCard>
   );
 }
 
 // ════════════════════════════════════════════════════════════════
 // 6. SECTION RENDERERS — All 28 Modules
 // ════════════════════════════════════════════════════════════════
+
+// HOPE A1905 Living Arrangement value-code labels -- kept in sync with the
+// FormRadioGroup options rendered in renderDemographics below. Used by the
+// Patient Story "Patient Attributes" panel to display the human-readable
+// label rather than the raw HOPE code.
+const LIVING_ARRANGEMENT_LABELS = {
+  "1": "Alone (no other residents in the home)",
+  "2": "With others in the home (family, friends, or paid caregiver)",
+  "3": "Congregate home (e.g., assisted living or residential care home)",
+  "4": "Inpatient facility (e.g., SNF, nursing home, inpatient hospice, hospital)",
+  "5": "Does not have a permanent home (unstable housing / homeless)",
+};
 
 function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiProfile = {}) {
   const u = (path, val) => update("demographics", path, val);
@@ -8103,12 +10864,12 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
           <FormInput label="Alternate Phone" value={data.alternatePhone} onChange={(v) => u("alternatePhone", v)} type="tel" />
         </div>
         <FormCheckboxGroup label="Race" values={data.race} onChange={(v) => u("race", v)} hopeCode="A1010"
-          options={["White", "Black/African American", "Asian", "American Indian/Alaska Native", "Native Hawaiian/Pacific Islander", "Other"]} />
+          options={RACE_OPTIONS} />
         <FormCheckboxGroup label="Ethnicity" values={data.ethnicity} onChange={(v) => u("ethnicity", v)} hopeCode="A1005"
-          options={["Hispanic/Latino", "Not Hispanic/Latino", "Unknown"]} />
+          options={ETHNICITY_OPTIONS} />
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
           <FormSelect label="Preferred Language" value={data.preferredLanguage} onChange={(v) => u("preferredLanguage", v)}
-            options={["English", "Spanish", "Chinese", "Vietnamese", "Tagalog", "Korean", "Other"]} />
+            options={LANGUAGE_OPTIONS} />
           <FormCheckbox label="Needs Interpreter" checked={data.needsInterpreter} onChange={(v) => u("needsInterpreter", v)} />
           <FormInput label="Religion" value={data.religion} onChange={(v) => u("religion", v)} />
           <FormSelect label="Marital Status" value={data.maritalStatus} onChange={(v) => u("maritalStatus", v)}
@@ -8174,10 +10935,45 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
               options={["Good", "Fair", "Poor"]} />
             <FormRadioGroup label="PCG Anxiety Level" value={data.pcg?.anxietyLevel} onChange={(v) => u("pcg.anxietyLevel", v)}
               options={["None", "Mild", "Moderate", "Severe"]} />
+            <FormRadioGroup label="Sign-Language Interpreter Needed (if PCG hard of hearing/deaf)" value={data.pcg?.signLanguageInterpreterNeeded} onChange={(v) => u("pcg.signLanguageInterpreterNeeded", v)}
+              options={["No", "Yes", "Unable to determine"]} />
+            <FormRadioGroup label="PCG Able to Participate in Care" value={data.pcg?.participatesInCare} onChange={(v) => u("pcg.participatesInCare", v)}
+              options={["Yes", "Partially", "No", "Unable to assess"]} />
             <FormRadioGroup label="Able to Administer Medications" value={data.pcg?.ableToAdministerMeds} onChange={(v) => u("pcg.ableToAdministerMeds", v)}
               options={["Yes", "No", "With training"]} />
             <FormRadioGroup label="Willing to Provide Care" value={data.pcg?.willingToProvideCare} onChange={(v) => u("pcg.willingToProvideCare", v)}
               options={["Yes", "No", "Ambivalent"]} />
+
+            {/* Household factors — cross-checked against real HospiceMD
+                "Communications & Other Factors > PCG" section: "Any young
+                children at home?" and "Any pets? (If yes, specify)". These
+                are household/safety/care-planning factors, not demographics. */}
+            <FormRadioGroup label="Young Children in the Home" value={data.pcg?.householdChildren} onChange={(v) => u("pcg.householdChildren", v)}
+              options={["No", "Yes", "Unknown"]} />
+            {data.pcg?.householdChildren === "Yes" && (
+              <FormInput label="Age Range / Safety-Support Concern (if clinically useful)" value={data.pcg?.householdChildrenDetail} onChange={(v) => u("pcg.householdChildrenDetail", v)} />
+            )}
+            <FormRadioGroup label="Pets in the Home" value={data.pcg?.householdPets} onChange={(v) => u("pcg.householdPets", v)}
+              options={["No", "Yes", "Unknown"]} />
+            {data.pcg?.householdPets === "Yes" && (
+              <FormInput label="Specify (safety/access/infection concern if applicable)" value={data.pcg?.householdPetsDetail} onChange={(v) => u("pcg.householdPetsDetail", v)} />
+            )}
+
+            {/* Patient's own medication self-administration capability —
+                deliberately adjacent to PCG's "Able to Administer
+                Medications" above so both capabilities are reviewed
+                together, but visually distinct (own heading) since
+                HospiceMD tracks these as two separate fields. */}
+            <div className="rnica-classic-subheading" style={{ fontSize: 12, fontWeight: 700, color: COLORS?.label || "#64748b", textTransform: "uppercase", letterSpacing: "0.03em", marginTop: 12, marginBottom: 4 }}>
+              Medication Safety — Patient Self-Administration
+            </div>
+            <FormRadioGroup label="Patient Able to Safely Self-Administer Medications" value={data.medicationSafety?.selfAdministersMeds} onChange={(v) => u("medicationSafety.selfAdministersMeds", v)}
+              options={["Yes", "With assistance", "No", "Not applicable", "Unable to assess"]} />
+            {["With assistance", "No"].includes(data.medicationSafety?.selfAdministersMeds) && (
+              <FormSelect label="If No, Who Administers Medications to Patient" value={data.medicationSafety?.medsAdministeredBy} onChange={(v) => u("medicationSafety.medsAdministeredBy", v)}
+                options={["Primary caregiver", "Family member", "Facility staff", "Hospice staff under an authorized plan", "Other", "No responsible person identified"]} />
+            )}
+
             <FormTextarea label="PCG Concerns / Notes" value={data.pcg?.pcgConcerns} onChange={(v) => u("pcg.pcgConcerns", v)} />
           </>
         )}
@@ -8331,6 +11127,1840 @@ function calculateAgeFromDob(dobStr) {
   return age;
 }
 
+// Body Systems density redesign (owner directive, 2026-09-26): the 10
+// body-system modules render inside one compact accordion screen (see
+// RNICACommandWorkspace.jsx bodySystems branch) -- within that screen,
+// each module's own sub-cards (Mental Status, BIMS, Communication &
+// Sensory, Skin Integrity, Pressure Injury, Wounds, ...) pack into a
+// responsive 2-3 column "clinical review grid" instead of stacking full
+// width, and default to collapsed (same `collapsible`/`defaultCollapsed`
+// mechanism the Pain Assessment Tool card already uses) so the RN sees
+// compact titles first and expands only what's relevant. Pilot-only;
+// legacy/non-grouped rendering of these same sections is unaffected --
+// no field, HOPE mapping, POC, or validation behavior changes.
+const BODY_SYSTEM_FORM_SECTIONS = new Set(
+  RNICA_BODY_SYSTEM_MODULES.map((module) => module.formSection),
+);
+
+// Body Systems 9-part nursing-workflow structure (owner directive: every
+// system follows identical navigation so a nurse always knows where to
+// look). Cards are tagged with one of these `category` values; a card
+// with no explicit category defaults to "core" (see resolvedCards.map
+// below) so nothing can silently fall out of the workspace. "summary" is
+// synthetic (computed, not a real card) and "poc" is handled by the
+// pre-existing PocSectionControls component, so neither appears here.
+// OWNER DIRECTIVE (2026-10-05) "Shared Information = Render Once" --
+// "profile" is a standing-patient-chart-data group. Only Infection
+// currently uses it (Allergies, Immune Status); every other body system
+// has zero cards in this category, so `bodySystemGroupedContent` below
+// simply renders nothing for "profile" there (empty categories are
+// filtered out, same as any other unused category already is).
+// OWNER DIRECTIVE (2026-10-05, same day follow-up) "Workflow-First
+// Ordering" -- the owner's first cut of this fix put "profile" BEFORE
+// "core", so a nurse opening Infection saw "Patient Profile" (allergies)
+// before "Infection Overview" -- i.e. before they could even answer "is
+// there a current infection concern?". Rejected: the first question a
+// nurse answers when opening a body system is the body system's own
+// overview question, never patient-reference data. "profile" is now
+// LAST in the order (after "observation"/Notes) so Allergies/Immune
+// Status remain visible+editable+chart-wide but never lead the
+// workflow. Label changed to "Patient Reference Information" to make
+// the "this is reference data, not today's assessment" framing explicit
+// in the UI heading itself.
+const BODY_SYSTEM_CATEGORY_ORDER = ["core", "symptoms", "functional", "disease", "treatments", "response", "observation", "profile"];
+const BODY_SYSTEM_CATEGORY_LABELS = {
+  profile: "Patient Reference Information",
+  core: "Core Findings",
+  symptoms: "Symptom Impact",
+  functional: "Functional Impact",
+  disease: "Disease-Specific Findings",
+  treatments: "Current Management",
+  response: "Clinical Status Change",
+  observation: "Nurse Observation",
+};
+
+// Deterministic, plain-language restatement of ALREADY-DOCUMENTED fields
+// for a single body system (owner directive: "only include findings
+// already documented... do not generate/infer/create findings"). Every
+// line reads one specific, already-existing field and only appears when
+// that field has a real charted value -- no new fields, nothing derived
+// or predicted. Shared by the per-system "Summary" strip (Body Systems
+// clinical-workflow layout) and the combined cross-system Structured
+// Findings panel so the two never drift out of sync.
+export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
+  const findings = [];
+  const d = sectionData || {};
+  switch (sectionKey) {
+    case "neurological": {
+      if (d.consciousness && !["Alert", "Awake"].includes(d.consciousness)) {
+        findings.push(`Level of consciousness: ${d.consciousness}.`);
+      }
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+      // item #5 -- "Expand Structured Findings ... Orientation". Only the
+      // negative "Disoriented" flag surfaced here before; the positive x4
+      // state (equally clinically relevant to confirm, and already
+      // captured by the Orientation card's own "Mark Oriented x4" quick
+      // action) was invisible. Same four existing fields -- nothing new.
+      if (d.orientation?.disoriented) {
+        findings.push(`Disoriented.`);
+      } else if (d.orientation?.time && d.orientation?.place && d.orientation?.person && d.orientation?.situation) {
+        findings.push(`Orientation: Oriented x4.`);
+      }
+      // GitHub Review Major Issue #6 -- Sleep/Responsiveness and
+      // Communication/Behavioral findings weren't surfacing in the
+      // Structured Findings rail, making Neurological's own findings look
+      // thin next to other systems. Neurological is already first in the
+      // panel's fixed section order (see bodySystemsStructuredFindings);
+      // this only enriches what that first section actually shows.
+      //
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+      // item #5 -- "Expand Structured Findings ... Sleep Findings,
+      // Responsiveness" as their own distinct lines. `sleepRest.
+      // sleepPattern` previously wasn't read here at all, so an abnormal
+      // Sleep Pattern selection (e.g. "Insomnia") could go completely
+      // unmentioned whenever Change Since Prior Visit was left at "No
+      // Change". All three now surface independently instead of the
+      // prior "show only one of Change-Since-Prior OR Responsiveness"
+      // branching -- no field removed, every one already existed.
+      if (d?.sleepRest?.sleepPattern && !["Normal", ""].includes(d.sleepRest.sleepPattern)) {
+        findings.push(`Sleep pattern: ${d.sleepRest.sleepPattern}.`);
+      }
+      if (d?.sleepRest?.changeSincePrior && d.sleepRest.changeSincePrior !== "No Change") {
+        findings.push(`Sleep/responsiveness change: ${d.sleepRest.changeSincePrior}.`);
+      }
+      if (d?.sleepRest?.responsiveness && !["Easily Aroused", ""].includes(d.sleepRest.responsiveness)) {
+        // Display the clinical-finding noun ("Somnolence"), not the stored
+        // legacy adjective value ("Somnolent") -- GitHub Directive
+        // (2026-09-28) Major Concern #1/#2.
+        const responsivenessDisplay = d.sleepRest.responsiveness === "Somnolent" ? "Somnolence" : d.sleepRest.responsiveness;
+        findings.push(`Responsiveness: ${responsivenessDisplay}.`);
+      }
+      if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
+        findings.push(`Communication: ${d.communication}.`);
+      }
+      if (d.cognition) findings.push(`Cognitive status: ${d.cognition}.`);
+      // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+      // single authoritative score (computeSnsCognitiveScreen), not a
+      // locally-recomputed sum. Previously showed "BIMS score: X/9" (a
+      // name/denominator that conflicted with the Cognitive Summary
+      // card's then-assumed CMS BIMS 0-15 scale) and read from
+      // `hopeItems.n0500` (the official HOPE Scheduled-Opioid code).
+      const cognitiveScreenResult = computeSnsCognitiveScreen(d.cognitiveScreen);
+      if (cognitiveScreenResult.completionStatus === "COMPLETE") {
+        findings.push(`SNS Cognitive Screen: ${cognitiveScreenResult.rawScore} of ${cognitiveScreenResult.maxScore} (internal clinical screen).`);
+      } else if (cognitiveScreenResult.completionStatus === "PARTIAL") {
+        findings.push(`SNS Cognitive Screen incomplete: ${cognitiveScreenResult.missingItems.join(", ")} not yet documented.`);
+      }
+      if (d.delirium) findings.push(`Delirium present.`);
+      const behavioral = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+      if (behavioral.length > 0) findings.push(`Behavioral: ${behavioral.join(", ")}.`);
+      if (d.motorDeficit) findings.push(`Motor deficit present${d.affectedSide ? ` (${d.affectedSide})` : ""}.`);
+      if (d.balance && !["Steady", "Normal"].includes(d.balance)) findings.push(`Balance: ${d.balance}.`);
+      break;
+    }
+    case "respiratory": {
+      // OWNER DIRECTIVE (2026-10-19) "Respiratory Summary Prioritization" --
+      // previously this case only ever read oxygenTherapy.inUse, so any
+      // documented SOB/lung-sounds/respiratory-pattern/cough finding was
+      // silently omitted from the Summary/Structured Findings strip no
+      // matter how severe, leaving oxygen as the sole (and least urgent)
+      // line. Same already-existing fields the Review summary
+      // (respiratorySummaryLine) reads -- no new fields, no derived/
+      // inferred values -- just ordered most-clinically-significant-first,
+      // matching the pattern every other body system case already uses
+      // (e.g. neurological: consciousness before cognition; cardiovascular:
+      // chest pain before fatigue). Baseline/normal selections ("None",
+      // "Clear", "Regular"/"Normal") are excluded, same as skin/neuro.
+      if (d.sobSeverity && d.sobSeverity !== "None") {
+        const exertion = d.exertionLevel ? ` (${d.exertionLevel})` : "";
+        findings.push(`${d.sobSeverity} shortness of breath${exertion}.`);
+      }
+      const abnormalRespirations = (d.respirations || []).filter((r) => r && !["Regular", "Normal"].includes(r));
+      if (abnormalRespirations.length > 0) {
+        findings.push(`Respiratory pattern: ${abnormalRespirations.join(", ")}.`);
+      }
+      const abnormalLungSounds = (d.lungSounds || []).filter((s) => s && s !== "Clear");
+      if (abnormalLungSounds.length > 0) {
+        findings.push(`Lung sounds: ${abnormalLungSounds.join(", ")}.`);
+      }
+      if (d.coughType && d.coughType !== "None") {
+        const sputum = d.sputumCharacter ? ` — ${d.sputumCharacter}` : "";
+        findings.push(`${d.coughType} cough documented${sputum}.`);
+      }
+      if (d.oxygenTherapy?.inUse) {
+        const detail = [d.oxygenTherapy.litersPerMinute && `${d.oxygenTherapy.litersPerMinute} L/min`, d.oxygenTherapy.deliveryMode].filter(Boolean).join(", ");
+        findings.push(`Continuous oxygen therapy in use${detail ? ` (${detail})` : ""}.`);
+      }
+      if (d.ventilator?.shortTermVentilator || d.ventilator?.longTermVentilator) {
+        findings.push(`${d.ventilator.shortTermVentilator ? "Short-term" : "Long-term"} ventilator support in use.`);
+      }
+      break;
+    }
+    case "cardiovascular": {
+      if (d.chestPain?.present === "Yes") {
+        findings.push(`Chest pain present${d.chestPain.type ? ` (${d.chestPain.type})` : ""}.`);
+      }
+      if (d.edema?.present === "Yes") {
+        findings.push(`${d.edema.severity || "Edema"} documented${d.edema.location?.length ? ` (${d.edema.location.join(", ")})` : ""}.`);
+      }
+      if (d.syncope === "Yes") findings.push(`Syncope (fainting episodes) documented.`);
+      if (d.dizziness && d.dizziness !== "None") findings.push(`Dizziness: ${d.dizziness}.`);
+      if (d.fatigue && d.fatigue !== "None") findings.push(`Fatigue: ${d.fatigue}.`);
+      // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+      // Correction" -- Cardiovascular documents current signs/symptoms/
+      // assessment findings, not disease/diagnosis conclusions. Heart
+      // Failure is a diagnosis (owned by the HOPE I0600 comorbidity
+      // workflow, auto-derived from coded Diagnosis, and by Diagnosis &
+      // LCD/certification), so `heartFailurePresent`/`heartFailureType`
+      // no longer drive Structured Findings. The raw fields are untouched
+      // (never deleted/nulled) and remain visible read-only on Path 2 --
+      // see the Path 2 legacy display block in the field-render loop.
+      break;
+    }
+    case "skin": {
+      if ((d.wounds || []).length > 0) {
+        findings.push(`${d.wounds.length} active wound${d.wounds.length === 1 ? "" : "s"} documented — ongoing wound care oversight required.`);
+      }
+      if (d.skinColorFinding && d.skinColorFinding !== "Normal") findings.push(`Skin color: ${d.skinColorFinding}.`);
+      if (d.skinTemperature && !["Warm", ""].includes(d.skinTemperature)) findings.push(`Skin temperature: ${d.skinTemperature}.`);
+      if (d.skinMoisture && d.skinMoisture !== "Dry") findings.push(`Skin moisture: ${d.skinMoisture}.`);
+      if (d.skinEdema?.severity && d.skinEdema.severity !== "None") {
+        findings.push(`Skin edema: ${d.skinEdema.severity}${d.skinEdema.location ? ` (${d.skinEdema.location})` : ""}.`);
+      }
+      const additionalSkinFindings = (d.additionalSkinFindings || []).filter((f) => f && f !== "None");
+      if (additionalSkinFindings.length > 0) findings.push(`Additional skin findings: ${additionalSkinFindings.join(", ")}.`);
+      break;
+    }
+    case "gastrointestinal": {
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Structured
+      // Findings Integration" -- previously ONLY Ostomy/Feeding Tube
+      // presence reached Summary/Structured Findings; a documented
+      // Moderate/Severe GI symptom produced zero visible signal. "None"
+      // (baseline/normal) selections are excluded, same convention as
+      // every other body system case above.
+      if (d.nausea && d.nausea !== "None") findings.push(`Nausea: ${d.nausea}.`);
+      if (d.vomiting && d.vomiting !== "None") {
+        const occurrences = d.vomitingOccurrences24h ? ` (${d.vomitingOccurrences24h}x/24h)` : "";
+        findings.push(`Vomiting: ${d.vomiting}${occurrences}.`);
+      }
+      if (d.diarrhea && d.diarrhea !== "None") findings.push(`Diarrhea: ${d.diarrhea}.`);
+      if (d.constipation && d.constipation !== "None") {
+        const size = d.lastBMSize ? `, last BM size: ${d.lastBMSize}` : "";
+        const straining = d.straining && d.straining !== "None" ? `, straining: ${d.straining}` : "";
+        findings.push(`Constipation: ${d.constipation}${size}${straining}.`);
+      }
+      if (d.stoolConsistency && d.stoolConsistency !== "Unable To Determine") {
+        findings.push(`Stool consistency: ${d.stoolConsistency}.`);
+      }
+      if ((d.reasonBowelRegimenNotInitiated || "").trim()) {
+        findings.push(`Bowel regimen not initiated: ${d.reasonBowelRegimenNotInitiated.trim()}.`);
+      }
+      // OWNER DIRECTIVE (2026-10-29) "GI Rework" -- feedingTube.present/
+      // ostomy.present now store "Yes"/"No"/"" (segmentedTriState) instead
+      // of a plain boolean; normalizeTriState keeps accepting a
+      // pre-existing legacy `true` value too, so historical records still
+      // surface this finding exactly as before.
+      if (normalizeTriState(d.ostomy?.present) === "Yes") findings.push(`Ostomy present (${d.ostomy.type || "type not specified"}).`);
+      if (normalizeTriState(d.feedingTube?.present) === "Yes") findings.push(`Feeding tube present (${d.feedingTube.type || "type not specified"}).`);
+      break;
+    }
+    case "genitourinary": {
+      if (d.catheter?.present) findings.push(`Urinary catheter present (${d.catheter.type || "type not specified"}).`);
+      break;
+    }
+    case "nutrition": {
+      if (d.weightLossPastSixMonths && !/^(none|no)$/i.test(d.weightLossPastSixMonths)) {
+        findings.push(`Weight loss documented: ${d.weightLossPastSixMonths}.`);
+      }
+      break;
+    }
+    case "endocrine": {
+      if (d.diabetes?.type && !["Not diabetic", "Unknown"].includes(d.diabetes.type)) {
+        findings.push(`Diabetes (${d.diabetes.type})${d.diabetes.insulinType ? `, on insulin` : ""}.`);
+      }
+      break;
+    }
+    case "infection": {
+      // OWNER DIRECTIVE (2026-10-05) "Infection Unable-to-Assess Removal
+      // + Allergy Summary Order" -- all documented allergies (any
+      // severity, including mild/unclassified) surface first via
+      // `extra.allergyAlerts` (pre-formatted, pre-sorted severest-first,
+      // built once from the same canonical `patient_allergies` records
+      // shown in Patient Reference Information -- no new field/ontology,
+      // no duplicate fetch/format here). Required display order (owner
+      // spec section 11): A. Allergies B. Active Infection C. Current
+      // resistant organism D. Antibiotic therapy and precautions
+      // E. Immunosuppression F. Infection history and other documented
+      // findings (history-of-resistant-organism lives here, not with the
+      // current/active resistant-organism line in C). Display order
+      // only -- no underlying clinical fact is changed.
+      (extra.allergyAlerts || []).forEach((line) => findings.push(line));
+      const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
+      if (activeInfections.length > 0) {
+        const other = activeInfections.includes("Other") && d.currentInfectionOther ? ` (${d.currentInfectionOther})` : "";
+        findings.push(`Active infection: ${activeInfections.join(", ")}${other}.`);
+      }
+      const resistantCurrent = (d.antibioticResistantInfection || []).filter((i) => i && i !== "None");
+      if (resistantCurrent.length > 0) findings.push(`Current resistant organism: ${resistantCurrent.join(", ")}.`);
+      if (d.antibioticTherapyStatus && d.antibioticTherapyStatus !== "Not receiving antibiotics") {
+        const med = d.antibioticMedicationName ? ` (${d.antibioticMedicationName})` : "";
+        findings.push(`${d.antibioticTherapyStatus}${med}.`);
+      }
+      const precautions = (d.precautions || []).filter((p) => p && p !== "Standard");
+      if (precautions.length > 0) findings.push(`${precautions.join(", ")} precautions required.`);
+      if (d.immunosuppressed) {
+        const reason = d.immunosuppressionReason === "Other" ? d.immunosuppressionReasonOther : d.immunosuppressionReason;
+        findings.push(`Immunosuppressed${reason ? ` (${reason})` : ""}.`);
+      }
+      const resistantHistory = (d.historyOfResistantInfections || []).filter((i) => i && i !== "None");
+      if (resistantHistory.length > 0) findings.push(`History of resistant organism: ${resistantHistory.join(", ")}.`);
+      // BUGFIX (2026-10-05) "Requires Follow-Up Must Show Its Reason" --
+      // this findings list (which drives both the Summary bullet list
+      // and the Structured Findings right-rail) previously never
+      // surfaced documented infection-history facts at all, so when
+      // infection history was the only non-allergy data present,
+      // "REQUIRES FOLLOW-UP" (at the time still triggered by history
+      // alone) appeared next to allergy-only-looking text. Per the
+      // follow-up OWNER DIRECTIVE "Infection Follow-Up Governance
+      // Correction", `computeInfectionRequiresFollowUp` no longer treats
+      // history alone as a follow-up trigger -- but this line remains:
+      // infection history is still a real, clinically-relevant
+      // (historical/disease-burden) finding that belongs in the display,
+      // clearly labeled as history, distinct from "Active infection:".
+      // Mirrors `infectionSummaryLine`'s equivalent line.
+      if (d.recurrentInfection || (d.infectionHistoryTypes || []).length > 0 || d.infectionHistory) {
+        const historyTypes = (d.infectionHistoryTypes || []).filter((i) => i && i !== "Other" && i !== "None");
+        const other = (d.infectionHistoryTypes || []).includes("Other") && d.infectionHistoryOther ? [d.infectionHistoryOther] : [];
+        const combined = [...historyTypes, ...other];
+        findings.push(`Infection history: ${combined.length > 0 ? combined.join(", ") : (d.infectionHistory || "Recurrent infection documented")}.`);
+      }
+      break;
+    }
+    case "musculoskeletal": {
+      if (d.weakness && d.weakness !== "None") findings.push(`Weakness: ${d.weakness}.`);
+      if (d.paralysis && d.paralysis !== "None") findings.push(`Disability: ${d.paralysis}.`);
+      if (d.contractures && d.contractures !== "None") {
+        findings.push(`Contractures: ${d.contractures}${d.contracturesLocation?.length ? ` (${d.contracturesLocation.join(", ")})` : ""}.`);
+      } else if (d.contracturesPresent) {
+        findings.push(`Contractures present${d.contracturesLocation?.length ? ` (${d.contracturesLocation.join(", ")})` : ""}.`);
+      }
+      if (d.rigidity && d.rigidity !== "None") findings.push(`Rigidity: ${d.rigidity}.`);
+      else if (d.rigidityPresent) findings.push(`Rigidity present.`);
+      const fallsCount = parseInt(d.fallHistory?.fallsLast90Days, 10);
+      if (Number.isFinite(fallsCount) && fallsCount > 0) {
+        findings.push(`${fallsCount} fall${fallsCount === 1 ? "" : "s"} in last 90 days${d.fallHistory?.fallInjuries ? ` (${d.fallHistory.fallInjuries})` : ""}.`);
+      }
+      break;
+    }
+    default:
+      break;
+  }
+  return findings;
+}
+
+// OWNER DIRECTIVE (2026-10-05) "Infection Is Not A Patient-Interview
+// Workflow" item 12, "Do Not Label Every Allergy / Immunosuppression
+// 'Requires Follow-Up'" -- a documented allergy or immunosuppressed
+// status is a patient-safety FACT, not by itself an Infection follow-up
+// trigger. Computed separately from `computeBodySystemFindings`'s
+// `primaryIssues` (which intentionally still lists allergies/
+// immunosuppression for display) so the "REQUIRES FOLLOW-UP" badge
+// reflects only genuine infection-clinical findings: active infection,
+// current resistant organism, active antibiotic therapy, or non-standard
+// precautions. Mirrors the same field checks already used above in the
+// "infection" findings case -- deliberately excludes allergyAlerts and
+// immunosuppressed/immunosuppressionReason.
+//
+// OWNER DIRECTIVE (2026-10-05) "Infection Follow-Up Governance
+// Correction" -- PURELY HISTORICAL infection findings (recurrent
+// infection / infection-history quick-picks such as "Recurrent UTI" or
+// "Prior sepsis" / free-text infection-history notes / history of a
+// resistant organism) are hospice disease-burden and prognosis-support
+// indicators, not by themselves active clinical problems. They are
+// deliberately EXCLUDED from this trigger set so "REQUIRES FOLLOW-UP"
+// never fires from history alone -- it only fires when at least one
+// CURRENT signal (active infection, current resistant organism, active
+// antibiotic therapy, or non-standard precautions) is also documented.
+// Historical findings still surface in `computeBodySystemFindings`'s
+// "infection" findings list (display-only, clearly labeled "History of
+// resistant organism" / "Infection history") -- this function only
+// controls the follow-up badge, not what is shown.
+export function computeInfectionRequiresFollowUp(d = {}) {
+  const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
+  const resistantCurrent = (d.antibioticResistantInfection || []).filter((i) => i && i !== "None");
+  const activeAntibiotics = Boolean(d.antibioticTherapyStatus && d.antibioticTherapyStatus !== "Not receiving antibiotics");
+  const nonStandardPrecautions = (d.precautions || []).some((p) => p && p !== "Standard");
+  return activeInfections.length > 0
+    || resistantCurrent.length > 0
+    || activeAntibiotics
+    || nonStandardPrecautions;
+}
+
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" -- no clinical
+// consensus threshold is stored anywhere in RNICA for "last BM exceeds
+// threshold"; 3 days is a commonly used conservative bowel-protocol
+// trigger point, used here ONLY to decide whether the optional
+// "Information Source" field is offered (never a diagnosis, never a
+// required field, never a follow-up trigger by itself). Flagged for
+// explicit owner confirmation; easy to change in one place if a
+// different value is preferred.
+export const GI_LAST_BM_THRESHOLD_DAYS = 3;
+
+export function giLastBMExceedsThreshold(lastBM) {
+  if (!lastBM) return false;
+  const parsed = new Date(lastBM);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const diffDays = (Date.now() - parsed.getTime()) / (1000 * 60 * 60 * 24);
+  return diffDays > GI_LAST_BM_THRESHOLD_DAYS;
+}
+
+// OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision,
+// Follow-Up Revision" -- supersedes the Phase 1 rule that treated ANY
+// Moderate/Severe symptom alone as sufficient. Owner explicitly required:
+// "Do not generate REQUIRES FOLLOW-UP solely because Constipation =
+// Severe [or] Last BM Size = Small. Additional supporting findings
+// should be present first." Each symptom now needs a genuinely
+// supporting, currently-documented finding before it contributes to
+// follow-up -- never historical burden, never device presence (Ostomy/
+// Feeding Tube) alone, never severity in isolation:
+//  - Constipation: only when Moderate/Severe AND Straining is also
+//    Moderate/Severe (the "meaningful bowel-movement" combination).
+//  - Diarrhea: only when Moderate/Severe AND Stool Character is Watery
+//    (frank watery output, not merely "diarrhea" as a label).
+//  - Vomiting: only when Moderate/Severe AND a documented occurrence
+//    count of 3 or more in 24 hours (repeated vomiting with supported
+//    current burden, not a single severity selection).
+//  - Concerning exam findings: a clinically concerning Abdomen finding
+//    (Distended/Rigid/Tender) or documented Ascites.
+//  - A bowel regimen that could not be initiated, or a nurse-selected
+//    GI-Related Decline/New Finding Clinical Status Change, remain
+//    sufficient on their own (unchanged from Phase 1).
+// Nausea alone and Mild severity of any symptom never contribute.
+export function computeGastrointestinalRequiresFollowUp(d = {}) {
+  const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
+  const vomitingOccurrences = parseInt(d.vomitingOccurrences24h, 10);
+  const constipationWithStraining = isModOrSevere(d.constipation) && isModOrSevere(d.straining);
+  const diarrheaWithWateryOutput = isModOrSevere(d.diarrhea) && d.stoolConsistency === "Watery";
+  const vomitingWithBurden = isModOrSevere(d.vomiting) && Number.isFinite(vomitingOccurrences) && vomitingOccurrences >= 3;
+  // OWNER DIRECTIVE (2026-10-06) "GI Rework -- Remaining Legacy Controls"
+  // -- ascites converted from a plain boolean checkbox to the shared
+  // segmentedTriState ("Yes"/"No"/""); normalizeTriState keeps accepting
+  // a pre-existing legacy `true` value too, so historical records still
+  // surface this finding exactly as before. A plain `Boolean(d.ascites)`
+  // would wrongly treat the new "No" string as present (non-empty string
+  // is truthy), so this must check the normalized value explicitly.
+  const concerningExamFinding = ["Distended", "Rigid", "Tender"].includes(d.abdomen) || normalizeTriState(d.ascites) === "Yes";
+  const symptomBurden = constipationWithStraining || diarrheaWithWateryOutput || vomitingWithBurden || concerningExamFinding;
+  const bowelRegimenConcern = Boolean((d.reasonBowelRegimenNotInitiated || "").trim());
+  const decliningStatus = d.clinicalStatusChange === "GI-Related Decline Observed Since Prior Assessment"
+    || d.clinicalStatusChange === "New GI-Related Finding Since Prior Assessment";
+  return symptomBurden || bowelRegimenConcern || decliningStatus;
+}
+
+// OWNER DIRECTIVE (2026-10-21) "Infection Language Standard" item 14,
+// "Infection Supporting-Findings Gating" -- a single shared validator so
+// the gating logic lives in one place instead of scattered conditionals
+// throughout the render loop. Pure function: takes the proposed
+// `clinicalStatusChange` selection, the Infection section's own data, and
+// a small context object ({ hasPriorInfectionAssessment }, see
+// assessmentUiProfile.hasPriorInfectionAssessment), and returns
+// { valid, code, message, supportingFieldIds, comparisonAssessmentId,
+// comparisonDate } -- never throws, never mutates its inputs.
+//
+// "Not Applicable" is always valid (never gated). Each of the other four
+// options requires the specific Infection fields that actually support
+// its claim to already be documented; none are inferred from silence,
+// unchanged checkboxes, or normal temperature alone. `comparisonAssessmentId`/
+// `comparisonDate` are passed through from context only -- no real
+// baseline-assessment-selection feature exists yet (see
+// hasPriorInfectionAssessment comment above), so both are null until that
+// infrastructure exists.
+export function validateInfectionClinicalStatusSelection(value, d = {}, context = {}) {
+  const code = INFECTION_CLINICAL_STATUS_CODES[value];
+  const hasPriorAssessment = Boolean(context.hasPriorInfectionAssessment);
+  const comparisonAssessmentId = context.comparisonAssessmentId || null;
+  const comparisonDate = context.comparisonDate || null;
+  const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
+  const resistantCurrent = (d.antibioticResistantInfection || []).filter((i) => i && i !== "None");
+  const activeOrRecentAntibiotics = d.antibioticTherapyStatus === "Currently receiving antibiotics" || d.antibioticTherapyStatus === "Recently completed antibiotics";
+  const base = { comparisonAssessmentId, comparisonDate };
+
+  if (!code) {
+    return { valid: false, code: null, message: "Select one of the five approved Infection Clinical Status Change options.", supportingFieldIds: [], ...base };
+  }
+  if (code === "not_applicable") {
+    return { valid: true, code, message: "", supportingFieldIds: [], ...base };
+  }
+  if (!hasPriorAssessment) {
+    // Item 14, SOC/initial-assessment special-casing -- a status that
+    // claims a change "since prior assessment" cannot be clinically
+    // supported when no prior Infection assessment exists to compare
+    // against (e.g. this patient's SOC/initial assessment).
+    return {
+      valid: false, code,
+      message: "This option compares against a prior Infection assessment. No prior Infection assessment is available for this patient yet.",
+      supportingFieldIds: [], ...base,
+    };
+  }
+  if (code === "infection_findings_reduced") {
+    const supported = d.antibioticTreatmentEffective === "Improving";
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the specific finding(s) that improved (e.g. Antibiotic Therapy \u2192 Treatment Effective: Improving) before selecting this option.",
+      supportingFieldIds: ["antibioticTreatmentEffective"], ...base,
+    };
+  }
+  if (code === "infection_interventions_appear_effective") {
+    const supported = activeOrRecentAntibiotics && d.antibioticTreatmentEffective === "Improving";
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the active/recent intervention (Antibiotic Therapy) and its documented response (Treatment Effective: Improving) before selecting this option.",
+      supportingFieldIds: ["antibioticTherapyStatus", "antibioticTreatmentEffective"], ...base,
+    };
+  }
+  if (code === "infection_decline_observed") {
+    const supported = d.antibioticTreatmentEffective === "Worsening" || resistantCurrent.length > 0 || activeInfections.length > 0;
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the specific infection-related finding that declined (treatment response, a current active infection, or a new resistant organism) before selecting this option.",
+      supportingFieldIds: ["antibioticTreatmentEffective", "antibioticResistantInfection", "currentInfections"], ...base,
+    };
+  }
+  if (code === "infection_new_finding") {
+    const supported = activeInfections.length > 0;
+    return {
+      valid: supported, code,
+      message: supported ? "" : "Document the new infection-related finding under Active Infection before selecting this option.",
+      supportingFieldIds: ["currentInfections"], ...base,
+    };
+  }
+  return { valid: true, code, message: "", supportingFieldIds: [], ...base };
+}
+
+// GitHub Directive (2026-09-28) Critical Finding #7 -- blank documentation
+// must never be presented as "no significant findings" (that implies an
+// active assessment was performed and came back normal). Deep-walks the
+// section's stored data; only once at least one field has actually been
+// touched does the "no significant findings" / "findings present" status
+// apply. Generic across all Body Systems sections (same defect could occur
+// anywhere computeBodySystemSummary is used), not a neurological-only patch.
+function hasAnyDocumentedValue(value) {
+  if (value == null) return false;
+  if (typeof value === "boolean") return value === true;
+  if (typeof value === "string") return value.trim() !== "";
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) return value.some(hasAnyDocumentedValue);
+  if (typeof value === "object") return Object.values(value).some(hasAnyDocumentedValue);
+  return false;
+}
+
+// GitHub Review Major Issue #5 -- the generic "Findings Present" Summary
+// status reads as a warning banner, not a clinical picture. For
+// Neurological only, composes a short, plain-language narrative from
+// fields the nurse has actually already selected (consciousness,
+// orientation, sleep/responsiveness change, communication, motor deficit,
+// behavioral symptoms, overall clinical status change) -- every clause
+// reads one existing field and is omitted when that field is blank; never
+// infers, predicts, or compares against a prior visit beyond the nurse's
+// own "Change Since Prior" selection. Scoped to sectionKey ===
+// "neurological" only so every other Body System's Summary behavior is
+// untouched.
+const NEURO_CONSCIOUSNESS_ALIASES = { Awake: "Alert", Coma: "Comatose" };
+
+// OWNER DIRECTIVE (2026-09-28) "Clinical Blocker -- Consciousness Model" --
+// Awake and Alert are distinct neurological concepts (a patient may be
+// awake but not alert, e.g. dementia/delirium/encephalopathy/end-of-life
+// decline). The stored canonical value stays "Alert" (no schema/migration
+// change, no historical rewrite), but display text -- both the option
+// label and every narrative clause -- now reads "Awake" only. The
+// narrative must never assert "Alert" unless Alertness is independently
+// documented, and no separate Alertness field exists yet, so "Alert" is
+// never emitted.
+const NEURO_CONSCIOUSNESS_DISPLAY = { Alert: "Awake" };
+
+// GitHub Directive (2026-09-28) "Neurological Review -- Average Sleep
+// Hours, Clinical Relevance, and Final Density Refinement" Issue #2 --
+// "Overall Change" must always resolve to an explicit clinical sentence
+// (stable AND declining both need to say so), not be silently dropped
+// whenever it isn't the single "no change" baseline value. One phrase
+// per NEURO_OVERALL_CHANGE_OPTIONS value; kept next to that constant's
+// definition in spirit but colocated here where it's consumed.
+const NEURO_OVERALL_CHANGE_NARRATIVE = {
+  "Initial Assessment": "Initial neurological assessment; no prior comparison available.",
+  "No Significant Change": "No neurological decline documented.",
+  "Improved": "Neurological status improved since prior assessment.",
+  "Gradual Decline": "Gradual neurological decline documented.",
+  "New or Worsening Concern": "New or worsening neurological concern documented.",
+  "Fluctuating": "Neurological status fluctuating.",
+  "Unable to Compare": "Unable to compare to prior neurological assessment.",
+};
+
+export function computeNeurologicalNarrative(d) {
+  const clauses = [];
+
+  // Bounded Compatibility Increment (2026-09-28) Section 7/AC-02 -- when
+  // the nurse can't complete the assessment, the summary must say ONLY
+  // that (plus the controlled reason) as two short sentences, and must
+  // never add an unrelated clinical clause (e.g. Communication) just
+  // because the Overview path was set to Unable to Assess. Independently
+  // documented findings on OTHER fields are not read here at all -- this
+  // is an intentional early return, not a filter.
+  if (d.neuroOverview === "Unable to Assess") {
+    const reason = d.neuroUnableToAssessReason === "Other" && d.neuroUnableToAssessOther
+      ? d.neuroUnableToAssessOther
+      : d.neuroUnableToAssessReason;
+    return reason
+      ? `Neurological assessment unable to complete. Reason: ${reason}.`
+      : "Neurological assessment unable to complete.";
+  }
+
+  const consciousnessCanonical = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
+  const consciousnessDisplay = NEURO_CONSCIOUSNESS_DISPLAY[consciousnessCanonical] || consciousnessCanonical;
+  if (consciousnessDisplay) clauses.push(`${consciousnessDisplay}.`);
+
+  const o = d.orientation || {};
+  if (o.disoriented) {
+    clauses.push("Disoriented.");
+  } else {
+    const orientedTo = [o.person && "person", o.place && "place", o.time && "time", o.situation && "situation"].filter(Boolean);
+    if (orientedTo.length === 4) clauses.push("Oriented x4.");
+    else if (orientedTo.length > 0) clauses.push(`Oriented to ${orientedTo.join(", ")}.`);
+  }
+
+  // Issue #2/#10 -- Sleep/Responsiveness is the strongest section of the
+  // page and the summary must reflect it every time it's documented, not
+  // only when abnormal, so "Normal sleep pattern. Easily aroused." reads
+  // as clearly as any decline sentence.
+  const sleep = d.sleepRest || {};
+  const sleepChangeText = {
+    "Sleeping More": "Sleeping more than prior assessment.",
+    "Increased Somnolence": "Increased somnolence since prior assessment.",
+    "More Difficult To Arouse": "More difficult to arouse since prior assessment.",
+    "New Unresponsiveness": "New unresponsiveness since prior assessment.",
+  };
+  if (sleep.changeSincePrior && sleepChangeText[sleep.changeSincePrior]) {
+    clauses.push(sleepChangeText[sleep.changeSincePrior]);
+  } else if (sleep.sleepPattern) {
+    clauses.push(sleep.sleepPattern === "Normal" ? "Usual sleep pattern." : `Sleep pattern: ${sleep.sleepPattern}.`);
+  }
+  const responsivenessText = {
+    "Easily Aroused": "Easily aroused.",
+    // GitHub Directive (2026-09-28) "Neurological Review -- Major Success,
+    // But We Are Drifting..." Major Concern #1 -- narrate the clinical
+    // finding ("Somnolence documented."), not an adjective describing the
+    // patient ("Patient somnolent."). Stored value is unchanged (still
+    // "Somnolent" -- see the option's {value,label} split below), so this
+    // is a display-only rewording.
+    Somnolent: "Somnolence documented.",
+    "Difficult To Arouse": "Difficult to arouse.",
+    "Minimally Responsive": "Minimally responsive.",
+    Unresponsive: "Unresponsive.",
+    "Unable to assess": "Responsiveness unable to assess.",
+  };
+  if (sleep.responsiveness && responsivenessText[sleep.responsiveness]) {
+    clauses.push(responsivenessText[sleep.responsiveness]);
+  }
+
+  if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) {
+    clauses.push("Communication limited.");
+  } else if (d.communication === "Normal" || d.communication === "Clear") {
+    // GitHub Directive (2026-09-28) "Neurological Overview Gate" Section
+    // 18 example -- only say "no concern" when the nurse deliberately
+    // selected the no-concern value, never inferred from a blank field.
+    clauses.push("No current communication concern identified.");
+  }
+  if (d.hearing && d.hearing !== "Adequate") {
+    clauses.push(`Hearing: ${d.hearing}.`);
+  }
+  if (d.vision && d.vision !== "Adequate") {
+    clauses.push(`Vision: ${d.vision}.`);
+  }
+  const sensoryDeficits = (d.sensoryDeficits || []).filter(Boolean);
+  if (sensoryDeficits.length > 0) {
+    clauses.push(`Sensory deficits: ${sensoryDeficits.join(", ")}.`);
+  }
+
+  // Issue #7 -- Motor Status is now a 3-state primary control (None
+  // Identified / Present / Unable to Assess). Legacy records that only
+  // ever set the boolean `motorDeficit` (never the new `motorStatus`
+  // path) still narrate correctly via the same fallback used for display.
+  const motorPresent = d.motorStatus === "Present" || (d.motorStatus === undefined && d.motorDeficit === true);
+  if (motorPresent) {
+    clauses.push(`Motor deficit present${d.affectedSide ? ` (${d.affectedSide})` : ""}.`);
+  } else if (d.motorStatus === "Unable to Assess") {
+    clauses.push("Motor status unable to assess.");
+  } else if (d.motorStatus === "None Identified") {
+    clauses.push("No motor deficit identified.");
+  } else if (d.motorBalanceStatus === "No New Concern") {
+    clauses.push("No new motor or balance concern identified.");
+  } else if (d.motorBalanceStatus === "Patient Does Not Ambulate") {
+    clauses.push("Patient does not ambulate.");
+  }
+
+  // Issue #2 -- "reflect only documented items": a never-touched field
+  // must not generate a fabricated "no concerns" sentence (that's an
+  // inferred-normal-from-blank-data error, not a documented finding). Only
+  // emit a clause when the nurse has actually selected something, and
+  // treat "Peaceful" as its own documented (reassuring) finding rather
+  // than silently discarding it.
+  const behavioralAll = (d.symptomsDemeanor || []).filter(Boolean);
+  if (behavioralAll.length > 0) {
+    const concerns = behavioralAll.filter((s) => s !== "Peaceful");
+    clauses.push(concerns.length > 0 ? `Behavioral: ${concerns.join(", ")}.` : "Peaceful / calm mood documented.");
+  } else if (d.behavioralStatus === "No Current Concern") {
+    clauses.push("No behavioral concern identified.");
+  }
+
+  if (d.clinicalStatusChange && NEURO_OVERALL_CHANGE_NARRATIVE[d.clinicalStatusChange]) {
+    clauses.push(NEURO_OVERALL_CHANGE_NARRATIVE[d.clinicalStatusChange]);
+  }
+
+  return clauses.join(" ");
+}
+
+// GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" -- the
+// single authoritative SNS Cognitive Screen calculation. Every consumer
+// (Cognitive Summary card, Neurological Summary, Structured Findings,
+// Finalization) MUST call this function; no component may compute its own
+// score or denominator independently -- that duplication (one place
+// assuming a CMS 0-15 BIMS scale, another correctly using this screen's
+// real 0-9 range) is exactly what produced the "8/15 vs 8/9" owner-reported
+// inconsistency this directive corrects.
+//
+// This is NOT the official CMS BIMS (Brief Interview for Mental Status).
+// docs/compliance/hope/HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv (sourced from
+// the real HOPE Guidance Manual v1.02) shows HOPE has no cognitive-
+// interview item at all -- N0500/N0510/N0520 are the official Scheduled
+// Opioid / PRN Opioid / Bowel Regimen items (Section N medications; see
+// hopeReportMapper.js:717-719, sourced from `medications.*`). This screen's
+// three controls each score 0-3 (fixed field options below), for a real
+// maximum of 9, not the CMS BIMS 0-15 range -- so it must never be labeled
+// "BIMS" until a separately-validated, approved BIMS instrument exists.
+const SNS_COGNITIVE_SCREEN_ITEMS = [
+  { key: "repetition", label: "Word Repetition" },
+  { key: "recall", label: "Word Recall" },
+  { key: "temporalOrientation", label: "Temporal Orientation" },
+];
+const SNS_COGNITIVE_SCREEN_MAX_SCORE = 9; // 3 items x 0-3 each -- see field options on the schema card.
+// SNS-configured screening heuristic only -- not a validated clinical cutoff
+// and not a CMS-mandated follow-up rule (directive item #11 "Interpretation
+// safety"). Below this fraction of the max score surfaces a neutral
+// "Clinical review recommended" note labeled as an SNS recommendation.
+const SNS_COGNITIVE_SCREEN_REVIEW_THRESHOLD_FRACTION = 0.75;
+
+export function computeSnsCognitiveScreen(cognitiveScreen) {
+  const cs = cognitiveScreen || {};
+  const items = SNS_COGNITIVE_SCREEN_ITEMS.map(({ key, label }) => {
+    const raw = cs[key];
+    const answered = raw !== undefined && raw !== null && raw !== "";
+    return { key, label, value: answered ? Number(raw) : null, answered };
+  });
+  const answeredCount = items.filter((i) => i.answered).length;
+  let completionStatus = "NOT_STARTED";
+  if (answeredCount === items.length) completionStatus = "COMPLETE";
+  else if (answeredCount > 0) completionStatus = "PARTIAL";
+
+  const rawScore = completionStatus === "COMPLETE" ? items.reduce((sum, i) => sum + i.value, 0) : null;
+  const missingItems = items.filter((i) => !i.answered).map((i) => i.label);
+
+  let interpretation = null;
+  if (completionStatus === "COMPLETE") {
+    const reviewRecommended = rawScore < Math.ceil(SNS_COGNITIVE_SCREEN_MAX_SCORE * SNS_COGNITIVE_SCREEN_REVIEW_THRESHOLD_FRACTION);
+    interpretation = {
+      label: reviewRecommended ? "Clinical review recommended" : "Within expected range",
+      detail: reviewRecommended
+        ? "Clinical review recommended based on configured SNS screening logic."
+        : "Score is within the configured SNS expected range for this screen.",
+      source: "SNS recommendation",
+      reviewRecommended,
+    };
+  }
+
+  return {
+    instrument: "SNS_COGNITIVE_SCREEN_V1",
+    items,
+    rawScore,
+    maxScore: SNS_COGNITIVE_SCREEN_MAX_SCORE,
+    completionStatus,
+    missingItems,
+    interpretation,
+  };
+}
+
+// OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" items #4/#6,
+// corrected by the same-day "BIMS/HOPE compliance correction" directive --
+// read-only, auto-generated Cognitive Summary. Reads the SNS Cognitive
+// Screen (via computeSnsCognitiveScreen -- the one authoritative
+// calculation) and the existing Cognitive/Behavioral Findings fields
+// (symptomsDemeanor/behavioralStatus/delirium/seizureHistory -- all already
+// read by computeNeurologicalNarrative above); computes nothing new,
+// infers nothing from blank fields, and writes nothing back. Returns null
+// when nothing has been documented yet, so the card simply doesn't render
+// (same "never show a card about nothing" contract as
+// computeBodySystemSummary's primaryIssues list).
+export function computeNeurologicalCognitiveSummary(d) {
+  const screen = computeSnsCognitiveScreen(d.cognitiveScreen);
+
+  let behavioralLine = "";
+  const behavioralAll = (d.symptomsDemeanor || []).filter(Boolean);
+  if (behavioralAll.length > 0) {
+    const concerns = behavioralAll.filter((s) => s !== "Peaceful");
+    behavioralLine = concerns.length > 0 ? `Behavioral findings: ${concerns.join(", ")}.` : "Peaceful / calm mood documented.";
+  } else if (d.behavioralStatus === "No Current Concern") {
+    behavioralLine = "No behavioral concern identified.";
+  }
+
+  const flags = [];
+  if (d.delirium === true || d.delirium === "Yes") flags.push("Delirium");
+  if (d.seizureHistory === true || d.seizureHistory === "Yes") flags.push("Seizure History");
+
+  if (screen.completionStatus === "NOT_STARTED" && !behavioralLine && flags.length === 0) return null;
+  return { screen, behavioralLine, flags };
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 -- a
+// deliberately conservative, deterministic proxy for "a confirmed
+// current actionable finding exists" so the always-visible generic
+// "+ Add to POC" button can become conditional without a new POC-
+// candidate engine. Every check below reads an already-documented,
+// explicitly-selected value; nothing here is inferred from blank data
+// or generated from the Overview Gate choice itself.
+export function neurologicalHasActionablePocFinding(d) {
+  const sleep = d.sleepRest || {};
+  if (["Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"].includes(sleep.changeSincePrior)) return true;
+  if (["Somnolent", "Difficult To Arouse", "Minimally Responsive", "Unresponsive"].includes(sleep.responsiveness)) return true;
+  if (d.communication && !["Normal", "Clear", ""].includes(d.communication)) return true;
+  const behavioralConcerns = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+  if (behavioralConcerns.length > 0) return true;
+  if (d.delirium === true || d.delirium === "Yes") return true;
+  if (d.seizureHistory && d.seizureHistory !== "None" && d.seizureHistory !== "") return true;
+  const motorPresent = d.motorStatus === "Present" || (d.motorStatus === undefined && d.motorDeficit === true);
+  if (motorPresent) return true;
+  if (["Gradual Decline", "New or Worsening Concern"].includes(d.clinicalStatusChange)) return true;
+  return false;
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 -- honest,
+// bounded workflow status for the Neurological accordion badge. Does NOT
+// attempt full "applicable required item" completeness validation (that
+// would require the official HOPE validation engine explicitly deferred
+// in Section 17/19) -- it only distinguishes the states this bounded
+// pass can actually determine: unset vs. Unable-to-Assess vs. "something
+// beyond the Overview answer itself has been documented."
+export function computeNeurologicalWorkflowStatus(d) {
+  const overview = d.neuroOverview;
+  if (!overview) {
+    return hasAnyDocumentedValue(d)
+      ? { code: "in_progress", label: "In Progress", variant: "neutral" }
+      : { code: "not_started", label: "Not Started", variant: "neutral" };
+  }
+  if (overview === "Unable to Assess") {
+    // An incomplete assessment always needs follow-up -- never "reviewed",
+    // regardless of whether the controlled reason itself is filled in yet.
+    return { code: "review_required", label: "Review Required", variant: "warning" };
+  }
+  const { neuroOverview: _o, ...rest } = d;
+  return hasAnyDocumentedValue(rest)
+    ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+    : { code: "in_progress", label: "In Progress", variant: "neutral" };
+}
+
+// OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28, Contradiction
+// 6) -- legacy `pulseQuality` was a single combined value conflating
+// Rhythm/Rate/Strength (the Cardiovascular equivalent of Neurological's
+// "Awake / Alert" problem). Each legacy value belongs to exactly one of
+// the three new independent dimensions; the other two dimensions are
+// left unanswered rather than backfilled/inferred, per the directive
+// ("Do not infer missing dimensions... Do not backfill Normal rate,
+// Regular rhythm, Strong strength from one legacy value").
+const PULSE_LEGACY_DIMENSION = {
+  Regular: { dimension: "pulseRhythm", display: "Regular" },
+  Irregular: { dimension: "pulseRhythm", display: "Irregular" },
+  Tachycardia: { dimension: "pulseRate", display: "Tachycardic" },
+  Bradycardia: { dimension: "pulseRate", display: "Bradycardic" },
+  Strong: { dimension: "pulseStrength", display: "Strong" },
+  Weak: { dimension: "pulseStrength", display: "Weak" },
+  Thready: { dimension: "pulseStrength", display: "Thready" },
+  Bounding: { dimension: "pulseStrength", display: "Bounding" },
+  Absent: { dimension: "pulseStrength", display: "Absent" },
+};
+
+// Read-only alias resolver: returns the display value for one of the
+// three new pulse dimension fields, falling back to the legacy
+// `pulseQuality` value ONLY when it maps to that exact dimension and the
+// new field itself is still blank. Never writes to storage -- storage is
+// only ever written when the clinician interacts with a control.
+export function resolvePulseDimensionDisplay(d, dimension) {
+  const current = d[dimension];
+  if (current) return current;
+  const legacy = PULSE_LEGACY_DIMENSION[d.pulseQuality];
+  return legacy && legacy.dimension === dimension ? legacy.display : "";
+}
+
+const BP_STATUS_LEGACY_VALUES = ["Normal", "Hypertensive", "Hypotensive"];
+
+// OWNER-DIRECTED (2026-09-28, Contradiction 4) -- legacy `bpSymptoms` was
+// a multi-select array that could (and, per the directive, sometimes
+// does) hold contradictory combinations (e.g. "Normal" + "Hypertensive").
+// This never silently picks a "first" or "most severe" value: an
+// unambiguous single legacy status value is alias-displayed; a
+// contradictory legacy array is surfaced as `reviewRequired` (rendered as
+// a read-only note in the narrative/findings, never auto-resolved).
+export function resolveBpLegacyDisplay(d) {
+  const legacy = Array.isArray(d.bpSymptoms) ? d.bpSymptoms : [];
+  const statusValues = legacy.filter((v) => BP_STATUS_LEGACY_VALUES.includes(v));
+  const contradictory = statusValues.length > 1;
+  return {
+    statusDisplay: !contradictory && statusValues.length === 1 ? statusValues[0] : "",
+    orthostaticDisplay: legacy.includes("Orthostatic") ? "Present" : "",
+    reviewRequired: contradictory,
+    legacyValues: legacy,
+  };
+}
+
+export function resolveBpStatusDisplay(d) {
+  return d.bpStatus || resolveBpLegacyDisplay(d).statusDisplay;
+}
+
+export function resolveOrthostaticFindingDisplay(d) {
+  return d.orthostaticFinding || resolveBpLegacyDisplay(d).orthostaticDisplay;
+}
+
+// OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28, Contradiction 5)
+// -- Respiratory owns the dyspnea symptom/severity; Cardiovascular owns
+// only the cardiac-cause attribution. Returns a state, not a boolean, so
+// the render loop and narrative can distinguish "hidden, nothing to
+// preserve" from "hidden, but a legacy value must be preserved and
+// flagged" without ever silently clearing a legacy value.
+export function resolveCardiacDyspneaGate(cardiovascularData, respiratoryData) {
+  const sobSeverity = (respiratoryData || {}).sobSeverity;
+  const hasLegacyValue = cardiovascularData.cardiacDyspnea === true;
+  if (sobSeverity && sobSeverity !== "None") {
+    return { visible: true, reviewRequired: false, guidance: "" };
+  }
+  if (hasLegacyValue) {
+    // Respiratory is blank or negative but a value already exists here --
+    // never auto-cleared, never silently rewritten; flagged for review.
+    return { visible: true, reviewRequired: true, guidance: "" };
+  }
+  if (!sobSeverity) {
+    return { visible: false, reviewRequired: false, guidance: "Document dyspnea in Respiratory before assigning cardiac attribution." };
+  }
+  // sobSeverity === "None": Respiratory has explicitly documented no
+  // dyspnea, so no NEW cardiac attribution may be started.
+  return { visible: false, reviewRequired: false, guidance: "" };
+}
+
+// Owner directive (2026-09-28) "Correct the Overview Label" -- the
+// approved exact wording is "New or Worsening Cardiovascular Findings"
+// (not the slash-joined "New/Worsening..."). Historical records already
+// saved with the old slash wording are never rewritten; every place that
+// compares against this option normalizes through this helper first so
+// both spellings are always treated identically.
+const CV_OVERVIEW_NEW_OR_WORSENING = "New or Worsening Cardiovascular Findings";
+const CV_OVERVIEW_NEW_OR_WORSENING_LEGACY = "New/Worsening Cardiovascular Findings";
+function normalizeCardiovascularOverview(value) {
+  return value === CV_OVERVIEW_NEW_OR_WORSENING_LEGACY ? CV_OVERVIEW_NEW_OR_WORSENING : value;
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 9/21/AC-04 --
+// Cardiovascular counterpart to neurologicalHasActionablePocFinding.
+// OWNER CORRECTION (Contradiction 7): a chronic/stable finding (e.g.
+// Heart Failure Present alone, on the "Existing Findings Review" path)
+// must NOT trigger POC review by itself -- only the explicit
+// always-actionable list, clinically-significant thresholds, and the
+// New/Worsening path itself do.
+export function cardiovascularHasActionablePocFinding(d) {
+  const overview = normalizeCardiovascularOverview(d.cardiovascularOverview);
+  if (overview === "Unable to Assess") return false;
+  if (overview === CV_OVERVIEW_NEW_OR_WORSENING) return true;
+  if (d.chestPain?.present === "Yes") return true;
+  if (d.syncope === "Yes") return true;
+  // Both the legacy shared-option string ("New Symptom Since Prior
+  // Assessment") and the new Cardiovascular-approved string ("New or
+  // Worsening Finding") must trigger this -- a record charted under
+  // either option set is never treated as less actionable than the other.
+  if (["Declining", "New Symptom Since Prior Assessment", "New or Worsening Finding"].includes(d.clinicalStatusChange)) return true;
+  if (d.edema?.present === "Yes" && ["3+", "4+"].includes(d.edema?.severity)) return true;
+  if (["Thready", "Absent"].includes(resolvePulseDimensionDisplay(d, "pulseStrength"))) return true;
+  if (d.cardiacDyspnea === true) return true;
+  return false;
+}
+
+// FIX (2026-09-28, live-UI audit): "No Current Cardiovascular Concern"
+// must not be confirmable while an abnormal finding is already stored on
+// the record (e.g. a legacy/preserved chest pain, edema, or heart
+// failure value from before this Overview Gate existed). Confirming "no
+// concern" over an unreviewed abnormal finding is a genuine contradiction
+// -- the record cannot simultaneously assert "no current concern" and
+// carry an unresolved abnormal finding. This never clears or rewrites
+// those preserved values; it only blocks the No-Concern path from
+// reaching Ready for Review until the clinician reviews/resolves them
+// (by switching path, editing the finding, etc.).
+export function cardiovascularHasPreservedAbnormalFinding(d) {
+  if (d.chestPain?.present === "Yes") return true;
+  if (d.edema?.present === "Yes") return true;
+  // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+  // Correction" -- hospice body-system assessments document current
+  // signs/symptoms/findings for comfort/symptom management, not disease
+  // conclusions. `heartFailurePresent` is a diagnosis flag, not a
+  // symptom, so it no longer drives this conflict check; the actual
+  // symptoms hospice cares about (edema, dyspnea attribution, chest
+  // pain, abnormal BP/pulse, syncope) already trigger it independently.
+  if (d.syncope === "Yes") return true;
+  if (d.cardiacDyspnea === true) return true;
+  if (d.dizziness && d.dizziness !== "None") return true;
+  if (resolveBpLegacyDisplay(d).reviewRequired) return true;
+  const abnormalBp = resolveBpStatusDisplay(d);
+  if (abnormalBp && abnormalBp !== "Normal" && abnormalBp !== "Unable to assess") return true;
+  const abnormalPulse = [
+    resolvePulseDimensionDisplay(d, "pulseRhythm"),
+    resolvePulseDimensionDisplay(d, "pulseRate"),
+    resolvePulseDimensionDisplay(d, "pulseStrength"),
+  ];
+  if (abnormalPulse.includes("Irregular")) return true;
+  if (["Tachycardic", "Bradycardic"].includes(abnormalPulse[1])) return true;
+  if (["Weak", "Thready", "Bounding", "Absent"].includes(abnormalPulse[2])) return true;
+  return false;
+}
+
+// Directive (2026-09-28) "Cardiovascular Layout Consolidation" Section 14
+// -- data inspection (SFV registry CV_HEART_FAILURE_SYSTOLIC/DIASTOLIC
+// both use `multi_add`, and mixed systolic+diastolic heart failure is a
+// real clinical presentation) confirms Heart Failure Type stays
+// multi-select. The only genuine contradiction is "Unspecified"
+// coexisting with a specific type, so selecting Unspecified clears the
+// specific types, and selecting a specific type clears Unspecified --
+// Systolic + Diastolic together are never mutually exclusive with each
+// other. `prevArray`/`nextArray` are the value before/after the raw
+// FormPillGroup toggle; returns the corrected array to write, or `null`
+// when no correction is needed (the raw toggle already stands).
+export function resolveHeartFailureTypeSelection(prevArray, nextArray) {
+  const prev = Array.isArray(prevArray) ? prevArray : [];
+  const next = Array.isArray(nextArray) ? nextArray : [];
+  const addedUnspecified = next.includes("Unspecified") && !prev.includes("Unspecified");
+  if (addedUnspecified) return ["Unspecified"];
+  if (next.includes("Unspecified") && (next.includes("Systolic") || next.includes("Diastolic"))) {
+    return next.filter((t) => t !== "Unspecified");
+  }
+  return null;
+}
+
+// Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 --
+// Cardiovascular counterpart to computeNeurologicalWorkflowStatus.
+//
+// CORRECTION (2026-09-28, audit): "Unable to Assess" is Review Required
+// only while genuinely UNRESOLVED -- no reason selected, "Other" selected
+// without an explanation, or a preserved legacy value that conflicts with
+// the path (BP contradiction, or a legacy cardiac-dyspnea attribution the
+// current Respiratory state no longer supports). A completed Unable To
+// Assess path (approved reason, or Other + explanation, with no
+// conflict) reaches Ready for Review like every other path -- it must
+// never be forced to Review Required by the path selection alone.
+// `respiratoryData` is optional (undefined when the caller has no access
+// to the sibling section) and only affects the dyspnea-conflict check.
+export function computeCardiovascularWorkflowStatus(d, respiratoryData) {
+  const overview = normalizeCardiovascularOverview(d.cardiovascularOverview);
+  if (!overview) {
+    return hasAnyDocumentedValue(d)
+      ? { code: "in_progress", label: "In Progress", variant: "neutral" }
+      : { code: "not_started", label: "Not Started", variant: "neutral" };
+  }
+  if (overview === "Unable to Assess") {
+    const reason = d.cardiovascularUnableToAssessReason;
+    const unresolved =
+      !reason ||
+      (reason === "Other" && !d.cardiovascularUnableToAssessOther) ||
+      resolveBpLegacyDisplay(d).reviewRequired ||
+      resolveCardiacDyspneaGate(d, respiratoryData).reviewRequired;
+    return unresolved
+      ? { code: "review_required", label: "Review Required", variant: "warning" }
+      : { code: "ready_for_review", label: "Ready for Review", variant: "success" };
+  }
+  // FIX (2026-09-28, live-UI audit): "No Current Cardiovascular Concern"
+  // has its own required-field set (Pulse Rhythm/Rate/Strength +
+  // Clinical Status Change) and its own conflict rule -- it must never
+  // fall through to the generic "any documented value => ready" rule
+  // below, which would let an unrelated preserved abnormal finding (or
+  // even the Path 1 fields themselves) silently mark it Ready for
+  // Review while contradicting findings sit unresolved.
+  if (overview === "No Current Cardiovascular Concern") {
+    if (cardiovascularHasPreservedAbnormalFinding(d)) {
+      return { code: "review_required", label: "Review Required", variant: "warning" };
+    }
+    const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
+    const rate = resolvePulseDimensionDisplay(d, "pulseRate");
+    const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
+    const complete = Boolean(rhythm && rate && strength && d.clinicalStatusChange);
+    return complete
+      ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+      : { code: "in_progress", label: "In Progress", variant: "neutral" };
+  }
+  // Directive (2026-09-28) Section 11 "Path 3 plus No Significant
+  // Change": documenting New/Worsening Cardiovascular Findings while
+  // Clinical Status Change simultaneously claims stability is an
+  // internal contradiction that must surface for review, not silently
+  // pass through as Ready for Review.
+  if (
+    overview === CV_OVERVIEW_NEW_OR_WORSENING &&
+    ["Stable / No Change", "No Significant Change"].includes(d.clinicalStatusChange)
+  ) {
+    return { code: "review_required", label: "Review Required", variant: "warning" };
+  }
+  // Directive (2026-09-28) Section 11/13: Path 2 ("Existing Cardiovascular
+  // Findings Review") requires the clinician confirmation plus a current
+  // Clinical Status Change selection before it can be Ready for Review --
+  // reviewing stored findings without acting on them is In Progress, not
+  // done.
+  if (overview === "Existing Cardiovascular Findings Review") {
+    const complete = Boolean(d.cardiovascularFindingsConfirmedThisVisit && d.clinicalStatusChange);
+    return complete
+      ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+      : { code: "in_progress", label: "In Progress", variant: "neutral" };
+  }
+  const { cardiovascularOverview: _o, ...rest } = d;
+  return hasAnyDocumentedValue(rest)
+    ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
+    : { code: "in_progress", label: "In Progress", variant: "neutral" };
+}
+
+// OWNER-DIRECTED Cardiovascular narrative (2026-09-28). Mirrors
+// computeNeurologicalNarrative's contract exactly: returns "" (falsy)
+// when nothing path-specific applies, letting computeBodySystemSummary's
+// existing generic fallback take over -- never infers a diagnosis,
+// normal finding, or stability from the Overview selection alone.
+export function computeCardiovascularNarrative(d) {
+  const overview = normalizeCardiovascularOverview(d.cardiovascularOverview);
+  if (!overview) return "";
+
+  if (overview === "Unable to Assess") {
+    const reason = d.cardiovascularUnableToAssessReason === "Other"
+      ? d.cardiovascularUnableToAssessOther
+      : d.cardiovascularUnableToAssessReason;
+    return reason ? `Cardiovascular assessment unable to complete. Reason: ${reason}.` : "";
+  }
+
+  if (overview === "No Current Cardiovascular Concern") {
+    // FIX (2026-09-28, live-UI audit): surface the conflict explicitly
+    // instead of falling through to the generic "Findings Present"
+    // fallback, which incorrectly implied the section had assessed and
+    // found abnormal cardiovascular findings under a "no concern" path.
+    if (cardiovascularHasPreservedAbnormalFinding(d)) {
+      return "Stored cardiovascular findings require review before No Current Cardiovascular Concern can be confirmed.";
+    }
+    const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
+    const rate = resolvePulseDimensionDisplay(d, "pulseRate");
+    const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
+    // Owner directive: this exact sentence is only allowed once ALL
+    // required normal-path selections are complete -- not from the
+    // Overview answer alone.
+    if (rhythm && rate && strength && d.clinicalStatusChange) {
+      return "No current cardiovascular concern identified.";
+    }
+    return "";
+  }
+
+  const clauses = [];
+  const bpStatusDisplay = resolveBpStatusDisplay(d);
+  const orthostaticDisplay = resolveOrthostaticFindingDisplay(d);
+  const bpLegacy = resolveBpLegacyDisplay(d);
+
+  if (overview === "Existing Cardiovascular Findings Review") {
+    // Accept both the legacy shared option and the new Cardiovascular-
+    // approved option -- a record charted under either renders the same
+    // stability language; neither string is rewritten.
+    if (["Stable / No Change", "No Significant Change"].includes(d.clinicalStatusChange)) {
+      clauses.push("Cardiovascular findings documented as stable/no significant change.");
+    } else {
+      clauses.push("Cardiovascular findings documented.");
+    }
+  }
+
+  if (overview === CV_OVERVIEW_NEW_OR_WORSENING) {
+    const pulseDims = [];
+    const rhythm = resolvePulseDimensionDisplay(d, "pulseRhythm");
+    const rate = resolvePulseDimensionDisplay(d, "pulseRate");
+    const strength = resolvePulseDimensionDisplay(d, "pulseStrength");
+    if (rhythm === "Irregular") pulseDims.push("irregular");
+    if (rate && rate !== "Normal" && rate !== "Unable to assess") pulseDims.push(rate.toLowerCase());
+    if (strength && !["Strong", "Unable to assess"].includes(strength)) pulseDims.push(strength.toLowerCase());
+    if (pulseDims.length > 0) {
+      clauses.push(`Pulse ${pulseDims.join(", ")}.`);
+    }
+    if (d.chestPain?.present === "Yes") {
+      clauses.push(d.chestPain?.type ? `Chest pain present: ${d.chestPain.type}.` : "Chest pain present.");
+    }
+    if (d.edema?.present === "Yes") {
+      const severity = d.edema?.severity ? `${d.edema.severity} ` : "";
+      const location = Array.isArray(d.edema?.location) && d.edema.location.length > 0 ? d.edema.location.join(", ").toLowerCase() : "";
+      clauses.push(`${severity}${location ? location + " " : ""}edema documented.`.trim().replace(/^\w/, (c) => c.toUpperCase()));
+    }
+    if (bpStatusDisplay && bpStatusDisplay !== "Normal" && bpStatusDisplay !== "Unable to assess") {
+      clauses.push(`BP status: ${bpStatusDisplay.toLowerCase()}.`);
+    }
+    if (orthostaticDisplay === "Present") {
+      clauses.push("Orthostatic finding present.");
+    }
+    if (d.dizziness && d.dizziness !== "None") clauses.push(`Dizziness: ${d.dizziness.toLowerCase()}.`);
+    if (d.fatigue && d.fatigue !== "None") clauses.push(`Fatigue: ${d.fatigue.toLowerCase()}.`);
+    if (d.syncope === "Yes") clauses.push("Syncope documented.");
+    if (d.cardiacDyspnea === true) clauses.push("Dyspnea attributed to cardiac condition.");
+    // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
+    // Correction" -- Heart Failure is a diagnosis, not a current
+    // sign/symptom/assessment finding; it no longer drives the current
+    // narrative/summary. `heartFailurePresent` is preserved untouched and
+    // shown read-only on Path 2 only (see field-render loop).
+  }
+
+  if (bpLegacy.reviewRequired) {
+    clauses.push(`Legacy BP values on record (${bpLegacy.legacyValues.join(", ")}) -- review required.`);
+  }
+
+  return clauses.join(" ");
+}
+
+// second, drifting source of truth. Deliberately does NOT include a
+// "Changes Since Prior" line -- no prior-assessment/longitudinal-diff
+// infrastructure exists yet anywhere in RNICA (confirmed: no
+// priorAssessment/sincePrior/priorVisit concept in this file), so that
+// would have to be guessed or fabricated. Omitted here pending real
+// longitudinal infrastructure, not silently dropped -- see the Body
+// Systems completion summary of work. Neurological is the one exception:
+// its "Change Since Prior" fields (sleepRest.changeSincePrior,
+// clinicalStatusChange) are nurse-selected charted values, not a computed
+// diff, so computeNeurologicalNarrative may read them directly.
+//
+// (Comment continues from "Computed Summary panel for the Body Systems
+// OWNER DIRECTIVE "Infection Summary Categorization" (presentation-layer
+// only, approved after the Infection Follow-Up Governance correction) --
+// buckets the already-computed, already-worded `primaryIssues` lines from
+// computeBodySystemFindings into labeled groups for the Infection Summary
+// card ONLY. This is purely a re-grouping of existing strings: it does not
+// reword any line, does not change `requiresFollowUp`, and does not touch
+// computeInfectionRequiresFollowUp. Every other consumer of
+// computeBodySystemFindings (Structured Findings right-rail,
+// infectionSummaryLine/"Existing Infection Findings Review", other body
+// systems) keeps reading the flat array untouched. Returns null when there
+// is nothing to group so the renderer can fall back to the flat list.
+function categorizeInfectionSummaryIssues(primaryIssues) {
+  if (!Array.isArray(primaryIssues) || primaryIssues.length === 0) return null;
+  const patientSafety = [];
+  const historical = [];
+  const clinicalContext = [];
+  const current = [];
+  const ALLERGY_LINE_RE = /^(Medication|Food|Environmental|Other\/Sensitivity) allergy:/;
+  const HISTORICAL_LINE_RE = /^(Infection history:|History of resistant organism:)/;
+  const CLINICAL_CONTEXT_LINE_RE = /^Immunosuppressed/;
+  primaryIssues.forEach((line) => {
+    if (ALLERGY_LINE_RE.test(line)) {
+      patientSafety.push(line);
+    } else if (HISTORICAL_LINE_RE.test(line)) {
+      historical.push(line);
+    } else if (CLINICAL_CONTEXT_LINE_RE.test(line)) {
+      clinicalContext.push(line);
+    } else {
+      current.push(line);
+    }
+  });
+  // "Current Infection Status" always renders, even with no current
+  // findings, so the Summary explicitly states there is none documented
+  // rather than omitting the category (owner-requested Scenario A/B
+  // wording).
+  if (current.length === 0) {
+    current.push("No current infection concern documented.");
+  }
+  const groups = [
+    { heading: "Patient Safety Findings", items: patientSafety },
+    { heading: "Historical Infection Findings", items: historical },
+    { heading: "Clinical Context", items: clinicalContext },
+    { heading: "Current Infection Status", items: current },
+  ].filter((g) => g.items.length > 0);
+  return groups.length > 0 ? groups : null;
+}
+
+// OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Summary
+// Architecture" -- same re-grouping technique as
+// `categorizeInfectionSummaryIssues` above: buckets the already-computed,
+// already-worded `primaryIssues` lines from `computeBodySystemFindings`
+// into labeled groups for the Gastrointestinal Summary card ONLY. Pure
+// re-grouping of existing strings -- does not reword any line, does not
+// change `requiresFollowUp`, does not touch
+// `computeGastrointestinalRequiresFollowUp`. The Structured Findings
+// right-rail keeps reading the flat array untouched (see
+// bodySystemsStructuredFindings below). "Historical GI Findings" is
+// intentionally omitted here -- no historical-GI-tracking fields exist
+// yet (owner directive: "Only when historical tracking exists").
+function categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData = {}) {
+  if (!Array.isArray(primaryIssues) || primaryIssues.length === 0) return null;
+  const burden = [];
+  const management = [];
+  const MANAGEMENT_RE = /^(Ostomy present|Feeding tube present)/;
+  primaryIssues.forEach((line) => {
+    if (MANAGEMENT_RE.test(line)) {
+      management.push(line);
+    } else {
+      burden.push(line);
+    }
+  });
+  // "Current GI Status" reflects the nurse's own Clinical Status Change
+  // selection (GASTROINTESTINAL_CLINICAL_STATUS_CODES) when one has been
+  // made. OWNER DIRECTIVE (2026-10-29) "GI Rework -- Summary Rework":
+  // removed the previous fallback sentence "Current GI symptom burden
+  // documented above." -- it repeated/pointed at the GI Symptom Burden
+  // category instead of adding a new fact, which the owner identified as
+  // non-compliant noise ("Remove it when it adds no new clinical
+  // information" / "Do not repeat the same finding in multiple
+  // categories"). When burden already lists the facts and no explicit
+  // status was selected, the whole "Current GI Status" category is now
+  // simply omitted (not rendered) rather than filled with a placeholder
+  // sentence. The neutral "No current GI concern documented." sentence is
+  // preserved for the true Scenario-B case (nothing documented at all),
+  // matching Infection's identical convention.
+  const statusLine = sectionData?.clinicalStatusChange && sectionData.clinicalStatusChange !== "Not Applicable"
+    ? `${sectionData.clinicalStatusChange}.`
+    : (burden.length > 0 ? null : "No current GI concern documented.");
+  const groups = [
+    { heading: "GI Symptom Burden", items: burden },
+    { heading: "Current GI Status", items: statusLine ? [statusLine] : [] },
+    { heading: "Current Management", items: management },
+  ].filter((g) => g.items.length > 0);
+  return groups.length > 0 ? groups : null;
+}
+
+// 9-part structure. Reuses computeBodySystemFindings (the same
+// deterministic, already-documented-only findings list used elsewhere)
+// so the Summary never introduces a" -- split by an earlier edit that
+// inserted the Bounded Compatibility Increment helpers above.)
+export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
+  const primaryIssues = computeBodySystemFindings(sectionKey, sectionData, extra);
+  // Allergies are patient-profile data, not Infection assessment data, so
+  // a documented allergy must still surface in the Infection Summary even
+  // when the nurse has not yet touched the Infection section itself
+  // (owner directive 2026-10-05, "All Documented Allergies Must Appear").
+  const hasAllergyAlerts = sectionKey === "infection" && (extra.allergyAlerts || []).length > 0;
+  if (!hasAnyDocumentedValue(sectionData) && !hasAllergyAlerts) {
+    if (sectionKey === "cardiovascular") {
+      // Owner-required exact wording (2026-09-28) -- distinct casing from
+      // the generic label-based fallback below; must never be confused
+      // with the explicit "No current cardiovascular concern identified."
+      // sentence, which requires a completed normal-path selection.
+      return { status: "Cardiovascular assessment not yet documented.", primaryIssues, requiresFollowUp: false };
+    }
+    if (sectionKey === "infection") {
+      // OWNER DIRECTIVE (2026-10-05) item 4, "Initial Unselected State"
+      // -- exact required wording, same lowercase/period convention as
+      // Cardiovascular's equivalent branch above.
+      return { status: "Infection assessment not yet documented.", primaryIssues, primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues), requiresFollowUp: false };
+    }
+    if (sectionKey === "gastrointestinal") {
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" item 4,
+      // same "Initial Unselected State" wording convention as Infection's
+      // equivalent branch above.
+      return { status: "Gastrointestinal assessment not yet documented.", primaryIssues, primaryIssueGroups: categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData), requiresFollowUp: false };
+    }
+    const label = sectionKey ? sectionKey.charAt(0).toUpperCase() + sectionKey.slice(1) : "This section's";
+    return {
+      status: `${label} Assessment Not Yet Documented`,
+      primaryIssues,
+      requiresFollowUp: false,
+    };
+  }
+  if (sectionKey === "neurological") {
+    const narrative = computeNeurologicalNarrative(sectionData || {});
+    return {
+      status: narrative || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
+      primaryIssues,
+      requiresFollowUp: primaryIssues.length > 0,
+    };
+  }
+  if (sectionKey === "cardiovascular") {
+    const narrative = computeCardiovascularNarrative(sectionData || {});
+    // BUG FIX (owner directive 2026-10-04, "Cardiovascular Density Pass"
+    // Section 6 -- Summary contradiction) -- computeCardiovascularNarrative
+    // legitimately returns "" for two Overview selections that are still
+    // mid-documentation: "Unable to Assess" before a reason is chosen, and
+    // "New or Worsening Cardiovascular Findings" before any specific
+    // sub-finding clause is triggered. Previously this fell straight
+    // through to the generic "No Significant Findings Documented"
+    // fallback below, directly contradicting the nurse's own Overview
+    // selection (e.g. Overview = "Unable to Assess" rendering as "No
+    // Significant Findings Documented"). Whenever the Overview itself
+    // already signals an abnormal/incomplete state, use a review-pending
+    // status instead -- never the "no findings" wording.
+    const cvOverview = normalizeCardiovascularOverview(sectionData?.cardiovascularOverview);
+    const overviewSignalsFindings = cvOverview === CV_OVERVIEW_NEW_OR_WORSENING || cvOverview === "Unable to Assess";
+    const fallbackStatus = overviewSignalsFindings
+      ? (primaryIssues.length > 0 ? "Findings Present" : "Cardiovascular Findings Documented -- Review Pending")
+      : (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented");
+    return {
+      status: narrative || fallbackStatus,
+      primaryIssues,
+      requiresFollowUp: primaryIssues.length > 0 || overviewSignalsFindings,
+    };
+  }
+  // OWNER-APPROVED "Respiratory Overview Workflow Reorganization"
+  // (2026-10-06) -- organization/workflow only, same contradiction-
+  // avoidance pattern as Cardiovascular's Density Pass fix above
+  // (Overview = "Unable to Assess" must never render as "No Significant
+  // Findings Documented"). Deliberately does NOT introduce a
+  // Respiratory-specific "abnormal finding" judgment -- "Existing
+  // Respiratory Findings Review" / "New or Worsening Respiratory
+  // Findings" fall straight through to the same generic Findings
+  // Present / No Significant Findings Documented wording every other
+  // body system already uses below.
+  if (sectionKey === "respiratory") {
+    const respOverview = sectionData?.respiratoryOverview;
+    if (respOverview === "Unable to Assess") {
+      const reason = sectionData?.respiratoryUnableToAssessReason === "Other"
+        ? sectionData?.respiratoryUnableToAssessOther
+        : sectionData?.respiratoryUnableToAssessReason;
+      return {
+        status: reason
+          ? `Respiratory assessment unable to complete. Reason: ${reason}.`
+          : "Respiratory Findings Documented -- Review Pending",
+        primaryIssues,
+        requiresFollowUp: true,
+      };
+    }
+    if (respOverview === "No Current Respiratory Concern") {
+      return {
+        status: primaryIssues.length > 0 ? "Findings Present" : "No current respiratory concern identified.",
+        primaryIssues,
+        requiresFollowUp: primaryIssues.length > 0,
+      };
+    }
+  }
+  // OWNER-APPROVED "Infection Hospice Workflow Optimization"
+  // (2026-10-20), revised per OWNER DIRECTIVE (2026-10-05) "Infection Is
+  // Not A Patient-Interview Workflow" -- "Unable to Assess" is no longer
+  // offered as a selectable Overview option (item 2 -- not clinically
+  // justified for hospice infection assessment, which relies on records/
+  // observation/labs, not patient participation). This branch is kept
+  // ONLY for backward-compatible display of assessments saved before
+  // this change that already hold this literal stored value -- the raw
+  // value is read as-is, never rewritten/migrated (item 8, legacy
+  // preservation). `requiresFollowUp` for every other Overview state
+  // (including the not-yet-selected initial state, which falls through
+  // to the generic "Findings Present" return below) now comes from
+  // `computeInfectionRequiresFollowUp`, not `primaryIssues.length > 0`,
+  // so a documented allergy or immunosuppressed status alone never
+  // forces "REQUIRES FOLLOW-UP" (item 12).
+  if (sectionKey === "infection") {
+    const infOverview = sectionData?.infectionOverview;
+    if (infOverview === "Unable to Assess") {
+      const reason = sectionData?.infectionUnableToAssessReason === "Other"
+        ? sectionData?.infectionUnableToAssessOther
+        : sectionData?.infectionUnableToAssessReason;
+      return {
+        status: reason
+          ? `Infection assessment unable to complete. Reason: ${reason}.`
+          : "Infection Findings Documented -- Review Pending",
+        primaryIssues,
+        primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
+        requiresFollowUp: true,
+      };
+    }
+    if (infOverview === "No Current Infection Concern") {
+      return {
+        status: primaryIssues.length > 0 ? "Findings Present" : "No current infection concern identified.",
+        primaryIssues,
+        primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
+        requiresFollowUp: computeInfectionRequiresFollowUp(sectionData),
+      };
+    }
+    // Not-yet-selected initial state, "Existing Infection Findings
+    // Review", and "New or Worsening Infection Findings" all share the
+    // same Findings Present / No Significant Findings Documented
+    // wording every other body system uses -- only `requiresFollowUp`
+    // is Infection-specific here.
+    return {
+      status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
+      primaryIssues,
+      primaryIssueGroups: categorizeInfectionSummaryIssues(primaryIssues),
+      requiresFollowUp: computeInfectionRequiresFollowUp(sectionData),
+    };
+  }
+  // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Current vs
+  // Historical Findings / Follow-Up Governance" -- same discipline as
+  // Infection above: `requiresFollowUp` comes from
+  // `computeGastrointestinalRequiresFollowUp` (current-evidence-only),
+  // never from `primaryIssues.length > 0`, so historical/management-only
+  // documentation (e.g. Ostomy/Feeding Tube presence alone) never forces
+  // "REQUIRES FOLLOW-UP". No "Unable to Assess" option exists for GI
+  // (not offered -- GI relies on observation/records, not patient
+  // interview, same rationale as Infection item 2).
+  if (sectionKey === "gastrointestinal") {
+    const giOverview = sectionData?.gastrointestinalOverview;
+    if (giOverview === "No Current GI Concern") {
+      return {
+        status: primaryIssues.length > 0 ? "Findings Present" : "No current GI concern identified.",
+        primaryIssues,
+        primaryIssueGroups: categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData),
+        requiresFollowUp: computeGastrointestinalRequiresFollowUp(sectionData),
+      };
+    }
+    // Not-yet-selected initial state, "Existing GI Findings Review", and
+    // "New or Worsening GI Findings" all share the same Findings Present
+    // / No Significant Findings Documented wording every other body
+    // system uses -- only `requiresFollowUp` is GI-specific here.
+    return {
+      status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
+      primaryIssues,
+      primaryIssueGroups: categorizeGastrointestinalSummaryIssues(primaryIssues, sectionData),
+      requiresFollowUp: computeGastrointestinalRequiresFollowUp(sectionData),
+    };
+  }
+  return {
+    status: primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented",
+    primaryIssues,
+    requiresFollowUp: primaryIssues.length > 0,
+  };
+}
+
+// Owner directive (2026-09-28) "New Cardiovascular Defect -- one-way
+// segmented selections": Cardiovascular Path 2 only shows fields that are
+// already "documented" (see the guard inside renderGenericSection below).
+// Now that segmented pills can be cleared back to "" by re-clicking the
+// selected option, that live documented-check would make a field vanish
+// the moment it's cleared. This module-level cache (keyed by
+// `${assessmentId}::${fieldPath}`) remembers which fields have been shown
+// at least once during this browser session so clearing a value never
+// hides its own control. It never reads or writes any stored field value
+// -- purely a render-visibility memo, reset naturally on full page reload.
+const cvPath2EverDocumentedFields = new Map();
+
+// OWNER DIRECTIVE (2026-10-04) "Cardiovascular Reversibility Safety" --
+// shared helper: does this Circulation & Perfusion / Cardiovascular
+// Symptoms / Cardiac Devices card hold ANY previously documented
+// clinical value? Used by Path 2's existing "only show already-
+// documented findings" rule AND by the Path 1 ("No Current
+// Cardiovascular Concern") disclosure guard below, so both share one
+// definition of "has preserved data" instead of drifting apart.
+const CV_FINDINGS_CARD_ALWAYS_VISIBLE_FIELDS = new Set([
+  "cardiovascularOverview", "cardiovascularUnableToAssessReason", "cardiovascularUnableToAssessOther",
+  "clinicalStatusChange", "notes", "cardiovascularFindingsConfirmedThisVisit",
+]);
+function cardiovascularCardHasDocumentedData(data, card) {
+  return (card.fields || []).some((cardField) => {
+    if (CV_FINDINGS_CARD_ALWAYS_VISIBLE_FIELDS.has(cardField.path)) return false;
+    const existing = getNestedValue(data, cardField.path);
+    return Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+  });
+}
+
+// OWNER DIRECTIVE (2026-10-18) "Respiratory-Specific Workflow Rebuild" --
+// this file previously defined a Respiratory counterpart to every
+// Cardiovascular Reversibility Safety helper (a per-card "has documented
+// data" check plus a per-field "shown once, stays shown" memo), and that
+// 1:1 copy was exactly what produced the rejected duplicated/filtered
+// Respiratory behavior. Respiratory's five clinical cards now use a
+// single rule -- hide entirely on "No Current Respiratory Concern" /
+// "Unable to Assess", show fully (every field, no per-field filter) on
+// "Existing Respiratory Findings Review" / "New or Worsening Respiratory
+// Findings" -- so neither helper is needed any more. Only the flat
+// field-path list survives, to back the single-line "previously
+// documented findings exist" banner.
+// Flat list of every field path that lives inside one of the five
+// hideable Respiratory cards (Dyspnea/SOB, Respiratory Assessment,
+// Cough/Secretions, Oxygen Therapy, Ventilator/Airway Support), used by
+// the "No Current Respiratory Concern" banner below to detect whether
+// ANY of them already holds a previously documented value, without
+// needing a specific `card` object in hand. Presence-only check -- no
+// clinical significance judgment.
+const RESP_HIDEABLE_FIELD_PATHS = [
+  "sobSeverity", "treatmentDeclined", "exertionLevel", "shortnessOfBreathScreened",
+  "screeningDate", "treatmentInitiated", "treatmentDate",
+  "lungSounds", "respirations",
+  "coughType", "sputumCharacter",
+  "oxygenTherapy.inUse", "oxygenTherapy.type", "oxygenTherapy.litersPerMinute",
+  "oxygenTherapy.hoursPerDay", "oxygenTherapy.deliveryMode", "oxygenTherapy.onRoomAir",
+  "oxygenTherapy.satOnO2",
+  "ventilator.shortTermVentilator", "ventilator.longTermVentilator",
+  "ventilator.ventilatorTypeAndSettings", "ventilator.tracheostomyType", "ventilator.tracheostomySize",
+];
+function respiratoryHasAnyPreservedData(d) {
+  return RESP_HIDEABLE_FIELD_PATHS.some((p) => {
+    const existing = getNestedValue(d, p);
+    return Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+  });
+}
+
+// OWNER DIRECTIVE (2026-10-30) "GI Progressive Visibility Defect B Fix" --
+// card titles gated by `gastrointestinalOverview` (see the
+// `sectionKey === "gastrointestinal"` gate alongside the Cardiovascular/
+// Respiratory/Infection precedents above). "GI Overview" and "Notes" are
+// never included here -- they are always visible per the existing GI
+// directives and are excluded from the gate entirely before this list is
+// consulted.
+const GI_OVERVIEW_HIDEABLE_CARDS = [
+  "Constipation — Auto-Suggested from Last BM Date",
+  "GI Symptoms",
+  "GI Documentation Guidance",
+  "Abdominal / Bowel Assessment",
+  "Feeding Devices",
+];
+// Flat field-path list per hideable GI card title, used only by the
+// "No Current GI Concern" gate to detect whether that specific card
+// already holds previously documented data (same reversibility-safety
+// pattern as `cardiovascularCardHasDocumentedData` -- a card with real
+// data never silently disappears; it falls through to a single-line
+// "previously documented" banner instead). "GI Documentation Guidance"
+// is a pure informational banner with no field of its own -- it is
+// always safe to hide outright, so it has no entry here.
+const GI_OVERVIEW_CARD_FIELD_PATHS = {
+  "Constipation — Auto-Suggested from Last BM Date": ["constipation"],
+  "GI Symptoms": [
+    "nausea", "vomiting", "vomitingOccurrences24h", "diarrhea", "constipation",
+    "lastBMSize", "straining", "stoolConsistency", "giInformationSource",
+  ],
+  "Abdominal / Bowel Assessment": [
+    "bowelSounds", "abdomen", "ascites", "abdominalGirth", "stoolCharacter",
+    "bowelStatus", "bowelFrequency", "reasonBowelRegimenNotInitiated",
+  ],
+  "Feeding Devices": ["feedingTube.present", "feedingTube.type", "ostomy.present", "ostomy.type"],
+};
+function giCardHasDocumentedData(d, cardTitle) {
+  const paths = GI_OVERVIEW_CARD_FIELD_PATHS[cardTitle] || [];
+  return paths.some((p) => {
+    const existing = getNestedValue(d, p);
+    return Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+  });
+}
+
+// Exported, directly unit-testable mirror of the card-filtering `if
+// (sectionKey === "gastrointestinal" ...)` gate above -- called from
+// that exact render code (not a parallel reimplementation), so a
+// passing unit test proves the real gate's behavior. Returns:
+//   "hide"        -- card renders nothing (zero layout space)
+//   "banner"      -- card renders only the single-line "previously
+//                    documented" preserved-findings banner
+//   "pass-through" -- card renders normally (unaffected by this gate)
+export function computeGiOverviewCardGate(cardTitle, data) {
+  if (cardTitle === "GI Overview" || cardTitle === "Notes") return "pass-through";
+  if (data?.gastrointestinalOverview !== "No Current GI Concern") return "pass-through";
+  if (cardTitle === "Clinical Status Change") return "hide";
+  if (!GI_OVERVIEW_HIDEABLE_CARDS.includes(cardTitle)) return "pass-through";
+  return giCardHasDocumentedData(data, cardTitle) ? "banner" : "hide";
+}
+
+// Exported, directly unit-testable mirror of the "New or Worsening GI
+// Findings" force-open rule applied to the Abdominal / Bowel Assessment
+// card and its sibling conditional GI Symptoms fields (both read this
+// same boolean, see the render code below).
+export function giOverviewForcesFullExam(data) {
+  return data?.gastrointestinalOverview === "New or Worsening GI Findings";
+}
+
+
+// OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" -- "A
+// nurse can immediately answer: Am I reviewing? or Am I documenting?"
+// This is the Review half of that split: a compact, read-only clinical
+// summary built from the SAME stored fields the canonical editor below
+// holds (no second data path, no duplicate controls). It only ever
+// *reads* `d` and renders plain text -- it cannot create a second
+// editable copy of any respiratory field by construction. "Edit Existing
+// Findings" is the one and only way to reach the canonical editor from
+// this path; there is no second editor.
+function respiratorySummaryLine(d) {
+  const lines = [];
+  if (d.sobSeverity) {
+    const exertion = d.exertionLevel ? ` (${d.exertionLevel})` : "";
+    lines.push({ label: "Dyspnea / SOB", value: `${d.sobSeverity}${exertion}` });
+  }
+  if ((d.lungSounds || []).length > 0) {
+    lines.push({ label: "Lung Sounds", value: d.lungSounds.join(", ") });
+  }
+  if ((d.respirations || []).length > 0) {
+    lines.push({ label: "Respiration Pattern", value: d.respirations.join(", ") });
+  }
+  if (d.coughType) {
+    const sputum = d.sputumCharacter ? ` — ${d.sputumCharacter}` : "";
+    lines.push({ label: "Cough / Secretions", value: `${d.coughType}${sputum}` });
+  }
+  const o2 = d.oxygenTherapy || {};
+  if (o2.inUse) {
+    const parts = [o2.type, o2.litersPerMinute ? `${o2.litersPerMinute} L/min` : null, o2.deliveryMode].filter(Boolean);
+    lines.push({ label: "Oxygen", value: parts.length > 0 ? parts.join(", ") : "In use" });
+  } else if (o2.onRoomAir) {
+    lines.push({ label: "Oxygen", value: "On room air" });
+  }
+  if (o2.satOnO2) {
+    lines.push({ label: "SpO2", value: `${o2.satOnO2}%` });
+  }
+  const vent = d.ventilator || {};
+  if (vent.shortTermVentilator || vent.longTermVentilator) {
+    lines.push({ label: "Ventilator", value: vent.shortTermVentilator ? "Short-Term" : "Long-Term" });
+  }
+  if (d.clinicalStatusChange) {
+    lines.push({ label: "Clinical Status", value: d.clinicalStatusChange });
+  }
+  return lines;
+}
+function RespiratoryFindingsReviewSummary({ data, onEdit }) {
+  const lines = respiratorySummaryLine(data);
+  return (
+    <div className="rnica-resp-review-summary">
+      {lines.length > 0 ? (
+        <div className="rnica-resp-review-summary__grid">
+          {lines.map((line) => (
+            <div className="rnica-resp-review-summary__row" key={line.label}>
+              <span className="rnica-resp-review-summary__label">{line.label}</span>
+              <span className="rnica-resp-review-summary__value">{line.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rnica-bodysystem-workspace__card-summary">
+          No previously documented respiratory findings to review yet.
+        </p>
+      )}
+      <div className="rnica-resp-review-summary__actions">
+        <button type="button" className="rnica-chip-action-btn" onClick={onEdit}>
+          Edit Existing Findings
+        </button>
+      </div>
+    </div>
+  );
+}
+
+// OWNER-APPROVED "Infection Hospice Workflow Optimization" (2026-10-20)
+// -- Infection's single-canonical-editor + review/edit split, built on
+// the exact same pattern proven for Respiratory above (RESP_HIDEABLE_*,
+// RespiratoryFindingsReviewSummary): one set of hideable clinical cards
+// (Active Infection, Resistant Organisms, Infection History, Antibiotic
+// Therapy, Precautions, Temperature), never duplicated across Overview
+// states.
+// OWNER DIRECTIVE (2026-10-05) "Shared Information = Render Once" --
+// Immune Status moved out of the hideable set alongside Allergies:
+// Immunosuppression status is standing patient-profile data (category
+// "profile", see BODY_SYSTEM_CATEGORY_ORDER), not a per-visit infection
+// finding, so it is never hidden/gated by Overview and is excluded from
+// INFECTION_HIDEABLE_FIELD_PATHS below (its fields are never actually
+// hidden, so they must not appear in the "data preserved" field list).
+// Overview + Allergies + Immune Status + Clinical Status Change + Notes
+// stay always visible.
+const INFECTION_HIDEABLE_FIELD_PATHS = [
+  "currentInfections", "currentInfectionOther",
+  "antibioticResistantInfection", "historyOfResistantInfections",
+  "recurrentInfection", "infectionHistoryTypes", "infectionHistoryOther", "infectionHistory",
+  "antibioticTherapyStatus", "antibioticMedicationName", "antibioticTreatmentEffective",
+  "precautions", "temperature",
+];
+function infectionHasAnyPreservedData(d) {
+  return INFECTION_HIDEABLE_FIELD_PATHS.some((p) => {
+    const existing = getNestedValue(d, p);
+    return Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+  });
+}
+function infectionSummaryLine(d) {
+  const lines = [];
+  const activeInfections = (d.currentInfections || []).filter((i) => i && i !== "None");
+  if (activeInfections.length > 0) {
+    const other = activeInfections.includes("Other") && d.currentInfectionOther ? ` (${d.currentInfectionOther})` : "";
+    lines.push({ label: "Active Infection", value: `${activeInfections.join(", ")}${other}` });
+  }
+  const resistant = (d.antibioticResistantInfection || []).filter((i) => i && i !== "None");
+  if (resistant.length > 0) {
+    lines.push({ label: "Current Resistant Organisms", value: resistant.join(", ") });
+  }
+  const resistantHistory = (d.historyOfResistantInfections || []).filter((i) => i && i !== "None");
+  if (resistantHistory.length > 0) {
+    lines.push({ label: "History of Resistant Organisms", value: resistantHistory.join(", ") });
+  }
+  if (d.antibioticTherapyStatus) {
+    const med = d.antibioticMedicationName ? ` — ${d.antibioticMedicationName}` : "";
+    lines.push({ label: "Antibiotic Therapy", value: `${d.antibioticTherapyStatus}${med}` });
+  }
+  if ((d.precautions || []).length > 0) {
+    lines.push({ label: "Precautions", value: d.precautions.join(", ") });
+  }
+  if (d.immunosuppressed) {
+    const reason = d.immunosuppressionReason === "Other" ? d.immunosuppressionReasonOther : d.immunosuppressionReason;
+    lines.push({ label: "Immunosuppressed", value: reason || "Yes" });
+  }
+  if (d.recurrentInfection || (d.infectionHistoryTypes || []).length > 0) {
+    const types = (d.infectionHistoryTypes || []).filter((i) => i && i !== "Other");
+    const other = (d.infectionHistoryTypes || []).includes("Other") && d.infectionHistoryOther ? [d.infectionHistoryOther] : [];
+    const combined = [...types, ...other];
+    lines.push({ label: "Infection History", value: combined.length > 0 ? combined.join(", ") : "Recurrent infection documented" });
+  }
+  if (d.temperature) {
+    lines.push({ label: "Temperature", value: `${d.temperature}°F` });
+  }
+  if (d.clinicalStatusChange) {
+    lines.push({ label: "Clinical Status", value: d.clinicalStatusChange });
+  }
+  // OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings Review Is
+  // A True Review Screen" -- the editable Notes textarea is hidden
+  // during pure review (added to INFECTION_HIDEABLE_CARDS below), so a
+  // previously documented note must still surface here read-only;
+  // nothing documented is ever silently dropped from review.
+  if (d.notes) {
+    lines.push({ label: "Notes", value: d.notes });
+  }
+  return lines;
+}
+
+// OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings Review Is A
+// True Review Screen" -- a read-only counterpart to the generic
+// Immune Status field card (Immunosuppressed booleanPill + reason
+// segmented), shown only during pure review of "Existing Infection
+// Findings Review" (no edit mode engaged). Immune Status itself is
+// unchanged patient-profile data/storage -- this only swaps the display
+// from live editable controls to a plain summary line, same pattern as
+// InfectionFindingsReviewSummary below. Shares the single "Edit
+// Allergies" action/unlock flag with the Allergies card immediately
+// after it in the Infection card list (both are "profile" category and
+// the owner's spec names one combined action for both).
+function ImmuneStatusReviewSummary({ data, onEdit }) {
+  const immunosuppressed = Boolean(data.immunosuppressed);
+  const reason = data.immunosuppressionReason === "Other" ? data.immunosuppressionReasonOther : data.immunosuppressionReason;
+  return (
+    <div className="rnica-resp-review-summary">
+      <div className="rnica-resp-review-summary__grid">
+        <div className="rnica-resp-review-summary__row">
+          <span className="rnica-resp-review-summary__label">Immunosuppressed</span>
+          <span className="rnica-resp-review-summary__value">
+            {immunosuppressed ? (reason ? `Yes — ${reason}` : "Yes") : "No"}
+          </span>
+        </div>
+      </div>
+      <div className="rnica-resp-review-summary__actions">
+        <button type="button" className="rnica-chip-action-btn" onClick={onEdit}>
+          Edit Allergies
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function InfectionFindingsReviewSummary({ data, onEdit }) {
+  const lines = infectionSummaryLine(data);
+  return (
+    <div className="rnica-resp-review-summary">
+      {lines.length > 0 ? (
+        <div className="rnica-resp-review-summary__grid">
+          {lines.map((line) => (
+            <div className="rnica-resp-review-summary__row" key={line.label}>
+              <span className="rnica-resp-review-summary__label">{line.label}</span>
+              <span className="rnica-resp-review-summary__value">{line.value}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="rnica-bodysystem-workspace__card-summary">
+          No previously documented infection findings to review yet.
+        </p>
+      )}
+      <div className="rnica-resp-review-summary__actions">
+        <button type="button" className="rnica-chip-action-btn" onClick={onEdit}>
+          Edit Existing Findings
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
@@ -8357,12 +12987,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
     "personalCare", "teachingNeeds",
   ]);
 
-  const normalizePainPatientType = (type) => {
-    if (!type || type === "adult-alert" || type === "alert") return "verbal";
-    if (type === "adult" || type === "alert-adult") return "verbal";
-    return type;
-  };
-
   const patientAge = sectionKey === "pain" ? calculateAgeFromDob(demographics?.dob) : null;
   const isPediatricAge = typeof patientAge === "number" && patientAge < 18;
 
@@ -8379,14 +13003,11 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
     return "verbal";
   };
 
-  const getPainAssessmentMode = () => {
-    const patientType = normalizePainPatientType(data.painMapMode || deriveModeFromScreening(data.verbalizesPain));
-    const selectedTool = String(data.assessmentTool || "");
-    if (patientType === "verbal") return "verbal";
-    if (patientType === "non-verbal") return selectedTool === "FLACC" ? "flacc" : "painad";
-    if (patientType === "pediatric") return "flacc";
-    return "verbal";
-  };
+  // Delegates to rn-ica/pain-symptom-burden/painLogic.js (single source of
+  // truth also consumed by the approved Pain & Symptom Burden summary
+  // screen) -- same normalizePainPatientType/deriveModeFromScreening
+  // algorithm, just centralized so both surfaces agree.
+  const getPainAssessmentMode = () => derivePainAssessmentMode(data, isPediatricAge);
 
   const getPainToolOptions = (mode) => {
     if (mode === "painad") return ["PAINAD", "FLACC"];
@@ -8403,17 +13024,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   const showFast = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "dementia");
   const showEcog = sectionKey === "performanceStatus" && diagnosesIncludeCategory(fullFormData?.diagnoses, "cancer");
 
-  return (
-    <>
-      {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
-      {sectionKey === "sfv" && (
-        <SfvStatusCard patientId={patientId} onNavigateToSection={onNavigateToSection} onSyncCompletionStatus={(completed, completedAt) => {
-          u("inPersonSfvCompleted", completed);
-          u("sfvDate", completedAt || "");
-        }} styles={styles} COLORS={COLORS} />
-      )}
-      <div className={workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid" : undefined}>
-        {resolvedCards.map((card, ci) => {
+  const isBodySystemWorkspace = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
+
+  const cardsContent = resolvedCards.map((card, ci) => {
         // [PRESENTATION-ONLY RELOCATION] A card may declare `dataSection` to
         // render under a different screen/section than the one that owns its
         // data (e.g. the ADL Assessment card visually relocated to Functional
@@ -8424,23 +13037,60 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // unchanged -- see RNICA_SCREEN_AUTHORITY_MATRIX.md.
         const cardDataSection = card.dataSection || sectionKey;
         const cardData = card.dataSection ? (fullFormData?.[card.dataSection] || {}) : data;
-        const shouldRenderPainMap = sectionKey === "pain" && card.title === "Pain Characteristics";
+        // [Pain information-hierarchy regroup -- 2026-10] Several "Pain
+        // Pattern & Trend" cards now share one visual title (the numeric/
+        // FLACC/PAINAD tool variants plus the chronic-pain detail card), so
+        // card identity below is detected by a field it uniquely owns
+        // rather than by `card.title` string equality. No field, path,
+        // option, or HOPE mapping changed -- only which named card a field
+        // renders under.
+        const isPainNumericToolCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "assessmentTool");
+        const isPainFlaccCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "flacc.face");
+        const isPainPainadCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "painad.breathing");
+        const isPainLocationCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "painLocation");
+        // [Redesign 2026-10-03 "Nursing Assessment Flow"] Pain Type,
+        // Characteristics, and Functional Impact are merged into one
+        // "Pain Character & Impact" card (identified by either of its two
+        // always-present anchor fields) so the former 3-box/3-border
+        // layout becomes 1 box. Visibility that used to be a whole-card
+        // gate (`painAssessmentMode === "verbal"`) is now a per-field gate
+        // below (PAIN_VERBAL_ONLY_PATHS) -- neuropathic-pain fields are
+        // NOT verbal-only and must keep showing for non-verbal patients,
+        // which the old card-level gate would have wrongly hidden if
+        // simply merged without this change. No field/path/option/HOPE
+        // mapping touched.
+        const isPainCharacteristicsCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "painOnsetProgression" || f.path === "neuropathicPain");
+        // Pain History merges the former standalone chronic/recurrent-pain
+        // gate question and its detail sub-fields (baseline/tolerance/
+        // threshold/management-approach/control-status) into one card
+        // (was two boxes). Same card-level visibility rule as before
+        // (only relevant once the patient denies current pain) and the
+        // same field-level chronicPainHistory === "1" gate on every detail
+        // field, both unchanged below.
+        const isPainHistoryCard = sectionKey === "pain" && card.fields?.some((f) => f.path === "chronicPainHistory");
+        const shouldRenderPainMap = isPainLocationCard;
         const shouldRenderSkinMap = sectionKey === "skin" && card.title === "Skin Assessment";
-        const shouldRenderPainToolCard = sectionKey === "pain" && card.title === "Pain Assessment Tool" && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
-        const shouldRenderPainCharacteristicsCard = sectionKey === "pain" && card.title === "Pain Characteristics" && painAssessmentMode === "verbal";
-        const shouldRenderPainadCard = sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && painAssessmentMode === "painad";
-        const shouldRenderFlaccCard = sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && painAssessmentMode === "flacc";
+        const shouldRenderPainToolCard = isPainNumericToolCard && painAssessmentMode !== "painad" && painAssessmentMode !== "flacc";
+        const shouldRenderLocationCard = isPainLocationCard && painAssessmentMode === "verbal";
+        const shouldRenderPainadCard = isPainPainadCard && painAssessmentMode === "painad";
+        const shouldRenderFlaccCard = isPainFlaccCard && painAssessmentMode === "flacc";
 
-        if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && !shouldRenderPainToolCard) {
+        if (isPainNumericToolCard && !shouldRenderPainToolCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "Pain Characteristics" && !shouldRenderPainCharacteristicsCard) {
+        if (isPainLocationCard && !shouldRenderLocationCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && !shouldRenderPainadCard) {
+        if (isPainPainadCard && !shouldRenderPainadCard) {
           return null;
         }
-        if (sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && !shouldRenderFlaccCard) {
+        if (isPainFlaccCard && !shouldRenderFlaccCard) {
+          return null;
+        }
+        // The chronic/recurrent-history question (and its detail fields)
+        // only applies once the patient denies current pain -- hide the
+        // whole merged card rather than show it with just one field.
+        if (isPainHistoryCard && cardData.currentPain !== "0") {
           return null;
         }
 
@@ -8452,6 +13102,266 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
 
+        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+        // the audit confirmed the normal-patient path required ~22 visible
+        // decisions against a 5-10 target. Everything below the new
+        // "Neurological Overview" card is now gated on that single
+        // up-front triage answer; nothing is removed, renamed, or
+        // reinterpreted -- cards simply don't render until they're
+        // relevant to the path the nurse selected.
+        if (sectionKey === "neurological" && card.title !== "Neurological Overview") {
+          const overview = data.neuroOverview;
+          // Before the gate is answered, show ONLY the Overview card --
+          // this is the single biggest lever for cutting the initial
+          // decision count.
+          if (!overview) return null;
+          // "Unable to Assess": the reason control lives on the Overview
+          // card itself; nothing else applies.
+          if (overview === "Unable to Assess") return null;
+          if (overview === "No Current Neurological Concern") {
+            // Path 1 (fastest): Consciousness, Orientation, Sleep/
+            // Responsiveness (baseline only), Overall Change,
+            // Communication (primary only), Behavioral Status gate,
+            // Motor/Balance Status gate. HOPE and Notes stay visible --
+            // official/independent obligations are never gated behind an
+            // internal speed metric (mega-directive Section 17).
+            if (["Psychiatric History"].includes(card.title)) return null;
+          }
+          // "Existing Neurological Findings Stable" and "New/Worsening
+          // Neurological Findings" both render the full comprehensive
+          // card set unchanged (today's existing behavior) -- Stable's
+          // "confirm rather than re-enter prior values" flow is a
+          // separate, larger feature tracked for a future pass, not
+          // faked here.
+        }
+
+        // OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Rebuild" --
+        // card-level visibility now matches the actual documentation
+        // workflow instead of merely re-laying out every field on every
+        // path. Path 4 ("Unable to Assess") still shows only the
+        // Overview card. Path 1 ("No Current Cardiovascular Concern") now
+        // shows ONLY Cardiovascular Overview, Clinical Status Change, and
+        // Cardiovascular Notes -- Circulation & Perfusion (Pulse Rhythm/
+        // Rate/Strength, JVD, Edema, etc.), Cardiovascular Symptoms, and
+        // Cardiac Devices are all hidden; there is no clinical reason to
+        // force a clinician who just indicated "no current concern"
+        // through an otherwise-empty assessment grid. Path 2 ("Existing
+        // Cardiovascular Findings Review") keeps its existing per-field
+        // "only show already-documented findings" rule (see the
+        // render-loop guard below) AND now additionally hides the whole
+        // Circulation & Perfusion / Cardiovascular Symptoms card when
+        // NONE of its fields have a documented value, so a bare card
+        // title with an empty box underneath it can never appear.
+        if (sectionKey === "cardiovascular" && card.title !== "Cardiovascular Overview") {
+          const overview = data.cardiovascularOverview;
+          if (!overview) return null;
+          if (overview === "Unable to Assess") return null;
+          if (overview === "No Current Cardiovascular Concern" && ["Circulation & Perfusion", "Cardiovascular Symptoms", "Cardiac Devices"].includes(card.title)) {
+            // FIX (2026-10-04) "Cardiovascular Reversibility Safety" --
+            // this used to unconditionally hide these three cards,
+            // which meant a clinician who selected "No Current
+            // Cardiovascular Concern" over a record that already had
+            // real preserved findings (e.g. a prior visit's documented
+            // edema or chest pain) saw those findings vanish from the
+            // screen with no way back -- apparent data loss, even though
+            // nothing was ever deleted from the record. A card with
+            // genuinely nothing documented still hides completely
+            // (today's fast, compact Path 1 experience is unchanged for
+            // a brand-new "no concern" record). A card that DOES hold
+            // previously documented data instead falls through and
+            // renders collapsed-by-default with an explicit "click to
+            // review" summary (see the `cvPath1PreservedCard` flag at
+            // the <Card> call below) -- visible, reversible, never
+            // silent.
+            if (!cardiovascularCardHasDocumentedData(data, card)) {
+              return null;
+            }
+          }
+          // SNS Layout Standard v1.1 Section 8.2 Empty-Peer Rule (owner
+          // density-audit finding, "Existing Cardiovascular Findings
+          // Review" row): Cardiac Devices (Pacemaker/Internal
+          // Defibrillator/Central Venous Line) was missing from this
+          // already-existing "hide when nothing documented" check, so an
+          // undocumented record showed a bare "Cardiac Devices" heading
+          // with zero visible pills next to Clinical Status Change --
+          // an empty peer column consuming reserved width/space. Adding
+          // it here reuses the identical hasAnyDocumentedField logic
+          // already proven for Circulation & Perfusion / Cardiovascular
+          // Symptoms; when the card is hidden, its "treatments" category
+          // group renders nothing (see bodySystemGroupedContent below)
+          // and Clinical Status Change's "response" group naturally
+          // expands to the full row via the existing flex-basis rule in
+          // RNICACommandWorkspace.css -- no CSS change required. No
+          // field, value, validation, or persistence change.
+          if (overview === "Existing Cardiovascular Findings Review" && ["Circulation & Perfusion", "Cardiovascular Symptoms", "Cardiac Devices"].includes(card.title)) {
+            const CV_CARD_ALWAYS_VISIBLE_FIELDS = new Set([
+              "cardiovascularOverview", "cardiovascularUnableToAssessReason", "cardiovascularUnableToAssessOther",
+              "clinicalStatusChange", "notes", "cardiovascularFindingsConfirmedThisVisit",
+            ]);
+            const hasAnyDocumentedField = (card.fields || []).some((cardField) => {
+              if (CV_CARD_ALWAYS_VISIBLE_FIELDS.has(cardField.path)) return false;
+              const existing = getNestedValue(data, cardField.path);
+              return Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+            });
+            if (!hasAnyDocumentedField) return null;
+          }
+        }
+
+        // OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" --
+        // supersedes the 2026-10-18 rebuild's "both paths render the same
+        // cards fully" rule, which the owner rejected as two nearly-
+        // identical workflows. There is still only ONE canonical
+        // respiratory editor (the 5 clinical cards below, defined once in
+        // config, never duplicated) -- but "Existing Respiratory Findings
+        // Review" no longer opens it automatically. It now shows a
+        // compact read-only summary (RespiratoryFindingsReviewSummary,
+        // rendered once in place of the first hideable card) with an
+        // explicit "Edit Existing Findings" action that flips the new
+        // `respiratoryExistingFindingsEditMode` workflow flag (not a
+        // clinical field; excluded from every findings/summary helper).
+        // Only "New or Worsening Respiratory Findings" (document change)
+        // and Existing Review + edit-mode (explicit nurse action) reach
+        // the canonical editor -- matching the Cardiovascular Path 1/2
+        // precedent of "review screens display, editor screens edit."
+        if (sectionKey === "respiratory" && card.title !== "Respiratory Overview" && data.respiratoryOverview) {
+          const respOverview = data.respiratoryOverview;
+          const respEditingExisting = Boolean(data.respiratoryExistingFindingsEditMode);
+          const RESP_HIDEABLE_CARDS = [
+            "Dyspnea / SOB", "Respiratory Assessment", "Cough / Secretions",
+            "Oxygen Therapy", "Ventilator / Airway Support",
+          ];
+          if (RESP_HIDEABLE_CARDS.includes(card.title)) {
+            // Unable to Assess / No Current Respiratory Concern: the
+            // clinical cards hide entirely -- no collapsed duplicate copy
+            // renders in their place (previously documented data is not
+            // deleted; it is reachable in one click via "Existing
+            // Respiratory Findings Review", called out by the single
+            // banner line on the Overview card below).
+            if (respOverview === "Unable to Assess" || respOverview === "No Current Respiratory Concern") {
+              return null;
+            }
+            if (respOverview === "Existing Respiratory Findings Review" && !respEditingExisting) {
+              // Render the review summary exactly once, in place of the
+              // first hideable card's slot, so it sits in the same
+              // vertical position the editor would occupy; the remaining
+              // four hideable cards simply don't render (no second copy,
+              // no empty placeholders -- see Section F "hidden findings
+              // are not silently deleted" / "empty conditional regions
+              // consume zero space").
+              if (card.title === "Dyspnea / SOB") {
+                return (
+                  <Card key={ci} title="Respiratory Findings Review" fullWidth bare={isBodySystemWorkspace}>
+                    <RespiratoryFindingsReviewSummary
+                      data={cardData}
+                      onEdit={() => u("respiratoryExistingFindingsEditMode", true)}
+                    />
+                  </Card>
+                );
+              }
+              return null;
+            }
+            // "New or Worsening Respiratory Findings", or "Existing
+            // Respiratory Findings Review" with edit-mode active: render
+            // the canonical editor cards fully (every field, no
+            // documented-value filter) -- the one and only respiratory
+            // editor, never duplicated.
+          }
+        }
+
+        // OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings
+        // Review Is A True Review Screen" -- Immune Status is excluded
+        // from the Overview-driven hide/rebuild gate below (it is
+        // standing patient-profile data, same as Allergies), but a
+        // review screen must still be display-only: during pure review
+        // (no edit mode engaged) render the read-only summary instead of
+        // the live editable fields. Deliberately independent of
+        // "Edit Existing Findings" (infectionExistingFindingsEditMode) --
+        // the owner's spec names two separate actions, so unlocking the
+        // infection-findings editor must not also silently unlock
+        // allergy/immune-status editing, and vice versa. Any other
+        // Overview state (initial unselected, No Current Infection
+        // Concern, New or Worsening) — or review with the "Edit
+        // Allergies" unlock engaged — falls through unchanged to the
+        // normal editable field card.
+        if (sectionKey === "infection" && card.title === "Immune Status") {
+          const infOverviewForImmune = data.infectionOverview;
+          const isPureReviewForImmune = infOverviewForImmune === "Existing Infection Findings Review"
+            && !data.infectionAllergiesEditMode;
+          if (isPureReviewForImmune) {
+            return (
+              <Card key={ci} title="Immune Status" bare={isBodySystemWorkspace}>
+                <ImmuneStatusReviewSummary
+                  data={cardData}
+                  onEdit={() => u("infectionAllergiesEditMode", true)}
+                />
+              </Card>
+            );
+          }
+        }
+
+        // OWNER-APPROVED "Infection Hospice Workflow Optimization"
+        // (2026-10-20), revised per OWNER DIRECTIVE (2026-10-05) "Shared
+        // Information = Render Once" -- identical Review/Edit split
+        // pattern as Respiratory immediately above. "Allergies" and
+        // "Immune Status" are both patient-profile data (category
+        // "profile"), intentionally excluded from INFECTION_HIDEABLE_CARDS
+        // and from this gate entirely -- always visible regardless of
+        // Overview, never hidden/rebuilt per workflow state.
+        if (sectionKey === "infection" && card.title !== "Infection Overview" && card.title !== "Allergies" && card.title !== "Immune Status") {
+          const infOverview = data.infectionOverview;
+          // OWNER DIRECTIVE (2026-10-05) item 4, "Initial Unselected
+          // State" -- before the nurse answers the first Infection
+          // question, show ONLY Infection Overview plus the always-
+          // visible patient-profile cards excluded above (Allergies,
+          // Immune Status); every other Infection card (including
+          // Clinical Status Change and Notes) stays hidden until an
+          // Overview choice is made. Once any Overview value is picked,
+          // falls through to the existing per-state gating below
+          // unchanged.
+          if (!infOverview) {
+            return null;
+          }
+          const infEditingExisting = Boolean(data.infectionExistingFindingsEditMode);
+          // Item 13A "Per-Overview-State Display Rules" -- Clinical Status
+          // Change is a conclusion ABOUT infection findings, so it follows
+          // the same gating as the findings cards themselves: hidden when
+          // there is no current infection concern (nothing to compare),
+          // hidden during pure review of existing findings (reviewing
+          // prior data is not itself a new conclusion), and shown/required
+          // only when actively documenting (New/Worsening, or Existing
+          // Review with edit mode engaged).
+          const INFECTION_HIDEABLE_CARDS = [
+            "Active Infection", "Resistant Organisms",
+            "Infection History", "Antibiotic Therapy", "Precautions", "Temperature",
+            "Clinical Status Change", "Notes",
+          ];
+          if (INFECTION_HIDEABLE_CARDS.includes(card.title)) {
+            if (infOverview === "Unable to Assess" || infOverview === "No Current Infection Concern") {
+              return null;
+            }
+            if (infOverview === "Existing Infection Findings Review" && !infEditingExisting) {
+              // Render the review summary exactly once, in the first
+              // hideable card's slot; the rest simply don't render (no
+              // duplicate copy, no empty placeholders).
+              if (card.title === "Active Infection") {
+                return (
+                  <Card key={ci} title="Infection Findings Review" fullWidth bare={isBodySystemWorkspace}>
+                    <InfectionFindingsReviewSummary
+                      data={cardData}
+                      onEdit={() => u("infectionExistingFindingsEditMode", true)}
+                    />
+                  </Card>
+                );
+              }
+              return null;
+            }
+            // "New or Worsening Infection Findings", or "Existing
+            // Infection Findings Review" with edit-mode active: render
+            // the canonical editor cards fully -- the one and only
+            // infection editor, never duplicated.
+          }
+        }
+
         if (sectionKey === "performanceStatus" && card.title === "NYHA Classification (Heart Failure)" && !showNyha) {
           return null;
         }
@@ -8460,6 +13370,64 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
         if (sectionKey === "performanceStatus" && card.title === "ECOG Performance Status" && !showEcog) {
           return null;
+        }
+        // Pilot-only cards (summary banner / group labels / mobility
+        // reference) are hidden entirely in legacy mode -- legacy keeps
+        // exactly the original card list/order it always had.
+        if (sectionKey === "performanceStatus" && !workspacePilot && ["functionalStatusSummary", "scaleGroupLabel", "mobilityTransferSummary"].includes(card.customRenderer)) {
+          return null;
+        }
+        if (sectionKey === "performanceStatus" && card.customRenderer === "scaleGroupLabel") {
+          const groupHasVisibleScale = card.title === "Specialized Diagnosis-Specific Scales" ? (showEcog || showFast || showNyha) : true;
+          if (!groupHasVisibleScale) return null;
+          return <div key={ci} className="rnica-performance-group-label">{card.title}</div>;
+        }
+        if (sectionKey === "performanceStatus" && card.customRenderer === "functionalStatusSummary") {
+          return (
+            <FunctionalStatusSummaryCard
+              key={ci}
+              diagnosesData={fullFormData?.diagnoses}
+              showEcog={showEcog}
+              showFast={showFast}
+              showNyha={showNyha}
+            />
+          );
+        }
+        if (sectionKey === "performanceStatus" && card.customRenderer === "mobilityTransferSummary") {
+          return <MobilityTransferSummaryCard key={ci} fullFormData={fullFormData} />;
+        }
+        if (sectionKey === "performanceStatus" && workspacePilot && PERFORMANCE_SCALE_TITLES[card.title]) {
+          return (
+            <PerformanceScaleCard
+              key={ci}
+              scaleKey={PERFORMANCE_SCALE_TITLES[card.title]}
+              card={card}
+              data={cardData}
+              update={(path, v) => update(cardDataSection, path, v)}
+              diagnosesData={fullFormData?.diagnoses}
+            />
+          );
+        }
+        if (sectionKey === "performanceStatus" && workspacePilot && card.customRenderer === "adlSummaryGrid") {
+          return (
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <AdlSummaryGrid card={card} data={cardData} update={(path, v) => update(cardDataSection, path, v)} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "diagnoses" && card.customRenderer === "primaryTerminalDiagnosis") {
+          return (
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <PrimaryTerminalDiagnosisCard
+                diagnosesData={data}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+                workspacePilot={workspacePilot}
+              />
+            </Card>
+          );
         }
 
         if (sectionKey === "diagnoses" && card.customRenderer === "lcdEligibility") {
@@ -8508,6 +13476,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        if (sectionKey === "diagnoses" && card.customRenderer === "contributingConditions") {
+          return (
+            <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ContributingConditionsCard diagnosesData={data} updateField={u} styles={styles} COLORS={COLORS} workspacePilot={workspacePilot} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "diagnoses" && card.customRenderer === "lcdSupportingEvidence") {
           // Pilot-only: renders last on the Diagnoses page so free-text
           // narrative never sits between structured checklists. Legacy mode
@@ -8522,24 +13498,41 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
 
         if (sectionKey === "performanceStatus" && card.customRenderer === "declineTracker") {
+          const declineTrackerBody = (
+            <DeclineTrackerCard
+              patientId={patientId}
+              assessmentId={assessmentId}
+              performanceData={data}
+              weight={fullFormData?.vitals?.weight}
+              updateField={u}
+              styles={styles}
+              COLORS={COLORS}
+            />
+          );
+          // Collapsed by default in pilot mode -- most admissions have "no
+          // prior assessment available" here, so it shouldn't occupy space
+          // above the actual scales. Legacy mode is untouched (always
+          // expanded, plain Card wrapper).
+          if (workspacePilot) {
+            return (
+              <Accordion key={ci} type="single" collapsible className="rnica-decline-accordion">
+                <AccordionItem value="decline">
+                  <AccordionTrigger>{card.title}</AccordionTrigger>
+                  <AccordionContent>{declineTrackerBody}</AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            );
+          }
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <DeclineTrackerCard
-                patientId={patientId}
-                assessmentId={assessmentId}
-                performanceData={data}
-                weight={fullFormData?.vitals?.weight}
-                updateField={u}
-                styles={styles}
-                COLORS={COLORS}
-              />
+              {declineTrackerBody}
             </Card>
           );
         }
 
         if (sectionKey === "nutrition" && card.customRenderer === "nutritionAnthropometricReference") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <NutritionAnthropometricReferenceCard fullFormData={fullFormData} styles={styles} COLORS={COLORS} />
             </Card>
           );
@@ -8547,7 +13540,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "nutrition" && card.customRenderer === "weightLossAutoCalc") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <WeightLossAutoCalcCard
                 patientId={patientId}
                 assessmentId={assessmentId}
@@ -8557,6 +13550,14 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 styles={styles}
                 COLORS={COLORS}
               />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "vitals" && card.customRenderer === "vitalSignsClinical") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <VitalSignsClinicalCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
@@ -8571,8 +13572,25 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 
         if (sectionKey === "skin" && card.customRenderer === "woundList") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <WoundListCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+              {/* Owner directive: compress Pressure Relief Measures into an
+                  inline checklist within Wound Documentation rather than a
+                  separate "Wound Documentation & Notes" card. Same fields/
+                  paths as before (woundImpairment, pressureReliefMeasures,
+                  repositioningPlan, notes) -- no data model change. */}
+              <div style={{ marginTop: 10, paddingTop: 10, borderTop: `1px dashed ${COLORS.border}`, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+                <FormCheckboxGroup label="Pressure-Relief Measures" values={data.pressureReliefMeasures || []}
+                  onChange={(v) => u("pressureReliefMeasures", v)}
+                  options={["Pressure-relief mattress", "Heel protectors/floating heels", "Cushioned wheelchair seat", "Foam/gel positioning devices", "Frequent position changes", "None in place"]} />
+                <FormInput label="Repositioning Plan" value={data.repositioningPlan} onChange={(v) => u("repositioningPlan", v)}
+                  placeholder="e.g., Reposition every 2 hours, alternate sides" />
+              </div>
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 8 }}>
+                <FormTextarea label="Wound Impairment" rows={2} value={data.woundImpairment} onChange={(v) => u("woundImpairment", v)} />
+                <FormTextarea label="Skin Notes" rows={2} value={data.notes} onChange={(v) => u("notes", v)} />
+              </div>
+              <SkinTreatmentSummary assessmentId={assessmentId} patientId={patientId} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
@@ -8585,9 +13603,101 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        // [OWNER REVIEW -- 2026-09-26, superseded by FINAL OWNER
+        // REQUIREMENTS] Current Pain Summary is a single read-only card
+        // (no separate "Pain Management Summary"). AI Pain Analysis always
+        // renders (with an honest placeholder when there is nothing
+        // grounded to say). Overdue Action Alerts renders nothing at all
+        // -- no card, no placeholder -- when no rule is triggered.
+        if (sectionKey === "pain" && card.customRenderer === "painAssessmentSummary") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} compact>
+              <PainAssessmentSummaryCard data={data} styles={styles} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "pain" && card.customRenderer === "aiPainAnalysis") {
+          // Always render: AiPainAnalysisCard already shows an honest
+          // "Insufficient reviewed pain data for analysis." placeholder
+          // when computeAiPainNotes() returns []. Hiding the whole card in
+          // that case made the feature invisible/undiscoverable during
+          // review -- it must always be present so the RN/owner can see
+          // it is implemented, not missing.
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} compact>
+              <AiPainAnalysisCard data={data} styles={styles} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "pain" && card.customRenderer === "painOverdueAlerts") {
+          if (computePainOverdueAlerts(data, painAssessmentMode).length === 0) return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} compact>
+              <PainOverdueAlertsCard data={data} painAssessmentMode={painAssessmentMode} styles={styles} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "gastrointestinal" && card.title !== "GI Overview" && card.title !== "Notes") {
+          const giGateAction = computeGiOverviewCardGate(card.title, data);
+          if (giGateAction === "hide") return null;
+          if (giGateAction === "banner") {
+            return (
+              <Card key={ci} title={card.title} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  Previously documented findings exist for this card. Select "Existing GI Findings Review" above to review or continue documenting.
+                </div>
+              </Card>
+            );
+          }
+        }
+
+        if (sectionKey === "gastrointestinal" && card.title === "Abdominal / Bowel Assessment") {
+          // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+          // Revision, Additional Bowel Details" -- the full exam-detail
+          // card (Bowel Sounds, Abdomen, Ascites, Girth, Stool, Bowel
+          // Status/Frequency, bowel-regimen reason) is hidden by default
+          // and reveals only via: the nurse's own "Show Additional Bowel
+          // Details" toggle, Last BM Size = Unable To Determine, a
+          // meaningful-finding Straining Moderate/Severe, a Watery Stool
+          // Character, or Last BM exceeding the documented threshold
+          // (GI_LAST_BM_THRESHOLD_DAYS). Collapsing returns a single
+          // zero-reserved-space reveal control -- no empty card body, no
+          // data deleted. When a trigger fires, the collapsed state
+          // always states the reason so the nurse never wonders why the
+          // card suddenly expanded.
+          const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
+          // OWNER DIRECTIVE (2026-10-30) "GI Progressive Visibility Defect
+          // B Fix" -- "New or Worsening GI Findings" requires the complete
+          // exam (every field, no per-field filter), matching the
+          // Respiratory/Infection "New or Worsening" precedent, so it
+          // force-opens this card regardless of the individual auto-open
+          // triggers below.
+          const manuallyOpened = Boolean(data?.giShowAdditionalBowelDetails) || giOverviewForcesFullExam(data);
+          const autoOpenReason = data?.lastBMSize === "Unable To Determine" ? "Last BM Size is Unable To Determine"
+            : isModOrSevere(data?.straining) ? "Straining is documented as Moderate/Severe"
+            : data?.stoolConsistency === "Watery" ? "Stool Character is documented as Watery"
+            : giLastBMExceedsThreshold(data?.lastBM) ? `Last BM exceeds ${GI_LAST_BM_THRESHOLD_DAYS} days`
+            : null;
+          if (!manuallyOpened && !autoOpenReason) {
+            return (
+              <Card key={ci} title="Additional Bowel Details" compact bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+                <button type="button" className="rnica-pill-reveal" onClick={() => u("giShowAdditionalBowelDetails", true)}>
+                  + Additional Bowel Details
+                </button>
+              </Card>
+            );
+          }
+          // manuallyOpened OR autoOpenReason: fall through to the generic
+          // fields renderer below exactly like any other fields-based
+          // card -- no reimplementation of individual field controls.
+        }
+
         if (sectionKey === "gastrointestinal" && card.customRenderer === "constipationAutoAssess") {
           return (
-            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
               <ConstipationAutoAssessCard
                 lastBM={data?.lastBM}
                 diarrhea={data?.diarrhea}
@@ -8600,10 +13710,115 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
-        if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
+        // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Conditional
+        // Documentation Guidance" -- informational banners ONLY. Never
+        // diagnoses fecal impaction/bowel obstruction/overflow diarrhea;
+        // never writes to `data`/formData; never a required field. Hidden
+        // entirely (renders null) when no guidance condition applies, so
+        // a normal/unremarkable GI assessment shows nothing extra here.
+        if (sectionKey === "gastrointestinal" && card.customRenderer === "giDocumentationGuidance") {
+          // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+          // Revision" -- replaces the broader Phase 1 facility/bedbound/
+          // threshold-based banners with the exact two supported
+          // triggers from the revised matrix: Straining Moderate/Severe
+          // (constipation path) and Stool Character Watery (diarrhea
+          // path). Neutral, observation-focused wording only -- never
+          // names fecal impaction, overflow diarrhea, or bowel
+          // obstruction. Hidden entirely (returns null) for every other
+          // state, including Mild constipation/diarrhea and Severe
+          // constipation with a normal/unremarkable Last BM Size.
+          const showConstipationGuidance = data?.straining === "Moderate" || data?.straining === "Severe";
+          const showDiarrheaGuidance = data?.stoolConsistency === "Watery";
+          if (!showConstipationGuidance && !showDiarrheaGuidance) return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+              {showConstipationGuidance && (
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  <p><strong>Documentation Guidance</strong></p>
+                  <p>Consider asking: Was the bowel movement small, medium, or large? Was straining required? Was the patient uncomfortable? Has the recent bowel pattern changed? Is the current bowel regimen helping?</p>
+                </div>
+              )}
+              {showDiarrheaGuidance && (
+                <div className="rnica-cv-preserved-findings-banner" role="status">
+                  <p><strong>Documentation Guidance</strong></p>
+                  <p>Consider asking: Was this loose stool or mostly watery output? Was there recent constipation or straining? Was the output a full bowel movement or only seepage? Is abdominal discomfort or distention present?</p>
+                </div>
+              )}
+            </Card>
+          );
+        }
+
+        if (card.customRenderer === "referralRecommendation" && ["psychosocial", "spiritual", "bereavement"].includes(sectionKey)) {
+          const indicatorsPath = sectionKey === "bereavement" ? "riskFactors" : "referralIndicators";
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} />
+              <ReferralRecommendationCard
+                domain={sectionKey}
+                indicators={data?.[indicatorsPath]}
+                styles={styles}
+              />
+            </Card>
+          );
+        }
+
+        if (card.customRenderer === "referralRefusal" && ["psychosocial", "spiritual", "bereavement"].includes(sectionKey)) {
+          const indicatorsPath = sectionKey === "bereavement" ? "riskFactors" : "referralIndicators";
+          const recommendation = resolveReferralRecommendation(data?.[indicatorsPath]);
+          if (!recommendation.recommended || data?.familyResponse !== "Refused") return null;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <ReferralRefusalCard
+                domain={sectionKey}
+                recommended={recommendation.recommended}
+                familyResponse={data?.familyResponse}
+                refusal={data?.refusal}
+                updateField={u}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "infection" && card.customRenderer === "patientAllergies") {
+          // OWNER DIRECTIVE (2026-10-05) "Existing Infection Findings
+          // Review Is A True Review Screen" -- Add Allergy/Remove
+          // Allergy controls are hidden during pure review of "Existing
+          // Infection Findings Review" (no edit mode engaged); the
+          // nurse unlocks editing explicitly via "Edit Allergies" (also
+          // unlocks the Immune Status card immediately below -- both
+          // are the same "profile" category and the owner's spec names
+          // one combined action for both). Deliberately independent of
+          // "Edit Existing Findings" (infectionExistingFindingsEditMode)
+          // -- two separate owner-named actions, so unlocking one never
+          // silently unlocks the other. Every other Overview state keeps
+          // today's fully-editable behavior unchanged.
+          const infOverviewForAllergies = data.infectionOverview;
+          const allergiesEditUnlocked = Boolean(data.infectionAllergiesEditMode);
+          const isPureReviewForAllergies = infOverviewForAllergies === "Existing Infection Findings Review"
+            && !allergiesEditUnlocked;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms} bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}>
+              {infOverviewForAllergies === "Existing Infection Findings Review" && allergiesEditUnlocked && (
+                <div className="rnica-resp-review-back-banner" role="status">
+                  <p>Editing allergies and immune status.</p>
+                  <button
+                    type="button"
+                    className="rnica-chip-action-btn"
+                    onClick={() => u("infectionAllergiesEditMode", false)}
+                  >
+                    ← Back to Review
+                  </button>
+                </div>
+              )}
+              <AllergiesCard patientId={patientId} styles={styles} COLORS={COLORS} onChanged={uiProfile.onAllergiesChanged} readOnly={isPureReviewForAllergies} />
+              {isPureReviewForAllergies && (
+                <div style={{ marginTop: 10 }}>
+                  <button type="button" className="rnica-chip-action-btn" onClick={() => u("infectionAllergiesEditMode", true)}>
+                    Edit Allergies
+                  </button>
+                </div>
+              )}
             </Card>
           );
         }
@@ -8666,16 +13881,189 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             </Card>
           );
         }
-
+        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Change" --
+        // supersedes the earlier accordion treatment (items #2/#3 of the
+        // "Neurological Density Optimization" directive). An accordion
+        // added an extra click and hid fields a clinician might need to
+        // document, which the owner explicitly rejected. This card is no
+        // longer collapsible: the three select fields are always visible
+        // (no `collapsible`/`defaultCollapsed` passed to <Card> below),
+        // and score/interpretation/review-status render exactly once, as
+        // a single compact header line via the `summary` prop (which
+        // `Card` already renders unconditionally, independent of any
+        // collapse state) -- the old second, full score/interpretation/
+        // behavioral-line/flags banner that used to render below the
+        // fields has been deleted so nothing is duplicated. Fields
+        // themselves (Word Repetition/Recall/Temporal Orientation) are
+        // still hand-rendered here rather than routed through the generic
+        // per-field loop, for the same reason as before: that loop is
+        // shared by every Body System and isn't a safe place to splice in
+        // a one-off compact header for a single card. Paths, options, and
+        // onChange (`u`) are unchanged.
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction"
+        // item #1 -- the internal implementation note ("Internal clinical
+        // assessment · Not submitted to CMS HOPE") has been removed from
+        // the schema entirely (not hidden, not replaced with other
+        // disclaimer text): that kind of technical/compliance detail
+        // belongs in code comments and mapping documentation, not the
+        // clinician-facing UI. `cognitiveScreenNote` had no other
+        // consumer, so nothing else changed.
+        if (sectionKey === "neurological" && card.title === "SNS Cognitive Screen") {
+          const cognitive = computeNeurologicalCognitiveSummary(cardData);
+          const screenFields = card.fields.filter((f) => f.type === "select");
+          const reviewStatusLabel = !cognitive || cognitive.screen.completionStatus === "NOT_STARTED"
+            ? "Not Started"
+            : cognitive.screen.completionStatus === "PARTIAL"
+              ? "Incomplete"
+              : cognitive.screen.interpretation?.reviewRecommended
+                ? "Review Recommended"
+                : "No Review Needed";
+          // Single-line header: "Score 8 of 9 · Within expected range · No
+          // review needed" (owner's exact requested format). This is the
+          // ONLY place the score/interpretation render inside this card.
+          const headerSummary = (
+            <p className="rnica-cognitive-summary__header">
+              {!cognitive || cognitive.screen.completionStatus === "NOT_STARTED"
+                ? "Not yet documented"
+                : cognitive.screen.completionStatus === "PARTIAL"
+                  ? `Incomplete — not yet documented: ${cognitive.screen.missingItems.join(", ")}`
+                  : `Score ${cognitive.screen.rawScore} of ${cognitive.screen.maxScore}${cognitive.screen.interpretation ? ` · ${cognitive.screen.interpretation.label}` : ""} · ${reviewStatusLabel === "Review Recommended" ? "Review recommended" : "No review needed"}`}
+            </p>
+          );
+          return (
+            <Card
+              key={ci}
+              title={card.title}
+              importance={card.importance}
+              bare={workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey)}
+              fullWidth={Boolean(card.fullWidth)}
+              summary={headerSummary}
+            >
+              <div className="rnica-bodysystem-workspace__fields rnica-cognitive-screen__fields">
+                {screenFields.map((f) => (
+                  <div key={f.path} style={{ gridColumn: `span ${f.fieldSpan || 1}` }}>
+                    <FormSelect
+                      label={f.label}
+                      value={getNestedValue(cardData, f.path)}
+                      onChange={(v) => u(f.path, v)}
+                      options={f.options}
+                      compact
+                    />
+                  </div>
+                ))}
+              </div>
+            </Card>
+          );
+        }
+        // Body Systems architectural correction (pilot-only, supersedes
+        // the earlier per-card collapse-by-default density fix): each
+        // system renders as ONE workspace instead of N bordered cards, so
+        // sub-sections use `bare` (title row + fields only, no box/
+        // collapse) and are visually packed together -- nothing is hidden
+        // behind a click, preventing missed documentation. The outer
+        // workspace Card wrapper is added once per section below (see
+        // the wrapping <Card> around this whole map() call).
+        const isBodySystemPilotCard = workspacePilot && BODY_SYSTEM_FORM_SECTIONS.has(sectionKey);
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+        // Pass" item #8 -- always-visible one-line auto-summary for
+        // "Cognitive / Behavioral Findings" (collapsed by default; see
+        // the schema's new `collapsedByDefault`), computed from the same
+        // fields the card itself edits (`symptomsDemeanor`, `delirium`,
+        // `seizureHistory`) -- nothing new is stored, this only restates
+        // already-documented values. `null` (renders nothing) for every
+        // other card, matching the existing "no empty placeholder" rule
+        // used elsewhere in this file.
+        let cardSummary = null;
+        if (sectionKey === "neurological" && card.title === "Cognitive / Behavioral Findings") {
+          const demeanor = (cardData.symptomsDemeanor || []).filter((s) => s !== "Peaceful");
+          const parts = [];
+          if (demeanor.length > 0) parts.push(demeanor.join(", "));
+          else if ((cardData.symptomsDemeanor || []).includes("Peaceful")) parts.push("Peaceful");
+          if (cardData.delirium) parts.push("Delirium");
+          if (cardData.seizureHistory) parts.push("Seizure Hx");
+          cardSummary = (
+            <p className="rnica-bodysystem-workspace__card-summary">
+              {parts.length > 0 ? parts.join(" · ") : "No behavioral or cognitive concerns documented."}
+            </p>
+          );
+        }
+        // OWNER DIRECTIVE (2026-10-04) "Cardiovascular Reversibility
+        // Safety" -- this card survived the Path 1 ("No Current
+        // Cardiovascular Concern") guard above only because it holds
+        // real previously documented data (see
+        // cardiovascularCardHasDocumentedData). It must never render
+        // expanded by default here -- that would defeat the whole point
+        // of Path 1 being fast/compact -- but it must also never look
+        // like an empty, abandoned card; it renders collapsed with an
+        // explicit, honest "click to review" summary, exactly reversible
+        // via the same chevron/click-to-expand affordance every other
+        // collapsible card in this file already uses.
+        const cvPath1PreservedCard = sectionKey === "cardiovascular" &&
+          data.cardiovascularOverview === "No Current Cardiovascular Concern" &&
+          ["Circulation & Perfusion", "Cardiovascular Symptoms", "Cardiac Devices"].includes(card.title);
+        if (cvPath1PreservedCard) {
+          cardSummary = (
+            <p className="rnica-bodysystem-workspace__card-summary">
+              Collapsed — "No Current Cardiovascular Concern" is selected. Previously documented findings are preserved below; nothing has been deleted. Click to review.
+            </p>
+          );
+        }
+        // OWNER DIRECTIVE (2026-10-18) "Respiratory-Specific Workflow
+        // Rebuild" -- Respiratory's five clinical cards are never
+        // rendered as a collapsed duplicate for "No Current Respiratory
+        // Concern" (see the card-level hide guard above); they simply
+        // hide. Previously documented data is reachable in one click via
+        // "Existing Respiratory Findings Review", so no per-card
+        // collapsed-copy flag is needed here (unlike Cardiovascular's
+        // cvPath1PreservedCard above, which Respiratory no longer
+        // mirrors).
         return (
-          <Card key={ci} id={card.id} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-            {sectionKey === "pain" && card.title === "Pain Assessment Tool" && (
+          <Card
+            // Card only reads `defaultCollapsed` into its internal
+            // `useState` on first mount (see Card's implementation) --
+            // toggling `cvPath1PreservedCard` on an already-mounted card
+            // (e.g. switching an Overview from "New or Worsening" to "No
+            // Current Concern" without unmounting) left a stale
+            // `collapsed=false` state, so the "click to review" summary
+            // and the full field list both rendered at once. Folding the
+            // flag into `key` forces a clean remount (and therefore a
+            // fresh `defaultCollapsed` read) exactly when entering or
+            // leaving the preserved/collapsed state. (Respiratory no
+            // longer has an equivalent flag -- its five clinical cards
+            // simply hide outright instead of rendering a collapsed
+            // duplicate; see the card-level hide guard above.)
+            key={cvPath1PreservedCard ? `${ci}-cv-preserved` : ci}
+            id={card.id}
+            title={card.title}
+            hopeCode={card.hopeCode}
+            sfv={card.sfv}
+            cms={card.cms}
+            bare={isBodySystemPilotCard}
+            importance={card.importance}
+            fullWidth={Boolean(card.fullWidth)}
+            summary={cardSummary}
+            // [Pain density pass -- 2026-10] Pain-only card-chrome
+            // compaction (tighter header/content padding). Scoped by
+            // sectionKey so every other module's cards are unaffected.
+            compact={sectionKey === "pain"}
+            // Bug fix: Psychiatric History's `collapsedByDefault` (and
+            // any other card's) had no effect while Body Systems' pilot
+            // "bare" grouping was active, because this excluded
+            // isBodySystemPilotCard entirely -- Section 28's "keep
+            // collapsed by default" requirement was silently not applying.
+            // The bare-card render branch already respects
+            // collapsible/collapsed correctly; only this gate was wrong.
+            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard}
+            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard}
+          >
+            {isPainNumericToolCard && (
               <NumericPainScale
                 value={data.painIntensity?.current !== undefined && data.painIntensity?.current !== "" ? Number(data.painIntensity.current) : null}
                 onChange={(score) => u("painIntensity.current", score)}
               />
             )}
-            {sectionKey === "pain" && card.title === "FLACC Scale (Pediatric / child)" && (
+            {isPainFlaccCard && (
               <FLACCScale
                 value={["face", "legs", "activity", "cry", "consolability"].map((k) => Number(data.flacc?.[k]) || 0)}
                 onChange={(arr) => {
@@ -8687,7 +14075,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 }}
               />
             )}
-            {sectionKey === "pain" && card.title === "PAINAD Scale (Non-verbal / unable to self-report)" && (
+            {isPainPainadCard && (
               <PAINADScale
                 value={["breathing", "vocalization", "facialExpression", "bodyLanguage", "consolability"].map((k) => Number(data.painad?.[k]) || 0)}
                 onChange={(arr) => {
@@ -8701,9 +14089,9 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             )}
 
             {shouldRenderPainMap && painAssessmentMode === "verbal" && (
-              <BodyMap
+              <PainBodyMapDialogField
                 value={data.painBodySites || []}
-                tone="pain"
+                regionLabelById={BODY_MAP_REGION_LABEL_BY_ID}
                 onToggle={(regionId) => {
                   const current = data.painBodySites || [];
                   const next = current.includes(regionId)
@@ -8746,12 +14134,122 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               />
             )}
 
-            <div style={styles.fieldsGrid}>
-            {card.fields.map((field, fi) => {
-              if (sectionKey === "pain" && (card.title === "FLACC Scale (Pediatric / child)" || card.title === "PAINAD Scale (Non-verbal / unable to self-report)")) {
+            {sectionKey === "pain" && card.title === "Pain Management" && (
+              <PainMedicationHarvestBanner
+                patientId={patientId}
+                data={cardData}
+                onApply={(patch) => Object.entries(patch).forEach(([k, v]) => u(k, v))}
+                styles={styles}
+                COLORS={COLORS}
+              />
+            )}
+
+            {/* OWNER DIRECTIVE (2026-10-04) "Cardiovascular Reversibility
+                Safety" -- Problem #2: selecting "No Current Cardiovascular
+                Concern" over a record that already has real preserved
+                abnormal findings must never look like those findings were
+                destroyed. This banner states plainly that nothing was
+                deleted and tells the clinician exactly where to look
+                (the three cards below now render collapsed-by-default
+                instead of vanishing -- see cvPath1PreservedCard above). It
+                only appears when there is something to point to; a
+                brand-new "no concern" record with nothing preserved shows
+                nothing extra, preserving today's fast Path 1 experience. */}
+            {sectionKey === "cardiovascular" && card.title === "Cardiovascular Overview" &&
+              data.cardiovascularOverview === "No Current Cardiovascular Concern" &&
+              cardiovascularHasPreservedAbnormalFinding(cardData) && (
+              <div className="rnica-cv-preserved-findings-banner" role="status">
+                <p>No current cardiovascular concern documented.</p>
+                <p>
+                  <strong>View Previously Documented Findings:</strong> Circulation &amp; Perfusion,
+                  Cardiovascular Symptoms, and/or Cardiac Devices below contain previously recorded
+                  findings. They are collapsed, not deleted — click any of them to review.
+                </p>
+              </div>
+            )}
+
+            {/* OWNER DIRECTIVE (2026-10-18) "Respiratory-Specific
+                Workflow Rebuild" -- a single concise line, not an
+                instructional paragraph, and no restatement of card names
+                (those cards no longer render at all here -- see the
+                card-level hide guard above). Non-judgmental
+                (presence-only via respiratoryHasAnyPreservedData, no
+                "abnormal finding" determination). Appears only when
+                there is something to point to. */}
+            {sectionKey === "respiratory" && card.title === "Respiratory Overview" &&
+              data.respiratoryOverview === "No Current Respiratory Concern" &&
+              respiratoryHasAnyPreservedData(cardData) && (
+              <div className="rnica-cv-preserved-findings-banner" role="status">
+                <p>No current respiratory concern documented. Previously documented respiratory findings exist — select “Existing Respiratory Findings Review” above to view them.</p>
+              </div>
+            )}
+
+            {/* OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit
+                Split" -- the reverse path out of the editor back to the
+                compact review summary. Only shown on Existing Review +
+                edit-mode (never on New or Worsening, which has no review
+                mode to return to). Keeps path switching reversible
+                without leaving the section (Section F). */}
+            {sectionKey === "respiratory" && card.title === "Dyspnea / SOB" &&
+              data.respiratoryOverview === "Existing Respiratory Findings Review" &&
+              Boolean(data.respiratoryExistingFindingsEditMode) && (
+              <div className="rnica-resp-review-back-banner" role="status">
+                <p>Editing existing respiratory findings.</p>
+                <button
+                  type="button"
+                  className="rnica-chip-action-btn"
+                  onClick={() => u("respiratoryExistingFindingsEditMode", false)}
+                >
+                  ← Back to Review
+                </button>
+              </div>
+            )}
+
+            {/* OWNER-APPROVED "Infection Hospice Workflow Optimization"
+                (2026-10-20) -- identical preserved-data banner pattern as
+                Respiratory above. */}
+            {sectionKey === "infection" && card.title === "Infection Overview" &&
+              data.infectionOverview === "No Current Infection Concern" &&
+              infectionHasAnyPreservedData(cardData) && (
+              <div className="rnica-cv-preserved-findings-banner" role="status">
+                <p>No current infection concern documented. Previously documented infection findings exist — select “Existing Infection Findings Review” above to view them.</p>
+              </div>
+            )}
+
+            {sectionKey === "infection" && card.title === "Active Infection" &&
+              data.infectionOverview === "Existing Infection Findings Review" &&
+              Boolean(data.infectionExistingFindingsEditMode) && (
+              <div className="rnica-resp-review-back-banner" role="status">
+                <p>Editing existing infection findings.</p>
+                <button
+                  type="button"
+                  className="rnica-chip-action-btn"
+                  onClick={() => u("infectionExistingFindingsEditMode", false)}
+                >
+                  ← Back to Review
+                </button>
+              </div>
+            )}
+
+            <div style={isBodySystemPilotCard ? undefined : styles.fieldsGrid} className={isBodySystemPilotCard ? "rnica-bodysystem-workspace__fields" : undefined}>
+            {groupCvFieldsIntoColumns(
+              sectionKey === "cardiovascular" && data.cardiovascularOverview !== "Existing Cardiovascular Findings Review" ? card.title : null,
+              card.fields,
+              card.fields.map((field, fi) => {
+              if (isPainFlaccCard || isPainPainadCard) {
                 return null;
               }
-              if (sectionKey === "pain" && card.title === "Pain Assessment Tool" && field.path === "assessmentTool") {
+              if (sectionKey === "pain" && field.path === "assessmentTool") {
+                return null;
+              }
+              // [Redesign 2026-10-03] "Pain Character & Impact" merge:
+              // these fields only apply when the patient can verbally
+              // describe/report pain (same verbal-only gate Location &
+              // Body Map uses) -- a per-field gate now that the card
+              // itself is unconditional (neuropathicPain/
+              // neuropathicCharacteristics are NOT verbal-only and must
+              // keep showing for non-verbal patients on the same card).
+              if (sectionKey === "pain" && PAIN_VERBAL_ONLY_PATHS.has(field.path) && painAssessmentMode !== "verbal") {
                 return null;
               }
               // HOPE J2052A controls the J2052 branch: when the SFV was
@@ -8761,12 +14259,449 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               if (sectionKey === "sfv" && field.path === "reasonNotCompleted" && cardData.inPersonSfvCompleted) {
                 return null;
               }
+              // [FINAL OWNER REQUIREMENTS -- 2026-09-26] Pain Screening
+              // conditional gates. "Pain assessed?" reuses the existing
+              // HOPE J0900.A screenedForPain field (Yes/No) rather than a
+              // duplicate question -- CMS defines that field as binary, so
+              // "Unable to assess" is intentionally NOT added to it (would
+              // corrupt the coded HOPE value); reasonNotAssessed captures
+              // that path as free text instead. Pain absent does not stop
+              // the assessment: it branches to a chronic-pain-history
+              // question, then (only if chronic AND the patient can
+              // verbalize) RN-entered baseline/tolerance/threshold fields.
+              if (sectionKey === "pain" && field.path === "reasonNotAssessed" && cardData.screenedForPain !== "0") {
+                return null;
+              }
+              if (sectionKey === "pain" && field.path === "currentPain" && cardData.screenedForPain !== "1") {
+                return null;
+              }
+              // [Pain density pass -- 2026-10] screenedForPain's own
+              // option label reads "No -- skip to Pain Active Problem
+              // (J0905)", so when the nurse answers No, the downstream
+              // ASSESSMENT-group fields that only make sense once pain
+              // has actually been screened (tool used, self-report
+              // reliability, severity category, discomfort) are not
+              // applicable yet. painActiveProblem (the stated skip
+              // target) is deliberately excluded and always renders.
+              // Same existing per-field gating mechanism as the rows
+              // above -- no field/option/HOPE mapping removed, only
+              // conditionally not rendered.
+              if (sectionKey === "pain" && ["standardizedPainToolType", "verbalizesPain", "painSeverityCategory", "uncomfortableBecauseOfPain"].includes(field.path) && cardData.screenedForPain === "0") {
+                return null;
+              }
+              if (sectionKey === "pain" && field.path === "chronicPainHistory" && cardData.currentPain !== "0") {
+                return null;
+              }
+              if (sectionKey === "pain" && field.path === "neuropathicCharacteristics" && cardData.neuropathicPain !== "1") {
+                return null;
+              }
+              if (sectionKey === "pain" && ["chronicPainCondition", "usualBaselinePainLevel", "tolerablePainLevel", "interventionThresholdLevel", "usualFrequencyPattern", "currentManagementApproach", "controlStatus"].includes(field.path)) {
+                if (cardData.currentPain !== "0" || cardData.chronicPainHistory !== "1") return null;
+                // Per Section 9: patient-stated tolerance/threshold levels
+                // never apply when the patient cannot reliably self-report.
+                if (field.path === "tolerablePainLevel" && painAssessmentMode !== "verbal") return null;
+              }
+              if (sectionKey === "pain" && ["painOnsetProgression", "painDurationFrequency", "effectOnFunction"].includes(field.path) && cardData.currentPain === "0" && cardData.chronicPainHistory !== "1") {
+                return null;
+              }
+              // [RNICA_NEURO_CARDIO_WORKFLOW_CORRECTION.md -- Category A,
+              // presentation-only, no new fields/values] Reveal a follow-up
+              // field only once its trigger field establishes it applies,
+              // and preserve all existing stored data/paths/HOPE mappings.
+              if (sectionKey === "neurological") {
+                const motorPresent = cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true);
+                const motorDetailVisible = cardData.neuroOverview !== "No Current Neurological Concern" || cardData.motorBalanceStatus === "Findings Present";
+                if (["affectedSide", "deficitType"].includes(field.path) && !(motorPresent && motorDetailVisible)) {
+                  return null;
+                }
+              }
+              if (sectionKey === "neurological" && field.path === "psychiatricHistory" && !(cardData.psychiatricHistoryType || []).length) {
+                return null;
+              }
+              // GitHub Directive (2026-09-28) "Neurological Review --
+              // Average Sleep Hours..." Issue #1 -- only reveal the hours
+              // field once the nurse has said a trend is actually known;
+              // otherwise it's asking for a number nobody has.
+              if (sectionKey === "neurological" && field.path === "sleepRest.averageSleepHours" && cardData.sleepRest?.sleepTrendKnown !== "Yes") {
+                return null;
+              }
+              // GitHub Directive (2026-09-28) "Neurological Overview Gate"
+              // -- Path 4 (Unable to Assess) reason control only applies
+              // once that path is selected; the free-text "Other" detail
+              // only applies once "Other" is the selected reason.
+              if (sectionKey === "neurological" && field.path === "neuroUnableToAssessReason" && cardData.neuroOverview !== "Unable to Assess") {
+                return null;
+              }
+              if (sectionKey === "neurological" && field.path === "neuroUnableToAssessOther" && (cardData.neuroOverview !== "Unable to Assess" || cardData.neuroUnableToAssessReason !== "Other")) {
+                return null;
+              }
+              if (sectionKey === "neurological") {
+                // The Overview gate's whole purpose: on the fastest path
+                // (patient has no current neurological concern), the
+                // "advanced" detail fields below don't earn their place on
+                // screen unless something actually turns out abnormal --
+                // they stay fully intact in stored data and reappear
+                // immediately if the nurse switches Overview to Stable or
+                // New/Worsening, or if the underlying value itself already
+                // indicates a concern (never hides a documented abnormal
+                // finding).
+                const neuroNormalPathActive = cardData.neuroOverview === "No Current Neurological Concern";
+                const sleepAbnormal = (cardData.sleepRest?.sleepPattern && cardData.sleepRest.sleepPattern !== "Normal")
+                  || (cardData.sleepRest?.responsiveness && cardData.sleepRest.responsiveness !== "Easily Aroused")
+                  || (cardData.sleepRest?.changeSincePrior && cardData.sleepRest.changeSincePrior !== "No Change");
+                const advancedSleepFields = ["sleepRest.changeSincePrior", "sleepRest.sleepTrendKnown", "sleepRest.nighttimeSymptoms", "sleepRest.sleepAids", "sleepRest.effectOnComfort", "sleepRest.response", "sleepRest.restfulness", "sleepRest.notes"];
+                if (advancedSleepFields.includes(field.path) && neuroNormalPathActive && !sleepAbnormal) {
+                  return null;
+                }
+                if (["hearing", "vision", "sensoryDeficits", "sensoryAids"].includes(field.path) && neuroNormalPathActive) {
+                  return null;
+                }
+                // New gate fields (`behavioralStatus`/`motorBalanceStatus`)
+                // only exist to keep the fast path fast -- they're hidden
+                // once the nurse is off that path, where the full detail
+                // renders unconditionally exactly as it did before this
+                // directive.
+                if (field.path === "behavioralStatus" && !neuroNormalPathActive) {
+                  return null;
+                }
+                if (field.path === "motorBalanceStatus" && !neuroNormalPathActive) {
+                  return null;
+                }
+                const behavioralDetailVisible = !neuroNormalPathActive || cardData.behavioralStatus === "Findings Present";
+                if (["cognition", "symptomsDemeanor", "delirium", "seizureHistory"].includes(field.path) && !behavioralDetailVisible) {
+                  return null;
+                }
+                const motorDetailVisible = !neuroNormalPathActive || cardData.motorBalanceStatus === "Findings Present";
+                if (["motorStatus", "balance"].includes(field.path) && !motorDetailVisible) {
+                  return null;
+                }
+              }
+              if (sectionKey === "cardiovascular" && field.path === "chestPain.type" && cardData.chestPain?.present !== "Yes") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "edema.location" && cardData.edema?.present !== "Yes") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "edema.severity" && cardData.edema?.present !== "Yes") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "edema.pitting" && cardData.edema?.present !== "Yes") {
+                return null;
+              }
+              // OWNER DIRECTIVE (2026-10-04) "Ontology-First Free-Text
+              // Review" -- the optional "Other" detail companion fields
+              // only appear once their structured sibling is set to
+              // "Other" (same gate pattern as cardiovascularUnableToAssessOther).
+              if (sectionKey === "cardiovascular" && field.path === "skinColorOther" && cardData.skinColor !== "Other") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "heartSoundsOther" && cardData.heartSounds !== "Other") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "peripheralCirculationOther" && cardData.peripheralCirculation !== "Other") {
+                return null;
+              }
+              // (Heart Failure Type's "only if Heart Failure Present" gate
+              // is now folded into the Section-3/5/6/7 legacy-display
+              // guard below, since both fields are read-only legacy-only.)
+              // OWNER-DIRECTED "Cardiovascular Overview Gate" (2026-09-28
+              // Final Directive, Sections 2/3) -- the reason control lives
+              // on the Overview card itself; nothing else applies once
+              // that path is selected (Path 4 hides everything else via
+              // the card-level guard above).
+              if (sectionKey === "cardiovascular" && field.path === "cardiovascularUnableToAssessReason" && cardData.cardiovascularOverview !== "Unable to Assess") {
+                return null;
+              }
+              if (sectionKey === "cardiovascular" && field.path === "cardiovascularUnableToAssessOther" && (cardData.cardiovascularOverview !== "Unable to Assess" || cardData.cardiovascularUnableToAssessReason !== "Other")) {
+                return null;
+              }
+              if (sectionKey === "cardiovascular") {
+                // Path 1 ("No Current Cardiovascular Concern"): approved
+                // normal path is exactly Overview + Rhythm + Rate +
+                // Strength + Clinical Status Change (Notes optional) --
+                // every other Circulation & Perfusion field is hidden
+                // (never deleted) until the path changes.
+                const cvNormalPathActive = cardData.cardiovascularOverview === "No Current Cardiovascular Concern";
+                const normalPathHiddenFields = [
+                  "pulseSites", "peripheralCirculation", "heartSounds", "jvd", "skinColor",
+                  "coolExtremities", "varicoseVeins", "stasisUlcer",
+                  "edema.present", "edema.location", "edema.severity", "edema.pitting",
+                  "skinColorOther", "heartSoundsOther", "peripheralCirculationOther",
+                ];
+                if (cvNormalPathActive && normalPathHiddenFields.includes(field.path)) {
+                  return null;
+                }
+                // Path 2 ("Existing Cardiovascular Findings Review"): show
+                // only values that already exist in the currently loaded
+                // record (owner directive Section 3, Path 2) -- this is a
+                // visibility/review convenience only, never a claim of
+                // verified prior-assessment comparison.
+                // Bug fix (2026-10-05) "Edema/Chest Pain characterization
+                // trap on Path 2": edema.location/edema.severity/
+                // edema.pitting/chestPain.type are already gated by their
+                // own parent-present check a few lines above (only render
+                // once edema.present / chestPain.present === "Yes"). That
+                // parent gate is the correct and sufficient visibility rule
+                // for these characterization fields -- requiring them to
+                // ALSO independently satisfy the "already documented"
+                // check below created a trap: flipping Edema Present to
+                // "Yes" on Path 2 with blank Location/Severity/Type left
+                // no visible controls to characterize the new finding,
+                // because the child fields themselves had never
+                // independently held data yet. Treating them as always
+                // visible here (their real gate is the parent-present
+                // check above) restores the expected "Present -> Yes
+                // reveals Location/Severity/Type" workflow on Path 2,
+                // matching every other path. No schema/data change.
+                const CV_ALWAYS_VISIBLE_FIELDS = new Set([
+                  "cardiovascularOverview", "cardiovascularUnableToAssessReason", "cardiovascularUnableToAssessOther",
+                  "clinicalStatusChange", "notes", "cardiovascularFindingsConfirmedThisVisit",
+                  "edema.location", "edema.severity", "edema.pitting", "chestPain.type",
+                ]);
+                if (cardData.cardiovascularOverview === "Existing Cardiovascular Findings Review" && !CV_ALWAYS_VISIBLE_FIELDS.has(field.path)) {
+                  const existing = getNestedValue(cardData, field.path);
+                  const documented = Array.isArray(existing) ? existing.length > 0 : (typeof existing === "boolean" ? existing === true : Boolean(existing));
+                  // Owner directive (2026-09-28) "New Cardiovascular Defect --
+                  // one-way segmented selections": a segmentedTriState field
+                  // (JVD/Edema Present/Chest Pain Present) can now be cleared
+                  // back to "" by re-clicking its selected pill. Without this
+                  // memo, clearing it here on Path 2 would make the field
+                  // vanish (documented === false) with no control left to
+                  // click -- an unrecoverable documentation trap. Once a
+                  // field has been shown for this open record, it stays
+                  // shown for the rest of the editing session even if the
+                  // clinician clears it back out; the stored value itself is
+                  // untouched by this -- it only freezes visibility.
+                  const everDocumentedKey = `${assessmentId || "unsaved"}::${field.path}`;
+                  let everDocumented = cvPath2EverDocumentedFields.get(everDocumentedKey);
+                  if (!everDocumented && documented) {
+                    everDocumented = true;
+                    cvPath2EverDocumentedFields.set(everDocumentedKey, true);
+                  }
+                  if (!everDocumented) return null;
+                }
+                // Directive (2026-09-28) Section 13 -- the confirmation
+                // control only makes sense on Path 2; every other path
+                // hides it (never deletes a previously-recorded value).
+                if (field.path === "cardiovascularFindingsConfirmedThisVisit" && cardData.cardiovascularOverview !== "Existing Cardiovascular Findings Review") {
+                  return null;
+                }
+                // Dyspnea Ownership Model (Contradiction 5): the checkbox
+                // and its guidance note are mutually exclusive, and both
+                // are independently gated from the plain edema/chestPain-
+                // style "parent present" pattern because the controlling
+                // value lives in a different Body System (Respiratory).
+                const dyspneaGate = resolveCardiacDyspneaGate(cardData, fullFormData?.respiratory);
+                if (field.path === "cardiacDyspnea" && !dyspneaGate.visible) {
+                  return null;
+                }
+                if (field.path === "cardiacDyspneaGuidanceNote" && (dyspneaGate.visible || !dyspneaGate.guidance)) {
+                  return null;
+                }
+                // Owner directive (2026-09-28) "Remove Heart Failure From
+                // Cardiovascular Body System Completely" -- Heart Failure
+                // is a diagnosis, not a current-entry symptom control or a
+                // reviewable Body System field, on ANY path including
+                // Path 2. Diagnosis-level Heart Failure data continues to
+                // live in Diagnosis & LCD / HOPE I0600 (untouched); this
+                // guard just stops it from ever rendering inside
+                // Cardiovascular. The stored value itself is never read,
+                // deleted, or rewritten by this guard.
+                if (["heartFailurePresent", "heartFailureType"].includes(field.path)) {
+                  return null;
+                }
+              }
+              // OWNER DIRECTIVE (2026-10-18) "Respiratory-Specific
+              // Workflow Rebuild" -- the prior per-field "Existing
+              // Respiratory Findings Review" filter (hide any field that
+              // never held a value) was the exact defect the owner
+              // rejected: it reduced review mode down to whatever subset
+              // of fields happened to already be filled in, instead of
+              // showing the complete stored respiratory picture. Review
+              // mode now renders every field in the card exactly like
+              // every other path (Existing Review and New/Worsening are
+              // the SAME canonical card content; see the card-level hide
+              // guard above). Only the Unable-to-Assess reason fields and
+              // the Ventilator "only expanded when applicable" parent
+              // gate remain -- neither depends on documented-ness, so
+              // neither recreates the old bug.
+              if (sectionKey === "respiratory") {
+                if (field.path === "respiratoryUnableToAssessReason" && cardData.respiratoryOverview !== "Unable to Assess") {
+                  return null;
+                }
+                if (field.path === "respiratoryUnableToAssessOther" && (cardData.respiratoryOverview !== "Unable to Assess" || cardData.respiratoryUnableToAssessReason !== "Other")) {
+                  return null;
+                }
+                // "Ventilator / Airway Support -- only expanded when
+                // applicable" (owner directive, Respiratory Reorganization
+                // item 6): the type/settings and tracheostomy detail
+                // fields only make sense once a ventilator is actually in
+                // use. This applies on every path, not just one overview
+                // state.
+                const ventilatorApplicable = Boolean(cardData.ventilator?.shortTermVentilator || cardData.ventilator?.longTermVentilator);
+                if (
+                  ["ventilator.ventilatorTypeAndSettings", "ventilator.tracheostomyType", "ventilator.tracheostomySize"].includes(field.path) &&
+                  !ventilatorApplicable
+                ) {
+                  return null;
+                }
+              }
+              // OWNER-APPROVED "Infection Hospice Workflow Optimization"
+              // (2026-10-20) -- same conditional-field pattern as
+              // Respiratory's Unable-to-Assess reason / Ventilator
+              // "only expanded when applicable" guards above.
+              if (sectionKey === "infection") {
+                if (field.path === "infectionUnableToAssessReason" && cardData.infectionOverview !== "Unable to Assess") {
+                  return null;
+                }
+                if (field.path === "infectionUnableToAssessOther" && (cardData.infectionOverview !== "Unable to Assess" || cardData.infectionUnableToAssessReason !== "Other")) {
+                  return null;
+                }
+                if (field.path === "immunosuppressionReason" && !cardData.immunosuppressed) {
+                  return null;
+                }
+                if (field.path === "immunosuppressionReasonOther" && (!cardData.immunosuppressed || cardData.immunosuppressionReason !== "Other")) {
+                  return null;
+                }
+                if (field.path === "currentInfectionOther" && !(cardData.currentInfections || []).includes("Other")) {
+                  return null;
+                }
+                const antibioticReceiving = ["Currently receiving antibiotics", "Recently completed antibiotics"].includes(cardData.antibioticTherapyStatus);
+                if (["antibioticMedicationName", "antibioticTreatmentEffective"].includes(field.path) && !antibioticReceiving) {
+                  return null;
+                }
+                if (field.path === "infectionHistoryOther" && !(cardData.infectionHistoryTypes || []).includes("Other")) {
+                  return null;
+                }
+              }
+              // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1" --
+              // same conditional-field pattern as Respiratory/Infection
+              // guards above. Last BM Size / Stool Character / Information
+              // Source / Straining stay hidden until their specific
+              // OR-condition is met (or the nurse manually opens them via
+              // "Show Additional Bowel Details"), so routine/normal GI
+              // documentation (Constipation/Diarrhea = None) never shows
+              // these conditional fields.
+              if (sectionKey === "gastrointestinal") {
+                // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+                // Revision" -- tightened from the Phase 1 "any Mild+
+                // constipation/diarrhea reveals everything" gate to the
+                // exact one-step-at-a-time matrix: Moderate/Severe
+                // Constipation reveals Last BM Size ONLY; Last BM Size =
+                // Small reveals Straining; Straining Moderate/Severe OR
+                // Diarrhea documented (any severity) reveals Stool
+                // Character; Information Source stays hidden unless the
+                // nurse manually opens Additional Bowel Details or Last
+                // BM Size is Unable To Determine. Mild Constipation alone
+                // now reveals nothing further (Last BM Date already lives
+                // in the always-visible Bowel Basics card below).
+                const isModOrSevere = (v) => v === "Moderate" || v === "Severe";
+                const diarrheaDocumented = Boolean(cardData.diarrhea) && cardData.diarrhea !== "None";
+                // OWNER DIRECTIVE (2026-10-30) "GI Progressive Visibility
+                // Defect B Fix" -- "New or Worsening GI Findings" reveals
+                // every conditional field in this card too (complete
+                // symptom-impact documentation), same force-open rule as
+                // the Abdominal / Bowel Assessment card above.
+                const manuallyOpened = Boolean(cardData.giShowAdditionalBowelDetails) || giOverviewForcesFullExam(cardData);
+                if (field.path === "lastBMSize" && !isModOrSevere(cardData.constipation) && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "straining" && cardData.lastBMSize !== "Small" && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "stoolConsistency" && !isModOrSevere(cardData.straining) && !diarrheaDocumented && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "giInformationSource"
+                  && cardData.lastBMSize !== "Unable To Determine"
+                  && !manuallyOpened) {
+                  return null;
+                }
+                if (field.path === "vomitingOccurrences24h" && !isModOrSevere(cardData.vomiting) && !manuallyOpened) {
+                  return null;
+                }
+                // OWNER DIRECTIVE (2026-10-29) "GI Rework -- Feeding-Tube/
+                // Ostomy Visibility" -- same gating pattern as
+                // Cardiovascular's `edema.present === "Yes"` ->
+                // `edema.location` reveal. Tube Type / Ostomy Type consume
+                // zero space until their own present-field is explicitly
+                // "Yes" (never inferred from a blank/legacy-false value).
+                // normalizeTriState also treats a pre-existing legacy
+                // boolean `true` (written by older records/registry
+                // quick-actions before this field converted to
+                // segmentedTriState) as "Yes", so historical data that
+                // already documented a tube/ostomy keeps showing its Type.
+                if (field.path === "feedingTube.type" && normalizeTriState(cardData.feedingTube?.present) !== "Yes") {
+                  return null;
+                }
+                if (field.path === "ostomy.type" && normalizeTriState(cardData.ostomy?.present) !== "Yes") {
+                  return null;
+                }
+              }
               const fieldForRender = sectionKey === "pain" && field.path === "assessmentTool"
                 ? { ...field, options: getPainToolOptions(painAssessmentMode) }
                 : field;
-              const value = getNestedValue(cardData, fieldForRender.path);
+              // Issue #7 -- a legacy record that only ever set the old
+              // `motorDeficit` boolean (never touched the new `motorStatus`
+              // path) should still visually show "Present" here instead of
+              // appearing unanswered; nothing is written until the nurse
+              // actually interacts with the control.
+              const CV_PULSE_DIMENSION_PATHS = new Set(["pulseRhythm", "pulseRate", "pulseStrength"]);
+              const value = sectionKey === "neurological" && fieldForRender.path === "motorStatus" && cardData.motorStatus === undefined && cardData.motorDeficit === true
+                ? "Present"
+                : sectionKey === "cardiovascular" && CV_PULSE_DIMENSION_PATHS.has(fieldForRender.path)
+                ? resolvePulseDimensionDisplay(cardData, fieldForRender.path)
+                : sectionKey === "cardiovascular" && fieldForRender.path === "bpStatus"
+                ? resolveBpStatusDisplay(cardData)
+                : sectionKey === "cardiovascular" && fieldForRender.path === "orthostaticFinding"
+                ? resolveOrthostaticFindingDisplay(cardData)
+                : getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
                 update(cardDataSection, fieldForRender.path, v);
+                // [Control Conflict Report #1] Orientation vs. Disoriented
+                // are mutually exclusive findings, not independent
+                // checkboxes -- checking one now clears the other so a
+                // record can never store both simultaneously. No field
+                // removed/renamed; both paths keep their existing booleans.
+                if (sectionKey === "neurological" && fieldForRender.path === "orientation.disoriented" && v) {
+                  ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].forEach((p) => u(p, false));
+                }
+                if (sectionKey === "neurological" && ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].includes(fieldForRender.path) && v) {
+                  u("orientation.disoriented", false);
+                }
+                // Issue #7 (2026-09-28 follow-up review) -- Motor Status is
+                // the new primary 3-state control; keep the legacy
+                // `motorDeficit` boolean in sync (true only for "Present")
+                // so every existing consumer of that boolean (Structured
+                // Findings, narrative Summary, affectedSide/deficitType
+                // reveal guards) keeps working unchanged.
+                if (sectionKey === "neurological" && fieldForRender.path === "motorStatus") {
+                  u("motorDeficit", v === "Present");
+                }
+                // Directive (2026-09-28) "Cardiovascular Layout
+                // Consolidation" Section 14 -- data inspection (SFV
+                // registry CV_HEART_FAILURE_SYSTOLIC/DIASTOLIC both use
+                // `multi_add`, and mixed systolic+diastolic heart failure
+                // is a real clinical presentation) confirms Heart Failure
+                // Type stays multi-select. The only genuine contradiction
+                // is "Unspecified" coexisting with a specific type -- so
+                // selecting Unspecified clears the specific types, and
+                // selecting a specific type clears Unspecified, without
+                // ever preventing Systolic + Diastolic together.
+                // NOTE (2026-09-28, Scope Correction): `heartFailureType`
+                // is now rendered `legacyReadOnly` (no onChange wired), so
+                // this interceptor is currently dormant in the UI. Left in
+                // place (and still covered by resolveHeartFailureTypeSelection's
+                // own unit tests) in case a future, explicitly-approved
+                // change reintroduces an editable Heart Failure Type
+                // control; it does not affect current behavior.
+                if (sectionKey === "cardiovascular" && fieldForRender.path === "heartFailureType" && Array.isArray(v)) {
+                  const corrected = resolveHeartFailureTypeSelection(cardData.heartFailureType, v);
+                  if (corrected) {
+                    update(cardDataSection, fieldForRender.path, corrected);
+                    return;
+                  }
+                }
                 if (sectionKey === "pain" && fieldForRender.path === "verbalizesPain") {
                   // Auto-select the correct pain scale from the patient's
                   // communication status + age so only one tool is ever shown:
@@ -8784,6 +14719,22 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                     u("assessmentTool", "FLACC");
                   }
                 }
+                // OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit
+                // Split" -- leaving "Existing Respiratory Findings
+                // Review" for any other Overview path resets the
+                // edit-mode workflow flag, so re-selecting "Existing
+                // Respiratory Findings Review" later always opens back
+                // on the compact review summary rather than silently
+                // resuming a stale editor session.
+                if (sectionKey === "respiratory" && fieldForRender.path === "respiratoryOverview" && v !== "Existing Respiratory Findings Review") {
+                  u("respiratoryExistingFindingsEditMode", false);
+                }
+                // OWNER-APPROVED "Infection Hospice Workflow
+                // Optimization" (2026-10-20) -- same edit-mode reset as
+                // Respiratory immediately above.
+                if (sectionKey === "infection" && fieldForRender.path === "infectionOverview" && v !== "Existing Infection Findings Review") {
+                  u("infectionExistingFindingsEditMode", false);
+                }
               };
 
               // Size each field to the columns it actually needs instead of
@@ -8793,42 +14744,302 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // so nothing sits alone with empty space beside it.
               const fieldSpan = getFieldSpan(fieldForRender);
 
+              // Presentation-only density pass (2026-10): Pain's fieldsGrid
+              // already packs multiple fields per row via fieldSpan, but
+              // each field's own wrapper still carries the shared
+              // styles.formGroup 8px bottom margin, which is the remaining
+              // vertical-rhythm cost once rows are already paired up. This
+              // opt-in `compact` prop (same pattern as Card's own `compact`
+              // prop below) tightens that margin for Pain -- no other
+              // section passed it, so every other screen's spacing was
+              // byte-for-byte unchanged.
+              //
+              // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass"
+              // goal #4 ("reduce default textarea heights"/general
+              // compaction) -- extended to Neurological for the same
+              // reason: it already has the exact per-field 8px-margin cost
+              // this flag exists to remove, on every segmented/pillGroup
+              // field (Overall Change, SNS Cognitive Screen, Communication
+              // and Sensory, Motor/Balance, Cognitive/Behavioral Findings,
+              // ...), not just one named card. Still opt-in per sectionKey,
+              // so every other Body System is unaffected.
+              const compact = sectionKey === "pain" || sectionKey === "neurological";
+
               let rendered;
               switch (fieldForRender.type) {
+                case "groupLabel":
+                  // Presentational-only sub-header (2026-10-03 density pass):
+                  // no path, no data binding, nothing persisted/rendered to
+                  // the record -- purely a visual divider so a card's field
+                  // list can read as two labeled groups (e.g. "SCREENING" /
+                  // "ASSESSMENT") without splitting it into a second card.
+                  rendered = (
+                    <div style={{
+                      fontSize: 10.5, fontWeight: 700, letterSpacing: 0.6, textTransform: "uppercase",
+                      color: COLORS.gray, borderBottom: `1px solid ${COLORS.border}`,
+                      paddingBottom: 4, marginTop: fi === 0 ? 0 : 10, marginBottom: 2,
+                    }}>
+                      {fieldForRender.label}
+                    </div>
+                  );
+                  break;
                 case "input":
                   rendered = <FormInput label={fieldForRender.label} value={value} onChange={onChange}
-                    type={fieldForRender.inputType} placeholder={fieldForRender.placeholder} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                    type={fieldForRender.inputType} placeholder={fieldForRender.placeholder} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} compact={compact} />;
                   break;
                 case "textarea":
                   rendered = <FormTextarea label={fieldForRender.label} value={value} onChange={onChange}
-                    placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} />;
+                    placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} compact={compact} autoGrow={fieldForRender.autoGrow} />;
+                  break;
+                case "quickPickTextarea":
+                  rendered = <FormQuickPickTextarea label={fieldForRender.label} value={value} onChange={onChange}
+                    presets={fieldForRender.presets} placeholder={fieldForRender.placeholder} rows={fieldForRender.rows} compact={compact} />;
                   break;
                 case "select":
                   rendered = <FormSelect label={fieldForRender.label} value={value} onChange={onChange}
-                    options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} />;
+                    options={fieldForRender.options} required={fieldForRender.required} hopeCode={fieldForRender.hopeCode} compact={compact} />;
                   break;
                 case "radio":
                   rendered = <FormRadioGroup label={fieldForRender.label} value={value} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} />;
                   break;
+                case "gatedRadio":
+                  rendered = <FormGatedRadio label={fieldForRender.label} value={value} onChange={onChange}
+                    primaryOptions={fieldForRender.primaryOptions} normalValues={fieldForRender.normalValues}
+                    detailOptions={fieldForRender.detailOptions} hopeCode={fieldForRender.hopeCode} />;
+                  break;
                 case "checkboxGroup":
                   rendered = <FormCheckboxGroup label={fieldForRender.label} values={value || []} onChange={onChange}
                     options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} />;
                   break;
+                case "segmented":
+                  rendered = <FormSegmented label={fieldForRender.label} value={value} onChange={onChange}
+                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv} aliases={fieldForRender.aliases} compact={compact} />;
+                  break;
+                case "pillGroup":
+                  rendered = <FormPillGroup label={fieldForRender.label} values={value || []} onChange={onChange}
+                    options={fieldForRender.options} hopeCode={fieldForRender.hopeCode} compact={compact} />;
+                  break;
+                case "note":
+                  // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
+                  // Contradiction 5) -- a non-interactive, non-blocking
+                  // guidance line (e.g. "Document dyspnea in Respiratory
+                  // before assigning cardiac attribution."). Read-only:
+                  // never written to storage, never gates save.
+                  rendered = <p style={{ fontSize: 12, fontStyle: "italic", color: COLORS.textMuted || "#6b7280", margin: "2px 0" }}>{fieldForRender.label}</p>;
+                  break;
+                case "legacyReadOnly": {
+                  // Owner directive (2026-09-28) "Cardiovascular
+                  // Symptom-Focused Scope Correction" Section 5 -- a
+                  // stored legacy value that must remain visible (never
+                  // deleted/nulled/rewritten) but must not be presented as
+                  // an editable current-entry control. Renders whatever
+                  // string the field's own `legacyFormat` produces; never
+                  // calls onChange, so it cannot write to the record.
+                  const legacyText = typeof fieldForRender.legacyFormat === "function"
+                    ? fieldForRender.legacyFormat(value)
+                    : (Array.isArray(value) ? value.join(", ") : String(value ?? ""));
+                  rendered = (
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>{fieldForRender.label}</label>
+                      <p style={{ fontSize: 13, color: COLORS.dark, margin: "2px 0", fontStyle: "italic" }} data-legacy-readonly="true">
+                        {legacyText}
+                      </p>
+                    </div>
+                  );
+                  break;
+                }
+                case "comprehensivePainAssessmentDate": {
+                  // [2026-10-03] See ComprehensivePainAssessmentDateField
+                  // above -- reads the parent RNICA visit date for the
+                  // auto-filled default and writes the override reason to
+                  // its own sibling path (not the generic single-path
+                  // onChange), since this one control owns two paths.
+                  rendered = (
+                    <ComprehensivePainAssessmentDateField
+                      label={fieldForRender.label}
+                      value={value}
+                      parentVisitDate={fullFormData?.visitMeta?.visitDate || ""}
+                      overrideReason={cardData.comprehensiveAssessmentDateOverrideReason || ""}
+                      hopeCode={fieldForRender.hopeCode}
+                      onDateChange={(v) => update(cardDataSection, fieldForRender.path, v)}
+                      onReasonChange={(v) => update(cardDataSection, "comprehensiveAssessmentDateOverrideReason", v)}
+                      onClearOverride={() => {
+                        update(cardDataSection, "comprehensiveAssessmentDateOverrideReason", "");
+                        update(cardDataSection, fieldForRender.path, fullFormData?.visitMeta?.visitDate || "");
+                      }}
+                      styles={styles}
+                      COLORS={COLORS}
+                    />
+                  );
+                  break;
+                }
+                case "booleanPillRow": {
+                  // Compact multi-path boolean row (e.g. Orientation's 5
+                  // independent time/place/person/situation/disoriented
+                  // booleans) rendered as one line of toggle pills instead
+                  // of a vertical checkbox stack. Each pill still reads and
+                  // writes its own existing path via the same update()
+                  // used everywhere else -- no data shape change -- and
+                  // re-applies the same section-specific mutual-exclusivity
+                  // rule the generic per-path onChange interceptor above
+                  // already applies to individual "checkbox" fields.
+                  // GitHub Directive (2026-09-28) "Bounded Compatibility
+                  // Increment" Section 10/AC-05 -- an optional data-driven
+                  // "quick action" convenience button (currently used only
+                  // for Orientation's "Mark Oriented x4") that sets/clears
+                  // a batch of the SAME already-existing boolean paths this
+                  // row already reads/writes. It stores no new field and
+                  // no "Oriented x4" value anywhere -- its pressed state is
+                  // derived each render from whether every setPath is true
+                  // and every clearPath is false, so manually clearing any
+                  // one dimension automatically un-highlights the shortcut
+                  // without any extra bookkeeping.
+                  const quickAction = fieldForRender.quickAction;
+                  const quickActionActive = quickAction
+                    ? quickAction.setPaths.every((p) => Boolean(getNestedValue(cardData, p)))
+                      && (quickAction.clearPaths || []).every((p) => !getNestedValue(cardData, p))
+                    : false;
+                  rendered = (
+                    <div style={styles.formGroup}>
+                      <label style={styles.label}>{fieldForRender.label}</label>
+                      <div role="group" aria-label={fieldForRender.label} style={{ display: "flex", flexWrap: "wrap", gap: 3, alignItems: "center" }}>
+                        {quickAction && (
+                          <button
+                            type="button"
+                            aria-pressed={quickActionActive}
+                            onClick={() => {
+                              quickAction.setPaths.forEach((p) => update(cardDataSection, p, true));
+                              (quickAction.clearPaths || []).forEach((p) => update(cardDataSection, p, false));
+                            }}
+                            style={{
+                              padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+                              cursor: "pointer", border: `1px solid ${quickActionActive ? COLORS.teal : COLORS.border}`,
+                              background: quickActionActive ? COLORS.teal : "transparent",
+                              color: quickActionActive ? COLORS.textOnTeal : COLORS.dark,
+                              fontWeight: 700, whiteSpace: "nowrap", fontStyle: "italic",
+                            }}
+                          >
+                            {quickAction.label}
+                          </button>
+                        )}
+                        {fieldForRender.items.map((item) => {
+                          const itemChecked = Boolean(getNestedValue(cardData, item.path));
+                          const handleToggle = () => {
+                            const next = !itemChecked;
+                            update(cardDataSection, item.path, next);
+                            if (sectionKey === "neurological" && item.path === "orientation.disoriented" && next) {
+                              ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].forEach((p) => update(cardDataSection, p, false));
+                            }
+                            if (sectionKey === "neurological" && ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"].includes(item.path) && next) {
+                              update(cardDataSection, "orientation.disoriented", false);
+                            }
+                          };
+                          return (
+                            <button
+                              type="button" key={item.path} aria-pressed={itemChecked}
+                              className="rnica-segment-btn"
+                              onClick={handleToggle}
+                              style={{
+                                padding: "2px 9px", fontSize: 11, lineHeight: 1.6, borderRadius: 999,
+                                cursor: "pointer", border: `1px solid ${itemChecked ? COLORS.teal : COLORS.border}`,
+                                background: itemChecked ? COLORS.teal : "transparent",
+                                color: itemChecked ? COLORS.textOnTeal : COLORS.dark,
+                                fontWeight: itemChecked ? 700 : 500, whiteSpace: "nowrap",
+                              }}
+                            >
+                              {item.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                  break;
+                }
                 case "triState":
                   rendered = <FormTriState label={fieldForRender.label} value={value} onChange={onChange} hopeCode={fieldForRender.hopeCode} />;
                   break;
+                // Cardiovascular Execution Plan (2026-09-28) Child Issue 2 --
+                // "no editable Cardiovascular field displays the legacy
+                // square checkbox... tri-state fields use the existing
+                // Neurological assessment-state primitive." Reuses
+                // FormSegmented (already Neurological's pill/segmented
+                // control) with the same fixed Not Assessed/No/Yes option
+                // set and normalizeTriState value handling as FormTriState
+                // -- identical stored value contract ("" / "No" / "Yes"),
+                // purely a visual swap. FormTriState itself is untouched
+                // and keeps rendering for every other body system still
+                // using `type: "triState"`.
+                case "segmentedTriState":
+                  // OWNER DIRECTIVE (2026-10-29) "GI Rework" -- optional
+                  // `field.unassessedLabel` lets a specific field (e.g. GI
+                  // Feeding Tube/Ostomy Present, which must read "Unable To
+                  // Determine" rather than "Not Assessed") override the
+                  // displayed text for the "" value only. Stored value
+                  // contract is unchanged (still ""), so every existing
+                  // `segmentedTriState` field (Cardiovascular's
+                  // edema.present/chestPain.present/etc.) keeps rendering
+                  // "Not Assessed" exactly as before.
+                  rendered = <FormSegmented label={fieldForRender.label} value={normalizeTriState(value)}
+                    onChange={onChange} hopeCode={fieldForRender.hopeCode} sfv={fieldForRender.sfv}
+                    options={[
+                      { value: "", label: fieldForRender.unassessedLabel || "Not Assessed" },
+                      { value: "No", label: "No" },
+                      { value: "Yes", label: "Yes" },
+                    ]} />;
+                  break;
                 case "checkbox":
                   rendered = <FormCheckbox label={fieldForRender.label} checked={value} onChange={onChange} />;
+                  break;
+                case "booleanPill":
+                  rendered = <FormBooleanPill label={fieldForRender.label} checked={value} onChange={onChange} />;
                   break;
                 default:
                   rendered = null;
               }
               if (!rendered) return null;
-              return <div key={fi} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
-            })}
+              // OWNER DIRECTIVE (2026-10-21) "Infection Language Standard"
+              // item 14, "Infection Supporting-Findings Gating" -- a
+              // non-blocking advisory (never silently blocks save/
+              // selection) surfaced directly under the Infection Clinical
+              // Status Change control whenever the current selection isn't
+              // yet supported by the specific Infection fields it claims.
+              // See validateInfectionClinicalStatusSelection above.
+              if (sectionKey === "infection" && fieldForRender.path === "clinicalStatusChange" && value) {
+                const gate = validateInfectionClinicalStatusSelection(value, cardData, {
+                  hasPriorInfectionAssessment: uiProfile.hasPriorInfectionAssessment,
+                });
+                if (!gate.valid) {
+                  rendered = (
+                    <>
+                      {rendered}
+                      <p
+                        style={{ fontSize: 12, color: COLORS.orange || "#b45309", margin: "4px 0 0", fontStyle: "italic" }}
+                        data-infection-status-gate="true"
+                      >
+                        {gate.message}
+                      </p>
+                    </>
+                  );
+                }
+              }
+              // OWNER DIRECTIVE (2026-10-05) "Cardiovascular Explicit Grid
+              // Rebuild" Step 1/4 -- a stable, path-keyed hook so CSS can
+              // place each Cardiovascular field at an exact grid-column/
+              // grid-row position (see RNICACommandWorkspace.css) instead
+              // of relying on the shared cross-system `getFieldSpan`
+              // heuristic, which was tuned for the generic auto-fit grid
+              // and produced uneven column widths/row heights once this
+              // section needed precise multi-field groupings (e.g. Skin
+              // Color + Cool Extremities/Varicose Veins/Stasis Ulcer
+              // sharing one column). No other section reads this
+              // attribute, so nothing else is affected.
+              const cvFieldAttr = sectionKey === "cardiovascular" ? { "data-cv-field": fieldForRender.path } : null;
+              return <div key={fi} {...cvFieldAttr} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
+            }))}
             </div>
-            {POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
+            {!isBodySystemPilotCard && POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
               <PocSectionControls
                 assessmentId={assessmentId}
                 sectionKey={cardDataSection}
@@ -8839,8 +15050,183 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             )}
           </Card>
         );
-        })}
-      </div>
+  });
+
+  // Body Systems 9-part structure: group the already-rendered cardsContent
+  // (post all conditional-null filters above -- pain/skin custom-renderer
+  // suppression, spiritual field filtering, etc. are untouched) by each
+  // card's declared `category`, defaulting to "core" so an untagged card is
+  // never silently dropped from the workspace. Purely a final-assembly
+  // reorder; no field, data shape, HOPE mapping, or POC control changes.
+  const bodySystemSummary = isBodySystemWorkspace
+    ? computeBodySystemSummary(sectionKey, data, { allergyAlerts: uiProfile.infectionAllergyAlerts })
+    : null;
+  // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
+  // #4 -- "Display SNS Cognitive Screen result inside Summary". The raw
+  // score already appears in `bodySystemSummary.primaryIssues` (via
+  // `computeBodySystemFindings`), but that bullet list has no room for the
+  // human-readable interpretation (e.g. "Clinical review recommended");
+  // this reuses the same authoritative `computeNeurologicalCognitiveSummary`
+  // the SNS Cognitive Screen card itself renders, computing nothing new.
+  const neuroCognitiveSummaryForBanner = sectionKey === "neurological" ? computeNeurologicalCognitiveSummary(data) : null;
+
+  const bodySystemGroupedContent = isBodySystemWorkspace
+    ? BODY_SYSTEM_CATEGORY_ORDER.map((category) => {
+        const items = resolvedCards
+          .map((card, ci) => ({ ci, category: card.category || "core" }))
+          .filter((entry) => entry.category === category && cardsContent[entry.ci] != null)
+          .map((entry) => cardsContent[entry.ci]);
+        if (items.length === 0) return null;
+        return (
+          <div key={category} className="rnica-bodysystem-group" data-category={category}>
+            <h4 className="rnica-bodysystem-group__heading">{BODY_SYSTEM_CATEGORY_LABELS[category]}</h4>
+            <div className="rnica-bodysystem-group__cards">{items}</div>
+          </div>
+        );
+      })
+    : null;
+
+  return (
+    <>
+      {subtitle && <p className="rnica-form-section__subtitle" style={styles.sectionSubtitle}>{subtitle}</p>}
+      {sectionKey === "sfv" && (
+        <SfvStatusCard patientId={patientId} onNavigateToSection={onNavigateToSection} onSyncCompletionStatus={(completed, completedAt) => {
+          u("inPersonSfvCompleted", completed);
+          u("sfvDate", completedAt || "");
+        }} styles={styles} COLORS={COLORS} />
+      )}
+      {isBodySystemWorkspace ? (
+        // Body Systems architectural correction: the AccordionTrigger in
+        // RNICACommandWorkspace.jsx already shows the system name/status,
+        // so this single outer shadcn Card renders content only (no
+        // CardHeader/title -- avoids a duplicate heading). Generic
+        // fallback cards and customRenderer widgets inside it render
+        // `bare` so they read as inline groups within this one box
+        // instead of N separate bordered cards, and the section gets ONE
+        // consolidated Add/View/Update/Resolve POC control instead of one
+        // per sub-card.
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" --
+        // `data-section` scoping hook so the density CSS below can target
+        // Neurological specifically (Cognitive Summary / Overall Change /
+        // Communication and Sensory / Additional Cognitive Observations /
+        // Psychiatric History / Nurse Observation) without touching any
+        // other Body System's spacing. Presentation-only attribute; no
+        // field, path, or behavior change.
+        <ShadcnCard className="rnica-bodysystem-workspace" data-section={sectionKey} {...(sectionKey === "cardiovascular" ? { "data-cv-overview": data.cardiovascularOverview || "none" } : null)}>
+          <ShadcnCardContent className="rnica-bodysystem-workspace__content">
+            {bodySystemSummary && (
+              <div
+                // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy
+                // Pass" item #1 -- Neurological's Summary must read as the
+                // 5-second headline, matching Functional Status's banner
+                // weight, not a muted generic strip. Scoped to
+                // sectionKey === "neurological" only (same pattern as
+                // every other Neuro-only directive in this file) so no
+                // other Body System's Summary styling changes.
+                className={`rnica-bodysystem-summary${sectionKey === "neurological" ? " rnica-bodysystem-summary--prominent" : ""}`}
+                data-requires-follow-up={bodySystemSummary.requiresFollowUp}
+              >
+                <h4 className="rnica-bodysystem-summary__heading">Summary</h4>
+                <p className="rnica-bodysystem-summary__status">{bodySystemSummary.status}</p>
+                {/* OWNER DIRECTIVE "Infection Summary Categorization" --
+                    when computeBodySystemSummary supplies
+                    `primaryIssueGroups` (Infection only), render labeled
+                    groups (Patient Safety Findings / Historical Infection
+                    Findings / Clinical Context / Current Infection
+                    Status) instead of one flat bullet list. Every other
+                    body system has no `primaryIssueGroups` and keeps the
+                    original flat rendering below unchanged. */}
+                {bodySystemSummary.primaryIssueGroups ? (
+                  bodySystemSummary.primaryIssueGroups.map((group, gi) => (
+                    <div className="rnica-bodysystem-summary__group" key={gi}>
+                      <p className="rnica-bodysystem-summary__group-heading">{group.heading}</p>
+                      <ul className="rnica-bodysystem-summary__issues">
+                        {group.items.map((issue, ii) => <li key={ii}>{issue}</li>)}
+                      </ul>
+                    </div>
+                  ))
+                ) : (
+                  bodySystemSummary.primaryIssues.length > 0 && (
+                    <ul className="rnica-bodysystem-summary__issues">
+                      {bodySystemSummary.primaryIssues.map((issue, ii) => <li key={ii}>{issue}</li>)}
+                    </ul>
+                  )
+                )}
+                {bodySystemSummary.requiresFollowUp && (
+                  <p className="rnica-bodysystem-summary__flag">Requires Follow-Up</p>
+                )}
+                {/* OWNER DIRECTIVE (2026-10-04) "Neurological Review
+                    Efficiency Pass" item #4 -- "Incorporate Overall Change
+                    into the Summary layer". Same unchanged
+                    `clinicalStatusChange` path/options
+                    (NEURO_OVERALL_CHANGE_OPTIONS) and `u()` write
+                    previously used by the now-removed standalone "Overall
+                    Change Since Prior Assessment" card; only relocated to
+                    render inside the prominent Summary banner instead of
+                    its own card lower down, since "is this patient
+                    declining?" belongs with the 5-second headline. Scoped
+                    to sectionKey === "neurological" only -- no other Body
+                    System's Summary banner gains this control. */}
+                {sectionKey === "neurological" && (
+                  <div className="rnica-bodysystem-summary__overall-change">
+                    <FormSegmented
+                      label="Overall Change Since Prior Assessment"
+                      value={data.clinicalStatusChange}
+                      onChange={(v) => u("clinicalStatusChange", v)}
+                      options={NEURO_OVERALL_CHANGE_OPTIONS}
+                      compact
+                    />
+                  </div>
+                )}
+                {/* OWNER DIRECTIVE (2026-10-04) "Neurological Density
+                    Optimization" item #4 -- SNS Cognitive Screen result
+                    surfaced inside the Summary banner itself, not only
+                    inside its now-collapsed accordion card lower down.
+                    Same `computeNeurologicalCognitiveSummary` data the
+                    card renders; read-only, nothing new computed. */}
+                {sectionKey === "neurological" && neuroCognitiveSummaryForBanner && neuroCognitiveSummaryForBanner.screen.completionStatus !== "NOT_STARTED" && (
+                  <p className="rnica-bodysystem-summary__cognitive-screen">
+                    SNS Cognitive Screen:{" "}
+                    {neuroCognitiveSummaryForBanner.screen.completionStatus === "COMPLETE"
+                      ? `${neuroCognitiveSummaryForBanner.screen.rawScore} of ${neuroCognitiveSummaryForBanner.screen.maxScore}`
+                      : "Incomplete"}
+                    {neuroCognitiveSummaryForBanner.screen.interpretation && ` — ${neuroCognitiveSummaryForBanner.screen.interpretation.label}`}
+                  </p>
+                )}
+              </div>
+            )}
+            {bodySystemGroupedContent}
+            {POC_ENABLED_SECTIONS.has(sectionKey) && (
+              <PocSectionControls
+                assessmentId={assessmentId}
+                sectionKey={sectionKey}
+                cardTitle={title}
+                styles={styles}
+                COLORS={COLORS}
+                {...(sectionKey === "neurological"
+                  ? {
+                      canAdd: neurologicalHasActionablePocFinding(data || {}),
+                      suggestedFinding: neurologicalHasActionablePocFinding(data || {}),
+                    }
+                  : sectionKey === "cardiovascular"
+                  ? {
+                      canAdd: cardiovascularHasActionablePocFinding(data || {}),
+                      suggestedFinding: cardiovascularHasActionablePocFinding(data || {}),
+                    }
+                  : null)}
+              />
+            )}
+          </ShadcnCardContent>
+        </ShadcnCard>
+      ) : (
+        <div className={
+          workspacePilot && sectionKey === "diagnoses" ? "rnica-pilot-diagnoses-grid"
+          : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
+          : undefined
+        }>
+          {cardsContent}
+        </div>
+      )}
     </>
   );
 }
@@ -8852,21 +15238,33 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
 // several short controls onto the same row instead of stacking them one per
 // row with wasted space to the right.
 function getFieldSpan(field) {
+  // GitHub Directive (2026-09-28) "Neurological Review -- Average Sleep
+  // Hours, Clinical Relevance, and Final Density Refinement" Issue #5/#9 --
+  // an explicit per-field override so a card's author can hand-tune a
+  // tighter grid (e.g. Communication and Sensory, HOPE alignment) instead
+  // of relying only on the heuristics below. Optional; every existing
+  // field config omits it and falls through unchanged.
+  if (field.fieldSpan !== undefined) return field.fieldSpan;
   const options = field.options || [];
   const maxLabelLen = options.reduce((m, o) => Math.max(m, String(typeof o === "string" ? o : o.label).length), 0);
 
-  if (field.type === "textarea") {
+  if (field.type === "textarea" || field.type === "quickPickTextarea") {
     // Big narrative fields (explicit rows >= 4) still want real typing room;
     // short single-line-ish notes fields can share a row with a neighbor.
+    // Bug fix (2026-10-03 density pass): quickPickTextarea fell through to
+    // the default span-1 below, squeezing its whole preset-chip row + the
+    // textarea underneath into a single ~200px column and inflating the
+    // card's height with chips wrapping one-per-line -- it needs the same
+    // sizing as a plain textarea.
     return (field.rows || 3) >= 4 ? "full" : 3;
   }
-  if (field.type === "radio") {
+  if (field.type === "radio" || field.type === "segmented") {
     if (options.length <= 2) return 1;
     if (options.length <= 4 && maxLabelLen <= 20) return 2;
     if (options.length <= 6) return 3;
     return "full";
   }
-  if (field.type === "checkboxGroup") {
+  if (field.type === "checkboxGroup" || field.type === "pillGroup") {
     // Now rendered as a horizontal wrapping row of pills, so it behaves
     // like a radio group: give it enough columns for its options to flow
     // across 1-2 lines instead of one cramped narrow column.
@@ -8875,16 +15273,134 @@ function getFieldSpan(field) {
     if (options.length <= 6) return 3;
     return "full";
   }
+  if (field.type === "booleanPillRow") {
+    // One compact toggle-pill row spanning several boolean paths (e.g.
+    // Orientation) -- give it the same room a multi-option pill/radio row
+    // gets so it doesn't wrap onto a cramped single column.
+    const items = field.items || [];
+    const maxItemLabelLen = items.reduce((m, it) => Math.max(m, String(it.label).length), 0);
+    if (items.length <= 4 && maxItemLabelLen <= 20) return 2;
+    return 3;
+  }
+  if (field.type === "booleanPill") {
+    // Bug fix (Pain Sheet UI polish pass): FormBooleanPill renders its
+    // whole label as nowrap text inside a single pill button. A long label
+    // (e.g. "Comprehensive pain assessment completed") was defaulting to a
+    // single ~150px grid column, overflowing into the next grid cell and
+    // visually overlapping the adjacent date field. Short labels (e.g.
+    // "Delirium", "Pacemaker") are unaffected and keep sharing a row.
+    return String(field.label || "").length > 24 ? "full" : 1;
+  }
+  if (field.type === "comprehensivePainAssessmentDate") {
+    // Can expand to show a date input + required override-reason input
+    // stacked vertically -- give it the full row so that never competes
+    // for width with a neighboring field.
+    return "full";
+  }
   return 1;
 }
 
 // Utility to get/set nested values
 function getNestedValue(obj, path) {
+  if (!path) return undefined;
   return path.split(".").reduce((curr, key) => curr?.[key], obj);
 }
 
+// OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Rebuild" -- fix for
+// a real structural bug found during verification of the fixed-column-band
+// + auto-row CSS technique: CSS Grid's sparse auto-placement cursor is
+// SHARED across the whole grid, not per-column. When every field in a
+// column-major field array is rendered as its own direct grid item with a
+// fixed grid-column but no grid-row, placing Column A's items first moves
+// the shared placement cursor down several rows before Column B's first
+// item is ever considered -- so Column B/C fields get pulled down onto
+// whatever row Column A's cursor stopped at, producing exactly the kind of
+// sparse, partially-empty rows the owner's "no row more than 50% empty"
+// rule forbids.
+//
+// The fix: instead of giving every individual field its own grid-column
+// (and letting the browser interleave their rows), we group the already-
+// rendered field elements into ONE wrapper <div> per semantic column. Each
+// wrapper is a single grid item (so there is only one placement decision
+// per column, eliminating the shared-cursor interaction entirely) and
+// internally uses flexbox to stack its own fields top-to-bottom
+// independently of the other columns' heights. A column with zero visible
+// fields is omitted entirely so it never reserves empty grid space.
+// OWNER CORRECTION (2026-10-06, live full-width screenshot audit) -- the
+// wrapper-column technique above eliminated the overlap/mis-placement
+// bug, but Column A was left with 6 fields (effectively 5 stacked rows
+// once Cool Extremities/Varicose Veins share one sub-row) while Columns
+// B/C had only 3 each -- so Column A's extra height showed up as dead
+// whitespace at the bottom of B/C, defeating the whole point of the
+// 3-column layout (still net vertical scrolling, just redistributed).
+// Stasis Ulcer moves to Column B to rebalance all three columns to a
+// near-equal 4/4/3 row count; no field moves between its semantic
+// "circulation finding" grouping and a different card, and nothing here
+// changes which fields exist, their order within Column B specifically,
+// or any value/validation/persistence behavior.
+const CV_CIRCULATION_COLUMN_GROUPS = [
+  { key: "a", className: "rnica-cv-col rnica-cv-col--a", paths: ["pulseRhythm", "pulseSites", "skinColor", "coolExtremities", "varicoseVeins"] },
+  { key: "b", className: "rnica-cv-col rnica-cv-col--b", paths: ["pulseRate", "heartSounds", "edema.present", "stasisUlcer"] },
+  { key: "c", className: "rnica-cv-col rnica-cv-col--c", paths: ["pulseStrength", "jvd", "peripheralCirculation"] },
+  { key: "full", className: "rnica-cv-col rnica-cv-col--full", paths: ["edema.location", "edema.severity", "edema.pitting", "skinColorOther", "heartSoundsOther", "peripheralCirculationOther"] },
+];
+const CV_SYMPTOMS_COLUMN_GROUPS = [
+  { key: "full", className: "rnica-cv-col rnica-cv-col--full", paths: ["cardiacDyspneaGuidanceNote", "cardiacDyspnea", "chestPain.type", "heartFailurePresent", "heartFailureType"] },
+  { key: "left", className: "rnica-cv-col rnica-cv-col--left", paths: ["chestPain.present", "orthostaticFinding", "dizziness"] },
+  { key: "right", className: "rnica-cv-col rnica-cv-col--right", paths: ["bpStatus", "fatigue", "syncope"] },
+];
+const CV_COLUMN_GROUPS_BY_CARD_TITLE = {
+  "Circulation & Perfusion": CV_CIRCULATION_COLUMN_GROUPS,
+  "Cardiovascular Symptoms": CV_SYMPTOMS_COLUMN_GROUPS,
+};
+// Groups an already-rendered flat array of field elements (aligned 1:1 by
+// index with `fieldDefs`, with `null` for hidden fields) into per-column
+// wrapper elements. Returns the original flat array unchanged for any card
+// not in CV_COLUMN_GROUPS_BY_CARD_TITLE (including Path 2's compact 3-col
+// override, where the plain flat/flex layout is already correct and this
+// grouping would be redundant).
+function groupCvFieldsIntoColumns(cardTitle, fieldDefs, renderedElements) {
+  const groups = CV_COLUMN_GROUPS_BY_CARD_TITLE[cardTitle];
+  if (!groups) return renderedElements;
+  const byPath = new Map();
+  fieldDefs.forEach((field, fi) => {
+    if (renderedElements[fi] != null) byPath.set(field.path, renderedElements[fi]);
+  });
+  const placed = new Set();
+  const columnDivs = groups
+    .map((group) => {
+      const children = group.paths
+        .filter((path) => byPath.has(path))
+        .map((path) => {
+          placed.add(path);
+          return byPath.get(path);
+        });
+      if (children.length === 0) return null;
+      return (
+        <div key={group.key} className={group.className}>
+          {children}
+        </div>
+      );
+    })
+    .filter(Boolean);
+  // Any field not covered by an explicit group (e.g. a future field added
+  // to the schema without a corresponding column-group entry) still
+  // renders, appended after the grouped columns, so nothing is silently
+  // dropped from the form.
+  const leftovers = fieldDefs
+    .filter((field) => byPath.has(field.path) && !placed.has(field.path))
+    .map((field) => byPath.get(field.path));
+  return [...columnDivs, ...leftovers];
+}
+
 function setNestedValue(obj, path, value) {
-  const clone = JSON.parse(JSON.stringify(obj));
+  // Guard against a missing/undefined section state (e.g. a formData section
+  // that has not yet been initialized for an older/partial persisted record).
+  // Without this, JSON.stringify(undefined) => undefined and the subsequent
+  // JSON.parse(undefined) throws, crashing the entire RNICA tree with no
+  // error boundary to catch it (this was the root cause of the Living
+  // Environment "not working at all" crash).
+  const clone = obj == null ? {} : JSON.parse(JSON.stringify(obj));
   const keys = path.split(".");
   let curr = clone;
   for (let i = 0; i < keys.length - 1; i++) {
@@ -8906,17 +15422,8 @@ const SECTION_CONFIGS = {
     subtitle: "Temperature, pulse, respirations, blood pressure, anthropometrics, IV assessment",
     cards: [
       {
-        title: "Vital Signs", fields: [
-          { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "98.6" },
-          { type: "radio", label: "Unit", path: "temperatureUnit", options: ["F", "C"] },
-          { type: "input", label: "Pulse", path: "pulse", inputType: "number" },
-          { type: "select", label: "Pulse Quality", path: "pulseQuality", options: ["Strong", "Weak", "Thready", "Bounding", "Irregular"] },
-          { type: "input", label: "Respirations", path: "respirations", inputType: "number" },
-          { type: "input", label: "BP Systolic", path: "bloodPressure.systolic", inputType: "number" },
-          { type: "input", label: "BP Diastolic", path: "bloodPressure.diastolic", inputType: "number" },
-          { type: "input", label: "O2 Saturation %", path: "oxygenSaturation", inputType: "number" },
-          { type: "checkbox", label: "On Room Air", path: "oxygenSaturationOnRA" },
-        ],
+        title: "Vital Signs",
+        customRenderer: "vitalSignsClinical",
       },
       {
         title: "Anthropometrics",
@@ -8940,52 +15447,86 @@ const SECTION_CONFIGS = {
 
   pain: {
     title: "Pain Assessment",
-    subtitle: "Use the patient communication status to select the correct pain scale: verbal patients use numerical pain scoring, non-verbal patients use PAINAD or FLACC based on nurse selection, and pediatric patients use FLACC.",
+    subtitle: "Use the patient communication status to select the correct pain scale: verbal patients use numerical pain scoring, non-verbal patients use PAINAD or FLACC based on nurse selection, and pediatric patients use FLACC. [Information hierarchy regrouped 2026-10 to match the Neurological architecture -- no field, option, path, or HOPE mapping changed, only which named section each field renders under.]",
     cards: [
+      // 1. Pain Overview -- the triage front door (HOPE J0900 A-D, J0905,
+      // and the self-report/comfort/active-problem questions), same role
+      // as the Neurological Overview card: establishes the top-level
+      // picture before any detail section below is reached.
       {
-        title: "Pain Screening", hopeCode: "J0900", fields: [
-          { type: "radio", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", options: [
+        title: "Pain Overview", hopeCode: "J0900", fields: [
+          // Reorganized (2026-10-03 density pass) into two labeled groups --
+          // SCREENING (did we screen, and when) then ASSESSMENT (what the
+          // screening found) -- per explicit layout directive. Same fields,
+          // same paths, same options, same order within each group as
+          // before; only the visual grouping + a non-data groupLabel marker
+          // changed. GitHub UI Directive (2026-10-03) "Neuro Interaction
+          // Parity" -- every exclusive single-choice field below uses
+          // `type: "segmented"` (compact chip row) instead of `type:
+          // "radio"` (large circular-radio stack), the same opt-in swap
+          // already applied throughout Neurological/Cardiovascular. Same
+          // options array/value/onChange contract -- no data shape change.
+          { type: "groupLabel", label: "Screening" },
+          { type: "segmented", label: "A. Was the patient screened for pain? (HOPE J0900.A)", path: "screenedForPain", hopeCode: "J0900", fieldSpan: 2, options: [
             { value: "0", label: "No — skip to Pain Active Problem (J0905)" }, { value: "1", label: "Yes" }
           ]},
+          // Reason not assessed: shown only when screenedForPain = No.
+          // Free text so it never has to fit CMS's binary J0900.A coding.
+          { type: "textarea", label: "Reason pain assessment was not completed", path: "reasonNotAssessed", fieldSpan: "full" },
           { type: "input", label: "B. Date of first screening for pain", path: "screeningDate", inputType: "date" },
-          { type: "radio", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", options: [
-            { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
-          ]},
-          { type: "radio", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", options: [
+
+          { type: "groupLabel", label: "Assessment" },
+          { type: "segmented", label: "D. Type of standardized pain tool used: (HOPE J0900.D)", path: "standardizedPainToolType", hopeCode: "J0900", fieldSpan: "full", options: [
             { value: "1", label: "Numeric" }, { value: "2", label: "Verbal descriptor" }, { value: "3", label: "Patient visual" }, { value: "4", label: "Staff observation" }, { value: "9", label: "No standardized tool used" }
           ]},
-          { type: "radio", label: "Can the patient verbalize pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", options: [
+          { type: "segmented", label: "Can the patient reliably self-report pain? (drives pain scale below, not a HOPE response)", path: "verbalizesPain", fieldSpan: 2, options: [
             { value: "0", label: "No" }, { value: "1", label: "Yes, reliably" }, { value: "2", label: "Sometimes" }, { value: "3", label: "Unable to determine" }
           ]},
-          { type: "radio", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", options: [
-            { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
+          { type: "segmented", label: "C. The patient's pain severity was: (HOPE J0900.C)", path: "painSeverityCategory", hopeCode: "J0900", fieldSpan: "full", options: [
+            { value: "0", label: "None" }, { value: "1", label: "Mild" }, { value: "2", label: "Moderate" }, { value: "3", label: "Severe" }, { value: "9", label: "Pain not rated" }
           ]},
-          { type: "radio", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
-            { value: "0", label: "No" }, { value: "1", label: "Yes" }
+          // Section 10: conceptually distinct from "current pain" -- a
+          // patient can deny pain right now and still have an active pain
+          // problem requiring ongoing management/monitoring. AI may
+          // propose this (see AI Insights); the RN always confirms.
+          { type: "segmented", label: "Is pain an active problem? (J0905)", path: "painActiveProblem", hopeCode: "J0905", fieldSpan: 2, options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
+          ]},
+          // Section 4: current pain is conceptually distinct from HOPE
+          // J0900.C severity-in-general and from pain-as-active-problem.
+          { type: "segmented", label: "Is the patient experiencing pain now?", path: "currentPain", fieldSpan: 2, options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unable to determine" }
+          ]},
+          { type: "segmented", label: "Is the patient uncomfortable because of pain?", path: "uncomfortableBecauseOfPain", fieldSpan: 2, options: [
+            { value: "0", label: "No" }, { value: "1", label: "Yes" }, { value: "9", label: "Unable to determine" }
           ]},
         ],
       },
+      // 2. Pain Intensity -- the longitudinal intensity picture
+      // (current/worst/best/acceptable). The three tool-specific cards
+      // immediately below share this same section title because only one
+      // of them ever renders at a time (Numeric for verbal patients,
+      // FLACC for pediatric, PAINAD for non-verbal adults -- see
+      // painAssessmentMode).
       {
-        title: "Pain Assessment Tool", fields: [
+        title: "Pain Intensity", fields: [
           { type: "select", label: "Pain scale selected", path: "assessmentTool", options: ["Numeric (0-10)"] },
           { type: "input", label: "Current intensity", path: "painIntensity.current", inputType: "number" },
           { type: "input", label: "Worst in 24 hours", path: "painIntensity.worst", inputType: "number" },
           { type: "input", label: "Best in 24 hours", path: "painIntensity.best", inputType: "number" },
           { type: "input", label: "Acceptable level", path: "painIntensity.acceptable", inputType: "number" },
-          { type: "checkbox", label: "Comprehensive pain assessment completed", path: "comprehensiveAssessmentCompleted" },
-          { type: "input", label: "Comprehensive pain assessment date", path: "comprehensiveAssessmentDate", inputType: "date" },
+          // [2026-10-03 "Comprehensive Pain Assessment Date auto-
+          // population"] Replaces the former separate editable
+          // "Comprehensive pain assessment completed" checkbox + manually
+          // -typed date with a single auto-filled/override field -- see
+          // ComprehensivePainAssessmentDateField and the sync useEffect
+          // near handleLock. comprehensiveAssessmentCompleted (HOPE
+          // J0910.A) is still stored, now derived rather than hand-entered.
+          { type: "comprehensivePainAssessmentDate", label: "Comprehensive Assessment Date", path: "comprehensiveAssessmentDate", hopeCode: "J0910" },
         ],
       },
       {
-        title: "Pain Characteristics", fields: [
-          { type: "checkboxGroup", label: "Pain location", path: "painLocation", options: ["Head", "Neck", "Chest", "Abdomen", "Back", "Upper extremities", "Lower extremities", "Generalized"] },
-          { type: "checkboxGroup", label: "Pain character", path: "painCharacter", options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
-          { type: "checkboxGroup", label: "Aggravating factors", path: "aggravatingFactors", options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
-          { type: "checkboxGroup", label: "Relieving factors", path: "relievingFactors", options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
-        ],
-      },
-      {
-        title: "FLACC Scale (Pediatric / child)", fields: [
+        title: "Pain Intensity", fields: [
           { type: "select", label: "Face", path: "flacc.face", options: [{ value: "0", label: "0 — No particular expression" }, { value: "1", label: "1 — Occasional grimace or frown" }, { value: "2", label: "2 — Frequent to constant frown, clenched jaw" }] },
           { type: "select", label: "Legs", path: "flacc.legs", options: [{ value: "0", label: "0 — Normal position or relaxed" }, { value: "1", label: "1 — Uneasy, restless, tense" }, { value: "2", label: "2 — Kicking or legs drawn up" }] },
           { type: "select", label: "Activity", path: "flacc.activity", options: [{ value: "0", label: "0 — Lying quietly, normal movement" }, { value: "1", label: "1 — Squirming, shifting, tense" }, { value: "2", label: "2 — Arched, rigid, or jerking" }] },
@@ -8994,7 +15535,7 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "PAINAD Scale (Non-verbal / unable to self-report)", fields: [
+        title: "Pain Intensity", fields: [
           { type: "select", label: "Breathing", path: "painad.breathing", options: [{ value: "0", label: "0 — Normal" }, { value: "1", label: "1 — Occasional labored" }, { value: "2", label: "2 — Noisy labored" }] },
           { type: "select", label: "Vocalization", path: "painad.vocalization", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Occasional moan" }, { value: "2", label: "2 — Repeated calling out" }] },
           { type: "select", label: "Facial expression", path: "painad.facialExpression", options: [{ value: "0", label: "0 — Smiling/inexpressive" }, { value: "1", label: "1 — Sad/frightened" }, { value: "2", label: "2 — Grimacing" }] },
@@ -9002,79 +15543,164 @@ const SECTION_CONFIGS = {
           { type: "select", label: "Consolability", path: "painad.consolability", options: [{ value: "0", label: "0 — No need" }, { value: "1", label: "1 — Distracted/reassured" }, { value: "2", label: "2 — Unable to console" }] },
         ],
       },
+      // 3. Pain History -- the chronic/recurrent-history gate plus its
+      // detail sub-fields (baseline/tolerance/threshold/management-
+      // approach/control-status), merged into one card (was two boxes:
+      // a standalone one-field gate card and a separate detail card).
+      // Same visibility rules as before: the whole card only applies once
+      // the patient denies current pain (isPainHistoryCard card-level
+      // gate), and the detail fields only apply once chronicPainHistory
+      // = Yes (unchanged field-level gate below in the render loop).
       {
-        title: "Pain Management", fields: [
-          { type: "checkboxGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
-          { type: "textarea", label: "Pain Management Plan", path: "painManagementPlan" },
+        title: "Pain History", fields: [
+          { type: "segmented", label: "Does the patient have a history of chronic or recurrent pain?", path: "chronicPainHistory", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }, { value: "unable", label: "Unable to determine" }
+          ]},
+          { type: "textarea", label: "Chronic pain condition or source", path: "chronicPainCondition" },
+          { type: "input", label: "Usual/baseline pain level (0-10, or \"Unable to quantify\")", path: "usualBaselinePainLevel" },
+          { type: "input", label: "Patient's tolerable pain level before requesting intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "tolerablePainLevel" },
+          { type: "input", label: "Pain level that typically requires intervention (0-10, \"Unable to identify\", or \"Not discussed\")", path: "interventionThresholdLevel" },
+          { type: "input", label: "Usual frequency or pattern", path: "usualFrequencyPattern" },
+          { type: "pillGroup", label: "Current pain-management approach", path: "currentManagementApproach", options: ["Medication", "Positioning", "Heat", "Cold", "Massage", "Rest", "Distraction", "Other nonpharmacologic intervention", "No current intervention", "Unable to determine"] },
+          { type: "segmented", label: "Current control status", path: "controlStatus", options: [
+            { value: "Controlled", label: "Controlled" }, { value: "Partially controlled", label: "Partially controlled" }, { value: "Uncontrolled", label: "Uncontrolled" }, { value: "Unable to determine", label: "Unable to determine" }
+          ]},
         ],
       },
+      // 4. Location -- the visual body silhouette plus the location
+      // checklist. Verbal-patients-only, same as before (see
+      // shouldRenderLocationCard). Stays collapsed by default (secondary
+      // interaction): the body map consumes significant vertical space
+      // the nurse doesn't need in view while reviewing Pain Management/
+      // treatment response -- Pain Overview and Pain Management stay open.
+      {
+        title: "Location", fields: [
+          { type: "pillGroup", label: "Pain location", path: "painLocation", options: ["Head", "Neck", "Chest", "Abdomen", "Back", "Upper extremities", "Lower extremities", "Generalized"] },
+        ],
+      },
+      // 5. Pain Character & Impact -- merges the former Pain Type,
+      // Characteristics, and Functional Impact cards (was 3 boxes) into
+      // one. Neuropathic classification (HOPE J0915) and pain character
+      // always apply; onset/duration/aggravating/relieving/functional-
+      // impact are verbal-patients-only (PAIN_VERBAL_ONLY_PATHS field-
+      // level gate in the render loop replaces the old per-card mode
+      // gate) and current-pain-or-chronic-history-only (unchanged
+      // field-level gate). Stays collapsed by default, same convention as
+      // Location, to keep this detail out of view while Pain Management
+      // is being reviewed.
+      {
+        title: "Pain Character & Impact", fields: [
+          { type: "segmented", label: "Does the patient have neuropathic pain (e.g., pain with burning, tingling, pins and needles, hypersensitivity to touch)? (HOPE J0915)", path: "neuropathicPain", hopeCode: "J0915", options: [
+            { value: "0", label: "No" }, { value: "1", label: "Yes" }
+          ]},
+          { type: "pillGroup", label: "Supporting neuropathic characteristics", path: "neuropathicCharacteristics", options: ["Burning", "Tingling", "Pins and needles", "Electric/shooting quality", "Hyperesthesia", "Allodynia (pain to light touch)", "Other documented characteristic"] },
+          // fieldSpan overrides below (2026-10-03 density pass): these
+          // pillGroups' option counts push the default heuristic to "full"
+          // width, forcing neuropathicPain (a 2-option Yes/No) to sit alone
+          // in its own row with empty space beside it, and stacking
+          // Aggravating/Relieving as two separate full-width rows. Same
+          // fields, same paths, same options -- only how many grid columns
+          // each claims, so neuropathicPain shares Pain Character's row and
+          // Aggravating/Relieving share one row instead of two.
+          { type: "pillGroup", label: "Pain character", path: "painCharacter", fieldSpan: 3, options: ["Sharp", "Dull", "Aching", "Burning", "Stabbing", "Throbbing", "Cramping", "Shooting", "Pressure"] },
+          { type: "textarea", label: "Onset & progression", path: "painOnsetProgression" },
+          { type: "input", label: "Duration & frequency", path: "painDurationFrequency" },
+          { type: "pillGroup", label: "Aggravating factors", path: "aggravatingFactors", fieldSpan: 2, options: ["Movement", "Coughing", "Eating", "Position change", "Touch", "Stress", "Weather"] },
+          { type: "pillGroup", label: "Relieving factors", path: "relievingFactors", fieldSpan: 2, options: ["Medication", "Rest", "Heat", "Cold", "Position change", "Distraction", "Massage"] },
+          { type: "quickPickTextarea", label: "Effect on function or quality of life", path: "effectOnFunction", presets: ["Limits mobility/ambulation", "Disrupts sleep", "Limits ADLs", "Decreases appetite", "Limits social engagement", "Causes mood/irritability changes", "No functional impact reported"] },
+        ],
+      },
+      // 6. Pain Management -- unchanged from the prior architecture.
+      {
+        // Section 14 (simplified 2026-09-26 per owner request): harvest
+        // from the medication list first (see PainMedicationHarvestBanner
+        // above the fields grid) -- Type/Route/Breakthrough are
+        // auto-detected from active medications when possible, RN
+        // verifies/corrects. Detailed regimen text, last-breakthrough-dose,
+        // and administration-history fields were removed from the primary
+        // admission workflow (better suited to medication management /
+        // follow-up visits, not admission documentation burden).
+        title: "Pain Management", fields: [
+          { type: "segmented", label: "Routine pain medication present?", path: "routinePainMedicationPresent", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
+          ]},
+          { type: "segmented", label: "Pain medication type", path: "painMedicationType", options: [
+            { value: "Opioid", label: "Opioid" }, { value: "Non-Opioid", label: "Non-Opioid" }, { value: "Both", label: "Both" }
+          ]},
+          // fieldSpan overrides (2026-10-03 density pass, same rationale as
+          // Pain Character & Impact above): Route (7 options) and
+          // Non-Pharmacological Interventions (9 options) each defaulted to
+          // full card width and stacked as two separate full rows. Pairing
+          // them onto one row makes this a genuine two-column layout instead
+          // of two chip rows each spanning the entire viewport.
+          { type: "pillGroup", label: "Route", path: "painMedicationRoute", fieldSpan: 2, options: PAIN_ROUTE_OPTIONS },
+          { type: "segmented", label: "Breakthrough pain medication present?", path: "breakthroughPainMedication", options: [
+            { value: "1", label: "Yes" }, { value: "0", label: "No" }, { value: "9", label: "Unknown" }
+          ]},
+          { type: "pillGroup", label: "Non-Pharmacological Interventions", path: "nonPharmInterventions", fieldSpan: 2, options: ["Repositioning", "Heat therapy", "Cold therapy", "Massage", "Music therapy", "Guided imagery", "Relaxation techniques", "TENS unit", "Distraction"] },
+          { type: "segmented", label: "Effectiveness", path: "painEffectivenessRating", options: [
+            { value: "Effective", label: "Effective" }, { value: "Partially Effective", label: "Partially Effective" }, { value: "Ineffective", label: "Ineffective" }, { value: "Unable To Determine", label: "Unable To Determine" }
+          ]},
+          { type: "textarea", label: "Pain Management Notes (optional)", path: "painManagementPlan" },
+        ],
+      },
+      // Three derived/read-only cards follow Pain Management. Each is
+      // grounded-only (never fabricates) and the AI Insights and Overdue
+      // Alerts cards render nothing at all -- no card, no placeholder --
+      // when there is no supported finding/triggered rule (see the
+      // customRenderer dispatch above for the hide-when-empty guards).
+      // 7. Clinical Summary (+ its overdue-action companion card).
+      { title: "Clinical Summary", customRenderer: "painAssessmentSummary" },
+      { title: "Overdue Action Alerts", customRenderer: "painOverdueAlerts" },
+      // 8. AI Insights.
+      { title: "AI Insights", customRenderer: "aiPainAnalysis" },
     ],
   },
 
-  symptomImpact: {
-    title: "Symptom Impact (J2051 A-H)",
-    subtitle: "HOPE J2051 — Rate each symptom 0-3 based on impact on daily life",
-    cards: [
-      {
-        title: "Symptom Impact Screening", hopeCode: "J2051", fields: [
-          { type: "radio", label: "A. Pain", path: "pain", hopeCode: "J2051A", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "B. Shortness of Breath", path: "shortnessOfBreath", hopeCode: "J2051B", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "C. Anxiety", path: "anxiety", hopeCode: "J2051C", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "D. Nausea", path: "nausea", hopeCode: "J2051D", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "E. Vomiting", path: "vomiting", hopeCode: "J2051E", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "F. Diarrhea", path: "diarrhea", hopeCode: "J2051F", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "G. Constipation", path: "constipation", hopeCode: "J2051G", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "radio", label: "H. Agitation", path: "agitation", hopeCode: "J2051H", sfv: true, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-          { type: "input", label: "Assessment Date", path: "assessmentDate", inputType: "date" },
-        ],
-      },
-    ],
-  },
+  // symptomImpact intentionally has no RN-facing section config (owner
+  // correction 2026-09-25): each J2051 symptom is documented once, in its
+  // true owning section, never re-asked here. See the symptomImpact
+  // default-state comment and its background sync effect for how HOPE
+  // J2051 export/SFV/reporting still derive from those source fields.
 
   diagnoses: {
     title: "Diagnoses",
     subtitle: "Primary/Secondary Dx, comorbidities, disease trajectory, and LCD eligibility",
     cards: [
+      // RNICA Diagnosis & LCD Workspace Optimization (owner-approved
+      // directive): Primary Diagnosis + Terminal Prognosis merged into one
+      // compact search-driven container (FR-003/FR-004); LCD moved
+      // immediately after diagnosis, with its supporting-evidence card
+      // directly below it, ahead of Secondary Diagnoses/HOPE Comorbidities
+      // (FR-006/FR-010) -- see PrimaryTerminalDiagnosisCard above for the
+      // auto-populate logic and the customRenderer dispatch above for how
+      // each of these renders.
       {
-        title: "Primary Diagnosis", hopeCode: "I0010", fields: [
-          { type: "input", label: "ICD-10 Code", path: "primaryDiagnosis.icd10", required: true },
-          { type: "input", label: "Description", path: "primaryDiagnosis.description", required: true },
-          { type: "input", label: "Onset Date", path: "primaryDiagnosis.onsetDate", inputType: "date" },
-          { type: "select", label: "HOPE Principal Diagnosis Category (I0010)", path: "primaryDiagnosis.hopeDiagnosisCategory", required: true, hopeCode: "I0010", options: [
-            { value: "01", label: "01 — Cancer" },
-            { value: "02", label: "02 — Dementia (including Alzheimer's disease)" },
-            { value: "03", label: "03 — Neurological Condition (e.g., Parkinson's disease, MS, ALS)" },
-            { value: "04", label: "04 — Stroke" },
-            { value: "05", label: "05 — Chronic Obstructive Pulmonary Disease (COPD)" },
-            { value: "06", label: "06 — Cardiovascular (excluding heart failure)" },
-            { value: "07", label: "07 — Heart Failure" },
-            { value: "08", label: "08 — Liver Disease" },
-            { value: "09", label: "09 — Renal Disease" },
-            { value: "99", label: "99 — None of the above" },
-          ] },
-        ],
-      },
-      {
-        title: "Terminal Prognosis", hopeCode: "J0050", fields: [
-          { type: "select", label: "Terminal Prognosis", path: "terminalPrognosis", hopeCode: "J0050", options: ["6 months or less", "More than 6 months", "Undetermined"] },
-        ],
-      },
-      {
-        title: "Secondary Diagnoses",
-        customRenderer: "secondaryDiagnoses",
+        title: "Primary Terminal Diagnosis", hopeCode: "I0010", customRenderer: "primaryTerminalDiagnosis",
       },
       {
         title: "LCD Eligibility",
         customRenderer: "lcdEligibility",
       },
       {
+        title: "LCD Supporting Evidence",
+        customRenderer: "lcdSupportingEvidence",
+      },
+      {
+        title: "Secondary Diagnoses",
+        customRenderer: "secondaryDiagnoses",
+      },
+      {
         title: "Comorbidities and Co-existing Conditions",
         hopeCode: "I0100-I8005",
         customRenderer: "hopeComorbidities",
       },
+      // Disease & LCD Workflow Specification, Phase 1 / Option A --
+      // manually-documented conditions distinct from Primary/Secondary/
+      // HOPE Comorbidities. See ContributingConditionsCard above.
       {
-        title: "LCD Supporting Evidence",
-        customRenderer: "lcdSupportingEvidence",
+        title: "Contributing Conditions",
+        customRenderer: "contributingConditions",
       },
     ],
   },
@@ -9083,9 +15709,16 @@ const SECTION_CONFIGS = {
     title: "Performance Status",
     subtitle: "PPS, KPS, ECOG, FAST, NYHA scales with justifications, and ADL assessment",
     cards: [
+      // Pilot-only cards below (functionalStatusSummary/scaleGroupLabel/
+      // mobilityTransferSummary) are hidden entirely in legacy mode -- see
+      // the sectionKey === "performanceStatus" guards in the renderer.
       {
-        title: "Change Since Last Assessment",
-        customRenderer: "declineTracker",
+        title: "Functional Status Summary",
+        customRenderer: "functionalStatusSummary",
+      },
+      {
+        title: "Core Hospice Functional Scales",
+        customRenderer: "scaleGroupLabel",
       },
       {
         title: "Palliative Performance Scale (PPS)", hopeCode: "M1190", fields: [
@@ -9098,6 +15731,10 @@ const SECTION_CONFIGS = {
           { type: "select", label: "KPS Score", path: "kps", options: ["100","90","80","70","60","50","40","30","20","10","0"] },
           { type: "textarea", label: "KPS Justification", path: "kpsJustification" },
         ],
+      },
+      {
+        title: "Specialized Diagnosis-Specific Scales",
+        customRenderer: "scaleGroupLabel",
       },
       {
         title: "ECOG Performance Status", fields: [
@@ -9125,7 +15762,7 @@ const SECTION_CONFIGS = {
         ],
       },
       {
-        title: "Functional Decline", fields: [
+        title: "Functional Decline", id: "rnica-functional-decline-card", fields: [
           { type: "textarea", label: "Functional Decline Notes", path: "functionalDeclineNotes", rows: 4 },
         ],
       },
@@ -9134,7 +15771,7 @@ const SECTION_CONFIGS = {
       // storage, validation, LCD facts, and POC ownership remain with
       // `musculoskeletal` (Body Systems) via `dataSection` -- see
       // RNICA_SCREEN_AUTHORITY_MATRIX.md.
-      { title: "ADL Assessment (0=Independent, 5=Dependent)", dataSection: "musculoskeletal", fields: [
+      { title: "ADL Assessment (0=Independent, 5=Dependent)", id: "rnica-adl-assessment-card", dataSection: "musculoskeletal", customRenderer: "adlSummaryGrid", fields: [
         { type: "select", label: "Bathing", path: "adl.bathing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup help only" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited assistance" }, { value: "4", label: "4 — Extensive assistance" }, { value: "5", label: "5 — Total dependence" }] },
         { type: "select", label: "Dressing", path: "adl.dressing", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
         { type: "select", label: "Toileting", path: "adl.toileting", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
@@ -9142,71 +15779,412 @@ const SECTION_CONFIGS = {
         { type: "select", label: "Eating", path: "adl.eating", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
         { type: "select", label: "Grooming", path: "adl.grooming", options: [{ value: "0", label: "0 — Independent" }, { value: "1", label: "1 — Setup" }, { value: "2", label: "2 — Supervision" }, { value: "3", label: "3 — Limited" }, { value: "4", label: "4 — Extensive" }, { value: "5", label: "5 — Total" }] },
       ]},
+      {
+        title: "Mobility & Transfer",
+        customRenderer: "mobilityTransferSummary",
+      },
+      {
+        title: "Change Since Last Assessment",
+        customRenderer: "declineTracker",
+      },
     ],
   },
 
   neurological: {
     title: "Neurological / Mental / Sensory",
-    subtitle: "Consciousness, orientation, cognition, BIMS (N0500-N0520), sleep/rest",
+    subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, SNS Cognitive Screen",
     cards: [
+      // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+      // item #1 -- required order: Consciousness / Orientation /
+      // Neurological Overview render as a true, guaranteed 3-column row
+      // (CSS override below forces exactly 3 equal columns for this
+      // section's "core" category bucket -- see
+      // `[data-category="core"] .rnica-bodysystem-group__cards` in
+      // RNICACommandWorkspace.css -- instead of the generic auto-fit grid,
+      // which could pack 2, 3, or 4 cards per row depending on viewport
+      // width). SNS Cognitive Screen (item #2) is deliberately NOT part of
+      // this trio any more -- it is now its own full-width, collapsed-by-
+      // default accordion rendered after this row (see its intercept
+      // below) so it no longer competes for this premium top-of-section
+      // space. Sleep/Responsiveness then takes its own full-width row;
+      // Communication and Sensory (merged) takes the next full-width row;
+      // then Cognitive/Behavioral, Motor/Balance + Psychiatric (row), HOPE,
+      // Notes. Presentation/grouping only -- no field removed, no path
+      // renamed, no HOPE/SFV mapping touched.
       {
-        title: "Mental Status", hopeCode: "N0500", fields: [
-          { type: "checkboxGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
-          { type: "radio", label: "Level of Consciousness", path: "consciousness", options: ["Alert", "Lethargic", "Obtunded", "Stuporous", "Comatose", "Awake", "Minimally responsive", "Coma"] },
-          { type: "checkbox", label: "Oriented to Time", path: "orientation.time" },
-          { type: "checkbox", label: "Oriented to Place", path: "orientation.place" },
-          { type: "checkbox", label: "Oriented to Person", path: "orientation.person" },
-          { type: "checkbox", label: "Oriented to Situation", path: "orientation.situation" },
-          { type: "checkbox", label: "Disoriented", path: "orientation.disoriented" },
+        title: "Consciousness", category: "core", importance: "high", fields: [
+          {
+            type: "segmented", label: "Level of Consciousness", path: "consciousness",
+            // GitHub Review Major Issue #2 -- Awake/Alert and Coma/Comatose
+            // are equivalent workflow states; consolidated to 6 visible
+            // segments so they stop visually competing with each other.
+            // Legacy stored "Awake"/"Coma" still display correctly via
+            // aliases (resolved to Alert/Comatose) -- neither the option
+            // list value nor the backend NEURO_CONSCIOUSNESS_* concept
+            // registry (only ever mapped Alert/Lethargic/Obtunded/
+            // Stuporous/Comatose) is changed.
+            //
+            // OWNER DIRECTIVE (2026-09-28) Clinical Blocker -- Awake and
+            // Alert are distinct neurological concepts and must not be
+            // presented as equivalent. The stored canonical value stays
+            // "Alert" (no schema/migration change), but the label now
+            // reads "Awake" only; no Alertness field exists, so nothing
+            // in this UI or its narrative asserts "Alert".
+            options: [
+              { value: "Alert", label: "Awake" },
+              "Lethargic", "Obtunded", "Stuporous",
+              { value: "Minimally responsive", label: "Min. Responsive" },
+              "Comatose",
+              "Unable to assess",
+            ],
+            aliases: { Awake: "Alert", Coma: "Comatose" },
+          },
         ],
       },
       {
-        title: "BIMS (Brief Interview for Mental Status)", hopeCode: "N0500-N0520", fields: [
-          { type: "select", label: "N0500 — Repetition", path: "hopeItems.n0500", hopeCode: "N0500", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
-          { type: "select", label: "N0510 — Recall", path: "hopeItems.n0510", hopeCode: "N0510", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
-          { type: "select", label: "N0520 — Temporal Orientation", path: "hopeItems.n0520", hopeCode: "N0520", options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+        title: "Orientation", category: "core", importance: "high", fields: [
+          {
+            type: "booleanPillRow", label: "Orientation", items: [
+              { label: "Time", path: "orientation.time" },
+              { label: "Place", path: "orientation.place" },
+              { label: "Person", path: "orientation.person" },
+              { label: "Situation", path: "orientation.situation" },
+              { label: "Disoriented", path: "orientation.disoriented" },
+            ],
+            // Section 10/AC-05 -- presentation-only convenience over the
+            // four existing authoritative fields; stores nothing new.
+            quickAction: {
+              label: "Mark Oriented x4",
+              setPaths: ["orientation.time", "orientation.place", "orientation.person", "orientation.situation"],
+              clearPaths: ["orientation.disoriented"],
+            },
+          },
         ],
       },
       {
-        title: "Communication & Sensory", fields: [
-          { type: "radio", label: "Communication", path: "communication", options: ["Clear", "Impaired", "Unable", "Normal", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"] },
-          { type: "radio", label: "Hearing", path: "hearing", options: ["Adequate", "Impaired", "Deaf", "Hearing aid"] },
-          { type: "radio", label: "Vision", path: "vision", options: ["Adequate", "Impaired", "Blind", "Corrective lenses"] },
-          { type: "radio", label: "Balance", path: "balance", options: ["Steady", "Unsteady", "Unable to stand", "Normal", "Impaired"] },
-          { type: "checkboxGroup", label: "Sensory Deficits", path: "sensoryDeficits", options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
-          { type: "checkboxGroup", label: "Sensory Aids", path: "sensoryAids", options: ["Glasses", "Hearing aids", "Other"] },
+        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+        // this single up-front triage question determines everything
+        // else that renders below it (see the card-level guard next to
+        // `resolvedCards.map`, which keys off `card.title`, not array
+        // position). High-importance, no longer full-width: OWNER
+        // DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
+        // #1 moved it into the 3rd column of the Consciousness/
+        // Orientation/Neurological Overview row (CSS override forces an
+        // exact 3-column grid for this section's "core" category bucket)
+        // instead of its own full-width row, so a nurse sees all three
+        // "status" cards simultaneously without dead horizontal space.
+        // The gate's render-loop guard is unaffected by this reorder --
+        // it still hides every other Neurological card until this
+        // question is answered, exactly as before; only this card's own
+        // screen position/width changed. New path (`neuroOverview`) -- no
+        // existing field/value is touched.
+        title: "Neurological Overview", category: "core", importance: "high", fields: [
+          {
+            type: "segmented", label: "Neurological Overview", path: "neuroOverview",
+            options: [
+              "No Current Neurological Concern",
+              "Existing Neurological Findings Stable",
+              "New/Worsening Neurological Findings",
+              "Unable to Assess",
+            ],
+          },
+          // Path 4 -- require a controlled reason instead of silently
+          // skipping the whole system (same pattern as Pain's
+          // reasonNotAssessed). New path; gated in the render loop below.
+          {
+            type: "segmented", label: "Reason Unable to Assess", path: "neuroUnableToAssessReason",
+            options: ["Patient unable to participate", "Patient unresponsive", "Assessment interrupted", "Other"],
+          },
+          { type: "input", label: "Other Reason (if selected above)", path: "neuroUnableToAssessOther" },
         ],
       },
       {
-        title: "Psychiatric / Cognitive", fields: [
-          { type: "input", label: "Cognition Assessment", path: "cognition" },
-          { type: "checkbox", label: "Delirium", path: "delirium" },
-          { type: "checkbox", label: "Seizure History", path: "seizureHistory" },
-          { type: "checkboxGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
-          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory" },
+        // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction"
+        // -- this card previously claimed to be a HOPE item ("HOPE
+        // Cognitive Assessment (BIMS Screen)", hopeCode "N0500-N0520").
+        // docs/compliance/hope/HOPE_OFFICIAL_ITEM_INVENTORY_1.0.csv (HOPE
+        // Guidance Manual v1.02) shows N0500/N0510/N0520 are the official
+        // Scheduled Opioid / PRN Opioid / Bowel Regimen items (Section N
+        // medications; see hopeReportMapper.js:717-719, correctly sourced
+        // from `medications.*`), and that HOPE has no cognitive-interview
+        // item at all. Renamed to "SNS Cognitive Screen" with no HOPE
+        // badge (hopeCode removed -- Card/field only render <HopeTag> when
+        // hopeCode is set) and an explicit "not a HOPE item" note. Paths
+        // moved from hopeItems.n0500/n0510/n0520 to cognitiveScreen.* (see
+        // INITIAL_FORM.neurological + migrateNeurologicalCognitiveData for
+        // the one-time migration of any legacy-shaped saved records).
+        // Still placed directly below Consciousness/Orientation (directive
+        // item #4/AC-10) and still category "core" for the same bucketing
+        // reason as before.
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Cleanup" -- supersedes
+        // the "Neurological Hierarchy Correction" note above: this card no
+        // longer shares a row with Motor/Balance (Motor/Balance has been
+        // removed from Neuro entirely -- see the comment where it used to
+        // sit, right below this card). It is now the sole card in this
+        // position; `fullWidth: true` gives it the entire workspace row
+        // (single compact row: title/header line, then Word Repetition /
+        // Word Recall / Temporal Orientation on one line -- see the
+        // dedicated `.rnica-cognitive-screen__fields` 3-column CSS rule)
+        // instead of being squeezed into a partial column with empty
+        // space beside it.
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Change" --
+        // reporting the score/status in the collapsed accordion state was
+        // creating an extra click to reach three routine select fields
+        // and hiding them from a reviewer who needed to document them.
+        // `collapsedByDefault` removed: this card is no longer an
+        // accordion. Score + interpretation + review status now render
+        // once, as a single compact header line, always visible above the
+        // three always-visible controls (see the `card.title === "SNS
+        // Cognitive Screen"` render intercept -- `collapsible` is no
+        // longer passed, and the old second score banner beneath the
+        // fields was deleted so the score/status appears exactly once).
+        title: "SNS Cognitive Screen", category: "core", importance: "medium", fullWidth: true, fields: [
+          { type: "select", label: "Word Repetition", path: "cognitiveScreen.repetition", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
+          { type: "select", label: "Word Recall", path: "cognitiveScreen.recall", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
+          { type: "select", label: "Temporal Orientation", path: "cognitiveScreen.temporalOrientation", fieldSpan: 2, options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
+        ],
+      },
+      // OWNER DIRECTIVE (2026-10-04) "Final Neuro Cleanup" item #1 -- the
+      // "Motor / Balance" card (motorBalanceStatus/motorStatus/
+      // affectedSide/deficitType/balance) has been REMOVED from the
+      // Neurological section's rendered card list. Motor/balance findings
+      // belong clinically in Musculoskeletal, not Neuro; the owner's
+      // explicit instruction was "do not duplicate it -- simply plan to
+      // relocate it when Musculoskeletal is built." This is a presentation
+      // -only removal: no field path, stored value, validation rule,
+      // narrative/Structured-Findings consumer, or HOPE/SFV mapping that
+      // reads `motorBalanceStatus`/`motorStatus`/`affectedSide`/
+      // `deficitType`/`balance` elsewhere in this file was touched, and no
+      // migration ran -- any already-charted data for these paths is
+      // still intact in the record, simply not editable from this section
+      // until the Musculoskeletal Body System is built and this exact
+      // card (fields/paths/options unchanged) is added there instead.
+      // Do not re-add this card to Neuro and do not create a second copy
+      // elsewhere until that Musculoskeletal work begins.
+      // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item
+      // #3 -- "Cognitive / Behavioral Findings" no longer renders here.
+      // It has been relocated to sit beside "Communication and Sensory"
+      // as a two-column row (see that card below, and the relocated
+      // "Cognitive / Behavioral Findings" card entry immediately after
+      // it) -- supersedes the previous "Final Neuro Cleanup" directive
+      // that placed it directly beneath SNS Cognitive Screen. Fields/
+      // paths/options/collapsed-by-default behavior are unchanged --
+      // category and position only, again.
+
+      // Pass" item #3 -- the standalone "Cognitive Summary" card
+      // (previously here, customRenderer "neuroCognitiveSummary") has
+      // been removed; its exact same read-only content now renders
+      // appended inside the "SNS Cognitive Screen" card above (see the
+      // `card.title === "SNS Cognitive Screen"` intercept) instead of
+      // occupying its own adjacent half-width box. No field/path/HOPE
+      // mapping/computation changed -- presentation/grouping only.
+      //
+      // Item #4 -- "Incorporate Overall Change into the Summary layer":
+      // the standalone "Overall Change Since Prior Assessment" card
+      // (previously here) has also been removed; the same unchanged
+      // `clinicalStatusChange` segmented control (same
+      // NEURO_OVERALL_CHANGE_OPTIONS, same `u()` write) now renders
+      // directly inside the prominent Summary banner at the top of this
+      // section (see the `sectionKey === "neurological"` block inside
+      // the Summary banner JSX) instead of as its own card lower down --
+      // removing an entire grid row while keeping the control equally
+      // (arguably more) visible, since it now sits beside the 5-second
+      // headline instead of after Consciousness/Orientation/Cognitive
+      // Screen.
+      {
+        // One of the strongest hospice decline indicators (Finding #1/#6)
+        // -- kept as its own major, high-importance section. `fullWidth`
+        // (Section 11/21) gives it the entire workspace row instead of
+        // being squeezed into one of 3 equal columns alongside the much
+        // shorter Consciousness/Orientation/Overall Change cards, which
+        // was the reported "uneven, abnormally tall column" defect.
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item
+        // #5 -- this card's 12 fields are the single densest block in the
+        // section; converted to a collapsible subsection (same mechanism
+        // already used for Psychiatric History) so the "5-second glance"
+        // reads Overview/Consciousness/Orientation/BIMS/Cognitive Summary/
+        // Overall Change first, with full Sleep/Responsiveness detail one
+        // click away. Nothing collapsed by default loses any data -- the
+        // title row, importance border, and HOPE/SFV/CMS tags stay visible
+        // either way; only the field list is hidden until expanded.
+        //
+        // "BIMS" renamed to "SNS Cognitive Screen" per the same-day
+        // "BIMS/HOPE compliance correction" directive; reading order is
+        // otherwise unchanged (Overview/Consciousness/Orientation/SNS
+        // Cognitive Screen/Cognitive Summary/Overall Change first).
+        title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, collapsedByDefault: true, fields: [
+          // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" items
+          // #1-3 -- a dedicated 2-column grid (CSS override, same pattern
+          // as Communication and Sensory's narrowed track) with explicit
+          // fieldSpan: 1 on every paired field below, so each pair always
+          // lands on the same row regardless of viewport width instead of
+          // relying on auto-fit heuristics. Pair order is the literal
+          // directive order (Sleep Pattern/Can Sleep Be Estimated,
+          // Responsiveness/Current Effect, Night Symptoms/Restfulness,
+          // Sleep Aids/Additional Comment); Sleep Notes is relocated
+          // directly under the first pair ("closer to Sleep Pattern")
+          // instead of being the last field in the card. Change Since
+          // Prior Visit and Average Sleep Hours (not named in any required
+          // pair) are paired with each other so no field is left to claim
+          // a half-empty row on its own. Same paths/options/values --
+          // order and span only, no data migrated.
+          { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", fieldSpan: 1, options: [{ value: "Normal", label: "Usual / No Significant Concern" }, "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
+          // GitHub Directive (2026-09-28) "Neurological Review -- Major
+          // Success, But We Are Drifting..." Major Concern #5 -- reframed
+          // as a direct clinical question ("Can sleep be estimated?")
+          // rather than a meta-question about whether a trend is known;
+          // same path/options, label only, so no data is affected.
+          { type: "segmented", label: "Can Sleep Be Estimated?", path: "sleepRest.sleepTrendKnown", fieldSpan: 1, options: ["Yes", "No", "Unable to Determine"] },
+          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 1, fieldSpan: "full" },
+          { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", fieldSpan: 1, options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
+          // Section 18 -- replaced the free-text "Response to Interventions"
+          // with a constrained single-select so it can actually be scanned
+          // at a glance. Added as a NEW field/path rather than repurposing
+          // the old free-text one, so no historical narrative answer is
+          // silently reinterpreted as one of these 4 fixed values (Section
+          // 40 guardrail); the old field is kept, demoted to an optional
+          // comment for any nurse who needs to add nuance.
+          { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", fieldSpan: 1, options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
+          { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", fieldSpan: 1, options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
+          { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number", fieldSpan: 1 },
+          { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", fieldSpan: 1, options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
+          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", fieldSpan: 1, options: ["Adequate", "Inadequate", "Unable to Determine"] },
+          // Section 17 rename: "Interventions" reframed as comfort measures
+          // (hospice language) -- same path/values, label only.
+          { type: "pillGroup", label: "Sleep Aids / Current Comfort Measures", path: "sleepRest.sleepAids", fieldSpan: 1, options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
+          { type: "input", label: "Additional Comment (if needed)", path: "sleepRest.response", fieldSpan: 1 },
         ],
       },
       {
-        title: "Sleep / Rest", fields: [
-          { type: "radio", label: "Sleep Pattern", path: "sleepRest.sleepPattern", options: ["Normal", "Insomnia", "Hypersomnia", "Fragmented", "Somnolence", "None identified", "Overly drowsy", "Excessive sleep", "Lack of sleep", "Satisfied with sleep"] },
-          { type: "input", label: "Average Sleep Hours", path: "sleepRest.averageSleepHours", inputType: "number" },
-          { type: "checkboxGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
-          { type: "checkboxGroup", label: "Sleep Aids / Current Interventions", path: "sleepRest.sleepAids", options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
-          { type: "input", label: "Response to Interventions", path: "sleepRest.response" },
-          { type: "radio", label: "Restfulness", path: "sleepRest.restfulness", options: ["Adequate", "Inadequate"] },
-          { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes" },
+        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction"
+        // item #3 -- "Communication and Sensory" now shares a two-column
+        // row with "Cognitive / Behavioral Findings" (see that card
+        // immediately below) instead of taking the full workspace width
+        // by itself. `fullWidth` removed: both cards are the only two
+        // members of the "symptoms" category bucket in this section, so
+        // the existing neuro-wide `auto-fit, minmax(220px, 1fr)` bucket
+        // grid (see RNICACommandWorkspace.css) now naturally splits them
+        // into two equal columns on desktop/tablet and stacks them on
+        // mobile (<700px), with no new CSS required. Category stays
+        // "symptoms" so it still renders in the required bucket position
+        // (after Sleep/Responsiveness).
+        title: "Communication and Sensory", category: "symptoms", importance: "medium", fields: [
+          // Finding #5: progressive disclosure -- Normal/Impaired first,
+          // detail (Aphasia/Slurred speech/Unable/Other) revealed only when
+          // Impaired. Same field/path/values as before; no data migrated.
+          // Issue #5 (2026-09-28 follow-up review): explicit fieldSpan so
+          // Communication/Hearing/Vision pack onto one tighter row instead
+          // of each claiming more grid width than their short controls need.
+          {
+            type: "gatedRadio", label: "Communication", path: "communication", fieldSpan: 2,
+            primaryOptions: [{ value: "Normal", label: "No Current Communication Concern" }, "Impaired"],
+            normalValues: ["Normal", "Clear"],
+            detailOptions: ["Unable", "Aphasia", "Slurred speech", "Speech limited to six or fewer intelligible words", "Other"],
+          },
+          // Section 16 -- "Hearing aid"/"Corrective lenses" removed as
+          // duplicate concepts (they belong under Sensory Aids, not as a
+          // hearing/vision *status*); "Unable to assess" added. Any
+          // patient with these exact legacy stored values still sees them
+          // via FormSegmented's new "Previously recorded" review chip --
+          // the value itself is never deleted or rewritten.
+          { type: "segmented", label: "Hearing", path: "hearing", fieldSpan: 2, options: ["Adequate", "Impaired", "Deaf", "Unable to assess"] },
+          { type: "segmented", label: "Vision", path: "vision", fieldSpan: 2, options: ["Adequate", "Impaired", "Blind", "Unable to assess"] },
+          { type: "pillGroup", label: "Sensory Deficits", path: "sensoryDeficits", fieldSpan: 3, options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
+          // Section 16 -- clarified labels (display only, via {value,label}
+          // so stored values "Glasses"/"Hearing aids" are unchanged) since
+          // this is now the one place hearing/vision aids are documented.
+          { type: "pillGroup", label: "Sensory Aids", path: "sensoryAids", fieldSpan: 3, options: [{ value: "Glasses", label: "Glasses / Corrective Lenses" }, { value: "Hearing aids", label: "Hearing Aid" }, "Other"] },
         ],
       },
       {
-        title: "Motor Deficit", fields: [
-          { type: "checkbox", label: "Motor Deficit Present", path: "motorDeficit" },
-          { type: "radio", label: "Affected Side", path: "affectedSide", options: ["Left", "Right", "Bilateral"] },
-          { type: "checkboxGroup", label: "Deficit Type", path: "deficitType", options: ["Hemiparesis", "Hemiplegia", "Paraparesis", "Quadriparesis", "Other"] },
+        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction"
+        // item #3 -- "Place Cognitive / Behavioral Findings beside
+        // Communication and Sensory": relocated from category "core"
+        // (directly beneath SNS Cognitive Screen, per the prior "Final
+        // Neuro Cleanup" directive) to category "symptoms", positioned
+        // immediately after "Communication and Sensory" so it renders as
+        // the right-hand column of that two-column row. `fullWidth`
+        // removed for the same reason as Communication and Sensory above
+        // -- letting the bucket's auto-fit grid split the row evenly
+        // instead of forcing this card onto its own full-width row "when
+        // only three status controls are visible" (the owner's explicit
+        // complaint about the prior full-width placement). Fields/paths/
+        // options/collapsed-by-default behavior are unchanged -- category,
+        // position, and width only.
+        //
+        // Issue #6 (2026-09-28 follow-up review) -- explicit fullWidth so
+        // the Symptoms/Demeanor pill row always has the entire workspace
+        // width to wrap into a dense multi-per-line chip layout instead of
+        // stacking narrowly, regardless of what else is in this category
+        // bucket. (Superseded above: this card is no longer fullWidth: the
+        // Symptoms/Demeanor pill row's `fieldSpan: "full"` still spans this
+        // card's own half-width column, which is enough room to wrap into
+        // multiple short lines instead of one per line.)
+        //
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency
+        // Pass" item #8 -- "Convert Behavioral Findings into compact
+        // summary + edit pattern". Reuses the exact same `collapsedByDefault`
+        // mechanism already applied to Psychiatric History/Sleep &
+        // Responsiveness (collapsed children, click title row to expand);
+        // paired with a new always-visible one-line auto-summary (see the
+        // `summary` prop passed at this card's render call site below,
+        // computed from these same fields' current values) so the
+        // collapsed state is still scannable instead of a blank title row.
+        // No field, path, option, or value removed -- only default
+        // visibility of the detail fields changed.
+        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", collapsedByDefault: true, fields: [
+          // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
+          // fast-path replacement for the full detail below. New path;
+          // only rendered/relevant when Neurological Overview = "No
+          // Current Neurological Concern" (see the render-loop guard).
+          // Selecting "Findings Present" reveals the existing detail
+          // fields unchanged; nothing here rewrites their values.
+          { type: "segmented", label: "Behavioral Status", path: "behavioralStatus", options: ["No Current Concern", "Findings Present", "Unable to Assess"] },
+          // Relocated from Consciousness (Section 8); renamed (Issue #4) --
+          // this is a narrative clarification field, not a duplicate of
+          // Consciousness/Orientation/BIMS/Cognitive-Behavioral findings
+          // (confirmed: its only other consumer is the read-only
+          // Structured Findings generator at path `cognition`), so it's
+          // now a small textarea instead of a wide single-line input.
+          // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item
+          // #7 -- auto-growing textarea starting at 2 rows instead of a
+          // fixed 1-row box: the box starts small (same density win as the
+          // prior pass) but grows with typed/charted content instead of
+          // relying on the native scrollbar. No content is truncated or
+          // lost either way.
+          { type: "textarea", label: "Additional Cognitive Observations", path: "cognition", rows: 2, autoGrow: true },
+          { type: "pillGroup", label: "Symptoms / Demeanor", path: "symptomsDemeanor", fieldSpan: "full", options: ["Anxiety", "Agitation", "Peaceful", "Confused", "Angry", "Restless", "Depressed", "Seizure", "Combative", "Sundowning", "Tremors / twitching", "Other"] },
+          // GitHub UI Directive (2026-09-28): single yes/no findings use a
+          // compact toggle pill, not a large square checkbox. Same path/
+          // boolean value -- no data migration.
+          { type: "booleanPill", label: "Delirium", path: "delirium" },
+          { type: "booleanPill", label: "Seizure History", path: "seizureHistory" },
         ],
       },
       {
-        title: "Notes", fields: [
-          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 4 },
+        // Finding #9: historical diagnoses shouldn't compete with active
+        // findings -- collapsed by default, same fields/paths/values. (A
+        // prior version of the Card component had a bug where this
+        // `collapsedByDefault` had no effect at all while Body Systems'
+        // pilot rendering was active -- fixed alongside this change.)
+        title: "Psychiatric History", category: "functional", importance: "low", collapsedByDefault: true, fields: [
+          { type: "pillGroup", label: "Psychiatric History", path: "psychiatricHistoryType", options: ["None", "Bipolar disorder", "OCD", "Schizophrenia", "Depression", "Other"] },
+          // OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" item
+          // #4 -- rows 2 -> 1 (same minHeight-only, non-clipping rationale
+          // as Additional Cognitive Observations above).
+          { type: "textarea", label: "Psychiatric History Notes", path: "psychiatricHistory", rows: 1 },
+        ],
+      },
+      {
+        title: "Notes", category: "observation", importance: "low", fields: [
+          // Section 20/30 -- reduced textarea footprint (4 rows -> 2).
+          // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item
+          // #7 -- auto-growing textarea starting at 2 rows (same rationale
+          // as Additional Cognitive Observations above).
+          { type: "textarea", label: "Neurological Notes", path: "notes", rows: 2, autoGrow: true },
         ],
       },
     ],
@@ -9216,28 +16194,240 @@ const SECTION_CONFIGS = {
     title: "Cardiovascular",
     subtitle: "Blood pressure, pulse, edema, chest pain, circulation",
     cards: [
-      { title: "Cardiovascular Assessment", fields: [
-        { type: "checkboxGroup", label: "BP Symptoms", path: "bpSymptoms", options: ["Orthostatic", "Hypertensive", "Hypotensive", "Normal"] },
-        { type: "checkboxGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
-        { type: "radio", label: "Pulse Quality", path: "pulseQuality", options: ["Regular", "Strong", "Weak", "Thready", "Bounding", "Irregular", "Tachycardia", "Bradycardia", "Absent"] },
-        { type: "triState", label: "Edema Present", path: "edema.present" },
-        { type: "checkboxGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
-        { type: "radio", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
-        { type: "triState", label: "Chest Pain Present", path: "chestPain.present" },
+      {
+        // OWNER-APPROVED "Cardiovascular Overview Gate" (2026-09-28) --
+        // same triage pattern as Neurological's Overview Gate: this
+        // up-front question determines which detail cards render below
+        // (see the card/field-level guards in the render loop). New path
+        // (`cardiovascularOverview`) -- no existing field/value touched.
+        title: "Cardiovascular Overview", category: "core", importance: "high", fullWidth: true, fields: [
+          {
+            // OWNER CORRECTION (2026-09-28 Contradiction 2/3) -- renamed
+            // from "...Findings Stable" to "...Findings Review": the app
+            // has no verified prior-assessment/comparison infrastructure,
+            // so this path must not itself claim stability. Stability is
+            // only ever asserted via an explicit current Clinical Status
+            // Change = "Stable / No Change" selection (see
+            // computeCardiovascularNarrative).
+            // Owner directive (2026-09-28) "Correct the Overview Label" --
+            // exact approved wording is "New or Worsening Cardiovascular
+            // Findings". A record already saved with the old slash-joined
+            // "New/Worsening Cardiovascular Findings" is never rewritten;
+            // `aliases` makes that legacy stored value render selected
+            // under the new label instead of appearing unselected, and
+            // every business-logic comparison goes through
+            // normalizeCardiovascularOverview() so both spellings behave
+            // identically.
+            type: "segmented", label: "Cardiovascular Overview", path: "cardiovascularOverview",
+            options: [
+              "No Current Cardiovascular Concern",
+              "Existing Cardiovascular Findings Review",
+              "New or Worsening Cardiovascular Findings",
+              "Unable to Assess",
+            ],
+            aliases: { "New/Worsening Cardiovascular Findings": "New or Worsening Cardiovascular Findings" },
+          },
+          {
+            type: "segmented", label: "Reason Unable to Assess", path: "cardiovascularUnableToAssessReason",
+            options: ["Patient unable to participate", "Patient unresponsive", "Clinical condition prevented completion", "Assessment interrupted", "Patient or representative declined", "Other"],
+          },
+          { type: "input", label: "Other Reason (if selected above)", path: "cardiovascularUnableToAssessOther" },
+        ],
+      },
+      // LAYOUT AUDIT FIX (SNS_LAYOUT_STANDARD_V1_1) -- this card shares the
+      // "core" category bucket with "Cardiovascular Overview" (fullWidth:
+      // true, below), so the auto-fit grid that packs same-category cards
+      // (.rnica-bodysystem-group__cards) computes 2 available column
+      // tracks whenever the Body Systems region is wide enough for 2, and
+      // without its own explicit full-span hook this card -- the only
+      // other "core" card -- was confined to column 1 of its row (leaving
+      // column 2 blank) regardless of real viewport width. This is why
+      // the container-query column-banding in RNICACommandWorkspace.css
+      // never actually got the 2-/3-column-eligible width it was built
+      // for: the bug was one level up, in the ancestor category grid, not
+      // in the container-query logic itself (verified via real,
+      // non-forced Playwright screenshots at 1440px/1366px/1024px
+      // viewports). `fullWidth: true` gives it the same grid-column:1/-1
+      // escape hatch Overview already has -- no field/value/clinical
+      // change.
+      { title: "Circulation & Perfusion", category: "core", fullWidth: true, fields: [
+        // OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Rebuild"
+        // -- field order below is visual-only (no path/data change) and
+        // is now COLUMN-MAJOR (not row-major): each column band's fields
+        // are listed consecutively so the CSS auto-row/fixed-column-band
+        // technique (see RNICACommandWorkspace.css) stacks them correctly
+        // within their own column regardless of which neighboring fields
+        // are hidden on a given visit. Column A: Pulse Rhythm, Pulse
+        // Sites, Skin Color, then Cool Extremities/Varicose Veins paired
+        // on one compact sub-row and Stasis Ulcer on the next. Column B:
+        // Pulse Rate, Heart Sounds, Edema Present. Column C: Pulse
+        // Strength, JVD, Peripheral Circulation. Edema Location/Severity
+        // (only shown once Edema Present = Yes) are listed LAST and
+        // render as their own full-width rows below the 3-column block
+        // instead of squeezed into Column B's 1/3-width band -- Edema
+        // Location's 6 long option labels need the full card width to
+        // read cleanly, and a full-width row can never be "mostly empty"
+        // the way a partially-filled narrow column could.
+        // OWNER-APPROVED "Pulse Redesign" (2026-09-28) -- Rhythm/Rate/
+        // Strength are three independent clinical concepts (previously
+        // one combined "Pulse Quality" radio, the Cardiovascular
+        // equivalent of Neurological's "Awake / Alert" problem) and must
+        // be independently selectable (e.g. Irregular + Bradycardic +
+        // Weak all at once). The legacy `pulseQuality` field is never
+        // rewritten; PULSE_LEGACY_DIMENSION aliases it for display into
+        // whichever of these three fields is still blank.
+        { type: "segmented", label: "Pulse Rhythm", path: "pulseRhythm", options: ["Regular", "Irregular", "Unable to assess"] },
+        { type: "pillGroup", label: "Pulse Sites", path: "pulseSites", options: ["Apical", "Pedal", "Radial", "Femoral"] },
+        // OWNER DIRECTIVE (2026-10-04) "Ontology-First Free-Text Review" --
+        // structured findings so the Intelligence Harvester can reliably
+        // pattern-match skin color (previously unrestricted free text);
+        // option set matches the existing Integumentary "Skin Color" field
+        // (skinColorFinding) for ontology consistency across body systems,
+        // plus "Other" for anything the fixed set doesn't cover.
+        { type: "segmented", label: "Skin Color", path: "skinColor", options: ["Normal", "Pale", "Cyanotic", "Mottled", "Flushed", "Jaundiced", "Other"] },
+        { type: "booleanPill", label: "Cool Extremities", path: "coolExtremities" },
+        { type: "booleanPill", label: "Varicose Veins", path: "varicoseVeins" },
+        { type: "booleanPill", label: "Stasis Ulcer", path: "stasisUlcer" },
+        { type: "segmented", label: "Pulse Rate", path: "pulseRate", options: ["Normal", "Tachycardic", "Bradycardic", "Unable to assess"] },
+        // OWNER DIRECTIVE (2026-10-04) "Ontology-First Free-Text Review" --
+        // structured findings for Intelligence Harvester pattern matching;
+        // common hospice-bedside auscultation findings, plus "Other".
+        { type: "segmented", label: "Heart Sounds", path: "heartSounds", options: ["Normal S1S2", "Murmur", "Gallop (S3/S4)", "Irregular", "Muffled/Distant", "Unable to assess", "Other"] },
+        { type: "segmentedTriState", label: "Edema Present", path: "edema.present" },
+        { type: "segmented", label: "Pulse Strength", path: "pulseStrength", options: ["Strong", "Weak", "Thready", "Bounding", "Absent", "Unable to assess"] },
+        { type: "segmentedTriState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
+        // OWNER DIRECTIVE (2026-10-04) "Ontology-First Free-Text Review" --
+        // structured findings for Intelligence Harvester pattern matching;
+        // common hospice-observable circulation findings, plus "Other".
+        { type: "segmented", label: "Peripheral Circulation", path: "peripheralCirculation", options: ["Warm, well-perfused", "Diminished", "Absent", "Delayed capillary refill", "Unable to assess", "Other"] },
+        { type: "pillGroup", label: "Edema Location", path: "edema.location", options: ["Bilateral lower extremities", "Unilateral LE", "Sacral", "Periorbital", "Upper extremities", "Generalized"] },
+        { type: "segmented", label: "Edema Severity", path: "edema.severity", options: ["Trace", "1+", "2+", "3+", "4+"] },
+        // OWNER-DIRECTED FIELD-INVENTORY CORRECTION (2026-10-04) --
+        // `edema.pitting` has existed in the data model's default shape
+        // since this file's cardiovascular section was written (see the
+        // default `cardiovascular.edema` object above), but no UI
+        // control was ever added for it -- an unintentional omission,
+        // not a removal. Pitting vs. non-pitting distinguishes CHF/
+        // fluid-overload decline from chronic venous/lymphatic edema,
+        // which is real disease-burden/decline/recert-support
+        // documentation independent of whether it changes today's
+        // treatment plan. No new field/path created; this binds the
+        // existing `edema.pitting` value to a visible control using the
+        // same gating (Edema Present = Yes) and full-width column
+        // placement as Edema Location/Severity directly above it.
+        // OWNER DIRECTIVE (2026-10-04, later same day) -- "Mixed" added
+        // as a 4th option: Edema Type is characterization of the single
+        // existing Edema Present finding (same path, same gate, same
+        // row-band as Location/Severity), not a new/independent field --
+        // a patient can present with both pitting and non-pitting edema
+        // at different sites simultaneously, so a binary choice was
+        // clinically incomplete.
+        { type: "segmented", label: "Edema Type", path: "edema.pitting", options: ["Pitting", "Non-Pitting", "Mixed", "Unable to Assess"] },
+        // OWNER DIRECTIVE (2026-10-04) "Ontology-First Free-Text Review" --
+        // optional nurse-note detail, shown only when the corresponding
+        // structured field above is "Other" (same companion-field pattern
+        // as cardiovascularUnableToAssessOther). Free text is preserved,
+        // not removed -- it now supplements the structured finding instead
+        // of being the only way to record it.
+        { type: "input", label: "Skin Color (Other -- Describe)", path: "skinColorOther" },
+        { type: "input", label: "Heart Sounds (Other -- Describe)", path: "heartSoundsOther" },
+        { type: "input", label: "Peripheral Circulation (Other -- Describe)", path: "peripheralCirculationOther" },
+      ]},
+      // Owner directive (2026-09-27): Cardiovascular must stay symptom- and
+      // function-focused, not a disease-specific cardiology workup.
+      // Chest pain, edema/perfusion (Circulation & Perfusion card above), BP
+      // abnormalities, fatigue, dizziness, syncope, and cardiac-related
+      // dyspnea are the prioritized findings a hospice RN documents here.
+      { title: "Cardiovascular Symptoms", category: "symptoms", fields: [
+        // OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Rebuild"
+        // -- field order below is visual-only (no path/data change). The
+        // Dyspnea checkbox/guidance note (mutually exclusive -- see
+        // resolveCardiacDyspneaGate + the render-loop guard below) is
+        // listed FIRST so the auto-row/fixed-column-band CSS technique
+        // (no explicit grid-row; see RNICACommandWorkspace.css) places it
+        // at the very top of the card, directly under the title, before
+        // the two-column Chest Pain/BP Status pairs below it. A 2-column
+        // band fills left-to-right/row-major, so alternating left/right/
+        // left/right here makes column 1 read Chest Pain/Orthostatic/
+        // Dizziness top-to-bottom and column 2 read BP Status/Fatigue/
+        // Syncope top-to-bottom, exactly as required, without a
+        // per-field layout flag.
+        // OWNER-DIRECTED "Dyspnea Ownership Model" (2026-09-28,
+        // Contradiction 5) -- Respiratory owns the symptom (sobSeverity);
+        // Cardiovascular owns only the cardiac-cause attribution of an
+        // already-documented dyspnea. The `cardiacDyspnea` checkbox and
+        // this guidance note are mutually exclusive at render time:
+        // Respiratory positive -> show checkbox; Respiratory blank ->
+        // show only this note; Respiratory negative -> show neither
+        // (unless a legacy value already exists, which is always
+        // preserved and never auto-hidden).
+        { type: "checkbox", label: "Dyspnea Attributed to Cardiac Condition", path: "cardiacDyspnea" },
+        // Non-interactive guidance line, not a real field; `fieldSpan:
+        // "full"` (see RNICACommandWorkspace.css companion rule too)
+        // keeps it from leaving an orphaned empty cell beside it.
+        { type: "note", label: "Document dyspnea in Respiratory before assigning cardiac attribution.", path: "cardiacDyspneaGuidanceNote", fieldSpan: "full" },
+        { type: "segmentedTriState", label: "Chest Pain Present", path: "chestPain.present" },
+        // OWNER CORRECTION (2026-09-28 Contradiction 4) -- "Orthostatic"
+        // is not the same dimension as Normal/Hypertensive/Hypotensive
+        // (a patient can be Hypotensive AND have an Orthostatic finding
+        // at the same time), so this is two independent single-select
+        // controls, not one merged control. Legacy `bpSymptoms`
+        // multi-select array is never rewritten; resolveBpLegacyDisplay
+        // aliases it for display only when unambiguous (a contradictory
+        // legacy array is surfaced as a review-required note instead of
+        // being silently collapsed to one value -- see
+        // computeCardiovascularNarrative).
+        { type: "segmented", label: "Orthostatic Finding", path: "orthostaticFinding", options: ["Not Present", "Present", "Unable to assess"] },
+        { type: "segmented", label: "Dizziness", path: "dizziness", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "BP Status", path: "bpStatus", options: ["Normal", "Hypertensive", "Hypotensive", "Unable to assess"] },
+        { type: "segmented", label: "Fatigue", path: "fatigue", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmentedTriState", label: "Syncope (Fainting Episodes)", path: "syncope" },
         { type: "input", label: "Chest Pain Type", path: "chestPain.type" },
-        { type: "input", label: "Peripheral Circulation", path: "peripheralCirculation" },
-        { type: "input", label: "Heart Sounds", path: "heartSounds" },
-        { type: "triState", label: "JVD (Jugular Venous Distention)", path: "jvd" },
-        { type: "input", label: "Skin Color", path: "skinColor" },
-        { type: "checkbox", label: "Pacemaker", path: "pacemaker" },
-        { type: "checkbox", label: "Internal Defibrillator", path: "internalDefibrillator" },
-        { type: "checkbox", label: "Varicose Veins", path: "varicoseVeins" },
-        { type: "checkbox", label: "Central Venous Line", path: "centralVenousLine" },
-        { type: "checkbox", label: "Cool Extremities", path: "coolExtremities" },
-        { type: "checkbox", label: "Stasis Ulcer", path: "stasisUlcer" },
-        { type: "checkbox", label: "Heart Failure Present", path: "heartFailurePresent" },
-        { type: "checkboxGroup", label: "Heart Failure Type", path: "heartFailureType", options: ["Systolic", "Diastolic", "Unspecified"] },
-        { type: "textarea", label: "Cardiovascular Notes", path: "notes" },
+        // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused
+        // Scope Correction" -- Heart Failure is a diagnosis/disease
+        // process, not a current sign/symptom/assessment finding, so it
+        // is no longer an editable current-entry control anywhere in
+        // Cardiovascular (Path 1/3/4 hide these two fields entirely --
+        // see the render-loop guard below). `heartFailurePresent`/
+        // `heartFailureType` are preserved untouched (never deleted,
+        // nulled, or rewritten) and surface only as read-only, clearly
+        // labeled "previously stored" information on Path 2 ("Existing
+        // Cardiovascular Findings Review"), and only when a value is
+        // already documented on the record (the existing Path 2 "only
+        // show already-documented findings" rule -- not a new mechanism).
+        // The diagnosis itself belongs to the HOPE I0600 comorbidity
+        // workflow (auto-derived from coded Diagnosis, see hopeComorbidities
+        // above) and to Diagnosis/Certification/LCD -- not to this
+        // symptom-focused body-system assessment.
+        {
+          type: "legacyReadOnly", label: "Previously Stored Cardiovascular Condition Information", path: "heartFailurePresent",
+          legacyFormat: (v) => (v === true ? "Heart failure documented." : "Not documented."),
+        },
+        {
+          type: "legacyReadOnly", label: "Historical Heart Failure Type", path: "heartFailureType",
+          legacyFormat: (v) => (Array.isArray(v) && v.length > 0 ? v.map((t) => `Historical Heart Failure type: ${t}.`).join(" ") : "Not documented."),
+        },
+      ]},
+      { title: "Cardiac Devices", category: "treatments", fields: [
+        { type: "booleanPill", label: "Pacemaker", path: "pacemaker" },
+        { type: "booleanPill", label: "Internal Defibrillator", path: "internalDefibrillator" },
+        { type: "booleanPill", label: "Central Venous Line", path: "centralVenousLine" },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        // Directive (2026-09-28) Section 13 -- Path 2 clinician
+        // confirmation, kept adjacent to the stored findings/Clinical
+        // Status Change/Notes it applies to (hidden on every other path
+        // via the render-loop guard below).
+        { type: "booleanPill", label: "Findings Reviewed and Confirmed This Visit", path: "cardiovascularFindingsConfirmedThisVisit" },
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: CARDIOVASCULAR_CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Cardiovascular Notes", category: "observation", fields: [
+        // OWNER DIRECTIVE (2026-10-04) "Cardiovascular Density Pass" --
+        // "Reduce default note height." Same auto-growing 2-row starting
+        // height already approved for Neurological Notes; no field/
+        // persistence change, the textarea simply starts smaller and
+        // grows with content instead of reserving a tall fixed box.
+        { type: "textarea", label: "Cardiovascular Notes", path: "notes", rows: 2, autoGrow: true },
       ]},
     ],
   },
@@ -9246,36 +16436,111 @@ const SECTION_CONFIGS = {
     title: "Respiratory",
     subtitle: "SOB (J2051B), lung sounds, oxygen therapy, cough assessment",
     cards: [
-      { title: "Respiratory Assessment", fields: [
-        { type: "radio", label: "SOB Severity", path: "sobSeverity", sfv: true, options: ["None", "Mild", "Moderate", "Severe", "At rest"] },
-        { type: "checkbox", label: "Treatment Declined (when applicable)", path: "treatmentDeclined" },
-        { type: "radio", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion", "With speech", "Push of speech", "Pursed-lip breathing", "Other"] },
-        { type: "checkbox", label: "Screened for shortness of breath", path: "shortnessOfBreathScreened" },
+      // OWNER-APPROVED "Respiratory Overview Workflow Reorganization"
+      // (2026-10-06) -- same triage pattern as Cardiovascular's Overview
+      // Gate: this up-front question determines which detail cards
+      // render below (see the card/field-level guards in the render
+      // loop). New path (`respiratoryOverview`) -- no existing field/
+      // value touched; organization only, not a new clinical finding.
+      {
+        title: "Respiratory Overview", category: "core", importance: "high", fullWidth: true, fields: [
+          {
+            type: "segmented", label: "Respiratory Overview", path: "respiratoryOverview",
+            options: [
+              "No Current Respiratory Concern",
+              "Existing Respiratory Findings Review",
+              "New or Worsening Respiratory Findings",
+              "Unable to Assess",
+            ],
+          },
+          {
+            type: "segmented", label: "Reason Unable to Assess", path: "respiratoryUnableToAssessReason",
+            options: ["Patient unable to participate", "Patient unresponsive", "Clinical condition prevented completion", "Assessment interrupted", "Patient or representative declined", "Other"],
+          },
+          { type: "input", label: "Other Reason (if selected above)", path: "respiratoryUnableToAssessOther" },
+        ],
+      },
+      // Owner directive (2026-10-10) "Respiratory Hospice Workflow
+      // Reorganization" -- Dyspnea/SOB is the primary respiratory
+      // assessment area hospice nurses lead with; split out of the
+      // former single "Respiratory Assessment" card (no fields added,
+      // removed, or renamed).
+      { title: "Dyspnea / SOB", category: "core", fields: [
+        // OWNER DIRECTIVE (2026-10-18) "Legacy Checkbox/Radio Audit" --
+        // SOB Severity and Exertion Level were still using the legacy
+        // `radio` renderer (circular HTML radio buttons), the one other
+        // Body System (Cardiovascular, Neurological, Pain) already
+        // migrated away from via `segmented` (same single-select SNS
+        // chip control used for e.g. Cardiovascular's Pulse
+        // Rhythm/Heart Sounds, Neurological's Level of Consciousness).
+        // Same path, same stored single-string value -- display-only
+        // change.
+        { type: "segmented", label: "SOB Severity", path: "sobSeverity", sfv: true, options: ["None", "Mild", "Moderate", "Severe", "At rest"] },
+        { type: "segmented", label: "Exertion Level", path: "exertionLevel", options: ["At rest", "Minimal exertion", "Moderate exertion", "Severe exertion", "With speech", "Push of speech", "Pursed-lip breathing", "Other"] },
+        // The three plain `checkbox` fields below were the last
+        // Respiratory controls still using the deprecated checkbox
+        // renderer (FormCheckbox); converted to `booleanPill`, the same
+        // SNS chip control already used for every other Body System's
+        // boolean findings (e.g. Cardiovascular's Pacemaker/Internal
+        // Defibrillator/Central Venous Line). Same path, same stored
+        // boolean value -- display-only change.
+        { type: "booleanPill", label: "Screened for shortness of breath", path: "shortnessOfBreathScreened" },
         { type: "input", label: "SOB screening date", path: "screeningDate", inputType: "date" },
-        { type: "checkbox", label: "Treatment for shortness of breath initiated", path: "treatmentInitiated" },
+        { type: "booleanPill", label: "Treatment for shortness of breath initiated", path: "treatmentInitiated" },
         { type: "input", label: "SOB treatment date", path: "treatmentDate", inputType: "date" },
-        { type: "checkboxGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub", "Rales"] },
-        { type: "checkboxGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Normal", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal", "Tachypnea", "Bradypnea", "Orthopnea"] },
+        { type: "booleanPill", label: "Treatment Declined (when applicable)", path: "treatmentDeclined" },
+      ]},
+      // Direct hospice bedside observations (auscultation/observation),
+      // grouped together per owner directive. "Respiratory Effort" is
+      // already represented within Respiration Pattern's existing
+      // option set (e.g. "Labored", "Tachypnea", "Bradypnea") -- no new
+      // field was added for it.
+      { title: "Respiratory Assessment", category: "core", fields: [
+        // OWNER DIRECTIVE (2026-10-18) "Legacy Checkbox/Radio Audit" --
+        // Lung Sounds and Respiration Pattern were still using the
+        // legacy `checkboxGroup` renderer (square shadcn Checkbox
+        // controls); converted to `pillGroup`, the same multi-select SNS
+        // chip control already used elsewhere (e.g. Cardiovascular's
+        // Pulse Sites/Edema Location, Neurological's Sensory Deficits).
+        // Same path, same stored string-array value -- display-only
+        // change.
+        { type: "pillGroup", label: "Lung Sounds", path: "lungSounds", options: ["Clear", "Crackles", "Wheezes", "Rhonchi", "Diminished", "Absent", "Stridor", "Pleural rub", "Rales"] },
+        { type: "pillGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Normal", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal", "Tachypnea", "Bradypnea", "Orthopnea"] },
+      ]},
+      { title: "Cough / Secretions", category: "core", fields: [
         { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis", "Barrel chest"] },
         { type: "input", label: "Sputum Character", path: "sputumCharacter" },
       ]},
-      { title: "Oxygen Therapy", fields: [
-        { type: "checkbox", label: "Oxygen in Use", path: "oxygenTherapy.inUse" },
+      { title: "Oxygen Therapy", category: "treatments", fields: [
+        { type: "booleanPill", label: "Oxygen in Use", path: "oxygenTherapy.inUse" },
         { type: "select", label: "Delivery Type", path: "oxygenTherapy.type", options: ["Nasal cannula", "Simple mask", "Non-rebreather", "Venturi mask", "High flow"] },
         { type: "input", label: "Liters/Minute", path: "oxygenTherapy.litersPerMinute", inputType: "number" },
         { type: "input", label: "Hours/Day", path: "oxygenTherapy.hoursPerDay" },
-        { type: "radio", label: "Delivery Mode", path: "oxygenTherapy.deliveryMode", options: ["Continuous", "PRN"] },
-        { type: "checkbox", label: "On Room Air", path: "oxygenTherapy.onRoomAir" },
+        // OWNER DIRECTIVE (2026-10-18) "Legacy Checkbox/Radio Audit" --
+        // converted from `radio` to `segmented` (SNS chip), consistent
+        // with every other single-select field in this card.
+        { type: "segmented", label: "Delivery Mode", path: "oxygenTherapy.deliveryMode", options: ["Continuous", "PRN"] },
+        { type: "booleanPill", label: "On Room Air", path: "oxygenTherapy.onRoomAir" },
         { type: "input", label: "SpO2 on O2", path: "oxygenTherapy.satOnO2", inputType: "number" },
       ]},
-      { title: "Ventilator / Airway Support", fields: [
-        { type: "checkbox", label: "Short-Term Ventilator", path: "ventilator.shortTermVentilator" },
-        { type: "checkbox", label: "Long-Term Ventilator", path: "ventilator.longTermVentilator" },
+      // Owner directive (2026-10-10) "only expanded when applicable" --
+      // Ventilator Type and Settings / Tracheostomy Type / Tracheostomy
+      // Size only render once a Short-Term or Long-Term Ventilator is
+      // actually in use (see the render-loop field guard above); this is
+      // a new VISIBILITY rule only, not a new field, and intentionally
+      // reuses the same parent-present gate pattern already proven for
+      // Cardiovascular's Edema/Chest Pain fields.
+      { title: "Ventilator / Airway Support", category: "treatments", fields: [
+        { type: "booleanPill", label: "Short-Term Ventilator", path: "ventilator.shortTermVentilator" },
+        { type: "booleanPill", label: "Long-Term Ventilator", path: "ventilator.longTermVentilator" },
         { type: "input", label: "Ventilator Type and Settings", path: "ventilator.ventilatorTypeAndSettings" },
         { type: "input", label: "Tracheostomy Type", path: "ventilator.tracheostomyType" },
         { type: "input", label: "Tracheostomy Size", path: "ventilator.tracheostomySize" },
       ]},
-      { title: "Notes", fields: [
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: RESPIRATORY_CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Respiratory Notes", path: "notes" },
       ]},
     ],
@@ -9285,21 +16550,120 @@ const SECTION_CONFIGS = {
     title: "Immunological / Infection",
     subtitle: "Allergies, current infections, resistant-organism history, precautions",
     cards: [
-      { title: "Allergies", customRenderer: "patientAllergies", fields: [] },
-      { title: "Immune Status", fields: [
-        { type: "checkbox", label: "Immunosuppressed", path: "immunosuppressed" },
-        { type: "checkboxGroup", label: "Precautions", path: "precautions", options: ["Standard", "Contact", "Droplet", "Airborne"] },
+      // OWNER-APPROVED "Infection Hospice Workflow Optimization"
+      // (2026-10-20) -- same Overview-gate pattern as Cardiovascular /
+      // Respiratory (see `respiratoryOverview` precedent). Organization
+      // only; no existing field is renamed, removed, or reclassified.
+      // OWNER DIRECTIVE (2026-10-05) "Infection Is Not A Patient-Interview
+      // Workflow" items 2/3/8 -- "Unable to Assess" removed entirely from
+      // Infection Overview (hospice infection assessment relies on H&P/
+      // referral/labs/culture/wound findings/observation, not patient
+      // participation; no valid clinical scenario justifies it). The two
+      // reason fields below are NEVER offered as live/editable options
+      // anymore (no shortened reason list either) -- converted to
+      // `legacyReadOnly` (same precedent as Cardiovascular's
+      // heartFailureType above) so a record saved before this change that
+      // already holds "Unable to Assess" keeps displaying its stored
+      // reason exactly as before. The existing render-loop guard just
+      // below (`field.path === "infectionUnableToAssessReason"/Other`)
+      // already hides both whenever `infectionOverview` isn't literally
+      // "Unable to Assess" -- i.e. always, for every new assessment --
+      // so nothing new renders for current documentation.
+      {
+        title: "Infection Overview", category: "core", importance: "high", fullWidth: true, fields: [
+          {
+            type: "segmented", label: "Infection Overview", path: "infectionOverview",
+            options: [
+              "No Current Infection Concern",
+              "Existing Infection Findings Review",
+              "New or Worsening Infection Findings",
+            ],
+          },
+          {
+            type: "legacyReadOnly", label: "Reason Unable to Assess (Legacy)", path: "infectionUnableToAssessReason",
+            legacyFormat: (v) => (v ? `Previously documented reason: ${v}.` : "Not documented."),
+          },
+          {
+            type: "legacyReadOnly", label: "Other Reason (Legacy, if selected above)", path: "infectionUnableToAssessOther",
+            legacyFormat: (v) => (v ? `Previously documented other reason: ${v}.` : "Not documented."),
+          },
+        ],
+      },
+      // OWNER DIRECTIVE (2026-10-05) "Shared Information = Render Once" +
+      // "Infection Overview Must Lead" -- Allergies and Immune Status are
+      // patient-profile data (category "profile", last in
+      // BODY_SYSTEM_CATEGORY_ORDER), not per-visit infection findings.
+      // category "profile" renders as "Patient Reference Information"
+      // AFTER "Infection Overview"'s "core" group (and after every other
+      // category), so the nurse's first question -- "is there a current
+      // infection concern?" -- is answered before any allergy/immune-status
+      // review, not before it. Rendered exactly once, never hidden or
+      // rebuilt by the Overview workflow-state selector below it (see the
+      // exclusion for both titles in the Overview gate, ~line 12414).
+      // Allergies is additionally shared with Facesheet + med-ordering
+      // safety checks (same `patient_allergies` data).
+      { title: "Allergies", category: "profile", customRenderer: "patientAllergies", fields: [] },
+      { title: "Immune Status", category: "profile", fields: [
+        { type: "booleanPill", label: "Immunosuppressed", path: "immunosuppressed" },
+        {
+          type: "segmented", label: "Immunosuppression Reason (optional)", path: "immunosuppressionReason",
+          options: ["Cancer treatment", "Steroid therapy", "HIV/AIDS", "Transplant", "Other"],
+        },
+        { type: "input", label: "Other Reason (if selected above)", path: "immunosuppressionReasonOther" },
       ]},
-      { title: "Infection Assessment", fields: [
-        { type: "checkboxGroup", label: "Antibiotic-Resistant Infection (current)", path: "antibioticResistantInfection", options: ["None", "MRSA", "C. difficile", "Other"] },
-        { type: "checkboxGroup", label: "History of Resistant Infection", path: "historyOfResistantInfections", options: ["None", "MRSA", "C. difficile", "Other"] },
-        { type: "checkboxGroup", label: "Current Active Infection", path: "currentInfections", options: ["None", "Sepsis", "UTI", "Respiratory tract", "IV site", "Wound", "HIV-related", "Pressure area", "Other"] },
+      { title: "Active Infection", category: "disease", fields: [
+        { type: "pillGroup", label: "Current Active Infection", path: "currentInfections", options: ["None", "Sepsis", "UTI", "Respiratory tract", "IV site", "Wound", "HIV-related", "Pressure area", "Other"] },
+        { type: "input", label: "Other Infection (if selected above)", path: "currentInfectionOther" },
       ]},
-      { title: "Additional Findings", fields: [
-        { type: "checkbox", label: "Antibiotic Use", path: "antibioticUse" },
+      { title: "Resistant Organisms", category: "disease", fields: [
+        { type: "pillGroup", label: "Antibiotic-Resistant Infection (current)", path: "antibioticResistantInfection", options: ["None", "MRSA", "C. difficile", "Other"] },
+        { type: "pillGroup", label: "History of Resistant Infection", path: "historyOfResistantInfections", options: ["None", "MRSA", "C. difficile", "Other"] },
+      ]},
+      // category "disease" (not "symptoms") so this renders in the same
+      // Disease-Specific Findings group as Active Infection / Resistant
+      // Organisms, preserving the owner-directed 2026-10-20 card order
+      // (BODY_SYSTEM_CATEGORY_ORDER groups by category before array
+      // order, so categories must be non-decreasing to keep this order).
+      { title: "Infection History", category: "disease", fields: [
+        { type: "booleanPill", label: "Recurrent Infection", path: "recurrentInfection" },
+        {
+          type: "pillGroup", label: "Infection History (quick-pick)", path: "infectionHistoryTypes",
+          options: ["Recurrent UTI", "Recurrent pneumonia", "Recurrent wound infection", "Recurrent cellulitis", "Recurrent bronchitis", "Prior sepsis", "Other"],
+        },
+        { type: "input", label: "Other (if selected above)", path: "infectionHistoryOther" },
+        { type: "textarea", label: "Infection History Notes", path: "infectionHistory" },
+      ]},
+      { title: "Antibiotic Therapy", category: "treatments", fields: [
+        {
+          type: "segmented", label: "Antibiotic Therapy", path: "antibioticTherapyStatus",
+          options: ["Currently receiving antibiotics", "Recently completed antibiotics", "Declined antibiotics", "Not receiving antibiotics"],
+        },
+        { type: "input", label: "Medication Name (optional)", path: "antibioticMedicationName" },
+        { type: "segmented", label: "Treatment Effective (optional)", path: "antibioticTreatmentEffective", options: ["Improving", "No Change", "Worsening"] },
+      ]},
+      // category "treatments" (not "core") so Precautions renders in the
+      // Current Management group, AFTER Active Infection / Resistant
+      // Organisms / Antibiotic Therapy -- matching the owner-directed
+      // order (Precautions #6, before Temperature #7).
+      { title: "Precautions", category: "treatments", fields: [
+        { type: "pillGroup", label: "Precautions", path: "precautions", options: ["Standard", "Contact", "Droplet", "Airborne"] },
+      ]},
+      // Owner directive (2026-10-20) "Temperature should not be a
+      // primary driver... supports infection assessment, does not
+      // define it" -- moved below the clinical findings cards, just
+      // before Notes. category "treatments" (not "symptoms") keeps it
+      // grouped with Antibiotic Therapy/Precautions in Current
+      // Management, directly before Clinical Status Change/Notes.
+      { title: "Temperature", category: "treatments", fields: [
         { type: "input", label: "Temperature", path: "temperature", inputType: "number", placeholder: "°F" },
-        { type: "checkbox", label: "Recurrent Infection", path: "recurrentInfection" },
-        { type: "textarea", label: "Infection History", path: "infectionHistory" },
+      ]},
+      // Item 13 "Infection-Specific Status Options" -- uses the dedicated
+      // INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS list, never the generic
+      // CLINICAL_STATUS_CHANGE_OPTIONS shared by other body systems.
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: INFECTION_CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Other Observations / Notes", path: "notes", placeholder: "List active infections..." },
       ]},
     ],
@@ -9309,30 +16673,141 @@ const SECTION_CONFIGS = {
     title: "Gastrointestinal",
     subtitle: "J2051D-G (Nausea, Vomiting, Diarrhea, Constipation), bowel, feeding devices",
     cards: [
-      { title: "Constipation — Auto-Suggested from Last BM Date", customRenderer: "constipationAutoAssess" },
-      { title: "GI Symptoms", fields: [
-        { type: "radio", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "radio", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
-        { type: "radio", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-        { type: "radio", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
-      ]},
-      { title: "Abdominal / Bowel Assessment", fields: [
-        { type: "radio", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
-        { type: "radio", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
-        { type: "checkbox", label: "Ascites", path: "ascites" },
-        { type: "input", label: "Abdominal Girth", path: "abdominalGirth" },
-        { type: "checkboxGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
-        { type: "radio", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
-        { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, Current vs
+      // Historical Findings" -- same Overview-gate pattern as
+      // Respiratory/Infection (see `respiratoryOverview` precedent).
+      // Organization only; no existing field renamed/removed/reclassified.
+      // SNS Layout Standard v1.1 Section 9 fix (2026-10): "Last BM Date"
+      // used to live in its own single-field "Bowel Basics" card, which is
+      // the exact pattern Section 9 prohibits ("Do not create a nested
+      // card for a single label and one short control"). Merged into this
+      // card instead of removed -- same `lastBM` path, same input type,
+      // same always-visible (non-conditional) rendering the 2026-10-23
+      // "GI Progressive Visibility Revision" directive required, so no
+      // field, value, or visibility behavior changes; only the card
+      // boundary that wrapped it does.
+      // SNS Layout Standard v1.1 Section 12 fix (2026-10): the comment
+      // above has always claimed GI Overview follows the Respiratory/
+      // Infection Overview precedent, but unlike `respiratoryOverview` and
+      // `infectionOverview` it was missing `fullWidth: true` -- so it sat
+      // in the same 3-column "core" row as the much taller "Abdominal /
+      // Bowel Assessment" card, leaving most of its own column empty
+      // beneath it (the exact >40%-unused-row condition Section 12.2
+      // prohibits). Adding `fullWidth: true` now actually matches the
+      // precedent the comment already described; no field/value change.
+      { title: "GI Overview", category: "core", fullWidth: true, fields: [
+        { type: "segmented", label: "GI Overview", path: "gastrointestinalOverview", options: [
+          "No Current GI Concern",
+          "Existing GI Findings Review",
+          "New or Worsening GI Findings",
+        ]},
         { type: "input", label: "Last BM Date", path: "lastBM", inputType: "date" },
+      ]},
+      // LAYOUT AUDIT FIX (SNS_LAYOUT_STANDARD_V1_1, same pattern as the
+      // Cardiovascular "core" bucket fix above) -- Constipation-Auto and
+      // Abdominal / Bowel Assessment are now the only two remaining
+      // non-full-width "core" cards; the auto-fit category grid would
+      // otherwise pack them into a 2-column row, but Constipation-Auto's
+      // short banner content next to Abdominal/Bowel's much longer field
+      // set produces the same >40%-unused-column condition Overview had.
+      // `fullWidth: true` stacks both as their own full-width rows
+      // instead (no side-by-side mismatch), and gives Abdominal / Bowel
+      // Assessment's own internal field grid the full container width to
+      // pack more of its fields per row -- reducing scroll height rather
+      // than adding it. No field/value/clinical change.
+      { title: "Constipation — Auto-Suggested from Last BM Date", category: "core", fullWidth: true, customRenderer: "constipationAutoAssess" },
+      { title: "GI Symptoms", category: "symptoms", fields: [
+        // OWNER DIRECTIVE (2026-10-29) "GI Rework -- All Clinical Choices
+        // Must Use SNS Pills" -- converted from `type: "radio"` (large
+        // circular/square FormRadioGroup controls) to `type: "segmented"`
+        // (compact SNS ToggleGroup pill), the exact same component already
+        // used for the approved Pain/Neurological/Respiratory/Infection
+        // severity fields (e.g. Respiratory's `sobSeverity`). Same stored
+        // string values ("None"/"Mild"/"Moderate"/"Severe"), same `path`,
+        // same `sfv` prop -- visual-only swap, no data shape change.
+        { type: "segmented", label: "Nausea", path: "nausea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Vomiting", path: "vomiting", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "input", label: "Vomiting Occurrences (24 hours)", path: "vomitingOccurrences24h", inputType: "number" },
+        { type: "segmented", label: "Diarrhea", path: "diarrhea", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Constipation", path: "constipation", sfv: true, options: ["None", "Mild", "Moderate", "Severe"] },
+        // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility
+        // Revision" -- these fields stay hidden (render-loop guard
+        // above) until the exact one-step trigger is met: Last BM Size
+        // only after Moderate/Severe Constipation; Straining only after
+        // Last BM Size = Small; Stool Character only after Straining
+        // Moderate/Severe OR Diarrhea documented; Information Source
+        // only after Last BM Size = Unable To Determine or the nurse
+        // manually opens Additional Bowel Details below. Mild
+        // Constipation alone now reveals nothing further -- Last BM Date
+        // lives in the always-visible GI Overview card above instead.
+        { type: "segmented", label: "Last BM Size", path: "lastBMSize", options: ["Small", "Medium", "Large", "Unable To Determine"] },
+        { type: "segmented", label: "Straining", path: "straining", options: ["None", "Mild", "Moderate", "Severe"] },
+        { type: "segmented", label: "Stool Character", path: "stoolConsistency", options: ["Formed", "Soft", "Loose", "Watery", "Unable To Determine"] },
+        // OWNER DIRECTIVE (2026-10-29) -- "select" dropdown replaced with
+        // the same compact `segmented` pill used throughout; still hidden
+        // by default via the render-loop guard below.
+        { type: "segmented", label: "Information Source", path: "giInformationSource", options: ["Patient Report", "Caregiver Report", "Facility Record", "Nurse Observation", "Unable To Determine"] },
+        { type: "checkbox", label: "Show Additional Bowel Details", path: "giShowAdditionalBowelDetails" },
+      ]},
+      // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision"
+      // -- Last BM Date is one of the six fields required in the default
+      // view; it now lives in its own always-visible card instead of
+      // OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision"
+      // -- Last BM Date is one of the six fields required in the default
+      // view; it is always visible (not gated behind the Abdominal /
+      // Bowel Assessment card below, which is hidden by default). SNS
+      // Layout Standard v1.1 Section 9 fix (2026-10) folded its former
+      // standalone "Bowel Basics" card into the "GI Overview" card above
+      // -- same `lastBM` path, no data moved/renamed, still always
+      // rendered, only the single-field card wrapper was removed.
+      { title: "GI Documentation Guidance", category: "symptoms", customRenderer: "giDocumentationGuidance" },
+      // OWNER DIRECTIVE (2026-10-06) "GI Rework -- Remaining Legacy
+      // Controls" -- the last 5 `radio`/`checkbox`/`checkboxGroup` fields
+      // in this card converted to the same SNS pill primitives (`segmented`
+      // for single-select, `segmentedTriState` for present/absent,
+      // `pillGroup` for multi-select) already used by every other field in
+      // this card and section. Same `path`s, same stored option strings
+      // (Ascites: legacy boolean `true` -> "Yes" / `false`|unset -> "" via
+      // normalizeTriState, identical to the Feeding Tube/Ostomy precedent
+      // above) -- visual-only swap, no data shape change.
+      { title: "Abdominal / Bowel Assessment", category: "core", fullWidth: true, fields: [
+        { type: "segmented", label: "Bowel Sounds", path: "bowelSounds", options: ["Normal", "Hyperactive", "Hypoactive", "Absent"] },
+        { type: "segmented", label: "Abdomen", path: "abdomen", options: ["Soft", "Firm", "Tympanic", "Distended", "Tender", "Nontender", "Rigid"] },
+        { type: "segmentedTriState", label: "Ascites", path: "ascites" },
+        { type: "input", label: "Abdominal Girth", path: "abdominalGirth" },
+        { type: "pillGroup", label: "Stool", path: "stoolCharacter", options: ["Normal", "Bloody", "Colostomy", "Ileostomy"] },
+        { type: "segmented", label: "Bowel Status", path: "bowelStatus", options: ["Regular", "Irregular", "Impaction", "Continent", "Incontinent", "Bowel/bladder program"] },
+        { type: "input", label: "Bowel Frequency", path: "bowelFrequency" },
         { type: "textarea", label: "Reason Bowel Regimen Could Not Be Initiated", path: "reasonBowelRegimenNotInitiated" },
       ]},
-      { title: "Feeding Devices", fields: [
-        { type: "checkbox", label: "Feeding Tube Present", path: "feedingTube.present" },
+      // OWNER DIRECTIVE (2026-10-29) "GI Rework -- Feeding-Tube/Ostomy
+      // Visibility" -- `checkbox` (legacy boolean present/absent, defaults
+      // to a false "No" even when never assessed) replaced with
+      // `segmentedTriState`, the exact already-shipped Cardiovascular
+      // present/absent pattern (`edema.present`, `chestPain.present`):
+      // stores "" (Not Assessed) / "No" / "Yes", same SNS pill visual.
+      // Tube Type / Ostomy Type are now gated by their own present-field's
+      // "Yes" value in the render-loop guard below (same
+      // `edema.present === "Yes"` -> reveal `edema.location` pattern used
+      // by Cardiovascular), so they consume zero space unless Yes is
+      // selected -- fields/options/options-text unchanged, no registry
+      // schema change (downstream `.present` consumers updated to accept
+      // both the legacy boolean `true` and the new "Yes").
+      { title: "Feeding Devices", category: "treatments", fields: [
+        { type: "segmentedTriState", label: "Feeding Tube Present", path: "feedingTube.present", unassessedLabel: "Unable To Determine" },
         { type: "select", label: "Tube Type", path: "feedingTube.type", options: ["NG", "PEG", "PEJ", "G-tube", "J-tube"] },
-        { type: "checkbox", label: "Ostomy Present", path: "ostomy.present" },
+        { type: "segmentedTriState", label: "Ostomy Present", path: "ostomy.present", unassessedLabel: "Unable To Determine" },
         { type: "select", label: "Ostomy Type", path: "ostomy.type", options: ["Colostomy", "Ileostomy", "Urostomy"] },
+      ]},
+      // OWNER DIRECTIVE (2026-10-22) "GI Governance Phase 1, GI Clinical
+      // Status Governance" -- uses the dedicated
+      // GASTROINTESTINAL_CLINICAL_STATUS_CHANGE_OPTIONS list, never the
+      // generic CLINICAL_STATUS_CHANGE_OPTIONS shared by other
+      // still-paused body systems (same replacement Infection received).
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "segmented", label: "Clinical Status Change", path: "clinicalStatusChange", options: GASTROINTESTINAL_CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "GI Notes", path: "notes" },
       ]},
     ],
@@ -9344,30 +16819,41 @@ const SECTION_CONFIGS = {
     cards: [
       {
         title: "Anthropometric & Metabolic Reference",
+        category: "core",
         customRenderer: "nutritionAnthropometricReference",
       },
       {
         title: "Weight Loss Auto-Calculation",
+        category: "core",
         customRenderer: "weightLossAutoCalc",
       },
-      { title: "Nutritional Assessment", fields: [
+      { title: "Nutritional Assessment", category: "core", fields: [
         { type: "input", label: "Weight Loss (past 6 months)", path: "weightLossPastSixMonths", placeholder: "lbs or %" },
         { type: "radio", label: "Appetite", path: "appetite", options: ["Good", "Fair", "Poor", "Anorexic"] },
         { type: "input", label: "Diet Type", path: "dietType" },
         { type: "radio", label: "Fluid Intake", path: "fluidIntake", options: ["Adequate", "Decreased", "Minimal"] },
+      ]},
+      { title: "Nutrition Symptoms", category: "symptoms", fields: [
         { type: "checkboxGroup", label: "Swallowing Issues", path: "swallowingIssues", options: ["Dysphagia", "Aspiration risk", "Pocketing", "Coughing with swallowing", "None"] },
         { type: "input", label: "Oral Mucosa", path: "oralMucosa" },
         { type: "checkbox", label: "Upper Dentures", path: "dentures.upper" },
         { type: "checkbox", label: "Lower Dentures", path: "dentures.lower" },
-        { type: "input", label: "Nutritional Supplements", path: "nutritionalSupplements" },
-        { type: "textarea", label: "Nutrition Notes", path: "notes" },
       ]},
-      { title: "NPO / Artificial Feeding", fields: [
+      { title: "Nutrition Support", category: "treatments", fields: [
+        { type: "input", label: "Nutritional Supplements", path: "nutritionalSupplements" },
+      ]},
+      { title: "NPO / Artificial Feeding", category: "treatments", fields: [
         { type: "radio", label: "NPO Status", path: "npoStatus", options: ["Not NPO", "NPO", "NPO except meds", "Modified/thickened liquids only"] },
         { type: "checkboxGroup", label: "Artificial Feeding / Access Devices", path: "artificialFeeding", options: ["PEG", "NG", "J-tube", "Pump", "TPN", "None"] },
       ]},
-      { title: "Oral Cavity", fields: [
+      { title: "Oral Cavity", category: "core", fields: [
         { type: "checkboxGroup", label: "Oral Cavity Findings", path: "oralCavityFindings", options: ["Edentulous", "Stomatitis", "Thrush", "Poor dentition", "Normal"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Nutrition Notes", category: "observation", fields: [
+        { type: "textarea", label: "Nutrition Notes", path: "notes" },
       ]},
     ],
   },
@@ -9375,14 +16861,14 @@ const SECTION_CONFIGS = {
     title: "Endocrine",
     subtitle: "Impairment, thyroid, diabetes management, endocrine symptoms",
     cards: [
-      { title: "Endocrine Impairment", fields: [
+      { title: "Endocrine Impairment", category: "core", fields: [
         { type: "checkboxGroup", label: "Impairment", path: "endocrineImpairment", options: ["Thyroid", "Parathyroid", "Pituitary", "Adrenal", "Pancreas", "None"] },
       ]},
-      { title: "Thyroid Assessment", fields: [
+      { title: "Thyroid Assessment", category: "core", fields: [
         { type: "radio", label: "Thyroid", path: "thyroid.assessment", options: ["Normal", "Enlarged", "Tender", "Nodular", "Not assessed"] },
         { type: "textarea", label: "Thyroid Notes", path: "thyroid.notes" },
       ]},
-      { title: "Diabetes Management", fields: [
+      { title: "Diabetes Management", category: "disease", fields: [
         { type: "radio", label: "Diabetes Type", path: "diabetes.type", options: ["Type 1", "Type 2", "Not diabetic", "Unknown"] },
         { type: "radio", label: "Diabetes Dependency", path: "diabetes.dependency", options: ["Insulin-dependent", "Non-insulin-dependent", "Glucose-management concern", "Not applicable"] },
         { type: "select", label: "Glucose Monitoring Frequency", path: "diabetes.glucoseMonitoring", options: ["None", "Daily", "BID", "TID", "QID", "Weekly"] },
@@ -9392,9 +16878,16 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Insulin Dose", path: "diabetes.insulinDose" },
         { type: "checkboxGroup", label: "Oral Hypoglycemics", path: "diabetes.oralHypoglycemics", options: ["Metformin", "Sulfonylurea", "DPP-4 inhibitor", "SGLT2 inhibitor", "None"] },
       ]},
-      { title: "Endocrine Symptoms & Treatment", fields: [
+      { title: "Endocrine Symptoms", category: "symptoms", fields: [
         { type: "checkboxGroup", label: "Symptoms Present", path: "endocrineSymptoms", options: ["Fatigue", "Weight changes", "Temperature intolerance", "Hair/skin changes", "Polydipsia", "Polyuria", "Tremors"] },
+      ]},
+      { title: "Endocrine Treatment", category: "treatments", fields: [
         { type: "checkboxGroup", label: "Current Treatment", path: "currentEndocrineMeds", options: ["Levothyroxine", "Insulin", "Oral hypoglycemics", "Corticosteroid replacement", "Other endocrine medication", "None"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Notes", category: "observation", fields: [
         { type: "textarea", label: "Other Observations / Notes", path: "notes" },
       ]},
     ],
@@ -9404,13 +16897,13 @@ const SECTION_CONFIGS = {
     title: "Genitourinary / Reproductive",
     subtitle: "Urinary status, catheter, urine output, reproductive concerns",
     cards: [
-      { title: "Urinary Status", fields: [
+      { title: "Urinary Status", category: "core", fields: [
         { type: "radio", label: "Continence", path: "urinaryStatus", options: ["Continent", "Stress incontinence", "Urge incontinence", "Functional incontinence", "Total incontinence", "Catheterized", "Bladder program", "Urostomy", "Retention", "Painful urination", "Nocturia"] },
         { type: "input", label: "Frequency", path: "frequency" },
         { type: "checkboxGroup", label: "Urine", path: "urineCharacteristics", options: ["Clear", "Cloudy", "Pale", "Blood", "Odor"] },
         { type: "input", label: "Urine Color", path: "urineColor" },
       ]},
-      { title: "Catheter Assessment", fields: [
+      { title: "Catheter Assessment", category: "treatments", fields: [
         { type: "checkbox", label: "Catheter Present", path: "catheter.present" },
         { type: "select", label: "Type", path: "catheter.type", options: ["None", "Foley", "Suprapubic", "Condom", "Intermittent", "Urostomy"] },
         { type: "input", label: "Size", path: "catheter.size" },
@@ -9423,16 +16916,21 @@ const SECTION_CONFIGS = {
         { type: "input", label: "Irrigation Duration", path: "catheter.irrigation.duration" },
         { type: "textarea", label: "Catheter Care", path: "catheterCare" },
       ]},
-      { title: "Urine Output", fields: [
+      { title: "Urine Output", category: "core", fields: [
         { type: "radio", label: "Output", path: "urineOutput", options: ["Adequate", "Decreased", "Anuria", "Polyuria"] },
         { type: "input", label: "24-Hour Volume (if measured)", path: "twentyFourHourVolume", inputType: "number" },
       ]},
-      { title: "Reproductive Concerns", fields: [
+      { title: "Reproductive Concerns", category: "symptoms", fields: [
         { type: "checkboxGroup", label: "Concerns", path: "reproductive.concerns", options: ["Vaginal bleeding", "Vaginal discharge", "Penile discharge", "Scrotal edema", "Testicular mass"] },
         { type: "textarea", label: "Reproductive Notes", path: "reproductive.notes" },
       ]},
-      { title: "Bladder Management", fields: [
+      { title: "Bladder Management", category: "treatments", fields: [
         { type: "checkboxGroup", label: "Interventions", path: "bladderManagement", options: ["Bladder training", "Scheduled toileting", "Pelvic floor exercises", "External collection device"] },
+      ]},
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "GU Notes", category: "observation", fields: [
         { type: "textarea", label: "GU Notes", path: "notes" },
       ]},
     ],
@@ -9442,7 +16940,7 @@ const SECTION_CONFIGS = {
     title: "Musculoskeletal",
     subtitle: "Weakness, ROM, gait, mobility status (ADL assessment presents under Functional Status)",
     cards: [
-      { title: "Musculoskeletal Assessment", fields: [
+      { title: "Musculoskeletal Assessment", category: "core", fields: [
         { type: "radio", label: "Weakness", path: "weakness", options: ["None", "Mild", "Moderate", "Severe", "Paralysis"] },
         { type: "radio", label: "Rigidity", path: "rigidity", options: ["None", "Mild", "Moderate", "Severe"] },
         { type: "checkbox", label: "Rigidity Present (severity not documented)", path: "rigidityPresent" },
@@ -9455,7 +16953,7 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Gait", path: "gait", options: ["Normal", "Unsteady", "Shuffling", "Unable"] },
         { type: "checkboxGroup", label: "Assistive Devices", path: "assistiveDevices", options: ["Walker", "Wheelchair", "Cane", "Crutches", "Hospital bed", "Hoyer lift", "None"] },
       ]},
-      { title: "Mobility Assessment", fields: [
+      { title: "Mobility Assessment", category: "functional", fields: [
         { type: "radio", label: "Ambulatory Status", path: "mobility.ambulatoryStatus", options: ["Independent", "Supervised", "Assisted", "Dependent", "Bedbound"] },
         { type: "radio", label: "Endurance", path: "mobility.endurance", options: ["Good", "Fair", "Poor"] },
         { type: "radio", label: "Transfer Ability", path: "mobility.transferAbility", options: ["Independent", "Standby assist", "1-person assist", "2-person assist", "Hoyer lift"] },
@@ -9463,7 +16961,10 @@ const SECTION_CONFIGS = {
         { type: "radio", label: "Balance", path: "balance", options: ["Normal", "Impaired"] },
         { type: "radio", label: "Pain with Movement", path: "painWithMovement", options: ["None", "Mild", "Moderate", "Severe"] },
       ]},
-      { title: "Fall History & Notes", fields: [
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
+      ]},
+      { title: "Fall History & Notes", category: "observation", fields: [
         { type: "input", label: "Falls in Last 90 Days", path: "fallHistory.fallsLast90Days", inputType: "number" },
         { type: "input", label: "Fall Injuries", path: "fallHistory.fallInjuries" },
         { type: "textarea", label: "Musculoskeletal Notes", path: "notes" },
@@ -9475,12 +16976,26 @@ const SECTION_CONFIGS = {
     title: "Skin / Wounds",
     subtitle: "Integumentary assessment, Braden Scale, wound documentation (M1190)",
     cards: [
-      { title: "Skin Assessment", hopeCode: "M1190", fields: [
+      // Owner directive: one consolidated Integumentary assessment
+      // container instead of a separate card per finding group. Body Map
+      // (shouldRenderSkinMap) already injects into this same card by
+      // title match ("Skin Assessment"), so Skin Integrity, Status,
+      // Turgor, Temperature, Moisture, Color, Edema, and Additional
+      // Findings all live together with it in one workspace. Field paths
+      // are unchanged from the prior per-field cards -- no data model or
+      // HOPE/SFV mapping change, presentation-only consolidation.
+      { title: "Skin Assessment", category: "core", hopeCode: "M1190", fields: [
         { type: "checkbox", label: "Skin Conditions Present", path: "skinConditionsPresent" },
         { type: "checkboxGroup", label: "Skin Status", path: "skinStatus", options: ["Intact", "Dry", "Fragile", "Edematous", "Bruising", "Rash", "Jaundice", "Cyanotic", "Mottled"] },
         { type: "radio", label: "Skin Turgor", path: "skinTurgor", options: ["Good", "Fair", "Poor", "Tenting"] },
+        { type: "radio", label: "Skin Moisture", path: "skinMoisture", options: ["Dry", "Moist", "Diaphoretic"] },
+        { type: "radio", label: "Skin Temperature", path: "skinTemperature", options: ["Warm", "Cool", "Hot"] },
+        { type: "radio", label: "Skin Color", path: "skinColorFinding", options: ["Normal", "Pale", "Cyanotic", "Jaundiced", "Mottled", "Flushed"] },
+        { type: "radio", label: "Edema", path: "skinEdema.severity", options: ["None", "1+", "2+", "3+", "4+"] },
+        { type: "input", label: "Edema Location", path: "skinEdema.location" },
+        { type: "checkboxGroup", label: "Additional Skin Findings", path: "additionalSkinFindings", options: ["Bruising", "Skin Tears", "Excoriation", "Pruritus", "Dry Scaling", "None"] },
       ]},
-      { title: "Braden Scale", fields: [
+      { title: "Braden Scale", category: "core", fields: [
         { type: "select", label: "Sensory Perception", path: "braden.sensoryPerception", options: [{ value: "1", label: "1 — Completely limited" }, { value: "2", label: "2 — Very limited" }, { value: "3", label: "3 — Slightly limited" }, { value: "4", label: "4 — No impairment" }] },
         { type: "select", label: "Moisture", path: "braden.moisture", options: [{ value: "1", label: "1 — Constantly moist" }, { value: "2", label: "2 — Very moist" }, { value: "3", label: "3 — Occasionally moist" }, { value: "4", label: "4 — Rarely moist" }] },
         { type: "select", label: "Activity", path: "braden.activity", options: [{ value: "1", label: "1 — Bedfast" }, { value: "2", label: "2 — Chairfast" }, { value: "3", label: "3 — Walks occasionally" }, { value: "4", label: "4 — Walks frequently" }] },
@@ -9491,13 +17006,11 @@ const SECTION_CONFIGS = {
       ]},
       {
         title: "Wound Documentation (Structured)",
+        category: "disease",
         customRenderer: "woundList",
       },
-      { title: "Wound Documentation & Notes", fields: [
-        { type: "textarea", label: "Wound Impairment", path: "woundImpairment" },
-        { type: "checkboxGroup", label: "Pressure-Relief Measures", path: "pressureReliefMeasures", options: ["Pressure-relief mattress", "Heel protectors/floating heels", "Cushioned wheelchair seat", "Foam/gel positioning devices", "Frequent position changes", "None in place"] },
-        { type: "input", label: "Repositioning Plan", path: "repositioningPlan", placeholder: "e.g., Reposition every 2 hours, alternate sides" },
-        { type: "textarea", label: "Skin Notes", path: "notes", rows: 4 },
+      { title: "Clinical Status Change", category: "response", fields: [
+        { type: "radio", label: "Clinical Status Change", path: "clinicalStatusChange", options: CLINICAL_STATUS_CHANGE_OPTIONS },
       ]},
     ],
   },
@@ -9562,14 +17075,14 @@ const SECTION_CONFIGS = {
         ] },
       ]},
       { title: "SFV Symptom Impact", hopeCode: "J2053", fields: [
-        { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "B. Shortness of Breath", path: "symptomImpactAtSfv.shortnessOfBreath", hopeCode: "J2053B", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "C. Anxiety", path: "symptomImpactAtSfv.anxiety", hopeCode: "J2053C", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "D. Nausea", path: "symptomImpactAtSfv.nausea", hopeCode: "J2053D", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "E. Vomiting", path: "symptomImpactAtSfv.vomiting", hopeCode: "J2053E", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "F. Diarrhea", path: "symptomImpactAtSfv.diarrhea", hopeCode: "J2053F", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "G. Constipation", path: "symptomImpactAtSfv.constipation", hopeCode: "J2053G", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
-        { type: "radio", label: "H. Agitation", path: "symptomImpactAtSfv.agitation", hopeCode: "J2053H", options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — Mild" }, { value: "2", label: "2 — Moderate" }, { value: "3", label: "3 — Severe" }] },
+        { type: "radio", label: "A. Pain", path: "symptomImpactAtSfv.pain", hopeCode: "J2053A", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "B. Shortness of Breath", path: "symptomImpactAtSfv.shortnessOfBreath", hopeCode: "J2053B", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "C. Anxiety", path: "symptomImpactAtSfv.anxiety", hopeCode: "J2053C", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "D. Nausea", path: "symptomImpactAtSfv.nausea", hopeCode: "J2053D", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "E. Vomiting", path: "symptomImpactAtSfv.vomiting", hopeCode: "J2053E", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "F. Diarrhea", path: "symptomImpactAtSfv.diarrhea", hopeCode: "J2053F", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "G. Constipation", path: "symptomImpactAtSfv.constipation", hopeCode: "J2053G", options: SYMPTOM_IMPACT_OPTIONS },
+        { type: "radio", label: "H. Agitation", path: "symptomImpactAtSfv.agitation", hopeCode: "J2053H", options: SYMPTOM_IMPACT_OPTIONS },
       ]},
       { title: "SFV Findings", fields: [
         { type: "checkboxGroup", label: "Triggered Symptoms", path: "triggeredSymptoms", options: ["Pain", "SOB", "Anxiety", "Nausea", "Vomiting", "Diarrhea", "Constipation", "Agitation"] },
@@ -9634,94 +17147,70 @@ const SECTION_CONFIGS = {
   },
 
   psychosocial: {
-    title: "Psychosocial Screening",
-    subtitle: "Family/social support, patient/caregiver concerns, distress, coping",
+    title: "Psychosocial Referral Determination",
+    subtitle: "Is Social Work involvement needed? The RN documents findings — SNS determines the recommendation.",
     cards: [
-      { title: "Social Support", fields: [
-        { type: "radio", label: "Family/Social Support Level", path: "familySocialSupport", options: ["Strong support", "Adequate support", "Limited support", "No support", "Declined to answer"] },
-        { type: "input", label: "Primary Support Person", path: "primarySupportPerson" },
-        { type: "input", label: "Relationship", path: "supportRelationship" },
-      ]},
-      { title: "Patient Concerns", fields: [
-        { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
-          "None indicated",
-          "Anxiety about illness", "Depression", "Grief/loss", "Financial concerns",
-          "Family conflict", "Caregiver burden", "Social isolation", "Role changes",
-          "Unfinished business", "Fear of dying", "Loss of independence", "Body image concerns",
-          "Non-acceptance of diagnosis", "Potential for non-compliance", "Lack of coping skills",
-          "Suicide concerns", "Substance abuse concerns", "History of emotional illness",
-          "Cultural concerns", "Burial concerns", "Anger",
-          "Want/need help with advance directives", "Want/need help with funeral plans"
+      { title: "Referral Indicators", fields: [
+        { type: "checkboxGroup", label: "Findings supporting an MSW referral", path: "referralIndicators", options: [
+          "Family unable to cope", "Caregiver overwhelmed", "Caregiver burden present", "Family in denial",
+          "Family conflict present", "Limited hospice understanding", "Resource concerns (financial/housing/transportation)",
+          "Inadequate support system", "Suicide/self-harm risk indicated", "None indicated",
         ]},
       ]},
-      { title: "Caregiver/Family Concerns", fields: [
-        { type: "checkboxGroup", label: "Caregiver Concerns", path: "caregiverFamilyConcerns", options: [
-          "Anticipatory grief", "Caregiver fatigue", "Financial stress",
-          "Work-life balance", "Children/family coping", "Funeral planning", "Estate/legal matters"
-        ]},
+      { title: "SNS Referral Recommendation", customRenderer: "referralRecommendation" },
+      { title: "Family Response", fields: [
+        { type: "radio", label: "Family Response", path: "familyResponse", options: ["Accepted", "Refused", "Deferred"] },
+        { type: "textarea", label: "Notes", path: "notes" },
       ]},
-      { title: "Distress & Coping", fields: [
-        { type: "select", label: "Distress Thermometer (0-10)", path: "distressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
-        { type: "checkboxGroup", label: "Psychosocial History", path: "psychosocialHistory", options: [
-          "History of depression", "History of anxiety", "History of substance abuse",
-          "Current mental health treatment", "Psychiatric medications", "Previous counseling/therapy"
-        ]},
-        { type: "radio", label: "Coping Assessment", path: "copingAssessment", options: ["Effective coping", "Developing coping strategies", "Ineffective coping", "Crisis"] },
-        { type: "textarea", label: "Coping Notes", path: "copingNotes" },
-      ]},
-      { title: "Intervention Plan", fields: [
-        { type: "checkboxGroup", label: "Interventions", path: "interventionPlan", options: [
-          "Counseling referral", "Support group", "Community resources", "Crisis intervention", "Psychiatric evaluation"
-        ]},
-        { type: "checkbox", label: "Social Work Visit Needed", path: "socialWorkVisitNeeded" },
-        { type: "textarea", label: "Psychosocial Notes", path: "notes" },
-      ]},
+      { title: "Referral Refused", customRenderer: "referralRefusal" },
     ],
   },
 
   spiritual: {
-    title: "Spiritual Screening",
-    subtitle: "Patient/caregiver faith, spiritual concerns, chaplain needs",
+    title: "Spiritual Referral Determination",
+    subtitle: "Is Spiritual Care involvement needed? The RN documents findings — SNS determines the recommendation.",
     cards: [
-      { title: "Spiritual Assessment", fields: [
-        { type: "checkbox", label: "Patient Active in Faith Tradition", path: "patientActiveInFaithTradition" },
-        { type: "input", label: "Patient Faith Tradition", path: "patientFaith" },
-        { type: "checkbox", label: "Caregiver Active in Faith Tradition", path: "caregiverActiveInFaithTradition" },
-        { type: "input", label: "Caregiver Faith Tradition", path: "caregiverFaith" },
-        { type: "checkboxGroup", label: "Spiritual Concerns", path: "spiritualConcerns", options: [
-          "Meaning of illness", "Forgiveness", "Hope", "Legacy", "Prayer requests",
-          "Religious rituals", "Afterlife concerns", "Anger at God", "Spiritual distress",
-          "Fear", "Hopelessness"
+      { title: "Faith & Clergy", fields: [
+        { type: "input", label: "Religious / Faith Preference", path: "religiousPreference" },
+        { type: "select", label: "Clergy Involvement", path: "clergyInvolvement", options: ["Not involved", "Community clergy involved", "Facility chaplain involved", "Both"] },
+      ]},
+      { title: "Referral Indicators", fields: [
+        { type: "checkboxGroup", label: "Findings supporting a Spiritual Care referral", path: "referralIndicators", options: [
+          "Family requested clergy", "Patient requested clergy", "Last rites requested",
+          "Spiritual distress expressed by family", "Spiritual support needs identified",
+          "Existing clergy already involved", "None indicated",
         ]},
-        { type: "select", label: "Spiritual Distress Rating (0-10)", path: "spiritualDistressRating", options: ["0","1","2","3","4","5","6","7","8","9","10"] },
-        { type: "checkbox", label: "Spiritual / existential concerns asked", path: "concernsDiscussed" },
-        { type: "radio", label: "F3000: Was patient and/or caregiver asked about spiritual/existential concerns?", path: "concernsAskedStatus", hopeCode: "F3000",
+      ]},
+      { title: "SNS Referral Recommendation", customRenderer: "referralRecommendation" },
+      { title: "Family Response", fields: [
+        { type: "radio", label: "Family Response", path: "familyResponse", options: ["Accepted", "Refused", "Deferred"] },
+      ]},
+      { title: "Referral Refused", customRenderer: "referralRefusal" },
+      { title: "F3000 — Spiritual / Existential Concerns", hopeCode: "F3000", fields: [
+        { type: "radio", label: "Was patient and/or caregiver asked about spiritual/existential concerns?", path: "concernsAskedStatus", hopeCode: "F3000",
           options: [{ value: "0", label: "No" }, { value: "1", label: "Yes, and discussion occurred" }, { value: "2", label: "Yes, but refused to discuss" }] },
-        { type: "input", label: "Spiritual concerns discussion date", path: "concernsDiscussedDate", inputType: "date" },
-        { type: "checkbox", label: "Chaplain Referral Needed", path: "chaplainNeeded" },
-        { type: "textarea", label: "Spiritual Notes", path: "notes" },
+        { type: "input", label: "Date first asked", path: "concernsDiscussedDate", inputType: "date" },
+        { type: "textarea", label: "Additional Notes", path: "notes" },
       ]},
     ],
   },
 
   bereavement: {
-    title: "Bereavement Screening",
-    subtitle: "Patient/caregiver bereavement concerns, risk assessment",
+    title: "Bereavement Referral Determination",
+    subtitle: "Should bereavement follow-up be prioritized? The RN documents risk factors — SNS determines the recommendation.",
     cards: [
-      { title: "Bereavement Assessment", fields: [
-        { type: "checkboxGroup", label: "Patient Concerns", path: "patientConcerns", options: [
-          "Fear of death", "Unresolved grief", "Existential distress", "Legacy concerns", "Family preparedness",
-          "Multiple losses", "Active grieving"
+      { title: "Risk Factors", fields: [
+        { type: "checkboxGroup", label: "Findings supporting bereavement follow-up priority", path: "riskFactors", options: [
+          "High-risk family situation", "Vulnerable caregiver(s) identified", "Anticipatory grief concerns",
+          "Significant family stressors", "History of complicated grief", "Multiple recent losses", "None indicated",
         ]},
-        { type: "checkboxGroup", label: "Caregiver Concerns", path: "caregiverConcerns", options: [
-          "Anticipatory grief", "Previous losses", "Complicated grief history",
-          "Mental health concerns", "Substance abuse history", "Social isolation", "Concurrent stressors",
-          "Multiple losses", "Active grieving"
-        ]},
-        { type: "radio", label: "Bereavement Risk Level", path: "bereavementRisk", options: ["Low", "Moderate", "High"] },
-        { type: "checkbox", label: "Bereavement Visit Needed", path: "bereavementVisitNeeded" },
-        { type: "textarea", label: "Bereavement Notes", path: "notes" },
       ]},
+      { title: "SNS Referral Recommendation", customRenderer: "referralRecommendation" },
+      { title: "Family Response", fields: [
+        { type: "radio", label: "Family Response", path: "familyResponse", options: ["Accepted", "Refused", "Deferred"] },
+        { type: "textarea", label: "Notes", path: "notes" },
+      ]},
+      { title: "Referral Refused", customRenderer: "referralRefusal" },
     ],
   },
 
@@ -9897,7 +17386,12 @@ const SECTION_CONFIGS = {
 // defaults so that partial/older records (missing nested keys added later)
 // don't crash rendering. Arrays are taken wholesale from `saved` when
 // present (not merged element-wise); plain objects are merged key-by-key.
-function deepMergeFormData(defaults, saved) {
+// R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): exported so
+// tests can verify, deterministically, that an unknown extra key such as
+// changeOfConditionContext placed into form_data survives a reload-merge
+// against INITIAL_FORM unchanged -- this is the entire reason zero schema
+// change is sufficient for persisting that context.
+export function deepMergeFormData(defaults, saved) {
   if (saved === undefined || saved === null) return defaults;
   if (Array.isArray(defaults) || Array.isArray(saved)) {
     return Array.isArray(saved) ? saved : defaults;
@@ -9914,6 +17408,50 @@ function deepMergeFormData(defaults, saved) {
     return merged;
   }
   return saved !== undefined ? saved : defaults;
+}
+
+// GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
+// one-time, idempotent, non-destructive migration for any record saved
+// before this fix that still has legacy `neurological.hopeItems.n0500/
+// n0510/n0520` values shaped like the old cognitive screen (0-3 per item).
+// Runs AFTER deepMergeFormData (so INITIAL_FORM.neurological.cognitiveScreen
+// already exists on `merged`) and only migrates when:
+//   - cognitiveScreen is still fully blank (never overwrites an RN's
+//     already-entered new-schema answers), AND
+//   - legacy hopeItems.n05xx values are present and in the valid 0-3
+//     range (anything else is left alone -- most records will have these
+//     blank, since Medications doesn't populate hopeItems either).
+// The legacy hopeItems values are left in place (not deleted) so this is
+// safe to run repeatedly and never destroys the original data; the real
+// HOPE export (hopeReportMapper.js) never reads neurological.hopeItems in
+// the first place, so leaving stale values there cannot contaminate a
+// HOPE submission.
+export function migrateNeurologicalCognitiveData(merged) {
+  const neuro = merged?.neurological;
+  if (!neuro) return merged;
+  const cs = neuro.cognitiveScreen || {};
+  const csBlank = !cs.repetition && !cs.recall && !cs.temporalOrientation;
+  const legacy = neuro.hopeItems;
+  if (!csBlank || !legacy) return merged;
+
+  const isValidLegacyValue = (v) => v !== undefined && v !== null && v !== "" && ["0", "1", "2", "3"].includes(String(v));
+  const legacyMap = { repetition: legacy.n0500, recall: legacy.n0510, temporalOrientation: legacy.n0520 };
+  const hasAnyLegacyValue = Object.values(legacyMap).some(isValidLegacyValue);
+  if (!hasAnyLegacyValue) return merged;
+
+  return {
+    ...merged,
+    neurological: {
+      ...neuro,
+      cognitiveScreen: {
+        ...cs,
+        instrument: cs.instrument || "SNS_COGNITIVE_SCREEN_V1",
+        repetition: isValidLegacyValue(legacyMap.repetition) ? String(legacyMap.repetition) : cs.repetition,
+        recall: isValidLegacyValue(legacyMap.recall) ? String(legacyMap.recall) : cs.recall,
+        temporalOrientation: isValidLegacyValue(legacyMap.temporalOrientation) ? String(legacyMap.temporalOrientation) : cs.temporalOrientation,
+      },
+    },
+  };
 }
 
 // ════════════════════════════════════════════════════════════════
@@ -10118,7 +17656,31 @@ function Section1Snapshot({ colors, patientSummary, facesheet, facesheetError, p
 // 8. MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════
 
-export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined }) {
+// OWNER DIRECTIVE (2026-10-30) "Accordion Collapse Defect A Fix" -- pure,
+// directly unit-testable transition function mirroring `jumpToSection`'s
+// actual collapse/open decision exactly (jumpToSection below calls this,
+// not a reimplementation, so a passing unit test is proof of the real
+// component's behavior). Open/closed state lives ONLY in
+// `collapsedSections`; `activeSection` never participates in the
+// collapse decision -- it is reported back purely for the caller to set
+// as a side effect.
+export function computeJumpToSectionResult(key, collapsedSectionsSet, { forceOpen = false } = {}) {
+  const alreadyOpen = !collapsedSectionsSet.has(key);
+  const willCollapse = alreadyOpen && !forceOpen;
+  let nextCollapsedSections;
+  if (willCollapse) {
+    nextCollapsedSections = new Set(collapsedSectionsSet);
+    nextCollapsedSections.add(key);
+  } else if (collapsedSectionsSet.has(key)) {
+    nextCollapsedSections = new Set(collapsedSectionsSet);
+    nextCollapsedSections.delete(key);
+  } else {
+    nextCollapsedSections = collapsedSectionsSet;
+  }
+  return { willCollapse, shouldScrollIntoView: !willCollapse, collapsedSections: nextCollapsedSections };
+}
+
+export default function RNICA({ patientId, assessmentId: existingAssessmentId = undefined, mode = "ica", onFormDataChange = undefined, workspacePilot = false, onExitWorkspacePilot = () => {}, onNavigateToSection = undefined, forceNewDraft = false, initialAssessmentType = undefined, changeOfConditionContext = null, onAssessmentCreated = undefined }) {
   const navigate = useNavigate();
   const initialPatientId = patientId ?? getActivePatientId() ?? "";
   const [resolvedPatientId, setResolvedPatientId] = useState(initialPatientId);
@@ -10156,17 +17718,35 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       return next;
     });
   };
-  const jumpToSection = (key) => {
+  // `forceOpen: true` is used when navigation is jumping to a *child* field
+  // inside a section (the section must stay open to reveal that field).
+  // Otherwise, re-selecting a section that's already open collapses it —
+  // the same open/close toggle as the in-page header row, just reachable
+  // from workflow navigation too.
+  //
+  // OWNER DIRECTIVE (2026-10-30) "Accordion Collapse Defect A Fix" --
+  // previously this gated the collapse on `activeSection === key`, a
+  // second, independent piece of state that tracks navigation focus (it
+  // also drives the validation panel/SFV banner scoping) and is NOT the
+  // open/closed source of truth. Since `activeSection` changes to
+  // whatever section was visited most recently, re-clicking the ORIGINAL
+  // section's sidebar nav item after visiting any other section could
+  // never satisfy `activeSection === key` again, so it could never
+  // collapse via the sidebar -- only the in-content header's
+  // `toggleSection(key)` (no `activeSection` dependency) ever reliably
+  // closed an open section. Both entry points now read the exact same
+  // `collapsedSections` Set as the single source of truth for open/closed
+  // state; `activeSection` continues to update below for focus/validation
+  // purposes only and no longer participates in the collapse decision.
+  const jumpToSection = (key, { forceOpen = false } = {}) => {
+    const result = computeJumpToSectionResult(key, collapsedSections, { forceOpen });
     setActiveSection(key);
-    setCollapsedSections((prev) => {
-      if (!prev.has(key)) return prev;
-      const next = new Set(prev);
-      next.delete(key);
-      return next;
-    });
-    requestAnimationFrame(() => {
-      sectionRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
-    });
+    setCollapsedSections(result.collapsedSections);
+    if (result.shouldScrollIntoView) {
+      requestAnimationFrame(() => {
+        sectionRefs.current[key]?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
   };
   const [assessmentId, setAssessmentId] = useState(existingAssessmentId || null);
   const [saving, setSaving] = useState(false);
@@ -10734,14 +18314,64 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [dismissStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
 
   const isOngoing = mode === "ongoing";
-  const [assessmentType, setAssessmentType] = useState("update");
+  const [assessmentType, setAssessmentType] = useState(
+    initialAssessmentType === "update" || initialAssessmentType === "recert" ? initialAssessmentType : "update"
+  );
   const isUpdateAssessment = isOngoing && assessmentType === "update";
+  // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+  // CMS SFV/HOPE labeling applies at HOPE Admission AND at a genuine HOPE
+  // Update Visit (HUV1/HUV2, assessmentType "update"); it must NOT apply
+  // during a non-HOPE Recertification (assessmentType "recert"), even
+  // though both Update and Recert set mode="ongoing". Feeds
+  // QualifyingHopeTimepointContext plus every inline `!isOngoing` HOPE/SFV
+  // gate below that was previously conflating the two.
+  const isQualifyingHopeTimepoint = mode === "ica" || isUpdateAssessment;
+  // OWNER DIRECTIVE (2026-10-05) "All Documented Allergies Must Appear" --
+  // the Infection Summary/Structured Findings rail must surface every
+  // documented allergy (patient-profile data, fetched from the same
+  // shared `patient_allergies` API `AllergiesCard` already uses), so it
+  // is fetched once here at the top level and threaded through
+  // `assessmentUiProfile` rather than duplicating the allergy record.
+  const [infectionAllergyAlerts, setInfectionAllergyAlerts] = useState([]);
+  const [allergyRefreshKey, setAllergyRefreshKey] = useState(0);
+  const autosavePatientId = resolvedPatientId || patientId || "";
+  useEffect(() => {
+    if (!autosavePatientId) {
+      setInfectionAllergyAlerts([]);
+      return;
+    }
+    let cancelled = false;
+    listPatientAllergies(autosavePatientId)
+      .then((list) => {
+        if (!cancelled) setInfectionAllergyAlerts(formatAllergyAlertLines(list || []));
+      })
+      .catch((err) => {
+        console.error("Failed to load allergies for Infection summary:", err);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [autosavePatientId, allergyRefreshKey]);
+  const handleAllergiesChanged = useCallback(() => setAllergyRefreshKey((k) => k + 1), []);
   const assessmentUiProfile = useMemo(() => ({
     hideAdvancedCarePlanning: isUpdateAssessment,
     hideAdmissionsOrder: isUpdateAssessment,
     hideSpiritualHopeFields: isUpdateAssessment,
-  }), [isUpdateAssessment]);
-  const autosavePatientId = resolvedPatientId || patientId || "";
+    infectionAllergyAlerts,
+    onAllergiesChanged: handleAllergiesChanged,
+    // Item 14 "Infection Supporting-Findings Gating" -- no dedicated
+    // prior-assessment/baseline-selection infrastructure exists anywhere
+    // in RNICA (confirmed: no comparisonAssessmentId, no baseline-
+    // selection UI, no per-field "prior value" snapshot). `isUpdateAssessment`
+    // (an update/recert assessment, as opposed to a fresh SOC/initial
+    // assessment) is the only currently-available, non-fabricated proxy
+    // for "a prior Infection assessment exists to compare against" --
+    // used by validateInfectionClinicalStatusSelection below to gate the
+    // two Infection status options that claim a change since a prior
+    // assessment. A real baseline-selection feature remains a known,
+    // explicitly-flagged architecture gap, not something invented here.
+    hasPriorInfectionAssessment: isUpdateAssessment,
+  }), [isUpdateAssessment, infectionAllergyAlerts, handleAllergiesChanged]);
   // Admission Action Center (Phase A) — global drawer, reachable from every
   // section via the persistent footer button. No draft loss / navigation:
   // opening/closing this never touches `formData` or `activeSection`.
@@ -10992,6 +18622,15 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         d.preferredLanguage = identity.language;
         changed = true;
       }
+      // HOPE A0550 (Patient ZIP Code): same blank-only hydration pattern as
+      // the fields above -- Face Sheet's mailing address is the only place
+      // ZIP is captured today; RNICA's own address.zip field (used for
+      // HOPE A0550 export) never had this fallback wired, unlike its
+      // neighboring demographic fields.
+      if (!d.address?.zip && facesheetData.address?.zip) {
+        d.address = { ...(d.address || {}), zip: facesheetData.address.zip };
+        changed = true;
+      }
       if (!d.religion && identity.religion) {
         d.religion = identity.religion;
         changed = true;
@@ -11063,6 +18702,27 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // Load existing assessment
   useEffect(() => {
     const activePatientId = resolvedPatientId || patientId;
+
+    // R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): a
+    // forced-new Update draft must start completely blank. It must NOT
+    // fall through to the patient-lookup fallback below, which returns the
+    // patient's most recent same-type record -- that fallback is exactly
+    // the original "no path to create a new Update assessment" defect.
+    // changeOfConditionContext (if provided) is stored as a plain extra key
+    // inside the existing form_data JSON contract -- no schema change.
+    if (forceNewDraft) {
+      setAssessmentId(null);
+      setLocked(false);
+      setLockedAt(null);
+      const blankForm = JSON.parse(JSON.stringify(INITIAL_FORM));
+      setFormData(changeOfConditionContext ? { ...blankForm, changeOfConditionContext } : blankForm);
+      setIntelligence(null);
+      setIntelligenceError("");
+      setStructuredFieldProvenance([]);
+      setAssessmentLoaded(true);
+      return undefined;
+    }
+
     if (!existingAssessmentId && !activePatientId) {
       setAssessmentLoaded(true);
       return undefined;
@@ -11088,7 +18748,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           return null;
         }
         if (data.formData) {
-          const merged = deepMergeFormData(INITIAL_FORM, data.formData);
+          const merged = migrateNeurologicalCognitiveData(deepMergeFormData(INITIAL_FORM, data.formData));
           setFormData(merged);
           markPersisted(merged, data.assessmentId || existingAssessmentId);
         }
@@ -11120,7 +18780,22 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     return () => {
       mounted = false;
     };
-  }, [assessmentType, existingAssessmentId, isOngoing, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
+  }, [assessmentType, changeOfConditionContext, existingAssessmentId, forceNewDraft, isOngoing, markPersisted, patientId, refreshIntelligence, resolvedPatientId]);
+
+  // R3: fire onAssessmentCreated exactly once per forced-new-draft instance,
+  // the moment the first save gives this blank draft a real assessmentId.
+  // A fresh forceNewDraft instance always gets a new component `key` from
+  // NursingAssessmentBoard.jsx, so this ref starts correctly scoped.
+  const forceNewDraftActiveRef = useRef(forceNewDraft);
+  useEffect(() => {
+    forceNewDraftActiveRef.current = forceNewDraft;
+  }, [forceNewDraft]);
+  useEffect(() => {
+    if (assessmentId && forceNewDraftActiveRef.current && typeof onAssessmentCreated === "function") {
+      forceNewDraftActiveRef.current = false;
+      onAssessmentCreated(assessmentId);
+    }
+  }, [assessmentId, onAssessmentCreated]);
 
   useEffect(() => {
     if (assessmentId) {
@@ -11148,12 +18823,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     setSaveStatus(null);
   }, []);
 
-  // Auto-derive all HOPE J2051 A-H Symptom Impact ratings from the
-  // clinical sections elsewhere in this same RNICA where each symptom is
-  // already assessed -- the RN shouldn't have to re-check something that
-  // was already documented. Each value only fills in while the Symptom
-  // Impact field is still blank, so a deliberate manual entry in Symptom
-  // Impact (which may legitimately differ) is never overwritten.
+  // Live single-source derivation of all HOPE J2051 A-H Symptom Impact
+  // ratings from the clinical sections where each symptom is actually
+  // assessed (owner design review 2026-09-25: "Document symptom severity
+  // once. Store symptom severity once. Reuse everywhere." -- Symptom
+  // Impact Screening no longer accepts independent RN entry for these
+  // eight items; it is now a read-only summary, so this effect always
+  // keeps `symptomImpact` in sync with its true source instead of only
+  // filling once while blank).
   //   A. Pain              <- Pain Assessment: painSeverityCategory (0-3)
   //   B. Shortness of Breath <- Respiratory: sobSeverity (None-Severe)
   //   C. Anxiety           <- Neuro/Mental Status: symptomsDemeanor checklist
@@ -11166,18 +18843,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const severityMap = { None: "0", Mild: "1", Moderate: "2", Severe: "3" };
     const painSeverity = formData.pain?.painSeverityCategory;
     const demeanor = formData.neurological?.symptomsDemeanor || [];
-    // symptomsDemeanor is a presence checklist, not a graded scale -- a
-    // checked box only tells us the symptom is present, so it's mapped to
-    // "1 - Mild" as a conservative starting point the RN can still adjust.
+    // symptomsDemeanor is a presence checklist, not a graded scale -- its
+    // absence is read as "0 - None reported" so the summary never shows a
+    // stale severity after the checkbox is unchecked.
     const derived = {
-      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : undefined,
-      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity],
-      anxiety: demeanor.includes("Anxiety") ? "1" : undefined,
-      nausea: severityMap[formData.gastrointestinal?.nausea],
-      vomiting: severityMap[formData.gastrointestinal?.vomiting],
-      diarrhea: severityMap[formData.gastrointestinal?.diarrhea],
-      constipation: severityMap[formData.gastrointestinal?.constipation],
-      agitation: demeanor.includes("Agitation") ? "1" : undefined,
+      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : "",
+      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity] ?? "",
+      anxiety: demeanor.includes("Anxiety") ? "1" : "0",
+      nausea: severityMap[formData.gastrointestinal?.nausea] ?? "",
+      vomiting: severityMap[formData.gastrointestinal?.vomiting] ?? "",
+      diarrhea: severityMap[formData.gastrointestinal?.diarrhea] ?? "",
+      constipation: severityMap[formData.gastrointestinal?.constipation] ?? "",
+      agitation: demeanor.includes("Agitation") ? "1" : "0",
     };
 
     setFormData((prev) => {
@@ -11185,7 +18862,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       let next = current;
       let changed = false;
       for (const key of Object.keys(derived)) {
-        if (!current[key] && derived[key] !== undefined) {
+        if (current[key] !== derived[key]) {
           next = { ...next, [key]: derived[key] };
           changed = true;
         }
@@ -11201,6 +18878,79 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     formData.gastrointestinal?.vomiting,
     formData.gastrointestinal?.diarrhea,
     formData.gastrointestinal?.constipation,
+  ]);
+
+  // Owner directive (2026-10-03) "Comprehensive Pain Assessment Date
+  // auto-population" -- Rules 1-4: the comprehensive pain assessment date
+  // (HOPE J0910.B) is no longer independently typed by the nurse. It
+  // always mirrors the parent RNICA visit date (`visitMeta.visitDate`)
+  // unless the nurse has explicitly documented an override reason
+  // (`pain.comprehensiveAssessmentDateOverrideReason`), in which case this
+  // effect backs off entirely and leaves the nurse-entered date alone.
+  // `comprehensiveAssessmentCompleted` (HOPE J0910.A, "Done?") is likewise
+  // derived rather than hand-toggled: true once a date is present.
+  useEffect(() => {
+    const visitDate = formData.visitMeta?.visitDate || "";
+    const overrideReason = formData.pain?.comprehensiveAssessmentDateOverrideReason || "";
+    if (overrideReason) return;
+    if (!visitDate) return;
+    setFormData((prev) => {
+      const current = prev.pain || {};
+      if (current.comprehensiveAssessmentDate === visitDate && current.comprehensiveAssessmentCompleted === true) {
+        return prev;
+      }
+      return {
+        ...prev,
+        pain: {
+          ...current,
+          comprehensiveAssessmentDate: visitDate,
+          comprehensiveAssessmentCompleted: true,
+        },
+      };
+    });
+  }, [formData.visitMeta?.visitDate, formData.pain?.comprehensiveAssessmentDateOverrideReason]);
+
+  // OWNER DIRECTIVE (2026-10-19) "Respiratory Date Auto-Population" -- SOB
+  // screening/treatment dates are already-known workflow dates (the SOC
+  // date for an initial RNICA, the current visit date for an Update/
+  // Recert) that a nurse should not have to re-type. Same source-date
+  // rule as the Comprehensive Pain Assessment Date effect above
+  // (visitMeta.visitDate, or facesheet SOC date on the initial RNICA),
+  // but fills each date exactly once while it is still blank instead of
+  // continuously mirroring -- any value already present (auto-filled or
+  // hand-typed) is left untouched on every later render, so an override
+  // needs no separate reason field. Gated on the existing sibling
+  // boolean (shortnessOfBreathScreened / treatmentInitiated) so a date is
+  // never populated for an event that hasn't actually been documented as
+  // having occurred.
+  useEffect(() => {
+    const resp = formData.respiratory || {};
+    const sourceDate = (isOngoing
+      ? formData.visitMeta?.visitDate
+      : (facesheetData?.service_dates?.soc_date || formData.visitMeta?.visitDate)) || "";
+    if (!sourceDate) return;
+    const needsScreeningDate = resp.shortnessOfBreathScreened && !resp.screeningDate;
+    const needsTreatmentDate = resp.treatmentInitiated && !resp.treatmentDate;
+    if (!needsScreeningDate && !needsTreatmentDate) return;
+    setFormData((prev) => {
+      const current = prev.respiratory || {};
+      return {
+        ...prev,
+        respiratory: {
+          ...current,
+          screeningDate: needsScreeningDate ? sourceDate : current.screeningDate,
+          treatmentDate: needsTreatmentDate ? sourceDate : current.treatmentDate,
+        },
+      };
+    });
+  }, [
+    isOngoing,
+    formData.visitMeta?.visitDate,
+    formData.respiratory?.shortnessOfBreathScreened,
+    formData.respiratory?.treatmentInitiated,
+    formData.respiratory?.screeningDate,
+    formData.respiratory?.treatmentDate,
+    facesheetData,
   ]);
 
   // RNICA (RN Initial Comprehensive Assessment) is a one-time document --
@@ -11262,6 +19012,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       );
       if (firstMappedSection) setActiveSection(firstMappedSection);
       return;
+    }
+    // Owner directive (2026-10-03) Rules 6-7: verify the comprehensive
+    // pain assessment date matches the RNICA assessment date at
+    // finalization. A mismatch is informational only (e.g. a documented,
+    // reason-justified override) and must never block locking.
+    const visitDateAtLock = formData.visitMeta?.visitDate || "";
+    const painDateAtLock = formData.pain?.comprehensiveAssessmentDate || "";
+    if (visitDateAtLock && painDateAtLock && visitDateAtLock !== painDateAtLock) {
+      alert(
+        `Note: the comprehensive pain assessment date (${formatDate(painDateAtLock)}) differs from the RNICA assessment date (${formatDate(visitDateAtLock)}).\n\nThis is a warning only — locking will continue.`
+      );
     }
     setPageError("");
     setSaving(true);
@@ -11507,7 +19268,13 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     );
   });
 
-  const renderWorkspaceSections = () => routes.map((route) => {
+  // `forceVisibleKeys` lets a screen show a legacy section's content
+  // continuously (no click/tab required) even when it is not the globally
+  // "active" section -- used by Evidence & Intake to keep Vitals visible
+  // inline per owner direction ("vitals are part of continuous clinical
+  // context, not a tab"). Every other caller passes nothing and behavior is
+  // unchanged (only the active section renders visible).
+  const renderWorkspaceSections = (forceVisibleKeys = []) => routes.map((route) => {
     const config = SECTION_CONFIGS[route.formSection];
     const sectionData = formData[route.formSection];
     const isDemographicsModule = ["demographics", "caregiverAssessment", "advancedCarePlanning"].includes(route.key);
@@ -11532,18 +19299,202 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           )
         : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
+    const visible = route.key === activeSection || forceVisibleKeys.includes(route.key);
     return (
-      <div key={route.key} hidden={route.key !== activeSection} aria-hidden={route.key !== activeSection}>
+      <div key={route.key} hidden={!visible} aria-hidden={!visible}>
         {content}
       </div>
     );
   });
 
+  // Owner directive (Edit Pain Assessment restructure) -- renders only a
+  // named subset of SECTION_CONFIGS.pain's cards through the SAME
+  // renderGenericSection the rest of the app uses (identical fields,
+  // paths, HOPE mappings, validation, and update() autosave contract).
+  // Card-level visibility (e.g. which of the three Pain Intensity tool
+  // variants applies, the Pain History current-pain gate) is detected
+  // from each card's own field paths, not from array position or count,
+  // so filtering to a named subset here does not change any gating
+  // logic -- see renderGenericSection's isPain*Card detection. This lets
+  // the Edit Pain Assessment Sheet show one focused group of cards per
+  // step instead of the entire Pain module at once, while Pain
+  // Management stays reachable only through its own separate "Edit
+  // Regimen" entry point (never bundled into the stepped assessment
+  // Sheet).
+  const renderPainStepCards = (cardTitles) => {
+    const painConfig = SECTION_CONFIGS.pain;
+    const filteredConfig = { ...painConfig, cards: painConfig.cards.filter((c) => cardTitles.includes(c.title)) };
+    return renderGenericSection(
+      "pain",
+      formData.pain,
+      updateField,
+      filteredConfig,
+      formData.demographics,
+      formData,
+      COLORS,
+      styles,
+      patientId,
+      assessmentId,
+      locked,
+      true,
+      onNavigateToSection,
+      assessmentUiProfile,
+    );
+  };
+
+  // "Pain/Neuro interaction model" directive applied to Diagnosis & LCD
+  // (presentation-only, 2026-10). Mirrors renderPainStepCards above --
+  // renders only a named subset of SECTION_CONFIGS.diagnoses' cards
+  // through the SAME renderGenericSection the rest of the app uses
+  // (identical fields, paths, HOPE mappings, validation, and update()
+  // autosave contract). Lets DiagnosisLcdOverview show focused Edit Sheets
+  // (Primary Diagnosis; Secondary Diagnoses & Comorbidities) plus an
+  // always-visible LCD Eligibility & Supporting Evidence verification
+  // card, instead of the entire Diagnoses module rendered inline at once.
+  const renderDiagnosisStepCards = (cardTitles) => {
+    const diagnosesConfig = SECTION_CONFIGS.diagnoses;
+    const filteredConfig = { ...diagnosesConfig, cards: diagnosesConfig.cards.filter((c) => cardTitles.includes(c.title)) };
+    return renderGenericSection(
+      "diagnoses",
+      formData.diagnoses,
+      updateField,
+      filteredConfig,
+      formData.demographics,
+      formData,
+      COLORS,
+      styles,
+      patientId,
+      assessmentId,
+      locked,
+      true,
+      onNavigateToSection,
+      assessmentUiProfile,
+    );
+  };
+
+  // ── Body Systems screen (pilot-only) ──────────────────────────────
+  // Purely mechanical "is anything here documented" scan used only to
+  // badge a body system Reviewed/Not Started in the compact accordion
+  // below -- never a clinical judgment, never invents a finding. Treats
+  // empty string/false/[]/{}/undefined/null as "not documented"; any
+  // other value (including "0", itself a charted answer) counts.
+  const sectionHasDocumentedData = (value) => {
+    if (value === null || value === undefined || value === "") return false;
+    if (typeof value === "boolean") return value === true;
+    if (Array.isArray(value)) return value.some((item) => sectionHasDocumentedData(item));
+    if (typeof value === "object") return Object.values(value).some((v) => sectionHasDocumentedData(v));
+    return true;
+  };
+
+  // One compact accordion item per body system (all 10, always rendered
+  // together instead of one-at-a-time) -- reuses the exact same
+  // config/sectionData/renderGenericSection call as every other route, so
+  // fields, HOPE mappings, and Add/View POC controls are byte-for-byte the
+  // same as legacy/non-grouped rendering. Presentation-only grouping.
+  // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 -- the
+  // shared `sectionHasDocumentedData` boolean above still drives the
+  // Reviewed/Not-started badge for every OTHER body system unchanged.
+  // Neurological alone gets a richer status because it now has an
+  // Overview Gate that can honestly report "review required" (Unable to
+  // Assess) instead of collapsing every state into the same two-value
+  // badge. This intentionally does not touch or generalize the shared
+  // helper -- Cardiovascular and the rest are untouched.
+  const bodySystemsAccordionItems = useMemo(() => {
+    return RNICA_BODY_SYSTEM_MODULES.map((module) => {
+      const route = routes.find((r) => r.key === module.key);
+      if (!route) return null;
+      const config = SECTION_CONFIGS[route.formSection];
+      const sectionData = formData[route.formSection];
+      const meta = sidebarConfigItems.find((s) => s.key === module.key);
+      const neuroStatus = module.key === "neurological" ? computeNeurologicalWorkflowStatus(sectionData || {}) : null;
+      const cardiovascularStatus = module.key === "cardiovascular" ? computeCardiovascularWorkflowStatus(sectionData || {}, formData.respiratory) : null;
+      const workflowStatus = neuroStatus || cardiovascularStatus;
+      return {
+        key: module.key,
+        label: meta?.label || module.label,
+        icon: meta?.icon || "🩺",
+        reviewed: workflowStatus ? workflowStatus.code === "ready_for_review" : sectionHasDocumentedData(sectionData),
+        statusLabel: workflowStatus?.label,
+        statusVariant: workflowStatus?.variant,
+        content: config && sectionData
+          ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
+          : null,
+      };
+    }).filter(Boolean);
+  }, [routes, formData, sidebarConfigItems, COLORS, styles, patientId, assessmentId, locked, onNavigateToSection, assessmentUiProfile]);
+
+  // Structured Findings — a deterministic, plain-language restatement of
+  // ALREADY-DOCUMENTED body-system fields only (owner directive: "only
+  // include findings already documented... do not generate/infer/create
+  // findings"). Every line below reads one specific, already-existing
+  // field and only appears when that field has a real charted value; none
+  // of these paths are new fields, and nothing is derived/predicted.
+  //
+  // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" item #9 --
+  // "expand Structured Findings into a true reviewer workspace": grouped
+  // by body system (icon + label + count, Neurological first, matching
+  // its Body Systems accordion order) instead of one flat, unattributed
+  // bullet list, so a reviewer can scan "what system is this from" at a
+  // glance. Same computeBodySystemFindings strings, same source fields --
+  // only the container shape changed (array of groups instead of a flat
+  // flatMap) to carry that attribution through to the rail.
+  const bodySystemsStructuredFindings = useMemo(() => {
+    const order = [
+      "neurological", "respiratory", "cardiovascular", "skin",
+      "gastrointestinal", "genitourinary", "nutrition", "endocrine", "infection",
+    ];
+    return order
+      .map((key) => {
+        const meta = RNICA_BODY_SYSTEM_SIDEBAR_ITEMS.find((m) => m.key === key);
+        const findings = computeBodySystemFindings(
+          key,
+          formData?.[key],
+          key === "infection" ? { allergyAlerts: infectionAllergyAlerts } : undefined,
+        );
+        // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
+        // item #5 -- "Expand Structured Findings ... Review Status".
+        // Reuses the exact same `computeNeurologicalWorkflowStatus` the
+        // Body Systems accordion trigger already shows as its Reviewed/
+        // Not-started badge (Bounded Compatibility Increment, 2026-09-28)
+        // -- nothing new computed, no new concept invented. Appended last
+        // so it never reorders the clinical findings above it; omitted
+        // when the Overview question hasn't been answered yet (status
+        // would just read "Not Started" for an otherwise-empty system,
+        // which is already obvious from the group not rendering at all).
+        if (key === "neurological" && formData?.neurological?.neuroOverview) {
+          const workflowStatus = computeNeurologicalWorkflowStatus(formData.neurological);
+          findings.push(`Review status: ${workflowStatus.label}.`);
+        }
+        return {
+          key,
+          label: meta?.label || key,
+          icon: meta?.icon || "🩺",
+          findings,
+        };
+      })
+      .filter((group) => group.findings.length > 0);
+  }, [formData, infectionAllergyAlerts]);
+
   if (workspacePilot) {
-    const secondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
-      .map((diagnosis) => `${diagnosis.description || diagnosis.icd10 || ""}`.trim())
+    const ownSecondaryDiagnoses = (formData.diagnoses.secondaryDiagnoses || [])
+      .map((diagnosis) => `${diagnosis.description || formatIcd10Code(diagnosis.icd10) || ""}`.trim())
       .filter(Boolean)
       .join(", ");
+    // Fallback to the Face Sheet's already-documented secondary diagnoses
+    // when RNICA's own Diagnoses section hasn't been filled in yet (e.g.
+    // early in the assessment). Read-only display fallback only -- never
+    // written back into `formData.diagnoses`, so it can never mask or
+    // conflict with the RN's own entry once made.
+    const facesheetSecondaryDiagnoses = (facesheetData?.clinical?.active_secondary_diagnoses || [])
+      .map((dx) => dx.display_name || dx.diagnosis_description || "")
+      .filter(Boolean)
+      .join(", ") || facesheetData?.clinical?.secondary_diagnoses || "";
+    const secondaryDiagnoses = ownSecondaryDiagnoses || facesheetSecondaryDiagnoses;
+    // Latest RNICA/Recert performance entry (same source + ordering already
+    // used by the Face Sheet's "PPS (auto)" display) -- fallback for the
+    // context bar only when the current assessment's own Performance Status
+    // section hasn't been filled in yet.
+    const latestPerformance = performanceHistory?.[0] || null;
     const verifiedComorbidities = Object.entries(formData.diagnoses.hopeComorbidities || {})
       .filter(([, selected]) => selected === true)
       .map(([key]) => key)
@@ -11559,8 +19510,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
 
     return (
       <AssessmentModeContext.Provider value={mode}>
+      <QualifyingHopeTimepointContext.Provider value={isQualifyingHopeTimepoint}>
         <RNICACommandWorkspace
           patient={{
+            id: resolvedPatientId,
             name: patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected"),
             mrn: patientSummary?.patient?.mrn || "",
             primaryDiagnosis: formData.diagnoses.primaryDiagnosis.description || patientSummary?.patient?.primary_diagnosis || "",
@@ -11577,11 +19530,25 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             sex: formData.demographics.gender || "",
             admissionDate: facesheetData?.service_dates?.soc_date || "",
             attendingPhysician: patientSummary?.patient?.attending_physician_name || "",
-            currentPps: formData.performanceStatus?.pps || "",
+            currentPps: formData.performanceStatus?.pps || latestPerformance?.pps || "",
             assessmentStage: isOngoing ? (assessmentType === "recert" ? "Recertification" : "Update assessment") : "Initial admission",
             whyHospiceNarrative: formData.diagnoses.clinicalNarrative || "",
             recentHospitalization: formData.diagnoses.recentHospitalizations || "",
             functionalDeclineNarrative: formData.performanceStatus?.functionalDeclineNotes || "",
+            // Read-only reflection of the existing `vitals` module's own
+            // state -- nothing new is captured here. Used by the persistent
+            // clinical context bar so vitals are visible on every screen
+            // without navigating to the Vitals section.
+            vitals: {
+              temperature: formData.vitals?.temperature || "",
+              temperatureUnit: formData.vitals?.temperatureUnit || "F",
+              pulse: formData.vitals?.pulse || "",
+              respirations: formData.vitals?.respirations || "",
+              bpSystolic: formData.vitals?.bloodPressure?.systolic || "",
+              bpDiastolic: formData.vitals?.bloodPressure?.diastolic || "",
+              oxygenSaturation: formData.vitals?.oxygenSaturation || "",
+              weight: formData.vitals?.weight || latestPerformance?.weight || "",
+            },
             caregiver: {
               name: pcg.name || "",
               relationship: pcg.relationship || "",
@@ -11589,6 +19556,37 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               willingToProvideCare: pcg.willingToProvideCare,
               anxietyLevel: pcg.anxietyLevel || "",
               concerns: pcg.pcgConcerns || "",
+            },
+            // Administrative Demographics -- a small, independent HOPE
+            // concept (A0215 Site of Service, A1805 Admitted From, A1005
+            // Ethnicity, A1010 Race, A1110 Language/Interpreter, A1905
+            // Living Arrangement, A1910 Availability of Assistance). Per
+            // owner direction this is NOT a "Patient Information" screen
+            // and must never be bundled with identity/contact fields
+            // (name, DOB, phone, address, emergency contact, religion,
+            // marital status, military service) -- those remain Face
+            // Sheet's exclusively. Raw values are passed (not joined
+            // display strings) so HOPE Administrative Review can render
+            // them as its own compact, editable grid via `onUpdateField`.
+            administrativeDemographics: {
+              preferredLanguage: formData.demographics.preferredLanguage || "",
+              needsInterpreter: formData.demographics.needsInterpreter,
+              interpreterOffered: formData.demographics.interpreterOffered,
+              understandsParticipatesInCare: formData.demographics.understandsParticipatesInCare,
+              specialWishStatus: formData.demographics.specialWishStatus,
+              specialEventDesire: formData.demographics.specialEventDesire || "",
+              specialWishFollowUpDiscipline: formData.demographics.specialWishFollowUpDiscipline || "",
+              specialWishReviewStatus: formData.demographics.specialWishReviewStatus || "",
+              ethnicity: formData.demographics.ethnicity || [],
+              race: formData.demographics.race || [],
+              raceInformationSource: formData.demographics.raceInformationSource || "",
+              raceInformationSourceOther: formData.demographics.raceInformationSourceOther || "",
+              ethnicityInformationSource: formData.demographics.ethnicityInformationSource || "",
+              ethnicityInformationSourceOther: formData.demographics.ethnicityInformationSourceOther || "",
+              siteOfService: formData.livingSituation?.siteOfService || "",
+              admittedFrom: formData.livingSituation?.admittedFrom || "",
+              livingArrangement: formData.livingSituation?.livingArrangement || "",
+              availabilityOfAssistance: formData.livingSituation?.availabilityOfAssistance || "",
             },
           }}
           routes={commandRoutes}
@@ -11601,7 +19599,35 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           saveStatus={saveStatus}
           intelligence={intelligence}
           isOngoingAssessment={isOngoing}
+          isUpdateAssessment={isUpdateAssessment}
           renderWorkspaceSections={renderWorkspaceSections}
+          bodySystemsAccordionItems={bodySystemsAccordionItems}
+          bodySystemsStructuredFindings={bodySystemsStructuredFindings}
+          // Approved "Pain & Symptom Burden" summary screen data (Phase B
+          // reference implementation, same pattern as Patient Story/
+          // Evidence & Intake/HOPE Administrative Review): read-only
+          // projections of state already owned by the Pain module and the
+          // HOPE J2051 symptomImpact derivation -- nothing new captured
+          // here, field entry still happens in the legacy Pain module
+          // rendered inside the Edit Assessment dialog.
+          painData={formData.pain}
+          symptomImpactData={formData.symptomImpact}
+          patientAge={patientAge}
+          renderPainStepCards={renderPainStepCards}
+          // "Diagnosis & LCD" summary screen (presentation-only Pain/Neuro
+          // interaction-model pass) -- read-only projection of state
+          // already owned by the Diagnoses module; field entry still
+          // happens through the same renderGenericSection via
+          // renderDiagnosisStepCards (Edit Sheets, or the always-visible
+          // LCD Eligibility verification card).
+          diagnosesData={formData.diagnoses}
+          renderDiagnosisStepCards={renderDiagnosisStepCards}
+          // Lets Evidence & Intake's Administrative Demographics section
+          // (Language/Interpreter/Ethnicity/Race/Living Arrangement/
+          // Availability of Assistance) write directly back into RNICA's
+          // own `demographics`/`livingSituation` form state -- the exact
+          // same update path every other RNICA field already uses.
+          onUpdateField={updateField}
           visitRecorder={(
             <VisitRecorderCard
               patientId={resolvedPatientId || patientId}
@@ -11633,12 +19659,26 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                   {pageError && <div>RN ICA: {pageError}</div>}
                 </div>
               )}
-              {!isOngoing && sfvStatus.required && (
+              {isQualifyingHopeTimepoint && sfvStatus.required && (
                 <div style={styles.warningBox}>
                   <strong>SFV required:</strong> Moderate or severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}.
                   {sfvStatus.dueDate ? ` Due ${sfvStatus.dueDate}.` : " Due within 2 calendar days of screening."}
                 </div>
               )}
+            </>
+          )}
+          // R3 Command Workspace parity repair (Owner Directive): the exact
+          // same UpdateAssessmentContextBanner + PlanOfCareReviewPanel
+          // components rendered in the classic view above, built here with
+          // the same formData.changeOfConditionContext / assessmentId /
+          // styles / COLORS already in scope for this render. No second
+          // implementation, no new POC logic -- Command Workspace simply
+          // receives the identical JSX as a prop, the same pattern already
+          // used for `alerts` and `visitRecorder` above.
+          updateAssessmentContext={(
+            <>
+              <UpdateAssessmentContextBanner changeOfConditionContext={formData.changeOfConditionContext} styles={styles} COLORS={COLORS} />
+              <PlanOfCareReviewPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
             </>
           )}
           onSelect={setActiveSection}
@@ -11649,12 +19689,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           onExitPilot={onExitWorkspacePilot}
           canLock={Boolean(assessmentId)}
         />
+      </QualifyingHopeTimepointContext.Provider>
       </AssessmentModeContext.Provider>
     );
   }
 
   return (
     <AssessmentModeContext.Provider value={mode}>
+    <QualifyingHopeTimepointContext.Provider value={isQualifyingHopeTimepoint}>
       <div style={styles.page}>
       {/* ── Patient Banner ── */}
       <div style={styles.banner}>
@@ -11770,6 +19812,18 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         patientIdProp={patientId}
       />
 
+      <UpdateAssessmentContextBanner changeOfConditionContext={formData.changeOfConditionContext} styles={styles} COLORS={COLORS} />
+
+      {/* R3 (Owner Directive, "RNICA Update/HUV Creation Workflow"): Section 11
+          Plan of Care review, rendered in-form and scoped to the assessment
+          currently open in THIS workspace -- reusing the existing, already-built
+          MasterPocReviewCard exactly as PatientChart.jsx does, with zero new POC
+          logic. Prior to this, the chart-level card always resolved to the
+          patient's Admission assessment regardless of which assessment was open.
+          (Command Workspace parity repair: this is now the single shared
+          PlanOfCareReviewPanel also passed into RNICACommandWorkspace below.) */}
+      <PlanOfCareReviewPanel assessmentId={assessmentId} styles={styles} COLORS={COLORS} />
+
       {(patientSummaryError || pageError) && (
         <div style={styles.warningBox}>
           {patientSummaryError && <div>Patient summary: {patientSummaryError}</div>}
@@ -11828,14 +19882,14 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           sections={sidebarConfigItems.map((item) => ({
             key: item.key,
             label: item.label,
-            meta: item.cdphRequired ? "CDPH" : !isOngoing && item.hope?.length ? "HOPE" : undefined,
+            meta: item.cdphRequired ? "CDPH" : isQualifyingHopeTimepoint && item.hope?.length ? "HOPE" : undefined,
           }))}
           onSelect={(key) => {
             const match = sidebarConfigItems.find((item) => item.key === key);
             if (!match) return;
 
             if (match.parent) {
-              jumpToSection(match.parent);
+              jumpToSection(match.parent, { forceOpen: true });
               setTimeout(() => {
                 const el = document.getElementById(match.scrollTarget);
                 if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -11862,7 +19916,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               onInsertSymptomSeverity={assessmentLoaded ? handleInsertAiSymptomSeverity : undefined}
               onInsertNarrative={assessmentLoaded ? handleInsertAiNarrative : undefined}
             />
-            {!isOngoing && sfvStatus.required && (
+            {sfvStatus.required && isQualifyingHopeTimepoint && (
               <div style={{ ...styles.warningBox, marginBottom: 16, border: "1px solid rgba(234, 88, 12, 0.28)", background: COLORS.warningBoxBg }}>
                 <div style={{ fontWeight: 800, marginBottom: 6 }}>SFV Required</div>
                 <div>
@@ -11871,6 +19925,21 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
                 </div>
                 <div style={{ marginTop: 6 }}>
                   Complete J2052 after the follow-up visit. J2053 may then be documented by an RN or LPN/LVN.
+                </div>
+              </div>
+            )}
+            {/* OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance
+                Correction" -- a non-qualifying encounter (Recertification)
+                must NEVER show the CMS-labeled "SFV Required" banner
+                above, but the underlying symptom burden should still be
+                surfaced using neutral SNS clinical language rather than
+                going silent, since the J2051 symptom-impact values are
+                computed the same way regardless of encounter context. */}
+            {sfvStatus.required && !isQualifyingHopeTimepoint && (
+              <div style={{ ...styles.warningBox, marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, marginBottom: 6 }}>Clinical Follow-Up May Be Needed</div>
+                <div>
+                  Moderate or Severe symptom impact detected for {sfvStatus.triggeredSymptoms.join(", ")}. Clinical follow-up may be needed based on current symptom burden.
                 </div>
               </div>
             )}
@@ -11920,9 +19989,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {/* SFV (Symptom Follow-up Visit) Status — always visible in the
                 right panel, independent of scroll position or which section
                 is active, since SFV is a required separate visit the RN
-                must not lose track of. Only tracked during the initial ICA;
-                a recert cannot trigger a new SFV requirement. */}
-            {!isOngoing && (
+                must not lose track of. Tracked at HOPE Admission and at a
+                genuine HOPE Update Visit (HUV1/HUV2); a Recertification is
+                not a HOPE-qualifying timepoint and cannot trigger a new SFV
+                requirement. */}
+            {isQualifyingHopeTimepoint && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 4 }}>SFV Status</div>
                 <div style={{
@@ -11984,7 +20055,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             )}
 
             {/* HOPE Items for current section */}
-            {!isOngoing && sidebarConfig?.hope?.length > 0 && (
+            {isQualifyingHopeTimepoint && sidebarConfig?.hope?.length > 0 && (
               <div style={{ marginBottom: 16 }}>
                 <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 8 }}>HOPE Items</div>
                 {sidebarConfig.hope.map((code) => (
@@ -12434,6 +20505,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         COLORS={COLORS}
       />
       </div>
+    </QualifyingHopeTimepointContext.Provider>
     </AssessmentModeContext.Provider>
   );
 }

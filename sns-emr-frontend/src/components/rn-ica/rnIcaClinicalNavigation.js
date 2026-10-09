@@ -37,7 +37,23 @@ const EXPECTED_MODULE_KEYS = [
   "admissionsOrder", "ordersHub", "referrals", "finalization",
 ];
 
-export function validateRnIcaClinicalNavigation(routes, availableFormSections = [], isOngoingAssessment = false) {
+// Single source of truth for which module keys an Update/HUV1/HUV2 visit
+// hides from navigation (issue #166 fix): previously RNICA.jsx defined its
+// own private copy of this set for the *actual* route filter while this
+// validator independently computed its *expected* route list, and the two
+// were never required to agree. Both the real filter (RNICA.jsx) and this
+// validator now import the same set, so they cannot drift apart again.
+// "sfv" is additionally dropped for ANY ongoing/recert visit (handled
+// separately below via `isOngoingAssessment`, since SFV only applies to
+// Recert/Update as a group -- not uniquely to Update/HUV).
+export const UPDATE_HIDDEN_ROUTE_KEYS = new Set(["admissionsOrder", "sfv"]);
+
+export function validateRnIcaClinicalNavigation(
+  routes,
+  availableFormSections = [],
+  isOngoingAssessment = false,
+  isUpdateAssessment = false,
+) {
   const errors = [];
   // SFV (Symptom Follow-Up Visit) only applies to the one-time RN Initial
   // Comprehensive Assessment -- ongoing/recert visits never include it.
@@ -45,9 +61,18 @@ export function validateRnIcaClinicalNavigation(routes, availableFormSections = 
   // routes.length): both modes can independently produce a 29- or
   // 30-route list depending on other future module changes, and a
   // route-count heuristic silently mismatches the actual mode.
-  const expectedKeys = isOngoingAssessment
+  //
+  // Update/HUV1/HUV2 visits (a strict subset of "ongoing") additionally
+  // hide "admissionsOrder" (see RNICA.jsx's `hideAdmissionsOrder`/
+  // `UPDATE_HIDDEN_ROUTE_KEYS` usage) -- Recert visits do not. This must
+  // also be an explicit caller-supplied flag for the same reason "sfv"'s
+  // removal is explicit, not inferred.
+  let expectedKeys = isOngoingAssessment
     ? EXPECTED_MODULE_KEYS.filter((key) => key !== "sfv")
     : EXPECTED_MODULE_KEYS;
+  if (isUpdateAssessment) {
+    expectedKeys = expectedKeys.filter((key) => key !== "admissionsOrder");
+  }
   const expected = expectedKeys.map((key) => RNICA_ASSESSMENT_MODULES.find((module) => module.key === key));
   const ids = new Set();
   const availableSections = new Set(availableFormSections);

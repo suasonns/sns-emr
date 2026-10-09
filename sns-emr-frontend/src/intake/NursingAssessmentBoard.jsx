@@ -8,6 +8,96 @@ import HopeReport from "./HopeReport";
 import { useRnIcaCommandWorkspace } from "../features/rnIcaCommandWorkspace";
 import "./NursingAssessmentBoard.css";
 
+// R3 (Owner Directive, "RNICA Update/HUV Creation Workflow", clarified by
+// "OWNER CLARIFICATION — PRIMARY RULE: the trigger for an Update Assessment
+// is clinical need, not calendar day"): the reasons below describe *why a
+// comprehensive reassessment and Plan of Care review is clinically
+// indicated right now* -- none of them reference a HOPE/HUV calendar
+// window, because HOPE/HUV eligibility is an outcome the existing backend
+// evaluates afterward, never the reason an RN starts the reassessment.
+export const CHANGE_OF_CONDITION_REASONS = [
+  { value: "NEW_SYMPTOM_OR_FINDING", label: "New symptom or finding" },
+  { value: "WORSENING_SYMPTOM_OR_FINDING", label: "Worsening symptom or finding" },
+  { value: "SEVERE_SYMPTOM_CONTINUED_MANAGEMENT", label: "Existing severe symptom requiring continued management" },
+  { value: "INTERVENTION_INEFFECTIVE", label: "Current intervention appears ineffective" },
+  { value: "FUNCTIONAL_STATUS_CHANGE", label: "Change in functional status" },
+  { value: "COGNITION_BEHAVIOR_CHANGE", label: "Change in cognition or behavior" },
+  { value: "INTAKE_HYDRATION_ELIMINATION_CHANGE", label: "Change in intake, hydration, or elimination" },
+  { value: "SKIN_WOUND_CHANGE", label: "Change in skin or wound status" },
+  { value: "HOSPITAL_ER_TRANSITION", label: "Hospital or emergency-care transition" },
+  { value: "POC_REVIEW_NEEDED", label: "POC review needed before scheduled review" },
+  { value: "OTHER", label: "Other" },
+];
+
+// Single, shared reason-label resolver (R3 Command Workspace parity
+// repair, Owner Directive): both RNICA.jsx's classic banner and the
+// Command Workspace's UpdateAssessmentContextBanner read
+// `changeOfConditionContext.reasonLabel`, which is always produced here,
+// never recomputed per-view.
+export function reasonLabelFor(reasonCode) {
+  return CHANGE_OF_CONDITION_REASONS.find((r) => r.value === reasonCode)?.label || reasonCode;
+}
+
+function pendingNewUpdateStorageKey(patientId) {
+  return `sns.rnica.pendingNewUpdateAssessment.${patientId}`;
+}
+
+// Single, shared staging function used by BOTH entry points (the history
+// panel's "New Update Assessment" button in this file, and the "Complete
+// Update Assessment" action in VisitNotes.jsx). VisitNotes.jsx and this
+// board are mounted as sibling tabs with no shared parent state available
+// (PatientChart.jsx is not an authorized file for this change), so a
+// sessionStorage handoff -- rather than a shared in-memory closure -- is
+// the mechanism both entry points funnel through. This function owns all
+// validation and the context shape; beginNewUpdateAssessment below is the
+// single place that actually applies it to the RNICA workspace.
+export function stageNewUpdateAssessmentRequest(patientId, {
+  reasonCode,
+  reasonDetail = "",
+  source = "DIRECT_HISTORY_ACTION",
+  sourceVisitType = null,
+  originatingVisitId = null,
+  originatingVisitDate = null,
+} = {}) {
+  if (!patientId) throw new Error("A patient is required to begin a new Update Assessment.");
+  if (!reasonCode) throw new Error("Select a reason before starting the Update Assessment.");
+  if (reasonCode === "OTHER" && !String(reasonDetail || "").trim()) {
+    throw new Error('Enter a reason detail when "Other" is selected.');
+  }
+  const currentUser = getCurrentUser();
+  const context = {
+    source,
+    reasonCode,
+    reasonLabel: reasonLabelFor(reasonCode),
+    reasonDetail: String(reasonDetail || "").trim() || null,
+    sourceVisitType,
+    originatingVisitId,
+    originatingVisitDate,
+    initiatedBy: currentUser?.id || currentUser?.full_name || currentUser?.name || null,
+    initiatedAt: new Date().toISOString(),
+  };
+  try {
+    sessionStorage.setItem(pendingNewUpdateStorageKey(patientId), JSON.stringify(context));
+  } catch (err) {
+    console.error("Unable to stage new Update Assessment request:", err);
+  }
+  return context;
+}
+
+export function consumeStagedNewUpdateAssessmentRequest(patientId) {
+  if (!patientId) return null;
+  const key = pendingNewUpdateStorageKey(patientId);
+  try {
+    const raw = sessionStorage.getItem(key);
+    if (!raw) return null;
+    sessionStorage.removeItem(key);
+    return JSON.parse(raw);
+  } catch (err) {
+    console.error("Unable to read staged new Update Assessment request:", err);
+    return null;
+  }
+}
+
 const styles = {
   shell: { background: "#0F172A", paddingBottom: 16 },
   card: {
@@ -131,6 +221,17 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
   const [historyLoading, setHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState("");
   const [selectedAssessmentId, setSelectedAssessmentId] = useState(null);
+  const [historyReloadToken, setHistoryReloadToken] = useState(0);
+  // R3: when set, RNICA renders a brand-new blank Update Assessment draft
+  // instead of the patient's latest same-type record (the original
+  // "no path to create a new Update assessment" defect). Cleared the
+  // moment the draft receives its first persisted assessmentId.
+  const [pendingNewAssessment, setPendingNewAssessment] = useState(null);
+  const [rnicaInstanceKey, setRnicaInstanceKey] = useState(0);
+  const [showReasonPicker, setShowReasonPicker] = useState(false);
+  const [reasonCode, setReasonCode] = useState("");
+  const [reasonDetail, setReasonDetail] = useState("");
+  const [reasonError, setReasonError] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -209,7 +310,7 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
     return () => {
       mounted = false;
     };
-  }, [patientId]);
+  }, [patientId, historyReloadToken]);
 
   useEffect(() => {
     if (initialComplete && view === "report") {
@@ -249,9 +350,11 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
     () => historyRecords.find((item) => item.assessmentId === selectedAssessmentId) || null,
     [historyRecords, selectedAssessmentId]
   );
-  const activeMode = selectedRecord
-    ? (String(selectedRecord.assessmentType || "").toUpperCase() === "RNICA" ? "ica" : "ongoing")
-    : (initialComplete ? "ongoing" : "ica");
+  const activeMode = pendingNewAssessment
+    ? "ongoing"
+    : selectedRecord
+      ? (String(selectedRecord.assessmentType || "").toUpperCase() === "RNICA" ? "ica" : "ongoing")
+      : (initialComplete ? "ongoing" : "ica");
   const statusTone = (status) => {
     const normalized = String(status || "").toUpperCase();
     if (normalized === "LOCKED") return "green";
@@ -263,6 +366,64 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
     if (!externallySelectedAssessmentId) return;
     setSelectedAssessmentId(externallySelectedAssessmentId);
   }, [externallySelectedAssessmentId]);
+
+  // R3: begin a brand-new Update Assessment draft -- used by both the
+  // "New Update Assessment" button below and by a staged request handed
+  // off from VisitNotes.jsx (see consumeStagedNewUpdateAssessmentRequest).
+  // Opening a historical record (the existing "Open" action) is untouched
+  // and continues to just set selectedAssessmentId.
+  const beginNewUpdateAssessment = (context) => {
+    setSelectedAssessmentId(null);
+    setPendingNewAssessment(context);
+    setRnicaInstanceKey((k) => k + 1);
+  };
+
+  // Pick up a "Complete Update Assessment" request staged from the Visit
+  // Notes tab. VisitNotes.jsx and this board are sibling tabs with no
+  // shared parent state (PatientChart.jsx is out of scope for this
+  // change) and only one is mounted at a time, so this runs the moment an
+  // RN switches into the Nursing Assessment tab after staging a request.
+  useEffect(() => {
+    if (!patientId) return;
+    const staged = consumeStagedNewUpdateAssessmentRequest(patientId);
+    if (staged) beginNewUpdateAssessment(staged);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [patientId]);
+
+  const handleOpenHistoricalRecord = (assessmentId) => {
+    setPendingNewAssessment(null);
+    setSelectedAssessmentId(assessmentId);
+  };
+
+  const handleRequestNewUpdateAssessment = () => {
+    setReasonCode("");
+    setReasonDetail("");
+    setReasonError("");
+    setShowReasonPicker(true);
+  };
+
+  const handleConfirmNewUpdateAssessment = () => {
+    try {
+      const context = stageNewUpdateAssessmentRequest(patientId, {
+        reasonCode,
+        reasonDetail,
+        source: "DIRECT_HISTORY_ACTION",
+      });
+      beginNewUpdateAssessment(context);
+      setShowReasonPicker(false);
+      setReasonCode("");
+      setReasonDetail("");
+      setReasonError("");
+    } catch (err) {
+      setReasonError(err?.message || "Unable to start a new Update Assessment.");
+    }
+  };
+
+  const handleAssessmentCreated = (newAssessmentId) => {
+    setPendingNewAssessment(null);
+    setSelectedAssessmentId(newAssessmentId);
+    setHistoryReloadToken((t) => t + 1);
+  };
 
   return (
     <div
@@ -325,7 +486,63 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
           ) : (
             <span style={styles.smallBadge("teal")}>{historyRecords.length} record{historyRecords.length === 1 ? "" : "s"}</span>
           )}
+          {initialComplete ? (
+            <button
+              type="button"
+              style={workspacePilot ? undefined : styles.secondaryButton}
+              onClick={handleRequestNewUpdateAssessment}
+              title="Start a brand-new Update Assessment draft. Existing records are preserved and remain viewable/editable as before."
+            >
+              New Update Assessment
+            </button>
+          ) : null}
         </div>
+        {showReasonPicker && (
+          <div style={{ ...styles.card, display: "block", marginBottom: 12 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 8 }}>New Update Assessment — Change of Condition</div>
+            <div style={{ fontSize: 12.5, color: "#94A3B8", marginBottom: 10 }}>
+              Does the patient have a new condition, worsening condition, severe symptom requiring continued management,
+              or another clinical change that may require review of the Plan of Care before the next scheduled review?
+            </div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
+              {CHANGE_OF_CONDITION_REASONS.map((reason) => (
+                <button
+                  key={reason.value}
+                  type="button"
+                  onClick={() => setReasonCode(reason.value)}
+                  style={{
+                    padding: "6px 12px",
+                    borderRadius: 999,
+                    border: reasonCode === reason.value ? "1px solid #10B7A2" : "1px solid #1F2937",
+                    background: reasonCode === reason.value ? "rgba(16, 183, 162, 0.16)" : "transparent",
+                    color: reasonCode === reason.value ? "#5EEAD4" : "#E2E8F0",
+                    fontSize: 12, fontWeight: 600, cursor: "pointer",
+                  }}
+                >
+                  {reason.label}
+                </button>
+              ))}
+            </div>
+            {reasonCode === "OTHER" && (
+              <input
+                type="text"
+                value={reasonDetail}
+                onChange={(e) => setReasonDetail(e.target.value)}
+                placeholder="Describe the reason"
+                style={{ width: "100%", padding: "8px 10px", borderRadius: 8, border: "1px solid #1F2937", background: "#0F172A", color: "#E2E8F0", marginBottom: 10 }}
+              />
+            )}
+            {reasonError && <div style={{ color: "#FCA5A5", fontSize: 12, marginBottom: 10 }}>{reasonError}</div>}
+            <div style={{ display: "flex", gap: 8 }}>
+              <button type="button" style={styles.primaryButton} onClick={handleConfirmNewUpdateAssessment}>
+                Start Update Assessment
+              </button>
+              <button type="button" style={styles.secondaryButton} onClick={() => setShowReasonPicker(false)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
         {historyLoading ? (
           <div className={workspacePilot ? "nursing-assessment-board__history-loading" : undefined} style={workspacePilot ? undefined : { fontSize: 13, color: "#94A3B8" }}>Loading nursing history…</div>
         ) : historyError ? (
@@ -366,11 +583,11 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
                       <td style={workspacePilot ? undefined : styles.historyTd}>{formatHistoryDate(record.visitDate || record.createdAt)}</td>
                       <td style={workspacePilot ? undefined : styles.historyTd}>
                         {workspacePilot ? (
-                          <button type="button" className="nursing-assessment-board__history-open-btn" onClick={() => setSelectedAssessmentId(record.assessmentId)}>
+                          <button type="button" className="nursing-assessment-board__history-open-btn" onClick={() => handleOpenHistoricalRecord(record.assessmentId)}>
                             Open
                           </button>
                         ) : (
-                          <button type="button" style={styles.secondaryButton} onClick={() => setSelectedAssessmentId(record.assessmentId)}>
+                          <button type="button" style={styles.secondaryButton} onClick={() => handleOpenHistoricalRecord(record.assessmentId)}>
                             Open
                           </button>
                         )}
@@ -397,13 +614,18 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
       ) : (
         <div style={{ width: "100%", minWidth: 0, overflowX: "hidden" }}>
           <RNICA
+            key={pendingNewAssessment ? `new-update-${rnicaInstanceKey}` : (selectedRecord?.assessmentId || "none")}
             patientId={patientId}
-            assessmentId={selectedRecord?.assessmentId}
+            assessmentId={pendingNewAssessment ? undefined : selectedRecord?.assessmentId}
             mode={activeMode}
             onFormDataChange={setReportFormData}
             workspacePilot={workspacePilot}
             onExitWorkspacePilot={exitWorkspacePilot}
             onNavigateToSection={onNavigateToSection}
+            forceNewDraft={!!pendingNewAssessment}
+            initialAssessmentType={pendingNewAssessment ? "update" : undefined}
+            changeOfConditionContext={pendingNewAssessment}
+            onAssessmentCreated={handleAssessmentCreated}
           />
         </div>
       )}

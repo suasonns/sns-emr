@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 import { CssBaseline, ThemeProvider, createTheme } from "@mui/material";
 import App from "./App";
 import { ThemeModeProvider } from "./theme/theme";
+import "./theme/sns-typography.css";
 import { registerSW } from "virtual:pwa-register";
 
 // Registers the production service worker so the app shell (not any

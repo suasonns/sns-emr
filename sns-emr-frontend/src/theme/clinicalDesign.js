@@ -214,12 +214,19 @@ export function getRnicaStyles(COLORS) {
       boxSizing: "border-box",
       boxShadow: "inset 0 1px 3px rgba(15, 23, 42, 0.03)",
     },
-    radioGroup: { display: "flex", gap: 8, flexWrap: "wrap" },
+    radioGroup: { display: "flex", flexDirection: "row", gap: "3px 10px", flexWrap: "wrap" },
     radioLabel: { display: "flex", alignItems: "center", gap: 4, fontSize: 11.5, cursor: "pointer", color: COLORS.dark },
     checkboxGroup: { display: "flex", flexDirection: "row", flexWrap: "wrap", gap: "3px 10px" },
     checkboxLabel: { display: "flex", alignItems: "center", gap: 5, fontSize: 11.5, cursor: "pointer", color: COLORS.dark },
     hopeTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.hopeTagBg, color: COLORS.hope, letterSpacing: "0.03em", textTransform: "uppercase" },
     sfvTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.sfvTagBg, color: COLORS.sfv, letterSpacing: "0.03em", textTransform: "uppercase" },
+    // OWNER DIRECTIVE (2026-10-29) "GI SFV CMS Compliance Correction" --
+    // "STATIC UI LABEL": the per-field static tag ("this symptom
+    // participates in HOPE SFV rules") must stay visually secondary and
+    // must NOT use the red/alert treatment, since it does not mean an SFV
+    // has been activated -- only the active-state banner (rendered
+    // separately, see sfvStatus.required) earns that visual weight.
+    sfvNeutralTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 700, background: COLORS.panelBg, color: COLORS.gray, letterSpacing: "0.03em", textTransform: "uppercase", border: `1px solid ${COLORS.border}`, cursor: "help" },
     cmsTag: { display: "inline-block", padding: "2px 8px", borderRadius: 999, fontSize: 10, fontWeight: 800, background: COLORS.cmsTagBg, color: COLORS.cms, letterSpacing: "0.03em", textTransform: "uppercase" },
     statusBadge: { display: "inline-flex", alignItems: "center", gap: 4, padding: "2px 8px", borderRadius: 4, fontSize: 10, fontWeight: 700, letterSpacing: "0.04em", textTransform: "uppercase" },
     btnPrimary: { padding: "8px 14px", background: `linear-gradient(135deg, ${COLORS.teal} 0%, ${COLORS.tealDark} 100%)`, color: COLORS.textOnTeal, border: "none", borderRadius: 8, fontSize: 13, fontWeight: 700, cursor: "pointer", boxShadow: "0 8px 18px rgba(13, 148, 136, 0.2)" },

@@ -7,8 +7,14 @@
   --cw-meta-size: var(--ccw-meta-size);
   --cw-section-size: var(--ccw-section-size);
   --cw-patient-size: var(--ccw-patient-size);
-  --cw-nav-size: var(--ccw-nav-size);
-  --cw-nav-meta-size: var(--ccw-nav-meta-size);
+  /* [OWNER REVIEW -- 2026-09-25] Formal SNS RNICA typography scale (see
+     ClinicalCommandWorkspace.css header comment for the 4-tier spec).
+     Nav rows are "Size 3: Normal Chart Content" (11px/400); the small
+     progress/count text is "Size 4: Metadata" (10px/400). Column width
+     is intentionally not widened further -- rely on the approved scale
+     plus label wrapping (not ellipsis) to avoid clipping. */
+  --cw-nav-size: 11px;
+  --cw-nav-meta-size: 10px;
   --cw-button-size: var(--ccw-button-size);
   --cw-control-height: var(--ccw-control-height);
   min-height: 100%;
@@ -21,12 +27,12 @@
 }
 
 .rnica-command-patientbar {
-  min-height: 56px;
+  min-height: 44px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-  padding: 0.55rem 1rem;
+  padding: 0.4rem 0.9rem;
   border-bottom: 1px solid var(--sns-border);
   background: var(--sns-card);
 }
@@ -50,8 +56,8 @@
 }
 .rnica-command button:hover { border-color: var(--sns-teal); }
 .rnica-command button:disabled { cursor: not-allowed; opacity: 0.55; }
-.rnica-command-eyebrow { color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; }
-.rnica-command-badge { border-radius: 999px; padding: 0.25rem 0.5rem; font-size: var(--cw-meta-size); font-weight: 800; text-transform: uppercase; }
+.rnica-command-eyebrow { color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 400; letter-spacing: 0.08em; text-transform: uppercase; }
+.rnica-command-badge { border-radius: 999px; padding: 0.25rem 0.5rem; font-size: var(--cw-meta-size); font-weight: 400; text-transform: uppercase; }
 .rnica-command-badge.is-active { background: var(--sns-cardSoft); color: var(--sns-orange); }
 .rnica-command-badge.is-complete { background: var(--sns-cardSoft); color: var(--sns-green); }
 
@@ -67,10 +73,64 @@
 .rnica-command-prep span { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; }
 .rnica-command-prep strong { margin-top: 0.15rem; }
 
-.rnica-command-layout { display: grid; grid-template-columns: 220px minmax(30rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
-.rnica-command-nav, .rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
-.rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 720px; }
-.rnica-command-nav { padding: var(--cw-pad); border-right: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
+/* RNICA Workspace toolbar (owner directive FR-002) -- global, above the
+   context bar, so it's available regardless of active screen. */
+.rnica-command-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  padding: 0.4rem 0.9rem;
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-bgAlt);
+}
+.rnica-command-toolbar__btn.is-active { border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); }
+
+/* Compact "Jump To" shortcut (owner directive 2026-09-26) -- replaces the
+   removed Bedside Quick Access / Assessment Modules panel. RNICA Workflow
+   Navigation (left navigator) remains the single source of navigation;
+   this is a secondary, space-neutral shortcut in the toolbar row. */
+.rnica-command-toolbar__jump { display: flex; align-items: center; gap: 0.4rem; margin-left: auto; font-size: var(--cw-meta-size); color: var(--sns-muted); }
+.rnica-command-toolbar__jump select {
+  min-height: var(--cw-control-height);
+  padding: 0.3rem 0.5rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font-size: var(--cw-button-size);
+  max-width: 14rem;
+}
+
+/* Voice Documentation drawer -- shown only while the toolbar toggle is
+   active (FR-005: Visit Recording is no longer a permanent card). */
+.rnica-command-voice-drawer { margin-bottom: var(--cw-gap, 1rem); }
+
+/* Collapsible rail card headings (Validation drawer, FR-011) -- reset
+   button chrome so the toggle reads like the existing static heading. */
+.rnica-command-card__heading--toggle {
+  width: 100%;
+  min-height: unset;
+  padding: 0;
+  border: none;
+  background: none;
+  font: inherit;
+  color: inherit;
+}
+.rnica-command-card__heading--toggle h2 { margin: 0; }
+
+/* [OWNER DIRECTIVE -- 2026-09-26, reversed 2026-09-26] Restored
+   RnicaWorkflowRail (the "RNICA WORKFLOW" nav) as this layout's workflow
+   navigator -- owner correction: "THIS NAVBAR SHOULD BE WORKING FOR ALL
+   NOT FOR JUST THE FIRST 3 TABS." The numbered .rnica-command-nav column
+   that used to live here was a bespoke duplicate and stays removed, but
+   RnicaWorkflowRail (already used by Patient Story/HOPE Administrative
+   Review/Evidence & Intake/Pain & Symptom Burden) is now rendered here
+   too, so every RNICA screen shares the exact same nav component/state.
+   The "Jump to" toolbar dropdown remains as a secondary shortcut. */
+.rnica-command-layout { display: grid; grid-template-columns: 270px minmax(28rem, 1fr) minmax(17rem, 21rem); min-width: 0; }
+.rnica-command-detail, .rnica-command-rail { min-width: 0; overflow: auto; scrollbar-gutter: stable; }
+.rnica-command-detail, .rnica-command-rail { max-height: 720px; }
 .rnica-command-detail { padding: var(--cw-pad); }
 .rnica-command-rail { padding: var(--cw-pad); border-left: 1px solid var(--sns-border); background: var(--sns-bgAlt); }
 .rnica-command .visit-recorder-card { margin-bottom: var(--cw-gap) !important; border-color: var(--sns-border) !important; border-radius: 8px !important; background: var(--sns-card); }
@@ -90,42 +150,12 @@
 .rnica-command .visit-recorder-card__stop { border-color: var(--sns-red) !important; background: var(--sns-red) !important; color: var(--sns-bg) !important; }
 .rnica-command .visit-recorder-card button { min-height: var(--cw-control-height); padding: 0.35rem 0.6rem !important; font-size: var(--cw-body-size) !important; }
 
-.rnica-command-search span { display: block; margin-bottom: 0.25rem; color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 700; }
-.rnica-command-search input { width: 100%; min-height: var(--cw-control-height); padding: 0.4rem 0.55rem; border: 1px solid var(--sns-border); border-radius: 0.45rem; background: var(--sns-card); color: var(--sns-white); font-size: var(--cw-input-size); }
-.rnica-command-density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0.6rem 0; }
-.rnica-command-density button { min-height: var(--cw-control-height); padding: 0.25rem; font-size: var(--cw-nav-size); }
-.rnica-command-density button[aria-pressed="true"] { border-color: var(--sns-teal); color: var(--sns-teal); }
-.rnica-command-matrix { display: flex; flex-direction: column; gap: 0.3rem; }
-.rnica-command-matrix > button { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.5rem; width: 100%; min-height: max(38px, var(--cw-control-height)); text-align: left; background: var(--sns-card); font-size: var(--cw-nav-size); }
-.rnica-command-matrix > button.is-active { border-color: var(--sns-teal); box-shadow: inset 0.22rem 0 var(--sns-teal); }
-.rnica-command-matrix__module { display: flex; min-width: 0; align-items: center; gap: 0.35rem; }
-.rnica-command-matrix__title { min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rnica-command-matrix__regulator { flex: 0 0 auto; color: var(--sns-teal); font-size: var(--cw-meta-size); font-weight: 800; }
-.rnica-command-matrix__signals { display: grid; grid-template-columns: repeat(4, 2.2rem); gap: 0.15rem; color: var(--sns-muted); font-size: var(--cw-nav-meta-size); text-align: center; }
-.rnica-command-matrix__signals span:last-child { color: var(--sns-orange); font-weight: 800; }
-
-.rnica-command-screens { display: flex; flex-direction: column; gap: 0.5rem; }
-.rnica-command-screen-group { display: flex; flex-direction: column; gap: 0.3rem; }
-.rnica-command-screen-group__header {
-  display: flex; align-items: center; gap: 0.4rem; width: 100%;
-  min-height: max(34px, var(--cw-control-height)); text-align: left;
-  background: var(--sns-bgAlt); font-weight: 800; font-size: var(--cw-nav-size);
-  text-transform: uppercase; letter-spacing: 0.03em;
-}
-.rnica-command-screen-group__header.is-active { border-color: var(--sns-teal); color: var(--sns-teal); }
-.rnica-command-screen-group__caret { flex: 0 0 auto; color: var(--sns-muted); }
-.rnica-command-screen-group__index { flex: 0 0 auto; color: var(--sns-muted); }
-.rnica-command-screen-group__label { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rnica-command-screen-group__progress { flex: 0 0 auto; color: var(--sns-muted); font-weight: 700; text-transform: none; }
-.rnica-command-screen-group--crosscutting .rnica-command-screen-group__header { background: var(--sns-cardSoft); }
-.rnica-command-screen-group .rnica-command-matrix { padding-left: 0.6rem; }
-
 .rnica-command-not-documented { color: var(--sns-muted); font-style: italic; font-weight: 400; }
 .rnica-command-story-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.5rem; margin: 0.6rem 0; }
 .rnica-command-story-card { display: flex; flex-direction: column; align-items: flex-start; gap: 0.2rem; padding: 0.5rem 0.6rem; text-align: left; }
-.rnica-command-story-card__label { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; font-weight: 800; }
+.rnica-command-story-card__label { color: var(--sns-muted); font-size: var(--cw-meta-size); text-transform: uppercase; font-weight: 400; }
 .rnica-command-story-section { margin-top: 0.8rem; }
-.rnica-command-story-section h3 { margin: 0 0 0.4rem; font-size: var(--cw-section-size); }
+.rnica-command-story-section h3 { margin: 0 0 0.4rem; font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-story-row { display: flex; flex-direction: column; align-items: flex-start; gap: 0.15rem; width: 100%; text-align: left; margin-bottom: 0.3rem; }
 .rnica-command-story-footnote { margin-top: 0.8rem; color: var(--sns-muted); font-size: var(--cw-meta-size); }
 
@@ -133,25 +163,16 @@
 .rnica-command-evidence-alert__list { list-style: none; margin: 0.4rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
 .rnica-command-evidence-alert__list button { width: 100%; text-align: left; padding: 0.4rem 0.6rem; }
 
-.rnica-command-sticky-note, .rnica-command-card, .rnica-command-active {
+.rnica-command-card, .rnica-command-active {
   border: 1px solid var(--sns-border);
   border-radius: 0.6rem;
   background: var(--sns-card);
 }
-.rnica-command-sticky-note { display: grid; grid-template-columns: minmax(12rem, 0.8fr) minmax(18rem, 1.2fr); gap: var(--cw-gap); padding: var(--cw-pad); margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-yellow); }
-.rnica-command-sticky-note h2, .rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); color: var(--sns-white); }
-.rnica-command-sticky-note p, .rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
+.rnica-command-card h2 { margin: 0.15rem 0; font-size: var(--cw-section-size); font-weight: 600; color: var(--sns-white); }
+.rnica-command-card p, .rnica-command-help { margin: 0.3rem 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
 .rnica-command-capture-groups { display: grid; gap: 0.55rem; }
 .rnica-command-capture-groups > div { display: grid; gap: 0.25rem; }
-.rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); letter-spacing: 0.02em; text-transform: uppercase; }
-.rnica-command-quick-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.35rem; }
-.rnica-command-quick-grid button { min-width: 0; min-height: 2.25rem; padding: 0.3rem; overflow-wrap: anywhere; text-align: left; }
-.rnica-command-quick-grid button span { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; }
-.rnica-command-quick-grid--context { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.rnica-command-quick-grid--additional { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.rnica-command-quick-toggle { grid-column: 2; justify-self: start; }
-.rnica-command-provenance { grid-column: 1 / -1; flex-wrap: wrap; color: var(--sns-muted); font-size: var(--cw-meta-size); }
-.rnica-command-provenance span::before { content: "•"; margin-right: 0.3rem; color: var(--sns-teal); }
+.rnica-command-capture-groups strong { color: var(--sns-muted); font-size: var(--cw-label-size); font-weight: 400; letter-spacing: 0.02em; text-transform: uppercase; }
 .rnica-command-active { padding: var(--cw-pad); overflow: hidden; }
 .rnica-command-active [style*="font-size"] { font-size: var(--cw-body-size) !important; }
 .rnica-command-active div[style*="padding"] { padding: var(--cw-pad) !important; }
@@ -194,19 +215,18 @@
 .rnica-pilot-diagnoses-grid > div:nth-child(n + 3) { grid-column: 1 / -1; }
 
 .rnica-diagnosis-ledger__summary { display: flex; align-items: center; justify-content: space-between; gap: 1rem; margin-bottom: 0.5rem; }
-.rnica-diagnosis-ledger__summary p { margin: 0; color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.35; }
+.rnica-diagnosis-ledger__heading { display: inline-flex; align-items: center; gap: 0.35rem; color: var(--sns-muted); font-size: var(--rnica-h3-size); font-weight: var(--rnica-h3-weight); text-transform: uppercase; letter-spacing: 0.03em; }
 .rnica-diagnosis-ledger__summary strong { flex: 0 0 auto; color: var(--sns-teal); }
 .rnica-diagnosis-ledger__empty { padding: 0.7rem; border: 1px dashed var(--sns-border); border-radius: 0.4rem; color: var(--sns-muted); }
-.rnica-diagnosis-ledger__table { border: 1px solid var(--sns-border); border-radius: 0.45rem; overflow: hidden; }
-.rnica-diagnosis-ledger__header, .rnica-diagnosis-ledger__row { display: grid; grid-template-columns: minmax(7rem, 0.7fr) minmax(14rem, 2fr) minmax(9rem, 0.8fr) minmax(5.5rem, auto); align-items: center; gap: 0.45rem; padding: 0 0.5rem; }
-.rnica-diagnosis-ledger__header { min-height: 2rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; letter-spacing: 0.04em; text-transform: uppercase; }
-.rnica-diagnosis-ledger__row { min-height: 2.75rem; border-top: 1px solid var(--sns-border); }
-.rnica-diagnosis-ledger__row input[type="text"], .rnica-diagnosis-ledger__row input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
-.rnica-diagnosis-ledger__related { display: flex; align-items: center; gap: 0.4rem; min-height: 2.5rem; font-weight: 700; white-space: nowrap; }
-.rnica-diagnosis-ledger__related input { width: 1.15rem; height: 1.15rem; }
-.rnica-diagnosis-ledger__remove { min-height: 2.5rem !important; padding: 0.3rem 0.55rem !important; color: var(--sns-red) !important; }
+.rnica-diagnosis-cards { display: flex; flex-direction: column; gap: 0.4rem; }
+.rnica-diagnosis-card { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; padding: 0.5rem 0.6rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
+.rnica-diagnosis-card__search { flex: 1 1 14rem; min-width: 0; }
+.rnica-diagnosis-card__search input[type="text"], .rnica-diagnosis-card__search input:not([type]) { width: 100%; min-height: 2.25rem; padding: 0.35rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); }
+.rnica-diagnosis-card__related { display: flex; align-items: center; gap: 0.35rem; flex: 0 0 auto; white-space: nowrap; }
+.rnica-diagnosis-card__remove { flex: 0 0 auto; display: inline-flex; align-items: center; justify-content: center; width: 1.6rem; height: 1.6rem; border-radius: 999px; border: 1px solid var(--sns-border); background: transparent; color: var(--sns-red); font-size: 1rem; line-height: 1; }
+.rnica-diagnosis-card__remove:hover { border-color: var(--sns-red); background: color-mix(in srgb, var(--sns-red) 12%, transparent); }
 .rnica-diagnosis-ledger__actions { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; margin-top: 0.55rem; }
-.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
+.rnica-diagnosis-ledger__actions button:last-child { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
 .rnica-lcd-summary__counts { display: flex; gap: 0.45rem; flex-wrap: wrap; margin-top: 0.45rem; }
 .rnica-lcd-summary__counts span { padding: 0.25rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 999px; background: var(--sns-card); color: var(--sns-muted); }
 .rnica-lcd-summary__counts strong { color: var(--sns-white); }
@@ -214,20 +234,79 @@
 .rnica-lcd-group.needs-review { border-left: 0.25rem solid var(--sns-orange) !important; }
 .rnica-lcd-group.is-satisfied { border-left: 0.25rem solid var(--sns-green) !important; }
 .rnica-lcd-group__toggle { width: 100%; min-height: 2.75rem !important; display: flex; align-items: center; justify-content: space-between; gap: 0.6rem; padding: 0.4rem 0.65rem !important; border: 0 !important; border-radius: 0 !important; background: var(--sns-cardSoft) !important; text-align: left; }
-.rnica-lcd-group__toggle > span:first-child { font-weight: 800; }
+.rnica-lcd-group__toggle > span:first-child { font-weight: 500; }
 .rnica-lcd-group__count { color: var(--sns-muted); font-size: var(--cw-meta-size); white-space: nowrap; }
 .rnica-lcd-criteria { gap: 0 !important; }
 .rnica-lcd-criterion { min-height: 2.75rem; padding: 0.4rem 0.6rem !important; border: 0 !important; border-top: 1px solid var(--sns-border) !important; border-radius: 0 !important; background: var(--sns-card) !important; }
 .rnica-lcd-criterion > div:first-child > div:last-child { color: var(--sns-muted) !important; font-size: var(--cw-meta-size) !important; }
 .rnica-lcd-criterion button { min-height: 2.35rem; }
 .rnica-comorbidity-guidance { padding: 0.65rem !important; margin-bottom: 0.65rem !important; }
-.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.55rem; }
-.rnica-comorbidity-group { min-width: 0; margin: 0 !important; padding: 0.55rem; border: 1px solid var(--sns-border); border-radius: 0.45rem; background: var(--sns-cardSoft); }
-.rnica-comorbidity-option { min-height: 2.5rem; padding: 0.25rem 0; border-top: 1px solid var(--sns-border); }
-.rnica-comorbidity-option:first-child { border-top: 0; }
+/* [OWNER DIRECTIVE -- 2026-10-03] Chip/card-based comorbidity selection,
+   replacing the checkbox-driven grid above with the same chip visual
+   language as Pain Character / Neuropathic Characteristics / Aggravating
+   / Relieving Factors (RNICA_CHIP_CLASS == ui/toggle-group.tsx's
+   ToggleGroupItem recipe). Typography reduced to 4 levels: group label,
+   condition name (chip), helper/note text, plus the guidance banner
+   above. HOPE mappings/IDs/logic/reporting/exports are unchanged --
+   presentation only. */
+.rnica-comorbidity-selected { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4rem 0.5rem; padding: 0.5rem 0.65rem; margin-bottom: 0.65rem; border-radius: 0.4rem; background: var(--sns-cardSoft); }
+.rnica-comorbidity-selected__label { font-size: var(--rnica-h3-size); font-weight: var(--rnica-h3-weight); color: var(--sns-muted); text-transform: uppercase; letter-spacing: 0.03em; flex: 0 0 auto; }
+.rnica-comorbidity-selected__empty { font-size: var(--rnica-helper-size); color: var(--sns-muted); font-style: italic; }
+.rnica-comorbidity-selected__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.rnica-comorbidity-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); column-gap: 1.1rem; row-gap: 0.9rem; align-items: start; }
+.rnica-comorbidity-group { min-width: 0; margin: 0 !important; padding: 0 !important; background: none; border-radius: 0; }
+.rnica-comorbidity-group__heading { font-size: var(--rnica-h3-size); font-weight: var(--rnica-h3-weight); color: var(--sns-muted); text-transform: uppercase; letter-spacing: 0.03em; padding-bottom: 0.25rem !important; margin-bottom: 0.4rem; border-bottom: 1px solid var(--sns-border); }
+.rnica-comorbidity-group__chips { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.rnica-comorbidity-group__note { margin-top: 0.3rem; font-size: var(--rnica-helper-size); font-weight: var(--rnica-helper-weight); color: var(--sns-muted); font-style: italic; }
+.rnica-comorbidity-chip__detected { margin-left: 2px; color: var(--sns-teal); font-size: var(--rnica-body-size); line-height: 1; }
+
+/* Contributing Conditions (Disease & LCD Workflow Specification, Phase 1)
+   -- reuses the diagnosis-card/chip visual language above; adds per-row
+   status/rationale/notice regions stacked below the search+source+remove
+   row so the card never forces horizontal scrolling on narrow sheets. */
+.rnica-contributing-card { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.55rem 0.65rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
+.rnica-contributing-card__row1 { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem; }
+.rnica-contributing-card__statuses { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+.rnica-contributing-card__rationale { width: 100%; min-height: 3.5rem; padding: 0.4rem 0.5rem; border: 1px solid var(--sns-border); border-radius: 0.35rem; background: var(--sns-bg); color: var(--sns-white); font: inherit; resize: vertical; }
+.rnica-contributing-card__error { padding: 0.35rem 0.55rem; border: 1px solid var(--sns-red); border-radius: 0.35rem; background: color-mix(in srgb, var(--sns-red) 12%, transparent); color: var(--sns-red); font-size: var(--rnica-helper-size); }
+.rnica-contributing-card__notice { padding: 0.35rem 0.55rem; border: 1px dashed var(--sns-orange); border-radius: 0.35rem; color: var(--sns-muted); font-size: var(--rnica-helper-size); }
+.rnica-contributing-card__incomplete { font-size: var(--rnica-helper-size); color: var(--sns-orange); font-style: italic; }
+.rnica-contributing-card__meta { font-size: var(--rnica-helper-size); color: var(--sns-muted); }
+
+/* [OWNER DIRECTIVE -- Functional Status Context-Aware Scale Visibility,
+   finalized layout revision] Compact diagnosis-aware Functional Status
+   layout: summary banner + group labels span the full grid width; PPS/
+   KPS/ECOG/FAST/NYHA render as compact 2-up shadcn/ui cards instead of one
+   full-width card per scale. Existing gating logic (showEcog/showFast/
+   showNyha) is unchanged -- this only restyles what's already shown/
+   hidden. Legacy (non-pilot) mode is untouched. */
+.rnica-performance-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--cw-gap); align-items: start; }
+.rnica-performance-grid > .rnica-functional-summary,
+.rnica-performance-grid > .rnica-performance-group-label,
+.rnica-performance-grid > .rnica-decline-accordion,
+.rnica-performance-grid #rnica-functional-decline-card,
+.rnica-performance-grid #rnica-adl-assessment-card { grid-column: 1 / -1; }
+.rnica-performance-group-label { padding-top: 0.4rem; font-size: var(--cw-meta-size, 0.75rem); font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--sns-muted); }
+.rnica-scale-card { padding-bottom: 0.6rem; }
+.rnica-scale-card__trigger { margin-bottom: 0.4rem; padding: 0.35rem 0.55rem; border-radius: 0.35rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); }
+.rnica-scale-card__interpretation { margin-bottom: 0.5rem; padding: 0.4rem 0.6rem; border-radius: 0.35rem; border-left: 3px solid var(--sns-hope, #059669); background: var(--sns-cardSoft); }
+.rnica-scale-card__interpretation-headline { color: var(--sns-text); font-weight: 700; font-size: var(--cw-meta-size, 0.82rem); line-height: 1.3; }
+.rnica-scale-card__interpretation-significance { margin-top: 0.15rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); line-height: 1.35; }
+.rnica-scale-card__progress { margin-bottom: 0.5rem; }
+.rnica-scale-card__row { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; align-items: end; }
+.rnica-scale-card__row .rnica-form-card { padding: 0 !important; }
+.rnica-functional-summary__grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 0.75rem; }
+.rnica-functional-summary__label { margin-bottom: 0.15rem; color: var(--sns-muted); font-size: var(--cw-meta-size, 0.75rem); text-transform: uppercase; letter-spacing: 0.04em; }
+.rnica-functional-summary__value { color: var(--sns-white); font-size: var(--cw-body-size); font-weight: 500; }
+.rnica-functional-summary__badges { display: flex; flex-wrap: wrap; gap: 0.35rem; }
+.rnica-adl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: 0.65rem; }
+.rnica-adl-grid__summary { margin-top: 0.6rem; padding: 0.5rem 0.65rem; border-radius: 0.4rem; background: var(--sns-cardSoft); color: var(--sns-muted); font-size: var(--cw-body-size); line-height: 1.4; }
+.rnica-adl-grid__summary strong { color: var(--sns-white); }
+.rnica-decline-accordion { padding: 0 0.85rem; border: 1px solid var(--sns-border); border-radius: 0.5rem; background: var(--sns-card); }
+.rnica-info-note { color: var(--sns-muted); font-size: var(--cw-meta-size, 0.78rem); font-style: italic; }
 
 .rnica-command-card { padding: var(--cw-pad); margin-bottom: var(--cw-gap); }
-.rnica-command-rail h2 { font-size: var(--cw-section-size); }
+.rnica-command-rail h2 { font-size: var(--cw-section-size); font-weight: 600; }
 .rnica-command-rail strong,
 .rnica-command-rail p,
 .rnica-command-rail button { font-size: var(--cw-body-size); }
@@ -239,27 +318,27 @@
 .rnica-command-card__heading { justify-content: space-between; margin-bottom: 0.45rem; }
 .rnica-command-card__heading > span { color: var(--sns-muted); }
 .rnica-command-check { display: flex; align-items: center; gap: 0.45rem; min-height: 2.5rem; }
-.rnica-command-state { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 800; text-transform: uppercase; }
+.rnica-command-state { color: var(--sns-muted); font-size: var(--cw-meta-size); font-weight: 400; text-transform: uppercase; }
 .rnica-command-state--recording { color: var(--sns-red); }
 .rnica-command-state--paused { color: var(--sns-orange); }
 .rnica-command-review, .rnica-command-signal, .rnica-command-requirement { display: flex; flex-direction: column; gap: 0.2rem; padding: 0.5rem; margin-top: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.4rem; background: var(--sns-cardSoft); }
 .rnica-command-review span, .rnica-command-signal span, .rnica-command-requirement span { color: var(--sns-muted); font-size: var(--cw-meta-size); line-height: 1.35; }
 .rnica-command-narrative { margin-bottom: var(--cw-gap); border-left: 0.3rem solid var(--sns-teal); }
-.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 800; }
-.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 800; }
+.rnica-command-narrative > button { border-color: var(--sns-teal); color: var(--sns-teal); font-weight: 500; }
+.rnica-command-final-shortcut { width: 100%; margin-bottom: var(--cw-gap); border-color: var(--sns-teal) !important; color: var(--sns-teal) !important; font-weight: 500; }
 .rnica-command-final-shortcut--desktop { position: sticky; top: 0; z-index: 2; }
-.rnica-command-final-shortcut--mobile { display: none; }
 .rnica-command-requirement { width: 100%; min-height: unset !important; text-align: left; }
 .rnica-command-requirement strong { color: var(--sns-red); }
 .rnica-command-requirement.is-warning strong { color: var(--sns-orange); }
 .rnica-command-save { position: sticky; bottom: 0; box-shadow: 0 -0.4rem 1.2rem var(--sns-shadow); }
 .rnica-command-save > div { display: flex; justify-content: space-between; margin-bottom: 0.55rem; }
 .rnica-command-save > div span { color: var(--sns-muted); }
-.rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 800; }
+.rnica-command-save > button { width: 100%; margin-top: 0.35rem; border-color: var(--sns-teal); background: var(--sns-teal); color: var(--sns-bg); font-weight: 500; }
 .rnica-command-save > button.is-secondary { background: var(--sns-cardSoft); color: var(--sns-white); }
 
 @media (max-width: 1100px) {
-  .rnica-command-layout { grid-template-columns: minmax(14rem, 18rem) minmax(28rem, 1fr); }
+  .rnica-command-layout { display: block; height: auto; }
+  .rnica-command-detail { max-height: none; }
   .rnica-command-rail { position: static; grid-column: 1 / -1; width: auto; max-height: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--cw-gap); border-top: 1px solid var(--sns-border); border-left: 0; box-shadow: none; }
   .rnica-command-rail > * { margin-bottom: 0; }
   .rnica-command-final-shortcut--desktop { grid-column: 1 / -1; position: static; }
@@ -272,31 +351,21 @@
   .rnica-command-prep { display: flex; overflow-x: auto; min-height: 4rem; }
   .rnica-command-prep > div { min-width: 12rem; }
   .rnica-command-layout { display: block; height: auto; }
-  .rnica-command-nav { position: sticky; top: 4.25rem; z-index: 25; padding: 0.45rem; border-right: 0; border-bottom: 1px solid var(--sns-border); overflow: visible; }
-  .rnica-command-density, .rnica-command-screens { display: none; }
-  .rnica-command-nav:focus-within .rnica-command-screens { display: flex; flex-direction: column; max-height: 420px; margin-top: 0.4rem; overflow-y: auto; }
-  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.6rem; overflow: visible; }
   .rnica-command-rail { position: static; width: auto; max-height: none; padding: 0.6rem; border-left: 0; box-shadow: none; }
-  .rnica-command-final-shortcut--mobile { display: block; margin: 0.4rem 0 0; }
-  .rnica-command-final-shortcut--desktop { display: none; }
-  .rnica-command-sticky-note { display: block; }
-  .rnica-command-quick-grid { grid-template-columns: repeat(2, 1fr); margin-top: 0.6rem; }
-  .rnica-command-quick-toggle { margin-top: 0.4rem; }
   .rnica-command-active { max-height: none; overflow: visible; }
   .rnica-command-stepnav { position: sticky; bottom: 0.3rem; z-index: 10; padding: 0.4rem; border: 1px solid var(--sns-border); border-radius: 0.6rem; background: var(--sns-card); }
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
   .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
-  .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(10rem, 1.5fr); padding: 0.4rem; }
-  .rnica-diagnosis-ledger__related, .rnica-diagnosis-ledger__row > div:last-child { min-height: 2.5rem; }
   .rnica-diagnosis-ledger__actions { align-items: stretch; flex-direction: column; }
+  .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+  .rnica-performance-grid { grid-template-columns: 1fr; }
 }
 
 @media (min-width: 701px) and (max-height: 800px) {
-  .rnica-command-patientbar { min-height: 52px; }
+  .rnica-command-patientbar { min-height: 40px; }
   .rnica-command-prep { min-height: 46px; }
-  .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { max-height: 620px; }
+  .rnica-command-detail, .rnica-command-rail { max-height: 620px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -305,8 +374,8 @@
 
 @container clinical-command-workspace (max-width: 1000px) {
   .rnica-command { height: auto; min-height: 100%; overflow: visible; }
-  .rnica-command-layout { grid-template-columns: 210px minmax(0, 1fr); height: auto; }
-  .rnica-command-nav, .rnica-command-detail, .rnica-command-rail { overflow: visible; }
+  .rnica-command-layout { display: block; height: auto; }
+  .rnica-command-detail, .rnica-command-rail { overflow: visible; }
   .rnica-command-rail { position: static; grid-column: 1 / -1; width: auto; max-height: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--cw-gap); border-top: 1px solid var(--sns-border); border-left: 0; box-shadow: none; }
   .rnica-command-rail > * { margin-bottom: 0; }
   .rnica-command-final-shortcut--desktop { grid-column: 1 / -1; position: static; }
@@ -317,33 +386,23 @@
   .rnica-command { height: auto; min-height: 100%; overflow: visible; }
   .rnica-command-prep { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .rnica-command-layout { display: block; height: auto; }
-  .rnica-command-nav { position: sticky; top: 0; z-index: 25; padding: 0.55rem; border-right: 0; border-bottom: 1px solid var(--sns-border); }
-  .rnica-command-density, .rnica-command-screens { display: none; }
-  .rnica-command-nav:focus-within .rnica-command-screens { display: flex; flex-direction: column; max-height: 420px; margin-top: 0.4rem; overflow-y: auto; }
-  .rnica-command-nav:focus-within .rnica-command-matrix__signals { display: none; }
   .rnica-command-detail { padding: 0.65rem; }
   .rnica-command-rail { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 0.65rem; }
-  .rnica-command-final-shortcut--mobile { display: block; margin-top: 0.4rem; }
-  .rnica-command-final-shortcut--desktop { display: none; }
   .rnica-pilot-diagnoses-grid { grid-template-columns: 1fr; }
   .rnica-pilot-diagnoses-grid > div { grid-column: 1 !important; }
   .rnica-lcd-criterion { grid-template-columns: minmax(0, 1fr) !important; }
   .rnica-lcd-criterion > div:last-child { min-width: 0 !important; }
   .rnica-comorbidity-grid { grid-template-columns: 1fr; }
+  .rnica-performance-grid { grid-template-columns: 1fr; }
 }
 
 @container clinical-command-workspace (max-width: 520px) {
   .rnica-command-patientbar { align-items: flex-start; }
-  .rnica-command-nav { position: static; top: auto; }
   .rnica-command-patientbar__identity > span:last-child, .rnica-command-patientbar__status > span:not(.rnica-command-badge) { display: none; }
   .rnica-command-prep { display: flex; overflow-x: auto; }
   .rnica-command-prep > div { min-width: 12rem; }
-  .rnica-command-sticky-note { display: block; }
-  .rnica-command-quick-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 0.6rem; }
   .rnica-command-rail { grid-template-columns: 1fr; }
   .rnica-lcd-group__toggle { align-items: flex-start; flex-direction: column; }
-  .rnica-diagnosis-ledger__header { display: none; }
-  .rnica-diagnosis-ledger__row { grid-template-columns: minmax(6rem, 0.7fr) minmax(0, 1.5fr); padding: 0.4rem; }
 }
 
 /* Standalone RNICA screen shell (Patient Story and future rebuilt
@@ -351,6 +410,25 @@
    entirely, not layered on top of it. Uses the same --sns-* tokens as the
    rest of the redesign so it is theme-aware (Light/Dark) automatically. */
 .rnica-screen {
+  /* Formal SNS RNICA typography scale, same --cw-* mapping/values used by
+     .rnica-command (generic fallback layout) -- kept as its own block
+     (rather than sharing the .rnica-command class) since this shell has
+     its own layout/overflow rules. Density is RN-selectable via the
+     RNICA Workflow rail's Compact/Comfortable/Large text controls,
+     added 2026-09-26 to fix the two nav bars not sharing a text-size
+     control. */
+  --cw-gap: 0.5rem;
+  --cw-pad: 0.625rem;
+  --cw-body-size: 11px;
+  --cw-input-size: 11px;
+  --cw-label-size: 10px;
+  --cw-meta-size: 10px;
+  --cw-section-size: 13px;
+  --cw-patient-size: 16px;
+  --cw-nav-size: 11px;
+  --cw-nav-meta-size: 10px;
+  --cw-button-size: 11px;
+  --cw-control-height: 34px;
   display: flex;
   flex-direction: column;
   min-height: 100%;
@@ -358,6 +436,55 @@
   background: var(--sns-bg);
   color: var(--sns-white);
 }
+
+.rnica-screen--comfortable {
+  --cw-gap: 0.75rem;
+  --cw-pad: 0.75rem;
+  --cw-body-size: 12.5px;
+  --cw-input-size: 12.5px;
+  --cw-label-size: 10.5px;
+  --cw-meta-size: 10px;
+  --cw-section-size: 15px;
+  --cw-nav-size: 12.5px;
+  --cw-nav-meta-size: 10px;
+  --cw-button-size: 12.5px;
+  --cw-control-height: 36px;
+}
+
+.rnica-screen--large {
+  --cw-gap: 0.625rem;
+  --cw-pad: 0.7rem;
+  --cw-body-size: 14px;
+  --cw-input-size: 14px;
+  --cw-label-size: 11.5px;
+  --cw-meta-size: 11px;
+  --cw-section-size: 16px;
+  --cw-patient-size: 19.5px;
+  --cw-nav-size: 14px;
+  --cw-nav-meta-size: 11px;
+  --cw-button-size: 14px;
+  --cw-control-height: 36px;
+}
+
+/* Base plain-<button> styling for the whole RnicaScreenShell scope --
+   mirrors .rnica-command button (generic fallback layout). Without this,
+   unclassed buttons ("Use classic view", the density controls, etc.) fall
+   back to the browser's default white button chrome, which is a white box
+   against the dark theme -- owner correction: never render a white
+   background in dark theme. More specific selectors below (e.g.
+   .rnica-screen__footer-actions button) still override as needed. */
+.rnica-screen button {
+  min-height: var(--cw-control-height);
+  padding: 0.35rem 0.6rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.45rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-white);
+  font-size: var(--cw-button-size);
+  cursor: pointer;
+}
+.rnica-screen button:hover { border-color: var(--sns-teal); }
+.rnica-screen button:disabled { cursor: not-allowed; opacity: 0.55; }
 
 .rnica-screen__bar {
   display: flex;
@@ -378,8 +505,34 @@
   flex-wrap: wrap;
 }
 
-.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); }
+.rnica-screen__identity strong { font-size: var(--cw-patient-size, 1rem); font-weight: 600; }
 .rnica-screen__identity > span:last-child { color: var(--sns-muted); }
+
+.rnica-screen__admission-facts {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0;
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--sns-muted);
+  row-gap: 0.15rem;
+}
+.rnica-screen__admission-facts > span {
+  padding: 0 0.55rem;
+  border-right: 1px solid var(--sns-border);
+  white-space: nowrap;
+}
+.rnica-screen__admission-facts > span:last-child { border-right: none; }
+.rnica-screen__admission-facts em {
+  font-style: normal;
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-size: 10px;
+  color: var(--sns-dim, var(--sns-muted));
+  margin-right: 0.3rem;
+}
 
 .rnica-screen__status {
   display: flex;
@@ -420,11 +573,22 @@
   min-height: 0;
 }
 
+/* [OWNER REVIEW -- 2026-09-25] "Does the outer navigation bar match the
+   RNICA navigation bar? Really?" -- this rail is the nav rendered for the
+   4 dedicated-shell screens (Patient Story, Evidence & Intake, HOPE
+   Administrative Review, Pain & Symptom Burden) and had NOT received the
+   chart-nav typography/footprint pass applied to `.rnica-command-matrix`
+   below -- it still used the pre-refinement 15.5rem width, 0.78rem/600
+   weight labels, and large (1.3rem) numbered circles. Brought in line:
+   same 176px width and ~11px/400-500 weight type as the outer chart nav
+   sidebar, smaller index circles, and a quieter, smaller status badge.
+   Color progress indicators (index circle color, status badge color)
+   are kept, only their size/weight is reduced. */
 .rnica-rail {
   display: flex;
   flex-direction: column;
-  flex: 0 0 15.5rem;
-  width: 15.5rem;
+  flex: 0 0 270px;
+  width: 270px;
   border-right: 1px solid var(--sns-border);
   background: var(--sns-bgNav);
 }
@@ -433,18 +597,27 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem 0.85rem 0.4rem;
-  font: 800 0.72rem Inter, sans-serif;
-  letter-spacing: 0.04em;
+  padding: 0.5rem 0.6rem 0.3rem;
+  font: 400 10px Inter, sans-serif;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
   color: var(--sns-muted);
 }
 
+/* Compact/Comfortable/Large-text density controls -- same shared density
+   state/persistence as .rnica-command-density (generic fallback layout),
+   added here so the RNICA Workflow rail (used by Patient Story/HOPE
+   Administrative Review/Evidence & Intake/Pain & Symptom Burden) is no
+   longer the one nav surface without a text-size control. */
+.rnica-rail__density { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.35rem; margin: 0 0 0.4rem; padding: 0 0.6rem; }
+.rnica-rail__density button { min-height: var(--cw-control-height, 34px); padding: 0.25rem; font-size: var(--cw-nav-size, 11px); }
+.rnica-rail__density button[aria-pressed="true"] { border-color: var(--sns-teal); color: var(--sns-teal); }
+
 .rnica-rail__progress-text { color: var(--sns-teal); }
 
 .rnica-rail__progress-track {
-  height: 0.3rem;
-  margin: 0 0.85rem 0.6rem;
+  height: 0.25rem;
+  margin: 0 0.6rem 0.45rem;
   border-radius: 999px;
   background: var(--sns-border);
   overflow: hidden;
@@ -459,13 +632,13 @@
 .rnica-rail__scroll {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 0 0.5rem 0.75rem;
+  padding: 0 0.4rem 0.5rem;
 }
 
 .rnica-rail__list {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 0.15rem;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -474,14 +647,14 @@
 .rnica-rail__item {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.4rem;
   width: 100%;
-  padding: 0.45rem 0.55rem;
+  padding: 0.22rem 0.4rem;
   border: 1px solid transparent;
-  border-radius: 0.5rem;
+  border-radius: 0.4rem;
   background: transparent;
   color: var(--sns-dim);
-  font: 600 0.78rem Inter, sans-serif;
+  font: 400 11px Inter, sans-serif;
   text-align: left;
   cursor: pointer;
 }
@@ -497,8 +670,9 @@
 .rnica-rail__item.is-active {
   border-color: var(--sns-borderSelected);
   border-left: 3px solid var(--sns-teal);
-  padding-left: calc(0.55rem - 2px);
+  padding-left: calc(0.4rem - 2px);
   color: var(--sns-white);
+  font-weight: 500;
   background: var(--sns-selectedSurface);
   box-shadow: 0 0 0 1px var(--sns-tealSoftBorder), 0 4px 12px var(--sns-shadow);
 }
@@ -508,12 +682,12 @@
   flex: 0 0 auto;
   align-items: center;
   justify-content: center;
-  width: 1.3rem;
-  height: 1.3rem;
+  width: 1rem;
+  height: 1rem;
   border-radius: 999px;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.65rem;
+  font-size: 10px;
 }
 
 /* ACTIVE: number circle = primary teal, number text = inverse text */
@@ -534,11 +708,18 @@
 .rnica-rail__item--attention:not(.is-active) { color: var(--sns-white); }
 .rnica-rail__item--caution:not(.is-active) { color: var(--sns-white); }
 
-.rnica-rail__label { flex: 1 1 auto; min-width: 0; }
+.rnica-rail__label { flex: 1 1 auto; min-width: 0; white-space: normal; word-break: break-word; line-height: 1.2; }
 
 .rnica-rail__status { flex: 0 0 auto; }
 
-.rnica-rail__status-badge { display: inline-flex; align-items: center; gap: 0.3rem; }
+.rnica-rail__status-badge {
+  display: inline-flex; align-items: center; gap: 0.2rem;
+  padding: 0.03rem 0.32rem !important;
+  font-size: 10px !important;
+  font-weight: 400 !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+}
 
 .rnica-rail__status-dot {
   display: inline-flex;
@@ -547,7 +728,7 @@
   width: 0.85rem;
   height: 0.85rem;
   border-radius: 999px;
-  font-size: 0.6rem;
+  font-size: 10px;
   line-height: 1;
 }
 .rnica-rail__status-dot--done { background: var(--sns-green); color: var(--sns-textInverse); }
@@ -591,7 +772,7 @@
   justify-content: space-between;
   padding: 0.85rem 1rem;
   border-bottom: 1px solid var(--sns-border);
-  font: 800 0.8rem Inter, sans-serif;
+  font: 600 13px Inter, sans-serif;
   color: var(--sns-white);
 }
 
@@ -611,7 +792,7 @@
 
 .rnica-rail-sheet .rnica-rail__item {
   padding: 0.6rem 0.65rem;
-  font-size: 0.85rem;
+  font-size: 11px;
 }
 
 .rnica-screen__subnav {
@@ -631,7 +812,7 @@
   border-radius: 0.4rem;
   background: var(--sns-card);
   color: var(--sns-muted);
-  font: 700 0.78rem Inter, sans-serif;
+  font: 500 11px Inter, sans-serif;
   cursor: pointer;
 }
 
@@ -651,7 +832,7 @@
   border-radius: 999px;
   background: var(--sns-red);
   color: #fff;
-  font-size: 0.65rem;
+  font-size: 10px;
 }
 
 .rnica-screen__stepnav {
@@ -678,7 +859,7 @@
   border-top: 1px solid var(--sns-border);
   background: var(--sns-card);
   color: var(--sns-muted);
-  font-size: 0.8rem;
+  font-size: 10px;
   position: sticky;
   bottom: 0;
 }
@@ -695,7 +876,7 @@
   border-radius: 0.45rem;
   background: var(--sns-teal);
   color: var(--sns-bg);
-  font: 800 0.8rem Inter, sans-serif;
+  font: 500 11px Inter, sans-serif;
   cursor: pointer;
 }
 
@@ -716,9 +897,1041 @@
 
 @media (max-width: 700px) {
   .rnica-screen__bar { flex-direction: column; align-items: flex-start; }
+  .rnica-screen__admission-facts { gap: 0.6rem; }
   .rnica-screen__status { width: 100%; justify-content: space-between; }
   .rnica-screen__content { padding: 0.65rem; }
   .rnica-screen__footer { flex-direction: column; align-items: stretch; gap: 0.5rem; }
   .rnica-screen__footer-actions { width: 100%; }
   .rnica-screen__footer-actions button { flex: 1 1 auto; }
+}
+
+/* ── Body Systems screen (compact accordion + Structured Findings) ───── */
+/* Owner directive: "PLEASE NEVER WASTE SPACE" -- 2-column layout keeps the
+   accordion and findings rail side-by-side on desktop instead of stacking
+   with empty gutters, and the accordion itself defaults to fully collapsed
+   (see bodySystemsAccordionItems in RNICA.jsx) so only the systems the RN
+   opens take up vertical space. */
+.rnica-bodysystems {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 18rem;
+  gap: 1rem;
+  align-items: start;
+}
+
+.rnica-bodysystems__main { min-width: 0; }
+
+.rnica-bodysystems__status {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.65rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+}
+
+.rnica-bodysystems__status-label {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-muted);
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__progress { flex: 1 1 auto; width: auto; }
+
+.rnica-bodysystems__status-count {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-teal);
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__accordion {
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+  padding: 0 0.75rem;
+}
+
+.rnica-bodysystems__item { border-bottom: 1px solid var(--sns-border); }
+.rnica-bodysystems__item:last-child { border-bottom: none; }
+
+.rnica-bodysystems__trigger-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rnica-bodysystems__content { padding-top: 0; }
+
+.rnica-bodysystems__rail { min-width: 0; }
+
+/* OWNER DIRECTIVE (2026-10-04) Density Optimization Pass item #9 --
+   "expand Structured Findings into a true reviewer workspace": findings
+   are grouped per body system (icon + label + count header) instead of
+   one flat, unattributed list, so a reviewer can scan which system each
+   line came from without reading every entry. Groups stack with a small
+   gap; Neurological renders first (see bodySystemsStructuredFindings
+   order in RNICA.jsx), matching its current design-standard status. */
+.rnica-bodysystems__findings-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.rnica-bodysystems__findings-group-header {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-bottom: 0.25rem;
+}
+
+.rnica-bodysystems__findings-group-label {
+  font: 700 11px Inter, sans-serif;
+  color: var(--sns-text);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.rnica-bodysystems__findings-group-count {
+  margin-left: auto;
+  font-size: 10px;
+}
+
+.rnica-bodysystems__findings-list {
+  margin: 0;
+  padding-left: 1.05rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: 11.5px;
+  color: var(--sns-text);
+}
+
+.rnica-bodysystems__findings-empty {
+  margin: 0;
+  font-size: 11px;
+  color: var(--sns-muted);
+}
+
+/* Owner directive 2026-09-26: "No structured findings documented yet"
+   must not occupy an entire side-panel card -- cap the empty state's
+   footprint; the card grows automatically once real findings exist. */
+.rnica-bodysystems__findings-empty { max-height: 80px; }
+
+/* GitHub Directive (2026-09-28) "Final Neurological Density and
+   Space-Utilization Plan" Section 4/32/41 -- collapse the rail to a
+   narrow strip when Structured Findings has nothing to show, and let the
+   central workspace reclaim that width instead of reserving a fixed
+   18rem column for an empty card. */
+.rnica-bodysystems--rail-collapsed { grid-template-columns: minmax(0, 1fr) 2.25rem; }
+
+.rnica-bodysystems__findings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.rnica-bodysystems__rail-toggle {
+  font: 600 11px Inter, sans-serif;
+  color: var(--sns-teal);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.15rem 0.35rem;
+  white-space: nowrap;
+}
+
+.rnica-bodysystems__rail-collapsed-toggle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0.3rem;
+  width: 2.25rem;
+  padding: 0.5rem 0.2rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.5rem;
+  background: var(--sns-card);
+  cursor: pointer;
+}
+
+.rnica-bodysystems__rail-collapsed-count {
+  font: 700 12px Inter, sans-serif;
+  color: var(--sns-teal);
+}
+
+.rnica-bodysystems__rail-collapsed-label {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  font: 600 10px Inter, sans-serif;
+  color: var(--sns-muted);
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+
+/* Body Systems architectural correction (owner directive, 2026-09-27):
+   supersedes the earlier "clinical review grid" of N separate bordered
+   sub-cards. Each of the 10 body systems is now ONE shadcn Card
+   (.rnica-bodysystem-workspace, applied to the Card root in RNICA.jsx)
+   containing bare inline groups (.rnica-bodysystem-workspace__group --
+   title row + fields only, no box/border) packed into a responsive
+   2-3 column grid so nothing is hidden behind a click and nothing is
+   fragmented into its own card shell. Widgets with their own
+   customRenderer (wound list, allergies, constipation auto-assess, ...)
+   also render `bare` inside this same box. */
+.rnica-bodysystem-workspace {
+  margin-bottom: 0;
+}
+
+/* Multi-column (masonry-style) flow instead of CSS Grid: a CSS Grid row's
+   height is set by its tallest cell, which left large empty gaps under
+   every shorter sub-section sharing that row (owner-reported "disorganized"
+   defect, 2026-09-26). `columns` flows each group down a column
+   independently of its neighbors' height, so short and tall groups pack
+   tightly with no dead space, while `break-inside: avoid` keeps a whole
+   group (title + its fields) from being split across two columns. */
+/* Multi-column (masonry-style) flow instead of CSS Grid: a CSS Grid row's
+   height is set by its tallest cell, which left large empty gaps under
+   every shorter sub-section sharing that row (owner-reported "disorganized"
+   defect, 2026-09-26). `columns` flows each group down a column
+   independently of its neighbors' height, so short and tall groups pack
+   tightly with no dead space, while `break-inside: avoid` keeps a whole
+   group (title + its fields) from being split across two columns.
+   The masonry now lives one level down, per BODY_SYSTEM_CATEGORY_ORDER
+   section (.rnica-bodysystem-group__cards) -- this top-level content
+   area is a stacked, fixed-order list of Summary + those named clinical
+   sections (Core Findings, Symptom Impact, ...), not raw cards, so it no
+   longer masonry-flows itself. */
+.rnica-bodysystem-workspace__content {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.rnica-bodysystem-workspace__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+/* GitHub Directive (2026-09-28) Critical Finding #3 -- visual hierarchy:
+   sections carrying real clinical/decline weight (Consciousness,
+   Orientation, Sleep/Responsiveness) get a stronger left accent + slightly
+   larger heading so the eye lands there first; routine/supporting
+   sections (Notes, low-priority sensory detail) recede instead of
+   competing equally. Modifier class only -- no layout/grid change. */
+.rnica-bodysystem-workspace__group--high {
+  padding-left: 10px;
+  border-left: 3px solid var(--sns-orange, #d97706);
+}
+.rnica-bodysystem-workspace__group--high > .rnica-form-card__title {
+  font-weight: 700;
+  font-size: calc(var(--cw-section-size, 1rem) * 1.05);
+}
+.rnica-bodysystem-workspace__group--medium {
+  padding-left: 8px;
+  border-left: 2px solid var(--sns-border);
+}
+.rnica-bodysystem-workspace__group--low {
+  opacity: 0.86;
+}
+.rnica-bodysystem-workspace__group--low > .rnica-form-card__title {
+  font-size: calc(var(--cw-meta-size, 0.78rem) + 1px);
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* GitHub Directive (2026-09-28) Critical Finding #4 -- reduce checkbox/
+   radio footprint and vertical/horizontal spacing within Body Systems
+   specifically (scoped to .rnica-bodysystem-workspace so already-approved
+   non-Body-Systems screens using the same shared FormRadioGroup/
+   FormCheckboxGroup components are unaffected). Targets the shadcn
+   Radix primitives' rendered size, not just the inline label styles. */
+/* Owner-reported regression fix (2026-10-04) "Neurological Assessment
+   appears to have regressed away from the approved Pain and Functional
+   Status design language" -- root cause: FormSegmented/FormPillGroup's
+   shared ToggleGroup (same chip component Pain and Functional Status use)
+   exposes role="radiogroup"/role="radio" for its single-select variant,
+   which these two rules were never meant to reach (they exist only to
+   shrink FormRadioGroup/FormTriState's real RadioGroupItem dot-rows and
+   FormCheckboxGroup's rows). `.rnica-chip-group`/`.rnica-chip-toggle`
+   (toggle-group.tsx) now exclude every chip row from both overrides, so
+   Neurological's chips render at full size/spacing again, identical to
+   Pain/Functional Status -- no field, option, or value touched. */
+.rnica-bodysystem-workspace [role="radiogroup"]:not(.rnica-chip-group),
+.rnica-bodysystem-workspace .rnica-form-card [role="group"]:not(.rnica-chip-group) {
+  gap: 2px 8px !important;
+}
+/* Excludes .rnica-segment-btn: the compact segmented/pill controls
+   (FormSegmented/FormPillGroup, added 2026-09-28 GitHub UI Directive) are
+   also plain <button role="radio">/... elements, but unlike a Radix
+   RadioGroupItem/Checkbox indicator dot -- a separate small circle sitting
+   next to its own label text -- these buttons ARE the label (the option
+   text renders inside the button itself). Squashing them to 14x14px here
+   caused every segment's label to overflow and visually overlap its
+   neighbors. */
+.rnica-bodysystem-workspace button[role="radio"]:not(.rnica-segment-btn):not(.rnica-chip-toggle),
+.rnica-bodysystem-workspace button[role="checkbox"]:not(.rnica-segment-btn):not(.rnica-chip-toggle) {
+  height: 14px !important;
+  width: 14px !important;
+}
+.rnica-bodysystem-workspace label {
+  font-size: 11px !important;
+  gap: 3px !important;
+  line-height: 1.25 !important;
+}
+.rnica-bodysystem-workspace .rnica-bodysystem-workspace__group {
+  gap: 0.22rem;
+}
+
+/* Fields within a single sub-section (e.g. Mental Status's Consciousness/
+   Orientation/Communication rows) use a real left-to-right CSS Grid, not
+   newspaper-style `columns`. `columns` reads top-to-bottom-then-jump-to-
+   next-column, which is not how a nurse scans a form and is what made a
+   dense system like Neurological confusing to read (owner-reported
+   2026-09-27). `auto-fit`/`minmax` still avoids the CSS Grid dead-space
+   problem the original masonry was written to fix: a lone field grows to
+   fill the row via the `1fr` term instead of leaving the rest of the row
+   blank, while multiple fields wrap left-to-right in natural order. */
+.rnica-bodysystem-workspace__fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 12px;
+  align-items: start;
+}
+
+/* Owner directive (Body Systems 9-part structure): every system follows
+   Summary -> Core Findings -> Symptom Impact -> Functional Impact ->
+   Disease-Specific Findings -> Current Management -> Clinical Status
+   Change -> Nurse Observation -> Plan of Care Impact, so a nurse always
+   knows where to look. Cards render already-tagged into these named
+   groups (BODY_SYSTEM_CATEGORY_ORDER/LABELS in RNICA.jsx); only groups
+   with at least one real card render a heading. */
+.rnica-bodysystem-group {
+  display: flex;
+  flex-direction: column;
+}
+
+.rnica-bodysystem-group__heading {
+  margin: 0 0 6px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--sns-border);
+  font-size: var(--rnica-h3-size);
+  font-weight: var(--rnica-h3-weight);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sns-muted);
+}
+
+/* Cards within a single named group use the same auto-fit/minmax grid as
+   the field-level fix above (2026-09-27): a lone card in a category (very
+   common -- e.g. Cardiovascular's "Symptom Impact" is usually one card)
+   now grows to fill the full row instead of being stuck in a single
+   ~260px newspaper column with the rest of the row left blank. Multiple
+   cards in one category wrap left-to-right in natural reading order. */
+.rnica-bodysystem-group__cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+
+/* GitHub Directive (2026-09-28) "Final Neurological Density and
+   Space-Utilization Plan" Section 11/21 -- force a sub-section to always
+   span the entire row instead of auto-fit squeezing it into one ~260px
+   column beside much shorter neighbors (the reported "Sleep/Responsiveness
+   is much taller... producing a highly imbalanced first row" defect).
+   The card's own fields still use their normal auto-fit grid, which now
+   gets the full workspace width to flow 2-3 fields per row instead of 1. */
+.rnica-bodysystem-workspace__group--full {
+  grid-column: 1 / -1;
+}
+
+/* Computed Summary panel (owner directive: Summary is the first thing a
+   nurse sees). Reuses computeBodySystemFindings so it can never drift
+   from the same already-documented findings shown elsewhere. Does not
+   include "Changes Since Prior" -- no longitudinal-diff infrastructure
+   exists yet; see RNICA_CLINICAL_DOCUMENTATION_INTELLIGENCE_GAP_MAP.md. */
+.rnica-bodysystem-summary {
+  padding: 8px 12px;
+  margin-bottom: 10px;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.4rem;
+  background: var(--sns-cardSoft);
+}
+
+.rnica-bodysystem-summary[data-requires-follow-up="true"] {
+  border-left: 3px solid var(--sns-orange);
+}
+
+.rnica-bodysystem-summary__heading {
+  margin: 0 0 4px;
+  font-size: var(--rnica-h3-size);
+  font-weight: var(--rnica-h3-weight);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--sns-muted);
+}
+
+.rnica-bodysystem-summary__status {
+  margin: 0 0 4px;
+  font-weight: 600;
+  color: var(--sns-white);
+}
+
+.rnica-bodysystem-summary__issues {
+  margin: 0 0 4px;
+  padding-left: 18px;
+  color: var(--sns-muted);
+  font-size: var(--cw-body-size);
+  line-height: 1.4;
+}
+
+.rnica-bodysystem-summary__flag {
+  margin: 0;
+  color: var(--sns-orange);
+  font-weight: 700;
+  font-size: var(--cw-meta-size, 0.78rem);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+/* OWNER DIRECTIVE "Infection Summary Categorization" -- labeled grouping
+   for Infection's Summary card only (Patient Safety Findings / Historical
+   Infection Findings / Clinical Context / Current Infection Status).
+   Presentation only: reuses the same list styling as the flat
+   `.rnica-bodysystem-summary__issues` rendering it replaces for Infection. */
+.rnica-bodysystem-summary__group + .rnica-bodysystem-summary__group {
+  margin-top: 6px;
+}
+
+.rnica-bodysystem-summary__group-heading {
+  margin: 0 0 2px;
+  font-size: var(--cw-meta-size, 0.78rem);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sns-muted);
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy Pass" item #1 --
+   elevates the generic .rnica-bodysystem-summary to the same visual
+   weight as Functional Status's banner (ShadcnCardTitle-size heading,
+   always-on teal accent, larger status line) instead of the muted
+   uppercase strip every other Body System still uses. Scoped to Neuro
+   only via the --prominent modifier applied in RNICA.jsx. */
+.rnica-bodysystem-summary--prominent {
+  padding: 0.75rem 1rem;
+  border-left: 3px solid var(--sns-hope, #059669);
+  background: var(--sns-cardSoft);
+}
+.rnica-bodysystem-summary--prominent.rnica-bodysystem-summary[data-requires-follow-up="true"] {
+  border-left-color: var(--sns-orange);
+}
+.rnica-bodysystem-summary--prominent .rnica-bodysystem-summary__heading {
+  font-size: var(--rnica-h2-size, 1rem);
+  font-weight: 700;
+  text-transform: none;
+  letter-spacing: normal;
+  color: var(--sns-white);
+}
+.rnica-bodysystem-summary--prominent .rnica-bodysystem-summary__status {
+  font-size: var(--cw-body-size);
+  line-height: 1.45;
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Change" item #3 --
+   SNS Cognitive Screen's score/interpretation/review-status renders
+   exactly once now, as this single compact header line (via the Card
+   `summary` prop, rendered unconditionally above the card's always-
+   visible fields -- no accordion, no second banner below the fields).
+   Supersedes the former `.rnica-cognitive-summary__bims*` multi-line
+   block, which duplicated this same information both above and below
+   the fields. */
+.rnica-cognitive-summary__header {
+  margin: 0 0 0.35rem;
+  padding: 0.2rem 0;
+  color: var(--sns-white);
+  font-size: var(--cw-meta-size, 0.82rem);
+  font-weight: 600;
+}
+/* Item #4 -- SNS Cognitive Screen result surfaced inside the Summary
+   banner itself. */
+.rnica-bodysystem-summary__cognitive-screen {
+  margin: 0.35rem 0 0;
+  color: var(--sns-white);
+  font-size: var(--cw-meta-size, 0.82rem);
+}
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Review Efficiency Pass" item
+   #4 -- Overall Change's segmented control, relocated from its own
+   standalone card into the prominent Summary banner. */
+.rnica-bodysystem-summary__overall-change {
+  margin-top: 0.5rem;
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--sns-border, rgba(255, 255, 255, 0.12));
+}
+.rnica-bodysystem-summary__overall-change label {
+  color: var(--sns-white);
+  font-weight: 600;
+}
+/* Item #8 -- always-visible one-line auto-summary for a card using the
+   "compact summary + edit" pattern (collapsed by default; click the title
+   row to expand and edit the underlying fields). */
+.rnica-bodysystem-workspace__card-summary {
+  margin: 2px 0 0;
+  color: var(--sns-muted);
+  font-size: var(--cw-meta-size, 0.78rem);
+  line-height: 1.35;
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- "focus on
+   density, not redesign" (goal: ~25-35% less Neuro page height, same
+   workflow/data model). Every rule below is scoped to
+   [data-section="neurological"] (the `data-section` attribute added to
+   .rnica-bodysystem-workspace in RNICA.jsx) and/or `[data-card-title="..."]`
+   (added to the bare card group wrapper there), so no other Body System's
+   spacing, grid, or chip sizing changes. Named targets per the directive:
+   Cognitive Summary, Overall Change, Communication and Sensory, Additional
+   Cognitive Observations (textarea rows reduced in the schema above),
+   Psychiatric History (already collapsed by default), Nurse Observation. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group__cards {
+  /* 260px -> 220px min track so more sub-sections share a row at any given
+     width instead of each claiming a full row. */
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group__heading {
+  margin: 0 0 4px;
+  padding-bottom: 3px;
+}
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-workspace__fields {
+  /* 200px -> 160px min track; tighter row/column gap. */
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 6px 8px;
+}
+/* Note: the former [data-card-title="Overall Change Since Prior
+   Assessment"] rule was removed -- that card no longer exists (item #4,
+   "Incorporate Overall Change into the Summary layer"); its spacing is
+   now handled by .rnica-bodysystem-summary__overall-change above. */
+/* OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" items #1-3 --
+   Sleep / Responsiveness gets an explicit, fixed 2-column grid (rather
+   than the auto-fit heuristic used elsewhere in Neuro) so every field,
+   which now carries an explicit `fieldSpan: 1` or `"full"` in the schema,
+   reliably pairs up exactly as directed (Sleep Pattern/Can Sleep Be
+   Estimated, Responsiveness/Current Effect, Night Symptoms/Restfulness,
+   Sleep Aids/Additional Comment) regardless of viewport width, instead of
+   the implicit column count drifting with container width. */
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Sleep / Responsiveness"] .rnica-bodysystem-workspace__fields {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 14px;
+}
+/* Communication and Sensory (Communication/Hearing/Vision/Sensory Deficits/
+   Sensory Aids merged card) is the tallest sub-section in the section -- an
+   even narrower per-field track here lets its short segmented controls
+   share a row instead of each forcing its own. */
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Communication and Sensory"] .rnica-bodysystem-workspace__fields {
+  /* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #3
+     -- this card is no longer `fullWidth: true`; it now shares a
+     two-column row with "Cognitive / Behavioral Findings" (see
+     RNICA.jsx), so its own content area is roughly half of what it used
+     to be. A narrower track here (vs. the 160px used elsewhere in Neuro)
+     still gives enough implicit columns for 2-3 fields to share a row at
+     that reduced width instead of each claiming the full column by
+     itself. */
+  grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+  gap: 6px 10px;
+}
+/* "Summary" banner (the prominent Neuro-only variant) -- same content,
+   tighter chrome. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-summary--prominent {
+  padding: 0.55rem 0.85rem;
+}
+/* OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
+   #1 -- "Reorganize top neuro findings into a true 3-column layout:
+   Consciousness / Orientation / Neurological Overview". These three cards
+   are the only members of the "core" category bucket now that SNS
+   Cognitive Screen (item #2) is `fullWidth` (escapes this track via
+   `.rnica-bodysystem-workspace__group--full`'s `grid-column: 1 / -1`, so
+   it still spans the full row beneath this one unaffected by the fixed
+   column count). A guaranteed `repeat(3, ...)` (instead of the
+   auto-fit/minmax heuristic above, which could pack 2, 3, or 4 cards per
+   row depending on viewport width) is the only way to make these three
+   specific *cards* -- not fields within one card -- reliably share one
+   row with no dead horizontal space (item #8), matching the
+   already-established per-card-title override technique used for Sleep/
+   Responsiveness and Communication and Sensory above, but scoped one
+   level up at the category-group container via the existing
+   `data-category` attribute (added 2026-10-04, see
+   `bodySystemGroupedContent` in RNICA.jsx) instead of `data-card-title`. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+/* OWNER DIRECTIVE (2026-10-04) "Final Neuro Cleanup" -- supersedes the
+   "Final Neuro Layout Change" item #4/#6 2/3+1/3 `nth-child` split that
+   used to live here. Motor/Balance has been removed from Neuro (see
+   RNICA.jsx), so SNS Cognitive Screen no longer shares row 2 with
+   anything; it is now `fullWidth: true` in the schema and gets its own
+   full-width row via the existing `.rnica-bodysystem-workspace__group--full`
+   rule (grid-column: 1 / -1), the same mechanism already used by Sleep/
+   Responsiveness. The fixed-position `nth-child(4)`/`nth-child(5)`
+   overrides and their companion tablet breakpoint are no longer needed
+   and have been removed -- they were schema-order-dependent and would
+   have mistargeted the "core" bucket's new 4th card (SNS Cognitive
+   Screen, already full-width) now that Motor/Balance no longer occupies
+   that bucket.
+   OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #3 --
+   "Cognitive / Behavioral Findings" has since moved out of this "core"
+   bucket entirely; it now pairs with "Communication and Sensory" in the
+   "symptoms" bucket instead (see the plain `.rnica-bodysystem-group__cards`
+   auto-fit rule above, which splits that two-card bucket into two equal
+   columns on desktop/tablet with no card-specific override needed). The
+   "core" bucket is back down to 4 cards: Consciousness, Orientation,
+   Neurological Overview (3 equal columns), then SNS Cognitive Screen
+   (full-width row beneath them). */
+/* The SNS Cognitive Screen card's own 3 fields (Word Repetition/Recall/
+   Temporal Orientation) get a dedicated fixed 3-column track (vs. the
+   generic auto-fit 160px minmax used elsewhere in Neuro) so they reliably
+   sit on one line at this card's full desktop width, instead of possibly
+   wrapping to 2+1 depending on exact pixel width. */
+.rnica-bodysystem-workspace[data-section="neurological"] .rnica-cognitive-screen__fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 10px;
+}
+
+@media (max-width: 700px) {
+  .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-group__cards {
+    grid-template-columns: 1fr;
+  }
+  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
+    grid-template-columns: 1fr;
+  }
+  /* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #7
+     -- "Mobile: Stack controls vertically... do not create horizontal
+     scrolling." Without this explicit `[data-category="symptoms"]`
+     override, the "symptoms" bucket (Communication and Sensory +
+     Cognitive / Behavioral Findings) stayed on its non-media-query
+     auto-fit two-column rule even below 700px: that rule's selector
+     (`[data-section="neurological"] .rnica-bodysystem-group__cards`) is
+     MORE specific than the generic unscoped `.rnica-bodysystem-group__cards
+     { grid-template-columns: 1fr }` rule above, and CSS specificity -- not
+     media-query nesting -- decides the winner. Mirrors the equivalent
+     "core" category override immediately above. */
+  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="symptoms"] .rnica-bodysystem-group__cards {
+    grid-template-columns: 1fr;
+  }
+  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-cognitive-screen__fields {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Rebuild" v2 --
+   the prior "no explicit grid-row" column-band technique (every field a
+   direct grid item with only a fixed grid-column) is REJECTED: live DOM
+   verification found CSS Grid's sparse auto-placement cursor is SHARED
+   across the entire grid, not scoped per column-range. Because the field
+   array is column-major in DOM order (all of Column A, then all of
+   Column B, then all of Column C), placing Column A's fields first
+   pushed the shared cursor down several rows before Column B's first
+   field was ever considered, so Column B/C fields got dragged down onto
+   whatever row Column A's cursor had reached instead of starting at row
+   1 -- producing exactly the sparse, mostly-empty rows the "no row more
+   than 50% empty" rule forbids.
+   REPLACEMENT STRATEGY: fields are no longer individual grid items.
+   RNICA.jsx's `groupCvFieldsIntoColumns` groups the rendered field
+   elements into ONE wrapper `<div class="rnica-cv-col rnica-cv-col--*">`
+   per semantic column, and only those 1-4 wrapper divs are direct
+   children of this grid container. With only one placement decision per
+   column there is no shared-cursor interaction left to cause gaps, and a
+   column with zero visible fields is omitted entirely by the JS so it
+   never reserves empty grid space. Each wrapper internally uses flexbox
+   (`flex-flow: row wrap`) to stack its own fields top-to-bottom
+   independently of every other column's height -- this is also what lets
+   Cool Extremities/Varicose Veins share one sub-row via a narrower
+   flex-basis while Stasis Ulcer (full flex-basis) still starts its own
+   line beneath them. No field, option, validation, or persistence
+   change -- layout only. */
+/* OWNER DIRECTIVE (2026-10-04, Layout Standard v1.1 conformance pass) --
+   column-gap/row-gap corrected to the canonical tokens (Section 4/7:
+   grid gutter = 12, field-row gap = 8; previously 16/12/10, a confirmed
+   guide violation) and the desktop/tablet/mobile column selection is now
+   driven by each card's own measured inline-size via CSS container
+   queries, NOT the page/browser viewport -- per Section 11 ("the
+   measured container, not the nominal viewport, controls column count")
+   and the explicit correction replacing the former fixed @media
+   viewport breakpoints (701-1199px / <=700px). Each card establishes its
+   own containment context so column count reflects its actual rendered
+   width (e.g. if the utility rail is ever collapsed/hidden, the card
+   becomes wider and the 3-column band activates at that wider measured
+   width, which a viewport-only media query could never detect). */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"],
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] {
+  container-type: inline-size;
+  container-name: rnica-cv-region;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+  column-gap: 12px;
+  row-gap: 8px;
+  align-items: start;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col {
+  display: flex;
+  flex-flow: row wrap;
+  align-content: flex-start;
+  gap: 8px 12px;
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-cv-col > div {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+/* Column A -- Pulse Rhythm, Pulse Sites, Skin Color each take a full
+   line; Cool Extremities/Varicose Veins share one sub-row.
+   OWNER CORRECTION (2026-10-06, live full-width screenshot audit): the
+   prior `flex: 1 1 calc(50% - 8px)` override forced each pill into a box
+   narrower than its own `white-space: nowrap` label text (the pill *is*
+   the label -- see FormBooleanPill), and since the box has no overflow
+   clipping the two labels visibly bled into each other ("Cool
+   ExtreVaricose Veins"). These are content-sized toggle pills, not
+   fixed-width inputs, so they must never be forced to a width smaller
+   than their own text. `flex: 0 1 auto` lets each pill size to its own
+   label and only wrap to its own line if the column is too narrow for
+   both -- the parent's `flex-flow: row wrap` already handles that case
+   safely with zero overlap. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--a [data-cv-field="coolExtremities"],
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--a [data-cv-field="varicoseVeins"] {
+  flex: 0 1 auto;
+}
+
+/* Cardiovascular Overview -- full-width row; its 4-option segmented
+   control already wraps horizontally (ToggleGroup is flex-wrap) and only
+   needs the full card width to keep all 4 options on one line when space
+   allows. Not container-scoped: always full width regardless of card
+   width, so no eligibility test applies here. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Overview"] .rnica-bodysystem-workspace__fields > div {
+  grid-column: 1 / -1 !important;
+}
+
+/* ---- Measured-width column selection (Section 8 eligibility bands) ----
+   Below 532px measured card width: one column (Section 8.3).
+   532-803px: two columns (Section 8.2).
+   804px and above: three columns, eligible per Section 8.1 (the explicit
+   Circulation & Perfusion A/B/C bands, rebalanced 4/4/3 per
+   CV_CIRCULATION_COLUMN_GROUPS in RNICA.jsx; the explicit Symptoms
+   LEFT/RIGHT halves).
+   Each range is mutually exclusive (no overlapping @container queries),
+   so there is no specificity contest between column-count rules -- only
+   one range's grid-template-columns and grid-column assignments are ever
+   in effect at a given measured width. */
+@container rnica-cv-region (max-width: 531px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+    grid-template-columns: 1fr;
+  }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+    grid-column: 1 / -1 !important;
+  }
+}
+@container rnica-cv-region (min-width: 532px) and (max-width: 803px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+    grid-column: span 1 !important;
+  }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div:has(p) {
+    grid-column: 1 / -1 !important;
+  }
+}
+@container rnica-cv-region (min-width: 804px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+  }
+  /* Column A -- Pulse Rhythm, Pulse Sites, Skin Color, Cool
+     Extremities/Varicose Veins. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--a { grid-column: 1 / 5 !important; }
+  /* Column B -- Pulse Rate, Heart Sounds, Edema Present, Stasis Ulcer. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--b { grid-column: 5 / 9 !important; }
+  /* Column C -- Pulse Strength, JVD, Peripheral Circulation. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--c { grid-column: 9 / 13 !important; }
+  /* Edema Location/Severity/Type and the Skin Color/Heart Sounds/
+     Peripheral Circulation "Other" companions (only rendered once their
+     gating condition is met) drop to the end of DOM order and render as
+     a full-width row below the 3-column block. */
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Circulation & Perfusion"] .rnica-cv-col--full { grid-column: 1 / 13 !important; }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col--full { grid-column: 1 / 13 !important; }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col--left { grid-column: 1 / 7 !important; }
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Symptoms"] .rnica-cv-col--right { grid-column: 7 / 13 !important; }
+}
+
+/* OWNER DIRECTIVE (2026-10-06) "No Current Cardiovascular Concern" --
+   Circulation & Perfusion is now a fully hidden card on this path (see
+   RNICA.jsx card-level guard); nothing further is needed here.
+   "Existing Cardiovascular Findings Review" -- replace the column-band
+   layout with a simple equal-thirds auto-flow so the handful of
+   documented findings pack from the top-left instead of sitting stranded
+   in an otherwise-empty column. Higher selector specificity (extra
+   `[data-cv-overview=...]` attribute) wins over the container-scoped
+   column-band rules above at every measured width -- unchanged from the
+   prior viewport-media-query implementation, and intentionally untouched
+   by this conformance pass (Path 2's flat/auto-flow layout was already
+   confirmed correct). */
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields,
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Circulation & Perfusion"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"][data-cv-overview="Existing Cardiovascular Findings Review"] [data-card-title="Cardiovascular Symptoms"] .rnica-bodysystem-workspace__fields > div {
+  grid-column: span 1 !important;
+}
+/* Cardiac Devices -- 3 short boolean pills (Pacemaker/Internal
+   Defibrillator/Central Venous Line) as one normal horizontal flex row
+   with consistent gaps, replacing the generic per-system grid heuristic
+   that produced badly uneven gaps once this card moved into a halved-
+   width container (Step 4/10). */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-bodysystem-workspace__fields {
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-bodysystem-workspace__fields > div {
+  flex: 0 0 auto;
+  grid-column: unset !important;
+  min-width: 0;
+}
+/* OWNER DIRECTIVE (2026-10-04) "Cardiovascular Density Pass -- Section 5"
+   -- Cardiac Devices and Clinical Status Change share one visual row on
+   desktop WITHOUT merging their category/heading/data identity: each
+   keeps its own `.rnica-bodysystem-group[data-category]` wrapper, own
+   `<h4>` heading, own cards array, own POC controls. Only the shared
+   flex container's wrap behavior changes. Every other category group
+   (Overview, Circulation & Perfusion, Symptoms, Notes) gets an explicit
+   `flex-basis: 100%` so it still renders as its own full-width row in
+   the existing fixed category order -- only the "treatments" (Cardiac
+   Devices) and "response" (Clinical Status Change) groups get a ~50%
+   basis, and because they are adjacent siblings in
+   BODY_SYSTEM_CATEGORY_ORDER (treatments immediately precedes response),
+   flex-wrap places them side by side on the same line instead of each
+   reserving a full-width row for 3 short pills / 2 short fields. Scoped
+   to `[data-section="cardiovascular"]` only -- no other Body System's
+   category layout is touched. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content {
+  flex-direction: row;
+  flex-wrap: wrap;
+  /* OWNER DIRECTIVE (2026-10-06) "Cardiovascular Workflow Visibility" --
+     live DOM measurement found the default flex `align-items: stretch`
+     was forcing Cardiac Devices (one short pill, ~62px of real content)
+     to match Clinical Status Change's taller height, producing a ~106px
+     blank region below the Cardiac Devices card -- the exact "large
+     empty area" the owner flagged. `flex-start` lets each side-by-side
+     group size to its own content instead of stretching to its
+     sibling's height. */
+  align-items: flex-start;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+.rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+  flex-basis: calc(50% - 2px);
+}
+@media (max-width: 900px) {
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+  .rnica-bodysystem-workspace[data-section="cardiovascular"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+    flex-basis: 100%;
+  }
+}
+
+/* OWNER DIRECTIVE (2026-10-05) "SNS Global Body-System Standard, applied
+   to GI" -- Layout Standard v1.1 Section 10 ("Management" row: "2-column
+   at >=532 when both groups are populated") and the established
+   Cardiovascular precedent immediately above. Feeding Devices
+   (category "treatments": 2 checkboxes + 2 selects) and Clinical Status
+   Change (category "response": 1 segmented control) are both short,
+   content-driven cards that otherwise each reserve a full-width row,
+   producing the same disproportionate whitespace the Cardiovascular
+   pass corrected. Pairs them into one 50/50 row on desktop without
+   merging their category/heading/data identity -- each keeps its own
+   `.rnica-bodysystem-group[data-category]` wrapper, heading, and field
+   set. Scoped to `[data-section="gastrointestinal"]` only. */
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > * {
+  flex: 1 1 100%;
+  min-width: 0;
+}
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+.rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+  flex-basis: calc(50% - 2px);
+}
+@media (max-width: 900px) {
+  .rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="treatments"],
+  .rnica-bodysystem-workspace[data-section="gastrointestinal"] .rnica-bodysystem-workspace__content > .rnica-bodysystem-group[data-category="response"] {
+    flex-basis: 100%;
+  }
+}
+/* Cardiovascular Overview (first card a nurse sees, functions as the
+   section's triage/summary gate), Cardiac Devices (3 short pills), and
+   Clinical Status Change (2 fields) are all short-content cards that
+   otherwise carry the same 8px per-field margin as long cards like
+   Circulation & Perfusion, producing disproportionate whitespace for
+   their actual content. `!important` is required because each field's
+   margin is set inline (FormInput/FormSegmented/etc.'s `styles.formGroup`)
+   and inline styles outrank an external stylesheet rule. */
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Overview"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-bodysystem-workspace__fields > div,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Clinical Status Change"] .rnica-bodysystem-workspace__fields > div {
+  margin-bottom: 2px !important;
+}
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiovascular Overview"] .rnica-form-card__title,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Cardiac Devices"] .rnica-form-card__title,
+.rnica-bodysystem-workspace[data-section="cardiovascular"] [data-card-title="Clinical Status Change"] .rnica-form-card__title {
+  margin-bottom: 3px !important;
+}
+
+/* OWNER DIRECTIVE (2026-10-04) "Cardiovascular Reversibility Safety" --
+   compact, non-alarming disclosure shown inside Cardiovascular Overview
+   when "No Current Cardiovascular Concern" is selected over a record
+   that still has real preserved abnormal findings (see
+   cardiovascularHasPreservedAbnormalFinding in RNICA.jsx). Deliberately
+   small/quiet -- a thin left border and muted background, matching the
+   existing `.rnica-bodysystem-summary` visual weight -- never a large
+   highlighted panel; this is information, not a warning/error state. */
+.rnica-cv-preserved-findings-banner {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--sns-border);
+  border-radius: 0.3rem;
+  background: var(--sns-cardSoft);
+  color: var(--sns-muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+.rnica-cv-preserved-findings-banner p { margin: 0; }
+.rnica-cv-preserved-findings-banner p + p { margin-top: 3px; }
+.rnica-cv-preserved-findings-banner strong { color: var(--sns-white); }
+
+/* OWNER DIRECTIVE (2026-10-23) "GI Progressive Visibility Revision" --
+   compact, user-initiated reveal control for "Additional Bowel Details"
+   (the collapsed Abdominal / Bowel Assessment card). Reserves no extra
+   layout space beyond a single small pill button; keyboard-focusable
+   and high-contrast like the rest of the SNS pill-control family. */
+.rnica-pill-reveal {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 14px;
+  border: 1px solid var(--sns-border);
+  border-radius: 999px;
+  background: var(--sns-cardSoft);
+  color: var(--sns-text);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rnica-pill-reveal:hover { background: var(--sns-card); }
+.rnica-pill-reveal:focus-visible { outline: 2px solid var(--sns-focusRing); outline-offset: 2px; }
+
+/* OWNER DIRECTIVE (2026-10-19) "Respiratory Review/Edit Split" -- one
+   canonical respiratory editor (Dyspnea/SOB through Ventilator/Airway
+   Support) must never render twice. "Existing Respiratory Findings
+   Review" instead shows this compact, review-only clinical summary with
+   an explicit "Edit Existing Findings" action; the five clinical cards
+   only render (the shared editor) once that action is clicked, or when
+   Overview is "New or Worsening Respiratory Findings". Visual weight
+   matches the existing preserved-findings banner family -- informational
+   card, not an alert. */
+.rnica-resp-review-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.rnica-resp-review-summary__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(160px, 1fr));
+  gap: 8px 16px;
+}
+@media (max-width: 532px) {
+  .rnica-resp-review-summary__grid { grid-template-columns: 1fr; }
+}
+.rnica-resp-review-summary__row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.rnica-resp-review-summary__label {
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  color: var(--sns-muted);
+}
+.rnica-resp-review-summary__value {
+  font-size: 0.85rem;
+  color: var(--sns-white);
+  line-height: 1.35;
+}
+.rnica-resp-review-summary__actions {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 4px;
+  border-top: 1px solid var(--sns-border);
+}
+.rnica-resp-review-back-banner {
+  margin: 4px 0 8px;
+  padding: 6px 10px;
+  border-left: 3px solid var(--sns-teal);
+  border-radius: 0.3rem;
+  background: var(--sns-cardSoft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.rnica-resp-review-back-banner p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: var(--sns-muted);
+  line-height: 1.4;
+}
+.rnica-chip-action-btn {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--sns-teal);
+  background: transparent;
+  color: var(--sns-teal);
+  cursor: pointer;
+}
+.rnica-chip-action-btn:hover { background: var(--sns-cardSoft); }
+
+@media (max-width: 1100px) {
+  .rnica-bodysystems { grid-template-columns: 1fr; }
+  .rnica-bodysystems--rail-collapsed { grid-template-columns: 1fr; }
+  .rnica-bodysystems__rail { order: -1; }
+  .rnica-bodysystems__rail-collapsed-toggle {
+    order: -1;
+    width: 100%;
+    flex-direction: row;
+    justify-content: center;
+  }
+  .rnica-bodysystems__rail-collapsed-label { writing-mode: horizontal-tb; transform: none; }
 }

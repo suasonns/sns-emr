@@ -33,9 +33,31 @@ export const RNICA_THIRTEEN_SCREENS = [
   {
     key: "evidenceIntake",
     label: "Evidence & Intake",
-    // RNICA_SCREEN_AUTHORITY_MATRIX.md #2: "legacy demographics, vitals,
-    // referrals modules".
-    moduleKeys: ["demographics", "vitals", "referrals"],
+    // [OWNER-DIRECTION OVERRIDE -- 2026-09-25, reordered ahead of HOPE
+    // Administrative Review] This is the first screen the nurse actually
+    // wants after Patient Story: referral reason, admission source,
+    // supporting documents, and decline evidence give the clinical context
+    // the RN needs before anything else. Supersedes
+    // RNICA_SCREEN_AUTHORITY_MATRIX.md #2's prior "legacy demographics,
+    // vitals, referrals modules" grouping: discipline referrals (social
+    // work/spiritual care/volunteer/dietitian/pharmacist) are a
+    // post-assessment care-planning decision, not intake evidence -- moved
+    // to `ordersPoc` (screen 10) below. HOPE administrative demographics
+    // moved to `hopeAdministrativeReview` below. `vitals` stays owned by
+    // this screen but is no longer a separate subnav tab -- see
+    // RNICACommandWorkspace.jsx's evidenceIntake screen render.
+    moduleKeys: ["vitals"],
+  },
+  {
+    // [OWNER-DIRECTION OVERRIDE -- 2026-09-25, reordered after Evidence &
+    // Intake] HOPE Section A administrative items (A1005/A1010/A1110/
+    // A1905/A1910, legacy "demographics" module) are their own screen --
+    // never inside Evidence & Intake, never inside Psychosocial. Owns the
+    // legacy "demographics" module key so HOPE-requirement jump links for
+    // these items land here.
+    key: "hopeAdministrativeReview",
+    label: "HOPE Administrative Review",
+    moduleKeys: ["demographics"],
   },
   {
     // [PRODUCT-AUTHORITY DECISION -- 2026-09-22, final] Order 3-5 is
@@ -46,7 +68,12 @@ export const RNICA_THIRTEEN_SCREENS = [
     // with both in context.
     key: "painSymptomBurden",
     label: "Pain & Symptom Burden",
-    moduleKeys: ["pain", "symptomImpact"],
+    // Owner correction 2026-09-25: Symptom Impact Screening ("symptomImpact"
+    // / HOPE J2051 A-H) is no longer an RN-facing module -- each symptom is
+    // documented once, in its true owning section (Pain, Respiratory, GI,
+    // Neuro/Mental Status), and HOPE J2051 is derived from those fields.
+    // Only "pain" remains a countable module here.
+    moduleKeys: ["pain"],
   },
   {
     key: "diagnosisLcd",
@@ -93,7 +120,12 @@ export const RNICA_THIRTEEN_SCREENS = [
   {
     key: "ordersPoc",
     label: "Orders & POC",
-    moduleKeys: ["admissionsOrder", "ordersHub"],
+    // [OWNER-DIRECTION OVERRIDE -- 2026-09-24] `referrals` (discipline
+    // referrals: social work/spiritual care/volunteer/dietitian/pharmacist)
+    // moved here from Evidence & Intake -- these are care-planning
+    // decisions made once the comprehensive assessment is complete, not
+    // intake evidence gathered before assessment begins.
+    moduleKeys: ["admissionsOrder", "ordersHub", "referrals"],
   },
   {
     key: "complianceReadiness",

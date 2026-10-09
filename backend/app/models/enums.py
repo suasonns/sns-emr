@@ -65,6 +65,7 @@ class TaskType(str, enum.Enum):
     MSW_REOFFER = "MSW_REOFFER"
     CHAPLAIN_REOFFER = "CHAPLAIN_REOFFER"
     AIDE_REOFFER = "AIDE_REOFFER"
+    VOLUNTEER_REOFFER = "VOLUNTEER_REOFFER"
 
     POC_NONCOMPLIANT_STRUCTURE = "POC_NONCOMPLIANT_STRUCTURE"
     POC_REVIEW_REQUIRED = "POC_REVIEW_REQUIRED"
@@ -133,6 +134,8 @@ class TaskDiscipline(str, enum.Enum):
     CHAPLAIN = "CHAPLAIN"
 
     AIDE = "AIDE"
+
+    VOLUNTEER = "VOLUNTEER"
 
 
 # ==========================================================
@@ -359,6 +362,125 @@ class DiagnosisSource(str, enum.Enum):
 
 
 # ==========================================================
+# INTERDISCIPLINARY CONTINUITY (MSW / CHAPLAIN / VOLUNTEER)
+#
+# Owner-authorized continuity workflow (Authorized Continuity Workflow
+# Implementation directive). Scope is exactly MSW, CHAPLAIN, VOLUNTEER --
+# RN/MD/F2F/Hospice-Aide refusal pathways are explicitly out of scope and
+# continue to use app.models.refusal.Refusal / app.services.refusal_engine
+# unchanged. These enums back app.models.discipline_service and
+# app.models.idg_recommendation and app.models.patient_issue's additive
+# columns -- never reuse these values for the legacy refusals table.
+# ==========================================================
+
+class ContinuityDiscipline(str, enum.Enum):
+    """Canonical disciplines for the continuity workflow ONLY. Normalize
+    MSW/SW/SOCIAL_WORK/SOCIAL_WORKER/LCSW -> MSW; SPIRITUAL_COUNSELOR*/SC/
+    CHAPLAIN/PASTORAL_COUNSELOR -> CHAPLAIN (never two active service
+    records for Chaplain and Spiritual Counselor); VOLUNTEER* -> VOLUNTEER.
+    See app.services.discipline_service_engine.normalize_continuity_discipline."""
+
+    MSW = "MSW"
+    CHAPLAIN = "CHAPLAIN"
+    VOLUNTEER = "VOLUNTEER"
+
+
+class DisciplineServiceState(str, enum.Enum):
+    """Current-state projection values for patient_discipline_services.
+    No generic RESOLVED state -- every terminal/paused condition is explicit."""
+
+    NOT_YET_OFFERED = "NOT_YET_OFFERED"
+    OFFER_DUE = "OFFER_DUE"
+    OFFERED_AWAITING_DECISION = "OFFERED_AWAITING_DECISION"
+    ACCEPTED_AWAITING_ACTIVATION = "ACCEPTED_AWAITING_ACTIVATION"
+    ACTIVE = "ACTIVE"
+    REFUSED_MONITORING_CONTINUES = "REFUSED_MONITORING_CONTINUES"
+    REOFFER_DUE = "REOFFER_DUE"
+    REOFFERED_AWAITING_DECISION = "REOFFERED_AWAITING_DECISION"
+    PAUSED = "PAUSED"
+    ENDED = "ENDED"
+    UNABLE_TO_CONTACT = "UNABLE_TO_CONTACT"
+    DECISION_MAKER_UNAVAILABLE = "DECISION_MAKER_UNAVAILABLE"
+
+
+class DisciplineServiceEventType(str, enum.Enum):
+    """Append-only event types for patient_discipline_service_events.
+    Events are never deleted or rewritten; corrections are recorded as new
+    CORRECTION_RECORDED events referencing the event they correct."""
+
+    DISCIPLINE_IDENTIFIED = "DISCIPLINE_IDENTIFIED"
+    SERVICE_OFFERED = "SERVICE_OFFERED"
+    DECISION_PENDING = "DECISION_PENDING"
+    SERVICE_ACCEPTED = "SERVICE_ACCEPTED"
+    SERVICE_REFUSED = "SERVICE_REFUSED"
+    SERVICE_ACTIVATED = "SERVICE_ACTIVATED"
+    SERVICE_PAUSED = "SERVICE_PAUSED"
+    SERVICE_RESUMED = "SERVICE_RESUMED"
+    SERVICE_ENDED = "SERVICE_ENDED"
+    REFUSAL_WITHDRAWN = "REFUSAL_WITHDRAWN"
+    REOFFER_SCHEDULED = "REOFFER_SCHEDULED"
+    SERVICE_REOFFERED = "SERVICE_REOFFERED"
+    REOFFER_ACCEPTED = "REOFFER_ACCEPTED"
+    REOFFER_REFUSED = "REOFFER_REFUSED"
+    UNABLE_TO_CONTACT = "UNABLE_TO_CONTACT"
+    DECISION_MAKER_UNAVAILABLE = "DECISION_MAKER_UNAVAILABLE"
+    IDG_REVIEW_REQUESTED = "IDG_REVIEW_REQUESTED"
+    IDG_REVIEW_COMPLETED = "IDG_REVIEW_COMPLETED"
+    DISCIPLINE_RECOMMENDATION_ADDED = "DISCIPLINE_RECOMMENDATION_ADDED"
+    RN_MONITORING_ASSIGNED = "RN_MONITORING_ASSIGNED"
+    RN_MONITORING_CHANGED = "RN_MONITORING_CHANGED"
+    RN_MONITORING_ENDED = "RN_MONITORING_ENDED"
+    CORRECTION_RECORDED = "CORRECTION_RECORDED"
+
+
+class IDGRecommendationType(str, enum.Enum):
+    CONTINUE_MONITORING = "CONTINUE_MONITORING"
+    PROVIDE_EDUCATION = "PROVIDE_EDUCATION"
+    REOFFER_SERVICE = "REOFFER_SERVICE"
+    REQUEST_ASSESSMENT = "REQUEST_ASSESSMENT"
+    REVIEW_POC = "REVIEW_POC"
+    REQUEST_INFORMATION = "REQUEST_INFORMATION"
+    ESCALATE_CONCERN = "ESCALATE_CONCERN"
+
+
+class IDGRecommendationStatus(str, enum.Enum):
+    PENDING = "PENDING"
+    ACCEPTED = "ACCEPTED"
+    DECLINED = "DECLINED"
+    SUPERSEDED = "SUPERSEDED"
+
+
+class PatientIssueDomain(str, enum.Enum):
+    """Values for PatientIssue.issue_domain (additive column)."""
+
+    PSYCHOSOCIAL = "PSYCHOSOCIAL"
+    EMOTIONAL = "EMOTIONAL"
+    CAREGIVER = "CAREGIVER"
+    FAMILY_SYSTEM = "FAMILY_SYSTEM"
+    SPIRITUAL = "SPIRITUAL"
+    BEREAVEMENT = "BEREAVEMENT"
+    SOCIAL_RESOURCE = "SOCIAL_RESOURCE"
+    FINANCIAL = "FINANCIAL"
+    SAFETY = "SAFETY"
+
+
+class PatientIssueClinicalStatus(str, enum.Enum):
+    """Values for PatientIssue.clinical_status (additive column). Distinct
+    from the existing free-text `status` (OPEN/RESOLVED) column, which is
+    unchanged and still authoritative for existing callers."""
+
+    IDENTIFIED = "IDENTIFIED"
+    ACTIVE = "ACTIVE"
+    MONITORING = "MONITORING"
+    STABLE = "STABLE"
+    IMPROVING = "IMPROVING"
+    WORSENING = "WORSENING"
+    ESCALATED = "ESCALATED"
+    RESOLVED = "RESOLVED"
+    CLOSED_IN_ERROR = "CLOSED_IN_ERROR"
+
+
+# ==========================================================
 # EXPORTS
 # ==========================================================
 
@@ -380,4 +502,11 @@ __all__ = [
     "DiagnosisSource",
     "CORE_DISCIPLINES",
     "normalize_discipline",
+    "ContinuityDiscipline",
+    "DisciplineServiceState",
+    "DisciplineServiceEventType",
+    "IDGRecommendationType",
+    "IDGRecommendationStatus",
+    "PatientIssueDomain",
+    "PatientIssueClinicalStatus",
 ]

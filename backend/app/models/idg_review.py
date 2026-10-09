@@ -81,6 +81,20 @@ class IDGReview(Base):
         index=True,
     )
 
+    # Continuity episode-scoping (added alongside the interdisciplinary
+    # continuity admission-scoping tranche). Nullable: legacy rows created
+    # before this column existed cannot be deterministically attributed to
+    # an admission and must remain historical/admission-unassigned rather
+    # than being inferred from patient_id, tenant_id, or current admission.
+    # Immutable after creation except through an explicit authorized
+    # correction workflow -- never reassigned to "fix" a legacy row.
+    admission_id = Column(
+        UUID(as_uuid=True),
+        ForeignKey("admissions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+
     idg_meeting_id = Column(
         UUID(as_uuid=True),
         nullable=True,

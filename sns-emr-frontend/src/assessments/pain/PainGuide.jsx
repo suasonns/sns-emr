@@ -1,4 +1,5 @@
 import React from 'react';
+import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from '../../components/ui/accordion';
 import './PainAssessmentTools.css';
 
 // Shared clinical-guidance building blocks used by the pain scale
@@ -44,4 +45,45 @@ export const References = ({ items }) => (
   </div>
 );
 
-export default { GuideBox, GuideList, GradientBar, References };
+// Collapses the training/reference content (scoring interpretation,
+// psychometric properties, target population, citations) behind a single
+// "Pain Tool Reference" accordion so admission nurses are not scrolling
+// past research material during routine documentation (owner design
+// review 2026-09-25: keep Pain Screening + the active scoring surface
+// visible; move reference-only content out of the always-visible flow).
+export const PainToolReference = ({ children }) => (
+  <Accordion type="single" collapsible className="pain-tool-reference">
+    <AccordionItem value="reference">
+      <AccordionTrigger className="pain-tool-reference__trigger">
+        <span style={{ color: COLORS.teal, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Pain Tool Reference
+        </span>
+      </AccordionTrigger>
+      <AccordionContent>{children}</AccordionContent>
+    </AccordionItem>
+  </Accordion>
+);
+
+// Layout density fix (2026-10-03, owner-directed): the scale's own usage
+// instructions ("Clinical Protocol Guidance" / "Instructions") used to
+// render permanently above the scoring surface on every admission, and
+// the deeper scoring/psychometric/reference material sat in a second,
+// separate accordion below. Both are training/reference content a nurse
+// does not need in view during routine charting -- collapse them
+// together behind ONE "Show Guidance" toggle so the always-visible
+// surface is just the title, the scale, and the live result. No content
+// removed, nothing re-worded -- purely where it renders.
+export const PainGuidancePanel = ({ children }) => (
+  <Accordion type="single" collapsible className="pain-tool-reference">
+    <AccordionItem value="guidance">
+      <AccordionTrigger className="pain-tool-reference__trigger">
+        <span style={{ color: COLORS.teal, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+          Show Guidance
+        </span>
+      </AccordionTrigger>
+      <AccordionContent>{children}</AccordionContent>
+    </AccordionItem>
+  </Accordion>
+);
+
+export default { GuideBox, GuideList, GradientBar, References, PainToolReference, PainGuidancePanel };

@@ -24,6 +24,7 @@ import { useThemeMode } from '../theme/theme';
 import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
 import DischargePlanningBoard from './DischargePlanningBoard';
 import IssuesOutcomesBoard from './IssuesOutcomesBoard';
+import InterdisciplinaryContinuityBoard from './InterdisciplinaryContinuityBoard';
 import BereavementBoard from './BereavementBoard';
 import BereavementPOCBoard from './BereavementPOCBoard';
 import PostDeathBereavementBoard from './PostDeathBereavementBoard';
@@ -833,6 +834,8 @@ const PatientChart = () => {
         return <ComplianceHopeBoard patientId={resolvedPatientId} activeSection={activeSection} onNavigateToSection={navigateChart} />;
       case 'issues':
         return <IssuesOutcomesBoard patientId={resolvedPatientId} />;
+      case 'interdisciplinary-continuity':
+        return <InterdisciplinaryContinuityBoard patientId={resolvedPatientId} />;
       case 'discharge':
         return <DischargePlanningBoard patientId={resolvedPatientId} />;
       case 'bereavement':

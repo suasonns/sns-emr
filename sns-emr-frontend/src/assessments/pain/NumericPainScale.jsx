@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { GuideBox, GuideList, GradientBar, References } from './PainGuide';
+import { GuideBox, GuideList, GradientBar, References, PainGuidancePanel } from './PainGuide';
 import { getNumericInterpretation } from './painScoring';
 import PainScoreBadge from './PainScoreBadge';
 
@@ -61,15 +61,6 @@ const NumericPainScale = ({ value, onChange }) => {
         </div>
       </div>
 
-      {/* Clinical Protocol Guidance */}
-      <GuideBox title="Clinical Protocol Guidance" icon="🛈">
-        <GuideList items={[
-          'Administration: Can be administered verbally (including by telephone) or graphically for self-completion.',
-          'Standard prompt: Ask patient: "On a scale of 0 to 10, with 0 being no pain and 10 being the worst pain imaginable, how would you rate your pain?"',
-          'Recall Period: Most commonly ask for pain intensity "right now" or "in the last 24 hours," or average pain intensity.',
-        ]} />
-      </GuideBox>
-
       {/* Result */}
       {selectedScore !== null && interp && (
         <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: 16, backgroundColor: COLORS.bg, borderRadius: 8, marginBottom: 16 }}>
@@ -86,38 +77,48 @@ const NumericPainScale = ({ value, onChange }) => {
         </div>
       )}
 
-      {/* Scoring & Interpretation */}
-      <GuideBox title="Scoring & Interpretation">
-        <GradientBar />
-        <GuideList items={[
-          '0 = No Pain (green)',
-          '1-3 = Mild Pain (yellow-green)',
-          '4-6 = Moderate Pain (amber)',
-          '7-10 = Severe Pain (red)',
-        ]} />
-        <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>Higher scores indicate greater pain intensity.</div>
-        <div className="pain-tool__meta" style={{ marginTop: 6, color: COLORS.label, fontSize: 11 }}>MCID: A reduction of 2 points (or 30%) is considered clinically important.</div>
-      </GuideBox>
+      {/* All guidance/reference content collapsed behind one toggle
+          (owner-directed 2026-10-03 density pass): the always-visible
+          surface is now just the title, the scale, and the live result. */}
+      <PainGuidancePanel>
+        <GuideBox title="Clinical Protocol Guidance" icon="🛈">
+          <GuideList items={[
+            'Administration: Can be administered verbally (including by telephone) or graphically for self-completion.',
+            'Standard prompt: Ask patient: "On a scale of 0 to 10, with 0 being no pain and 10 being the worst pain imaginable, how would you rate your pain?"',
+            'Recall Period: Most commonly ask for pain intensity "right now" or "in the last 24 hours," or average pain intensity.',
+          ]} />
+        </GuideBox>
 
-      {/* Psychometric Properties */}
-      <GuideBox title="Psychometric Properties">
-        <GuideList items={[
-          'Reliability: High test-retest reliability (r = 0.96 literate, r = 0.95 illiterate) — Ferraz et al.',
-          'Validity: Highly correlated with VAS (r = 0.86-0.95) in chronic pain conditions.',
-          'Responsiveness: MDC = 2 points on 11-point scale.',
-        ]} />
-      </GuideBox>
+        <GuideBox title="Scoring & Interpretation">
+          <GradientBar />
+          <GuideList items={[
+            '0 = No Pain (green)',
+            '1-3 = Mild Pain (yellow-green)',
+            '4-6 = Moderate Pain (amber)',
+            '7-10 = Severe Pain (red)',
+          ]} />
+          <div className="pain-guide__body" style={{ marginTop: 8, color: COLORS.text, fontSize: 12 }}>Higher scores indicate greater pain intensity.</div>
+          <div className="pain-tool__meta" style={{ marginTop: 6, color: COLORS.label, fontSize: 11 }}>MCID: A reduction of 2 points (or 30%) is considered clinically important.</div>
+        </GuideBox>
 
-      {/* Target Patient Population */}
-      <GuideBox title="Target Patient Population">
-        <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
-          <div><strong style={{ color: COLORS.white }}>Best for:</strong> Adults and older children who can reliably self-report pain intensity.</div>
-          <div>Preferred by chronic pain patients over VAS due to comprehensibility and ease of completion.</div>
-          <div>Takes &lt; 1 minute to complete.</div>
-        </div>
-      </GuideBox>
+        <GuideBox title="Psychometric Properties">
+          <GuideList items={[
+            'Reliability: High test-retest reliability (r = 0.96 literate, r = 0.95 illiterate) — Ferraz et al.',
+            'Validity: Highly correlated with VAS (r = 0.86-0.95) in chronic pain conditions.',
+            'Responsiveness: MDC = 2 points on 11-point scale.',
+          ]} />
+        </GuideBox>
 
-      <References items={['Hawker GA (2011)', 'Ferraz MB et al. (1990)', 'Farrar JT et al. (2001)']} />
+        <GuideBox title="Target Patient Population" style={{ marginBottom: 4 }}>
+          <div className="pain-guide__body" style={{ color: COLORS.text, fontSize: 12, lineHeight: 1.6 }}>
+            <div><strong style={{ color: COLORS.white }}>Best for:</strong> Adults and older children who can reliably self-report pain intensity.</div>
+            <div>Preferred by chronic pain patients over VAS due to comprehensibility and ease of completion.</div>
+            <div>Takes &lt; 1 minute to complete.</div>
+          </div>
+        </GuideBox>
+
+        <References items={['Hawker GA (2011)', 'Ferraz MB et al. (1990)', 'Farrar JT et al. (2001)']} />
+      </PainGuidancePanel>
     </div>
   );
 };
