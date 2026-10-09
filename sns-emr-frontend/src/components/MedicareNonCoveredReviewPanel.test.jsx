@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { axe } from "jest-axe";
 
 import MedicareNonCoveredReviewPanel from "./MedicareNonCoveredReviewPanel";
 
@@ -65,5 +66,25 @@ describe("MedicareNonCoveredReviewPanel", () => {
     render(<MedicareNonCoveredReviewPanel assessmentId="assessment-1" locked COLORS={{}} />);
     expect(await screen.findByText(/Determination:/)).toBeTruthy();
     expect(screen.queryByLabelText("Determination")).toBeNull();
+  });
+
+  it("has no detectable accessibility violations (unsaved/no assessmentId)", async () => {
+    const { container } = render(<MedicareNonCoveredReviewPanel assessmentId={null} locked={false} COLORS={{}} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no detectable accessibility violations (editable form)", async () => {
+    const { container } = render(<MedicareNonCoveredReviewPanel assessmentId="assessment-1" locked={false} COLORS={{}} />);
+    await screen.findByLabelText("Determination");
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no detectable accessibility violations (locked summary)", async () => {
+    mocks.getMedicareNonCoveredReview.mockResolvedValue({
+      medicareNonCoveredReview: { outcome: "NO_ITEMS_IDENTIFIED", reviewedAt: "2026-01-01T00:00:00Z" },
+    });
+    const { container } = render(<MedicareNonCoveredReviewPanel assessmentId="assessment-1" locked COLORS={{}} />);
+    await screen.findByText(/Determination:/);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

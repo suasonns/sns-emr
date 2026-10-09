@@ -1,6 +1,7 @@
 import React from "react";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { axe } from "jest-axe";
 
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
 
@@ -36,5 +37,15 @@ describe("AssessmentTypeToggle", () => {
   it("exposes a radiogroup with an accessible label", () => {
     render(<AssessmentTypeToggle value="update" onChange={() => {}} />);
     expect(screen.getByRole("radiogroup", { name: "Reason for assessment" })).toBeTruthy();
+  });
+
+  it("has no detectable accessibility violations (enabled)", async () => {
+    const { container } = render(<AssessmentTypeToggle value="update" onChange={() => {}} />);
+    expect(await axe(container)).toHaveNoViolations();
+  });
+
+  it("has no detectable accessibility violations (disabled)", async () => {
+    const { container } = render(<AssessmentTypeToggle value="update" onChange={() => {}} disabled />);
+    expect(await axe(container)).toHaveNoViolations();
   });
 });

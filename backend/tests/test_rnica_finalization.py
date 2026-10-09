@@ -487,3 +487,109 @@ def test_election_addendum_candidates_endpoint_scoped_to_admission(client, db_se
     assert resp.status_code == 200, resp.text
     candidate_ids = [c["id"] for c in resp.json()["candidates"]]
     assert str(addendum.id) in candidate_ids
+
+
+# =========================================================
+# Reason-for-assessment (assessment_type) server-side immutability
+# =========================================================
+
+@pytest.mark.integration
+def test_update_without_purpose_key_is_unaffected(client, db_session, rn_headers):
+    """A normal client never sends assessmentType/assessmentSubtype on PUT --
+    confirm that omission still saves formData normally (no false positive
+    from the new immutability guard)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "UPDATE")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {**COMPLETE_FORM_DATA, "diagnoses": {"clinicalNarrative": "routine edit"}}},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assessmentType"] == "UPDATE"
+
+
+@pytest.mark.integration
+def test_update_rejects_assessment_type_change_attempt(client, db_session, rn_headers):
+    """A direct/out-of-band API call attempting to flip Update -> Recertification
+    on an existing record must be rejected server-side (not just UI-disabled)."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "UPDATE")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": COMPLETE_FORM_DATA, "assessmentSubtype": "recert"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 409, resp.text
+
+    db_session.refresh(record)
+    assert record.assessment_type == "UPDATE"
+
+
+@pytest.mark.integration
+def test_update_rejects_assessment_type_change_via_assessment_type_key(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "RECERT")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": COMPLETE_FORM_DATA, "assessmentType": "UPDATE"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 409, resp.text
+
+    db_session.refresh(record)
+    assert record.assessment_type == "RECERT"
+
+
+@pytest.mark.integration
+def test_update_allows_resending_same_assessment_type(client, db_session, rn_headers):
+    """Resending the same purpose the record already has is a no-op, not a
+    rejected change -- a client that (harmlessly) echoes it back must not be
+    blocked from saving."""
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "RECERT")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": COMPLETE_FORM_DATA, "assessmentSubtype": "recert"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["assessmentType"] == "RECERT"
+
+
+@pytest.mark.integration
+def test_assessment_type_change_rejection_writes_audit_event(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "UPDATE")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": COMPLETE_FORM_DATA, "assessmentSubtype": "recert"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 409, resp.text
+
+    row = db_session.execute(
+        text(
+            """
+            SELECT id FROM audit_logs
+            WHERE action = :action AND entity_type = :entity_type AND entity_id = :entity_id
+            ORDER BY created_at DESC LIMIT 1
+            """
+        ),
+        {
+            "action": "RNICA_ASSESSMENT_TYPE_CHANGE_REJECTED",
+            "entity_type": "rnica_assessment",
+            "entity_id": str(record.id),
+        },
+    ).first()
+    assert row is not None, "Expected audit log row for RNICA_ASSESSMENT_TYPE_CHANGE_REJECTED"
