@@ -52,6 +52,11 @@ export {
   INITIAL_NUTRITION_FIELD_VALUES,
   type NutritionFieldValues,
 } from "./systems/nutrition/NutritionSystemPanel";
+export {
+  MusculoskeletalSystemPanel,
+  INITIAL_MUSCULOSKELETAL_FIELD_VALUES,
+  type MusculoskeletalFieldValues,
+} from "./systems/musculoskeletal/MusculoskeletalSystemPanel";
 
 export {
   useBodySystemsAssessmentState,

@@ -30,7 +30,7 @@ describe("BodyShieldShell", () => {
     screen.getByText("Compare dated current evidence with dated prior-period evidence.");
   });
 
-  it("selecting Neurological shows the pilot panel; selecting Cardiovascular, Nutrition, Gastrointestinal, and Genitourinary show their pilot panels; selecting a non-pilot system shows the Phase 2 placeholder", () => {
+  it("selecting Neurological shows the pilot panel; selecting Cardiovascular, Nutrition, Gastrointestinal, Genitourinary, and Musculoskeletal show their pilot panels; selecting a non-pilot system shows the Phase 2 placeholder", () => {
     render(
       <BodyShieldShell patientId="patient-1" visitId="visit-1" bodySystemsAssessmentId="assessment-1" />,
     );
@@ -55,6 +55,10 @@ describe("BodyShieldShell", () => {
     screen.getByText("Catheter status");
 
     fireEvent.click(screen.getAllByText("Musculoskeletal")[0]);
+    fireEvent.click(screen.getByText("Stable existing"));
+    screen.getByText("Weakness (mobility/function impact)");
+
+    fireEvent.click(screen.getAllByText("Integumentary")[0]);
     screen.getByText(/Phase 2 scope/);
   });
 });

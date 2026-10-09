@@ -48,6 +48,11 @@ import {
   INITIAL_NUTRITION_FIELD_VALUES,
   type NutritionFieldValues,
 } from "../systems/nutrition/NutritionSystemPanel";
+import {
+  MusculoskeletalSystemPanel,
+  INITIAL_MUSCULOSKELETAL_FIELD_VALUES,
+  type MusculoskeletalFieldValues,
+} from "../systems/musculoskeletal/MusculoskeletalSystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -64,6 +69,7 @@ const PILOT_SYSTEMS: readonly BodySystemCode[] = [
   "nutrition",
   "gastrointestinal",
   "genitourinary",
+  "musculoskeletal",
 ];
 
 export interface BodyShieldShellProps {
@@ -98,6 +104,9 @@ export function BodyShieldShell({
   );
   const [nutritionValues, setNutritionValues] = useState<NutritionFieldValues>(
     INITIAL_NUTRITION_FIELD_VALUES,
+  );
+  const [musculoskeletalValues, setMusculoskeletalValues] = useState<MusculoskeletalFieldValues>(
+    INITIAL_MUSCULOSKELETAL_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -235,6 +244,18 @@ export function BodyShieldShell({
             missingRequirements={state.missingRequirementsFor("nutrition")}
             values={nutritionValues}
             onChange={setNutritionValues}
+          />
+        )}
+
+        {state.selectedSystem === "musculoskeletal" && (
+          <MusculoskeletalSystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("musculoskeletal", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("musculoskeletal", key)}
+            onLimitationChange={(limitation) => state.setLimitation("musculoskeletal", limitation)}
+            missingRequirements={state.missingRequirementsFor("musculoskeletal")}
+            values={musculoskeletalValues}
+            onChange={setMusculoskeletalValues}
           />
         )}
 
