@@ -120,6 +120,7 @@ import FLACCScale from "../assessments/pain/FLACCScale";
 import { useThemeMode } from "../theme/theme";
 import { getChartColors } from "../theme/chartColors";
 import AssessmentTypeToggle from "./AssessmentTypeToggle";
+import MedicareNonCoveredReviewPanel from "./MedicareNonCoveredReviewPanel";
 import { useAssessmentAutosave } from "../hooks/useAssessmentAutosave";
 import { getSfvStatus, getHopeAdmissionStatus } from "../intake/hopeReportMapper";
 import {
@@ -11780,7 +11781,28 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       {/* ── Workspace ── */}
       {isOngoing && (
         <div style={{ padding: "0 24px 16px" }}>
-          <AssessmentTypeToggle value={assessmentType} onChange={setAssessmentType} />
+          {/* Reason-for-assessment is a one-time choice: it is free to change
+              only until the assessment has been substantively saved for the
+              first time (same "first write" signal useAssessmentAutosave
+              already uses — assessmentId transitions from null to a real id
+              only after a real clinician edit). Once a record exists
+              server-side, or the assessment is locked, the purpose can no
+              longer be switched without creating ambiguity about which
+              finalization rules (e.g. Medicare Non-Covered Items Review)
+              applied at signing. */}
+          <AssessmentTypeToggle
+            value={assessmentType}
+            onChange={setAssessmentType}
+            disabled={Boolean(assessmentId) || locked}
+          />
+          {(Boolean(assessmentId) || locked) && (
+            <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
+              Reason for assessment is locked after the first save and cannot be changed.
+            </div>
+          )}
+          {assessmentType === "recert" && (
+            <MedicareNonCoveredReviewPanel assessmentId={assessmentId} locked={locked} COLORS={COLORS} />
+          )}
         </div>
       )}
 

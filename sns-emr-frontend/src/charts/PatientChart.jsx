@@ -474,10 +474,10 @@ const PatientChart = () => {
             const disciplineTone = item.discipline === 'RN' ? 'teal' : item.discipline === 'MSW' ? 'amber' : 'green';
             let assessmentLabel = item.assessment_type;
             if (item.discipline === 'RN' && item.assessment_type === 'RNICA') assessmentLabel = 'RNICA Admission';
-            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV1') assessmentLabel = 'RN Update - HUV1';
-            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV2') assessmentLabel = 'RN Update - HUV2';
-            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE') assessmentLabel = 'RN Update';
-            else if (item.discipline === 'RN' && item.assessment_type === 'RECERT') assessmentLabel = 'RN Re-Cert';
+            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV1') assessmentLabel = 'Update Assessment (HUV1)';
+            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV2') assessmentLabel = 'Update Assessment (HUV2)';
+            else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE') assessmentLabel = 'Update Assessment';
+            else if (item.discipline === 'RN' && item.assessment_type === 'RECERT') assessmentLabel = 'Recertification Assessment';
             else if (item.discipline === 'RN' && item.assessment_type === 'RN_RECERT_LEGACY') assessmentLabel = 'RN Re-Cert (Legacy)';
             else if (item.discipline === 'MSW') assessmentLabel = 'MSW ICA';
             else if (item.discipline === 'SC') assessmentLabel = 'SC ICA';

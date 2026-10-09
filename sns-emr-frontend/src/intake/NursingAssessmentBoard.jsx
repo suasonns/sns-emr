@@ -185,7 +185,7 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
             let label = assessmentType === "RNICA"
               ? "RNICA Admission"
               : assessmentType === "RECERT"
-                ? "RN Recert Assessment"
+                ? "Recertification Assessment"
                 : "Update Assessment";
             if (item.assessmentId === huv1Id) label = "Update Assessment (HUV1)";
             if (item.assessmentId === huv2Id) label = "Update Assessment (HUV2)";

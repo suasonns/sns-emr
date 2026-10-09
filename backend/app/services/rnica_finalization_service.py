@@ -16,7 +16,11 @@ live HTTP request.
 
 from __future__ import annotations
 
+from datetime import date
 from typing import Any, Optional
+from uuid import UUID
+
+from sqlalchemy.orm import Session
 
 
 def _get(form_data: dict, *path: str) -> Any:
@@ -30,6 +34,124 @@ def _get(form_data: dict, *path: str) -> Any:
 
 def _has_text(value: Optional[str]) -> bool:
     return isinstance(value, str) and value.strip() != ""
+
+
+MEDICARE_REVIEW_OUTCOMES = {
+    "NO_ITEMS_IDENTIFIED",
+    "PRIOR_REVIEWED_ACCURATE",
+    "CHANGED",
+    "NEW_ITEM_IDENTIFIED",
+    "UNABLE_TO_COMPLETE",
+}
+
+
+def evaluate_medicare_non_covered_review_readiness(
+    form_data: dict[str, Any], assessment_type: Optional[str]
+) -> dict[str, Any]:
+    """Recertification Assessment only -- CMS hospice recertification
+    requires a current determination of non-covered items/services/drugs.
+    Does not apply to Update Assessment or the Initial Comprehensive RN
+    Assessment (assessment_type RNICA/UPDATE), which have no such
+    requirement and must never be blocked by it.
+    """
+    if assessment_type != "RECERT":
+        return {
+            "ready": True,
+            "message": (
+                "Not applicable (Medicare Non-Covered Items Review is required for "
+                "Recertification Assessment only)."
+            ),
+        }
+
+    review = _get(form_data, "medicareNonCoveredReview") or {}
+    outcome = review.get("outcome")
+    if outcome not in MEDICARE_REVIEW_OUTCOMES:
+        return {
+            "ready": False,
+            "message": (
+                "Medicare Non-Covered Items Review must be completed with an explicit "
+                "determination before this Recertification Assessment can be authenticated."
+            ),
+        }
+    if outcome in ("CHANGED", "NEW_ITEM_IDENTIFIED") and not _has_text(review.get("explanation")):
+        return {
+            "ready": False,
+            "message": (
+                "An explanation is required when the non-covered items determination changed "
+                "or a new item was identified."
+            ),
+        }
+    if outcome == "UNABLE_TO_COMPLETE" and (
+        not _has_text(review.get("blockingReason")) or not _has_text(review.get("followUp"))
+    ):
+        return {
+            "ready": False,
+            "message": (
+                "A blocking reason and an assigned follow-up are required when the Medicare "
+                "Non-Covered Items Review is unable to be completed."
+            ),
+        }
+    return {"ready": True, "message": "Medicare Non-Covered Items Review completed."}
+
+
+def evaluate_benefit_period_readiness(
+    assessment_type: Optional[str],
+    *,
+    db: Optional[Session] = None,
+    tenant_id: Optional[UUID] = None,
+    patient_id: Optional[UUID] = None,
+    as_of_date: Optional[date] = None,
+) -> dict[str, Any]:
+    """Recertification Assessment only -- a Recertification must be tied to
+    a currently-active hospice benefit period. Reuses the existing
+    `benefit_period_resolver.get_active_benefit_period` (same resolver the
+    billing/eligibility workflows already use) instead of introducing a
+    second benefit-period model or lookup. Update Assessment and the
+    Initial Comprehensive RN Assessment never require or advance a
+    benefit period and are always `ready` here.
+    """
+    if assessment_type != "RECERT":
+        return {
+            "ready": True,
+            "message": (
+                "Not applicable (benefit-period context is required for Recertification "
+                "Assessment only)."
+            ),
+        }
+
+    if db is None or tenant_id is None or patient_id is None:
+        return {
+            "ready": False,
+            "message": "Unable to verify an active benefit period for this Recertification Assessment.",
+        }
+
+    # Local import avoids a hard dependency for callers (e.g. pure unit
+    # tests of this module) that don't need benefit-period resolution.
+    from app.services.benefit_period_resolver import get_active_benefit_period
+
+    try:
+        period = get_active_benefit_period(
+            db,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            as_of_date=as_of_date or date.today(),
+        )
+    except ValueError as exc:
+        return {"ready": False, "message": f"Benefit-period conflict: {exc}"}
+
+    if period is None:
+        return {
+            "ready": False,
+            "message": (
+                "No active hospice benefit period was found for this patient. A "
+                "Recertification Assessment cannot be authenticated without valid "
+                "benefit-period context."
+            ),
+        }
+    return {
+        "ready": True,
+        "message": f"Active benefit period verified (started {period.start_date.isoformat()}).",
+    }
 
 
 def evaluate_poc_completeness(problems: list[dict[str, Any]]) -> dict[str, Any]:
@@ -91,13 +213,44 @@ def evaluate_poc_completeness(problems: list[dict[str, Any]]) -> dict[str, Any]:
     return {"ready": True, "message": "All active Plan of Care problems have goals, interventions, and disciplines.", "incomplete_labels": []}
 
 
-def evaluate_finalization_readiness(form_data: dict[str, Any], poc_problems: list[dict[str, Any]]) -> dict[str, Any]:
+def evaluate_finalization_readiness(
+    form_data: dict[str, Any],
+    poc_problems: list[dict[str, Any]],
+    assessment_type: Optional[str] = None,
+    *,
+    db: Optional[Session] = None,
+    tenant_id: Optional[UUID] = None,
+    patient_id: Optional[UUID] = None,
+) -> dict[str, Any]:
     """Returns the full SECTION 12 readiness breakdown. `checks` keys are
     stable identifiers the frontend renders as a checklist; `ready` is the
     single aggregate gate for the Lock action.
+
+    `assessment_type` (RNICA / UPDATE / RECERT) is optional for backward
+    compatibility with existing callers; omitting it is equivalent to
+    passing a non-RECERT type, so the Medicare Non-Covered Items Review and
+    benefit-period checks are no-ops unless the caller explicitly
+    identifies a Recertification Assessment. `db`/`tenant_id`/`patient_id`
+    are likewise optional and only consulted for the benefit-period check.
     """
     form_data = form_data or {}
     checks: dict[str, dict[str, Any]] = {}
+
+    medicare_review = evaluate_medicare_non_covered_review_readiness(form_data, assessment_type)
+    checks["medicareNonCoveredReview"] = {
+        "label": "Medicare Non-Covered Items Review",
+        "ready": medicare_review["ready"],
+        "message": medicare_review["message"],
+    }
+
+    benefit_period = evaluate_benefit_period_readiness(
+        assessment_type, db=db, tenant_id=tenant_id, patient_id=patient_id
+    )
+    checks["benefitPeriod"] = {
+        "label": "Benefit-Period Context",
+        "ready": benefit_period["ready"],
+        "message": benefit_period["message"],
+    }
 
     # --- Layer 1: attestation, signature ------------------------------
     signature_certification = _get(form_data, "finalization", "signatureCertification") is True

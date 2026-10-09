@@ -1232,7 +1232,14 @@ def lock_rnica_assessment(
             tenant_id=tenant_id,
             patient_id=record.patient_id,
         )
-    readiness = evaluate_finalization_readiness(record.form_data or {}, poc_problems)
+    readiness = evaluate_finalization_readiness(
+        record.form_data or {},
+        poc_problems,
+        record.assessment_type,
+        db=db,
+        tenant_id=tenant_id,
+        patient_id=record.patient_id,
+    )
     if not readiness["ready"]:
         unmet = [check["label"] for check in readiness["checks"].values() if not check["ready"]]
         raise HTTPException(

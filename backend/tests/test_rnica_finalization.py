@@ -280,3 +280,210 @@ def test_finalization_readiness_endpoint_matches_lock_gate(client, db_session, r
 
     lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
     assert lock_resp.status_code == 400, lock_resp.text
+
+
+# =========================================================
+# Medicare Non-Covered Items Review + benefit-period readiness
+# (Reason For Assessment: Update Assessment / Recertification Assessment)
+# =========================================================
+
+def _make_rnica_assessment_typed(db_session, patient, tenant_id, form_data, assessment_type):
+    record = RnicaAssessment(
+        id=uuid.uuid4(),
+        patient_id=patient.id,
+        tenant_id=uuid.UUID(str(tenant_id)),
+        assessment_type=assessment_type,
+        form_data=form_data,
+    )
+    db_session.add(record)
+    db_session.commit()
+    return record
+
+
+def _make_benefit_period(db_session, tenant_id, patient_id, *, start_date, end_date=None):
+    from app.models.benefit_period import BenefitPeriod
+
+    period = BenefitPeriod(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient_id,
+        benefit_type="RECERT",
+        period_number=3,
+        election_date=start_date,
+        start_date=start_date,
+        end_date=end_date,
+        is_current=True,
+    )
+    db_session.add(period)
+    db_session.commit()
+    return period
+
+
+def test_medicare_review_not_applicable_for_update_assessment():
+    readiness = evaluate_finalization_readiness(COMPLETE_FORM_DATA, [], "UPDATE")
+    assert readiness["checks"]["medicareNonCoveredReview"]["ready"] is True
+
+
+def test_medicare_review_blocks_recert_when_missing():
+    readiness = evaluate_finalization_readiness(COMPLETE_FORM_DATA, [], "RECERT")
+    assert readiness["ready"] is False
+    assert readiness["checks"]["medicareNonCoveredReview"]["ready"] is False
+
+
+def test_benefit_period_not_applicable_for_update_assessment():
+    readiness = evaluate_finalization_readiness(COMPLETE_FORM_DATA, [], "UPDATE")
+    assert readiness["checks"]["benefitPeriod"]["ready"] is True
+
+
+def test_benefit_period_blocks_recert_without_db_context():
+    readiness = evaluate_finalization_readiness(COMPLETE_FORM_DATA, [], "RECERT")
+    assert readiness["checks"]["benefitPeriod"]["ready"] is False
+
+
+@pytest.mark.integration
+def test_benefit_period_blocks_recert_lock_without_active_period(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    form_data = {
+        **COMPLETE_FORM_DATA,
+        "medicareNonCoveredReview": {"outcome": "NO_ITEMS_IDENTIFIED"},
+    }
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, form_data, "RECERT")
+
+    resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert resp.status_code == 400, resp.text
+    unmet = resp.json()["detail"]["unmetChecks"]
+    assert "Benefit-Period Context" in unmet
+
+
+@pytest.mark.integration
+def test_recert_lock_succeeds_with_active_benefit_period_and_medicare_review(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    _make_benefit_period(db_session, tenant_id, patient.id, start_date=date(2026, 1, 1))
+    form_data = {
+        **COMPLETE_FORM_DATA,
+        "medicareNonCoveredReview": {"outcome": "NO_ITEMS_IDENTIFIED"},
+    }
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, form_data, "RECERT")
+
+    resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert resp.status_code == 200, resp.text
+    assert resp.json()["locked"] is True
+
+
+@pytest.mark.integration
+def test_update_assessment_lock_does_not_require_benefit_period_or_medicare_review(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "UPDATE")
+
+    resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert resp.status_code == 200, resp.text
+
+
+@pytest.mark.integration
+def test_medicare_review_endpoint_rejects_non_recert_assessment(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "UPDATE")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}/medicare-non-covered-review",
+        json={"outcome": "NO_ITEMS_IDENTIFIED"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 400, resp.text
+
+
+@pytest.mark.integration
+def test_medicare_review_endpoint_requires_explanation_when_changed(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "RECERT")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}/medicare-non-covered-review",
+        json={"outcome": "CHANGED"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.integration
+def test_medicare_review_endpoint_requires_blocking_reason_and_follow_up_when_unable(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "RECERT")
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}/medicare-non-covered-review",
+        json={"outcome": "UNABLE_TO_COMPLETE"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 422, resp.text
+
+
+@pytest.mark.integration
+def test_medicare_review_endpoint_saves_and_round_trips(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "RECERT")
+
+    put_resp = client.put(
+        f"/visits/rnica/{record.id}/medicare-non-covered-review",
+        json={"outcome": "NO_ITEMS_IDENTIFIED"},
+        headers=rn_headers,
+    )
+    assert put_resp.status_code == 200, put_resp.text
+
+    get_resp = client.get(f"/visits/rnica/{record.id}/medicare-non-covered-review", headers=rn_headers)
+    assert get_resp.status_code == 200, get_resp.text
+    assert get_resp.json()["medicareNonCoveredReview"]["outcome"] == "NO_ITEMS_IDENTIFIED"
+
+
+@pytest.mark.integration
+def test_medicare_review_endpoint_rejected_after_lock(client, db_session, rn_headers):
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    _make_benefit_period(db_session, tenant_id, patient.id, start_date=date(2026, 1, 1))
+    form_data = {
+        **COMPLETE_FORM_DATA,
+        "medicareNonCoveredReview": {"outcome": "NO_ITEMS_IDENTIFIED"},
+    }
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, form_data, "RECERT")
+    lock_resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert lock_resp.status_code == 200, lock_resp.text
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}/medicare-non-covered-review",
+        json={"outcome": "CHANGED", "explanation": "late edit"},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 423, resp.text
+
+
+@pytest.mark.integration
+def test_election_addendum_candidates_endpoint_scoped_to_admission(client, db_session, rn_headers):
+    from app.billing.models.election_addendum_request import ElectionAddendumRequest
+
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment_typed(db_session, patient, tenant_id, COMPLETE_FORM_DATA, "RECERT")
+    record.admission_id = admission.id
+    db_session.add(record)
+    db_session.commit()
+
+    addendum = ElectionAddendumRequest(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        admission_id=admission.id,
+    )
+    db_session.add(addendum)
+    db_session.commit()
+
+    resp = client.get(f"/visits/rnica/{record.id}/election-addendum-candidates", headers=rn_headers)
+    assert resp.status_code == 200, resp.text
+    candidate_ids = [c["id"] for c in resp.json()["candidates"]]
+    assert str(addendum.id) in candidate_ids

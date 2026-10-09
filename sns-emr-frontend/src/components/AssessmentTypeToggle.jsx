@@ -28,21 +28,30 @@ const styles = {
   },
 };
 
-export default function AssessmentTypeToggle({ value = "update", onChange }) {
+export default function AssessmentTypeToggle({ value = "update", onChange, disabled = false }) {
   return (
-    <div style={styles.shell}>
+    <div
+      role="radiogroup"
+      aria-label="Reason for assessment"
+      aria-disabled={disabled || undefined}
+      style={{ ...styles.shell, opacity: disabled ? 0.6 : 1 }}
+    >
       {OPTIONS.map((option) => {
         const active = option.value === value;
         return (
           <button
             key={option.value}
             type="button"
-            onClick={() => onChange?.(option.value)}
+            role="radio"
+            aria-checked={active}
+            disabled={disabled}
+            onClick={() => !disabled && onChange?.(option.value)}
             style={{
               ...styles.button,
               background: active ? "linear-gradient(135deg, #0D9488 0%, #10B7A2 100%)" : "transparent",
               color: active ? "#FFFFFF" : "#CBD5E1",
               boxShadow: active ? "0 8px 20px rgba(13, 148, 136, 0.28)" : "none",
+              cursor: disabled ? "not-allowed" : "pointer",
             }}
           >
             {option.label}
