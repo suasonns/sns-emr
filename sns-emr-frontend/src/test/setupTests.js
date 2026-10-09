@@ -1,5 +1,13 @@
-import { afterEach, vi } from "vitest";
+import { afterEach, expect, vi } from "vitest";
 import { cleanup } from "@testing-library/react";
+import { toHaveNoViolations } from "jest-axe";
+
+// Registers the `toHaveNoViolations()` matcher (axe-core under the hood)
+// globally so any test file can assert `expect(await axe(container)).toHaveNoViolations()`
+// without per-file setup. See
+// docs/governance/SNS_RNICA_SHADCN_UI_ADOPTION_RULE.md for the
+// accessibility-testing rule this backs.
+expect.extend(toHaveNoViolations);
 
 globalThis.IS_REACT_ACT_ENVIRONMENT = true;
 

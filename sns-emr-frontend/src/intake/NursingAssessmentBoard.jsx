@@ -183,9 +183,9 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
           .map((item) => {
             const assessmentType = String(item.assessmentType || "").toUpperCase();
             let label = assessmentType === "RNICA"
-              ? "RNICA Admission"
+              ? "Initial Comprehensive RN Assessment"
               : assessmentType === "RECERT"
-                ? "RN Recert Assessment"
+                ? "Recertification Assessment"
                 : "Update Assessment";
             if (item.assessmentId === huv1Id) label = "Update Assessment (HUV1)";
             if (item.assessmentId === huv2Id) label = "Update Assessment (HUV2)";

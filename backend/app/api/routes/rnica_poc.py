@@ -12,10 +12,12 @@ authoritative Plan of Care document model
 from __future__ import annotations
 
 import uuid
+from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Security, status
 from pydantic import BaseModel, Field, field_validator
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.database import SessionLocal
 from app.core.patient_access import get_authorized_patient
@@ -23,10 +25,15 @@ from app.core.security import get_current_user, CurrentUser
 from app.models.patient import Patient
 from app.models.patient_order import PatientOrder
 from app.models.rnica_assessment import RnicaAssessment
+from app.billing.models.election_addendum_request import ElectionAddendumRequest
 from app.services import rnica_poc_adapter
-from app.services.rnica_finalization_service import evaluate_finalization_readiness
+from app.services.rnica_finalization_service import (
+    evaluate_finalization_readiness,
+    MEDICARE_REVIEW_OUTCOMES,
+)
 from app.services.order_suggestion_service import generate_order_suggestions
 from app.services.audit_logger import log_event
+from app.api.visits import RNICA_RECERT_TYPE
 
 router = APIRouter(prefix="/visits/rnica", tags=["rnica-poc"])
 
@@ -204,11 +211,184 @@ def get_finalization_readiness(
             patient_id=record.patient_id,
         )
 
-    readiness = evaluate_finalization_readiness(record.form_data or {}, poc_problems)
+    readiness = evaluate_finalization_readiness(
+        record.form_data or {},
+        poc_problems,
+        record.assessment_type,
+        db=db,
+        tenant_id=tenant_id,
+        patient_id=record.patient_id,
+    )
     return {
         "assessmentId": str(record.id),
         "locked": record.locked,
         **readiness,
+    }
+
+
+class MedicareNonCoveredReviewRequest(BaseModel):
+    outcome: str = Field(..., min_length=1)
+    explanation: str | None = None
+    blocking_reason: str | None = Field(default=None, alias="blockingReason")
+    follow_up: str | None = Field(default=None, alias="followUp")
+    plan_of_care_change_affects_non_covered_items: bool = Field(
+        default=False, alias="planOfCareChangeAffectsNonCoveredItems"
+    )
+    election_addendum_request_id: str | None = Field(default=None, alias="electionAddendumRequestId")
+
+    model_config = {"populate_by_name": True}
+
+    @field_validator("outcome")
+    @classmethod
+    def _validate_outcome(cls, value: str) -> str:
+        if value not in MEDICARE_REVIEW_OUTCOMES:
+            raise ValueError(f"outcome must be one of {sorted(MEDICARE_REVIEW_OUTCOMES)}")
+        return value
+
+
+@router.get("/{assessment_id}/medicare-non-covered-review")
+def get_medicare_non_covered_review(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Recertification-only CMS hospice determination of non-covered
+    items/services/drugs. Stored as a section of the shared RN ICA
+    `form_data` JSONB document -- the same storage pattern every other RN
+    ICA section already uses -- so no new table/migration is introduced
+    and there is exactly one Comprehensive RN Assessment record either way.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    return {
+        "assessmentId": str(record.id),
+        "assessmentType": record.assessment_type,
+        "locked": record.locked,
+        "medicareNonCoveredReview": (record.form_data or {}).get("medicareNonCoveredReview"),
+    }
+
+
+@router.put("/{assessment_id}/medicare-non-covered-review")
+def update_medicare_non_covered_review(
+    assessment_id: str,
+    payload: MedicareNonCoveredReviewRequest,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    _reject_if_locked(record)
+
+    if (record.assessment_type or "") != RNICA_RECERT_TYPE:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "Medicare Non-Covered Items Review only applies to a Recertification "
+                "Assessment and cannot be recorded on an Update Assessment or the Initial "
+                "Comprehensive RN Assessment."
+            ),
+        )
+
+    if payload.outcome in ("CHANGED", "NEW_ITEM_IDENTIFIED") and not (payload.explanation or "").strip():
+        raise HTTPException(
+            status_code=422,
+            detail="explanation is required when the determination changed or a new non-covered item was identified.",
+        )
+    if payload.outcome == "UNABLE_TO_COMPLETE" and (
+        not (payload.blocking_reason or "").strip() or not (payload.follow_up or "").strip()
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="blockingReason and followUp are required when the review is unable to be completed.",
+        )
+
+    tenant_id = _tenant_id_for(db, record)
+    election_addendum_request_id = None
+    if payload.election_addendum_request_id:
+        try:
+            addendum_uuid = uuid.UUID(payload.election_addendum_request_id)
+        except ValueError:
+            raise HTTPException(status_code=422, detail="electionAddendumRequestId must be a valid UUID") from None
+        # Cross-admission/cross-tenant safety: a clinician may only link an
+        # election-addendum workflow item that already belongs to this same
+        # patient's current admission and tenant. This links to the
+        # existing CMS-governed Election Addendum workflow
+        # (ElectionAddendumRequest) -- it never creates or duplicates one,
+        # and selecting Recertification alone is never treated as the
+        # federal addendum-furnishing trigger.
+        addendum = db.query(ElectionAddendumRequest).filter(ElectionAddendumRequest.id == addendum_uuid).first()
+        if (
+            not addendum
+            or addendum.tenant_id != tenant_id
+            or record.admission_id is None
+            or addendum.admission_id != record.admission_id
+        ):
+            raise HTTPException(
+                status_code=404,
+                detail="Election addendum request not found for this patient's current admission.",
+            )
+        election_addendum_request_id = str(addendum.id)
+
+    now = datetime.now(timezone.utc)
+    review = {
+        "outcome": payload.outcome,
+        "explanation": payload.explanation,
+        "blockingReason": payload.blocking_reason,
+        "followUp": payload.follow_up,
+        "planOfCareChangeAffectsNonCoveredItems": payload.plan_of_care_change_affects_non_covered_items,
+        "electionAddendumRequestId": election_addendum_request_id,
+        "reviewedAt": now.isoformat(),
+        "reviewedByUserId": str(_user_id(current_user)) if _user_id(current_user) else None,
+    }
+    form_data = dict(record.form_data or {})
+    form_data["medicareNonCoveredReview"] = review
+    record.form_data = form_data
+    flag_modified(record, "form_data")
+    db.commit()
+
+    log_event(
+        db=db,
+        user_id=_user_id(current_user),
+        action="RNICA_MEDICARE_NON_COVERED_REVIEW_UPDATED",
+        entity_type="rnica_assessment",
+        entity_id=record.id,
+        metadata={"outcome": payload.outcome, "assessmentType": record.assessment_type},
+    )
+    return {"assessmentId": str(record.id), "medicareNonCoveredReview": review}
+
+
+@router.get("/{assessment_id}/election-addendum-candidates")
+def list_election_addendum_candidates(
+    assessment_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """Candidates for linking (not creating/duplicating) the existing,
+    separately CMS-governed Election Addendum workflow when a Medicare
+    Non-Covered Items Review determination indicates a plan-of-care change
+    affecting the non-covered items list.
+    """
+    record = _load_assessment_and_authorize(db, assessment_id, current_user)
+    if record.admission_id is None:
+        return {"assessmentId": str(record.id), "candidates": []}
+    tenant_id = _tenant_id_for(db, record)
+    rows = (
+        db.query(ElectionAddendumRequest)
+        .filter(
+            ElectionAddendumRequest.tenant_id == tenant_id,
+            ElectionAddendumRequest.admission_id == record.admission_id,
+        )
+        .order_by(ElectionAddendumRequest.created_at.desc())
+        .all()
+    )
+    return {
+        "assessmentId": str(record.id),
+        "candidates": [
+            {
+                "id": str(row.id),
+                "workflowStatus": row.workflow_status,
+                "triggerType": row.trigger_type,
+            }
+            for row in rows
+        ],
     }
 
 

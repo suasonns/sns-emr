@@ -98,6 +98,35 @@
       "name": "RNICA navigation specification",
       "path": "docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md",
       "requiredWhen": "RNICA navigation work"
+    },
+    {
+      "name": "RNICA shadcn/ui adoption rule",
+      "path": "docs/governance/SNS_RNICA_SHADCN_UI_ADOPTION_RULE.md",
+      "requiredWhen": "RNICA UI component implementation using shadcn/ui primitives"
+    },
+    {
+      "name": "SNS Clinical Readability Standard",
+      "path": "docs/governance/SNS_CLINICAL_READABILITY_STANDARD.md",
+      "classification": "platform-wide-governance",
+      "requiredWhen": "Any major UI redesign, any new workflow, any dashboard, any reporting screen, any billing workflow, any tenant-owner workflow, any administrator workflow, any compliance workflow, any clinical workflow, any responsive-layout work, or any typography change, across the Clinical Platform, Owner/Tenant/Biller Platform, and Administrator UI (not limited to Body Systems)"
+    },
+    {
+      "name": "SNS Clinical Workspace Standard",
+      "path": "docs/governance/SNS_CLINICAL_WORKSPACE_STANDARD.md",
+      "classification": "platform-wide-governance",
+      "requiredWhen": "Any viewport/device-support decision for any SNS UI (clinical, billing, tenant-owner, administrator, QA/compliance, executive/reporting dashboards) \u2014 ultrawide, laptop, tablet, phone (not limited to Body Systems)"
+    },
+    {
+      "name": "SNS Browser Width Validation Standard",
+      "path": "docs/governance/SNS_BROWSER_WIDTH_VALIDATION_STANDARD.md",
+      "classification": "platform-wide-governance",
+      "requiredWhen": "Approving any major SNS UI redesign or new workflow across the Clinical Platform, Owner/Tenant/Biller Platform, and Administrator UI, including any responsive-layout work or browser-validation work (not limited to Body Systems)"
+    },
+    {
+      "name": "SNS Playwright Validation Standard",
+      "path": "docs/governance/SNS_PLAYWRIGHT_VALIDATION_STANDARD.md",
+      "classification": "platform-wide-governance",
+      "requiredWhen": "Selecting or using a browser-automation/visual-validation tool for any major SNS UI work across the Clinical Platform, Owner/Tenant/Biller Platform, and Administrator UI (not limited to Body Systems)"
     }
   ]
 }

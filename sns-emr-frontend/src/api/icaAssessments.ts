@@ -329,6 +329,41 @@ export async function getRnicaFinalizationReadiness(assessmentId: string) {
   );
 }
 
+// Medicare Non-Covered Items Review — Recertification Assessment only.
+// Stored inside the shared RN ICA form_data JSONB; no new table.
+export async function getMedicareNonCoveredReview(assessmentId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/${assessmentId}/medicare-non-covered-review`),
+    "Unable to load Medicare Non-Covered Items Review"
+  );
+}
+
+export async function updateMedicareNonCoveredReview(
+  assessmentId: string,
+  payload: {
+    outcome: string;
+    explanation?: string;
+    blockingReason?: string;
+    followUp?: string;
+    planOfCareChangeAffectsNonCoveredItems?: boolean;
+    electionAddendumRequestId?: string | null;
+  }
+) {
+  return unwrap(
+    api.put(`/visits/rnica/${assessmentId}/medicare-non-covered-review`, payload),
+    "Unable to save Medicare Non-Covered Items Review"
+  );
+}
+
+// Candidates for linking (never creating/duplicating) the existing,
+// separately CMS-governed Election Addendum workflow.
+export async function getElectionAddendumCandidates(assessmentId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/${assessmentId}/election-addendum-candidates`),
+    "Unable to load election addendum candidates"
+  );
+}
+
 // SECTION 12 — Amendment Infrastructure. Reachable once an assessment is
 // locked; submits a distinct, timestamped, attributable correction/addendum
 // record. Never mutates the original signed assessment content.
