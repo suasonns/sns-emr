@@ -38,6 +38,11 @@ import {
   INITIAL_GASTROINTESTINAL_FIELD_VALUES,
   type GastrointestinalFieldValues,
 } from "../systems/gastrointestinal/GastrointestinalSystemPanel";
+import {
+  GenitourinarySystemPanel,
+  INITIAL_GENITOURINARY_FIELD_VALUES,
+  type GenitourinaryFieldValues,
+} from "../systems/genitourinary/GenitourinarySystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -52,6 +57,7 @@ const PILOT_SYSTEMS: readonly BodySystemCode[] = [
   "respiratory",
   "cardiovascular",
   "gastrointestinal",
+  "genitourinary",
 ];
 
 export interface BodyShieldShellProps {
@@ -80,6 +86,9 @@ export function BodyShieldShell({
   );
   const [gastrointestinalValues, setGastrointestinalValues] = useState<GastrointestinalFieldValues>(
     INITIAL_GASTROINTESTINAL_FIELD_VALUES,
+  );
+  const [genitourinaryValues, setGenitourinaryValues] = useState<GenitourinaryFieldValues>(
+    INITIAL_GENITOURINARY_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -193,6 +202,18 @@ export function BodyShieldShell({
             missingRequirements={state.missingRequirementsFor("gastrointestinal")}
             values={gastrointestinalValues}
             onChange={setGastrointestinalValues}
+          />
+        )}
+
+        {state.selectedSystem === "genitourinary" && (
+          <GenitourinarySystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("genitourinary", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("genitourinary", key)}
+            onLimitationChange={(limitation) => state.setLimitation("genitourinary", limitation)}
+            missingRequirements={state.missingRequirementsFor("genitourinary")}
+            values={genitourinaryValues}
+            onChange={setGenitourinaryValues}
           />
         )}
 

@@ -42,6 +42,11 @@ export {
   INITIAL_GASTROINTESTINAL_FIELD_VALUES,
   type GastrointestinalFieldValues,
 } from "./systems/gastrointestinal/GastrointestinalSystemPanel";
+export {
+  GenitourinarySystemPanel,
+  INITIAL_GENITOURINARY_FIELD_VALUES,
+  type GenitourinaryFieldValues,
+} from "./systems/genitourinary/GenitourinarySystemPanel";
 
 export {
   useBodySystemsAssessmentState,
