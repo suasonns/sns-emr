@@ -41,6 +41,7 @@ import FacilityCollectionsReportPage from "./pages/billing/FacilityCollectionsRe
 import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
+import { BodySystemsWorkspacePreview } from "./features/body-systems";
 import { useEffect } from "react";
 import OfflineStatusBadge from "./offline/OfflineStatusBadge";
 import { startConnectivityMonitor } from "./offline/networkStatus";
@@ -129,6 +130,19 @@ export default function App() {
         <Route path="/chart/:patientId" element={tenantRoute(<PatientChart />)} />
 
         {/* Fallback */}
+        {/*
+          Development-only Body Systems preview route.
+          Gated on `import.meta.env.DEV`, which Vite statically replaces
+          with `false` in production builds — this Route is never
+          registered (and therefore never reachable or linked from any
+          production navigation) outside `npm run dev`. Renders only the
+          synthetic, read-only `BodySystemsWorkspacePreview` shell; no
+          authentication bypass, API, persistence, or RNICA coupling.
+        */}
+        {import.meta.env.DEV && (
+          <Route path="/__dev-preview/body-systems" element={<BodySystemsWorkspacePreview />} />
+        )}
+
         <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>
