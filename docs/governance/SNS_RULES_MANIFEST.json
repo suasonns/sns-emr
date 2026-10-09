@@ -98,6 +98,11 @@
       "name": "RNICA navigation specification",
       "path": "docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md",
       "requiredWhen": "RNICA navigation work"
+    },
+    {
+      "name": "RNICA shadcn/ui adoption rule",
+      "path": "docs/governance/SNS_RNICA_SHADCN_UI_ADOPTION_RULE.md",
+      "requiredWhen": "RNICA UI component implementation using shadcn/ui primitives"
     }
   ]
 }
