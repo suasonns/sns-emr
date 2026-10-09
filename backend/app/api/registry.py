@@ -60,6 +60,7 @@ from app.api.regulatory.reports import router as regulatory_router
 from app.api.safety_assessments import router as safety_assessments_router
 from app.api.routes.plan_of_care import router as poc_router
 from app.api.routes.rnica_poc import router as rnica_poc_router
+from app.api.routes.body_systems import router as body_systems_router
 from app.api.routes.admission_action_center import router as admission_action_center_router
 from app.api.patient_allergies import router as patient_allergies_router
 from app.api.patient_issues import router as patient_issues_router
@@ -193,6 +194,7 @@ def register_routers(app: FastAPI) -> None:
 
         poc_router,
         rnica_poc_router,
+        body_systems_router,
         admission_action_center_router,
         patient_charts_router,
         patient_issues_router,
