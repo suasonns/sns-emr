@@ -473,7 +473,7 @@ const PatientChart = () => {
           const items = (result?.items || []).map((item) => {
             const disciplineTone = item.discipline === 'RN' ? 'teal' : item.discipline === 'MSW' ? 'amber' : 'green';
             let assessmentLabel = item.assessment_type;
-            if (item.discipline === 'RN' && item.assessment_type === 'RNICA') assessmentLabel = 'RNICA Admission';
+            if (item.discipline === 'RN' && item.assessment_type === 'RNICA') assessmentLabel = 'Initial Comprehensive RN Assessment';
             else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV1') assessmentLabel = 'Update Assessment (HUV1)';
             else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE' && item.phase_hint === 'HUV2') assessmentLabel = 'Update Assessment (HUV2)';
             else if (item.discipline === 'RN' && item.assessment_type === 'UPDATE') assessmentLabel = 'Update Assessment';
