@@ -12,7 +12,7 @@
  * remaining systems.
  */
 import * as React from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Badge } from "../../../components/ui/badge";
 import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
 import { Button } from "../../../components/ui/button";
@@ -66,7 +66,13 @@ import {
   type InfectionFieldValues,
 } from "../systems/infection/InfectionSystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
-import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
+import { useRespiratoryPersistence, type RespiratoryPersistenceStatus } from "../systems/respiratory/useRespiratoryPersistence";
+import {
+  getVisitModeConfig,
+  type AssessmentSituation,
+  type BodySystemCode,
+  type VisitMode,
+} from "../../../domain/body-systems";
 
 const VISIT_MODE_TABS: { value: VisitMode; label: string }[] = [
   { value: "admission_comprehensive", label: "Admission / Comprehensive" },
@@ -132,6 +138,57 @@ export function BodyShieldShell({
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
   const visitModeConfig = getVisitModeConfig(visitMode);
   const openExceptionCount = state.exceptions.filter((exception) => exception.status === "open").length;
+
+  // Respiratory persistence (Workspace integration). The other eight pilot
+  // systems remain in-memory-only (Phase 1 scope); this is additive and
+  // scoped to Respiratory only, per the approved persistence-proof plan.
+  const respiratoryPersistence = useRespiratoryPersistence(patientId);
+  const respiratoryLoadedIntoStateRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    const loaded = respiratoryPersistence.assessment;
+    if (!loaded) return;
+    if (respiratoryPersistence.status !== "draft_loaded" && respiratoryPersistence.status !== "no_draft_yet") return;
+    // Seed orchestration state + local field values from the server exactly
+    // once per load (identified by id+version) -- never on every render,
+    // and never overwriting local edits made after the load completed.
+    const loadKey = `${loaded.id}:${loaded.version}`;
+    if (respiratoryLoadedIntoStateRef.current === loadKey) return;
+    respiratoryLoadedIntoStateRef.current = loadKey;
+
+    if (loaded.situation) {
+      state.setSituation("respiratory", loaded.situation as AssessmentSituation);
+    }
+    if (loaded.limitationReason || (loaded.limitationScope && loaded.limitationScope.length > 0)) {
+      state.setLimitation("respiratory", {
+        scope: loaded.limitationScope ?? [],
+        reason: loaded.limitationReason ?? "",
+        assessedPortion: loaded.limitationAssessedPortion ?? undefined,
+        followUpRequired: loaded.limitationFollowUpRequired ?? false,
+      });
+    }
+    setRespiratoryValues((prev) => ({ ...prev, ...(loaded.data as Partial<RespiratoryFieldValues>) }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [respiratoryPersistence.assessment, respiratoryPersistence.status]);
+
+  const handleSaveRespiratoryDraft = () => {
+    const respiratoryState = state.systems.respiratory;
+    respiratoryPersistence
+      .save({
+        situation: respiratoryState.situation ?? null,
+        data: respiratoryValues as unknown as Record<string, unknown>,
+        reviewState: respiratoryState.reviewState,
+        limitationScope: respiratoryState.limitation?.scope ?? null,
+        limitationReason: respiratoryState.limitation?.reason ?? null,
+        limitationAssessedPortion: respiratoryState.limitation?.assessedPortion ?? null,
+        limitationFollowUpRequired: respiratoryState.limitation?.followUpRequired ?? null,
+      })
+      .catch(() => {
+        // Status/errorMessage already reflect the failure; nothing further
+        // to do here. Swallowed so a rejected promise doesn't surface as an
+        // unhandled rejection -- the UI reads respiratoryPersistence.status.
+      });
+  };
 
   const handleVisitModeChange = (mode: VisitMode) => {
     setVisitMode(mode);
@@ -216,7 +273,40 @@ export function BodyShieldShell({
         )}
 
         {state.selectedSystem === "respiratory" && (
-          <RespiratorySystemPanel values={respiratoryValues} onChange={setRespiratoryValues} />
+          <div className="flex flex-col gap-2">
+            <RespiratorySystemPanel
+              situation={selectedSystemState.situation}
+              onSituationChange={(situation) => {
+                state.setSituation("respiratory", situation);
+                respiratoryPersistence.markDirty();
+              }}
+              onRequirementSatisfied={(key) => state.markRequirementSatisfied("respiratory", key)}
+              onLimitationChange={(limitation) => {
+                state.setLimitation("respiratory", limitation);
+                respiratoryPersistence.markDirty();
+              }}
+              missingRequirements={state.missingRequirementsFor("respiratory")}
+              values={respiratoryValues}
+              onChange={(values) => {
+                setRespiratoryValues(values);
+                respiratoryPersistence.markDirty();
+              }}
+            />
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                onClick={handleSaveRespiratoryDraft}
+                disabled={respiratoryPersistence.status === "saving" || respiratoryPersistence.status === "loading"}
+              >
+                Save Respiratory draft
+              </Button>
+              <RespiratoryPersistenceStatusBadge
+                status={respiratoryPersistence.status}
+                errorMessage={respiratoryPersistence.errorMessage}
+                onRetry={respiratoryPersistence.reload}
+              />
+            </div>
+          </div>
         )}
 
         {state.selectedSystem === "cardiovascular" && (
@@ -355,6 +445,64 @@ export function BodyShieldShell({
           setExceptionDrawerOpen(false);
         }}
       />
+    </div>
+  );
+}
+
+const RESPIRATORY_PERSISTENCE_STATUS_LABELS: Record<RespiratoryPersistenceStatus, string> = {
+  loading: "Loading…",
+  no_draft_yet: "No draft yet",
+  draft_loaded: "Draft loaded",
+  unsaved: "Unsaved changes",
+  saving: "Saving…",
+  saved: "Saved",
+  stale_conflict: "Someone else saved this — reload to see their changes before saving again",
+  validation_error: "Could not save: invalid data",
+  auth_error: "Not authorized to save this assessment",
+  network_error: "Could not reach the server",
+};
+
+function respiratoryStatusBadgeVariant(
+  status: RespiratoryPersistenceStatus,
+): "success" | "warning" | "neutral" | "teal" {
+  switch (status) {
+    case "saved":
+    case "draft_loaded":
+      return "success";
+    case "unsaved":
+    case "saving":
+      return "teal";
+    case "stale_conflict":
+    case "validation_error":
+    case "auth_error":
+    case "network_error":
+      return "warning";
+    default:
+      return "neutral";
+  }
+}
+
+function RespiratoryPersistenceStatusBadge({
+  status,
+  errorMessage,
+  onRetry,
+}: {
+  status: RespiratoryPersistenceStatus;
+  errorMessage: string | null;
+  onRetry: () => void;
+}) {
+  const isError =
+    status === "stale_conflict" || status === "validation_error" || status === "auth_error" || status === "network_error";
+  return (
+    <div className="flex items-center gap-2">
+      <Badge variant={respiratoryStatusBadgeVariant(status)}>
+        {errorMessage ?? RESPIRATORY_PERSISTENCE_STATUS_LABELS[status]}
+      </Badge>
+      {isError && (
+        <Button size="sm" variant="outline" onClick={onRetry}>
+          Reload
+        </Button>
+      )}
     </div>
   );
 }
