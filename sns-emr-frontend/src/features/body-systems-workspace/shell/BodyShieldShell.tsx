@@ -1,0 +1,193 @@
+/**
+ * SNS Body Systems Workspace — BodyShieldShell.
+ *
+ * Top-level orchestrator. Owns visit-mode switching, system navigation,
+ * fixed registry visibility, review/exception/progress counts, draft
+ * status, and desktop/mobile layout selection. Contains no clinical
+ * business logic of its own — situation rules, requirement rules, and
+ * exception rules all come from `src/domain/body-systems`; system-specific
+ * fields come from the pilot panels (Neurological, Respiratory) or a
+ * Phase 2 placeholder for the remaining eight systems.
+ */
+import * as React from "react";
+import { useState } from "react";
+import { Badge } from "../../../components/ui/badge";
+import { Tabs, TabsList, TabsTrigger } from "../../../components/ui/tabs";
+import { Button } from "../../../components/ui/button";
+import { Card, CardContent } from "../../../components/ui/card";
+import { useViewportKind } from "./useViewportKind";
+import { ResponsiveDesktopLayout } from "./ResponsiveDesktopLayout";
+import { ResponsiveMobileLayout } from "./ResponsiveMobileLayout";
+import { SystemRegisterRow } from "../workspace/SystemRegisterRow";
+import { BodySystemsWorkspace } from "../workspace/BodySystemsWorkspace";
+import { ReviewExceptionDrawer } from "../workspace/ReviewExceptionDrawer";
+import { AISuggestionShell } from "../ai/AISuggestionShell";
+import { NeurologicalSystemPanel } from "../systems/neurological/NeurologicalSystemPanel";
+import {
+  INITIAL_RESPIRATORY_FIELD_VALUES,
+  RespiratorySystemPanel,
+  type RespiratoryFieldValues,
+} from "../systems/respiratory/RespiratorySystemPanel";
+import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
+import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
+
+const VISIT_MODE_TABS: { value: VisitMode; label: string }[] = [
+  { value: "admission_comprehensive", label: "Admission / Comprehensive" },
+  { value: "routine_rn", label: "Routine RN Visit" },
+  { value: "recertification", label: "Recertification" },
+];
+
+const PILOT_SYSTEMS: readonly BodySystemCode[] = ["neurological", "respiratory"];
+
+export interface BodyShieldShellProps {
+  patientId: string;
+  visitId: string;
+  bodySystemsAssessmentId: string;
+  initialVisitMode?: VisitMode;
+  onVisitModeChange?: (mode: VisitMode) => void;
+}
+
+export function BodyShieldShell({
+  patientId,
+  visitId,
+  bodySystemsAssessmentId,
+  initialVisitMode = "routine_rn",
+  onVisitModeChange,
+}: BodyShieldShellProps) {
+  const viewportKind = useViewportKind();
+  const [visitMode, setVisitMode] = useState<VisitMode>(initialVisitMode);
+  const [exceptionDrawerOpen, setExceptionDrawerOpen] = useState(false);
+  const [respiratoryValues, setRespiratoryValues] = useState<RespiratoryFieldValues>(
+    INITIAL_RESPIRATORY_FIELD_VALUES,
+  );
+
+  const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
+  const visitModeConfig = getVisitModeConfig(visitMode);
+  const openExceptionCount = state.exceptions.filter((exception) => exception.status === "open").length;
+
+  const handleVisitModeChange = (mode: VisitMode) => {
+    setVisitMode(mode);
+    onVisitModeChange?.(mode);
+  };
+
+  const selectedSystemState = state.systems[state.selectedSystem];
+
+  const registry = (
+    <>
+      {state.registryOrder.map((system) => (
+        <SystemRegisterRow
+          key={system}
+          system={system}
+          reviewState={state.systems[system].reviewState}
+          exceptionCount={
+            state.exceptions.filter((exception) => exception.system === system && exception.status === "open").length
+          }
+          isSelected={system === state.selectedSystem}
+          isPilotImplemented={PILOT_SYSTEMS.includes(system)}
+          onSelect={state.selectSystem}
+          layout={viewportKind === "mobile" ? "strip" : "rail"}
+        />
+      ))}
+    </>
+  );
+
+  const header = (
+    <div className="flex min-w-0 flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <h1 className="text-[14px] font-semibold text-rnica-textStrong">Body Systems</h1>
+        <Badge variant="neutral">Draft</Badge>
+        <span className="text-[11px] text-rnica-muted">{visitModeConfig.goal}</span>
+      </div>
+
+      <div className="flex min-w-0 flex-wrap items-center gap-3">
+        <div className="w-full min-w-0 overflow-x-auto sm:w-auto">
+          <Tabs value={visitMode} onValueChange={(value) => handleVisitModeChange(value as VisitMode)}>
+            <TabsList>
+              {VISIT_MODE_TABS.map((tab) => (
+                <TabsTrigger key={tab.value} value={tab.value}>
+                  {tab.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-rnica-muted">
+          <Badge variant="success">{state.counts.reviewed} reviewed</Badge>
+          <Badge variant="warning">{state.counts.reviewedWithException} with exception</Badge>
+          <Badge variant="teal">{state.counts.inProgress} in progress</Badge>
+          <Badge variant="neutral">{state.counts.notReviewed} not reviewed</Badge>
+        </div>
+
+        <Button size="sm" variant="outline" onClick={() => setExceptionDrawerOpen(true)}>
+          Exceptions ({openExceptionCount})
+        </Button>
+      </div>
+    </div>
+  );
+
+  const content = (
+    <div className="flex flex-col gap-4">
+      <BodySystemsWorkspace
+        system={state.selectedSystem}
+        reviewState={selectedSystemState.reviewState}
+        currentEvidence={selectedSystemState.currentEvidence}
+        historicalEvidence={selectedSystemState.historicalEvidence}
+        exceptions={state.exceptions}
+        onStartReview={() => state.startReview(state.selectedSystem)}
+        onCompleteReview={() => state.completeReview(state.selectedSystem)}
+      >
+        {state.selectedSystem === "neurological" && (
+          <NeurologicalSystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("neurological", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("neurological", key)}
+            onLimitationChange={(limitation) => state.setLimitation("neurological", limitation)}
+            missingRequirements={state.missingRequirementsFor("neurological")}
+          />
+        )}
+
+        {state.selectedSystem === "respiratory" && (
+          <RespiratorySystemPanel values={respiratoryValues} onChange={setRespiratoryValues} />
+        )}
+
+        {!PILOT_SYSTEMS.includes(state.selectedSystem) && (
+          <Card>
+            <CardContent className="py-6 text-center text-[12px] text-rnica-muted">
+              {`${state.selectedSystem.replaceAll("_", " ")} fields are Phase 2 scope. The system is registered, ` +
+                "always visible, and participates in review/exception tracking today; its clinical field set ships " +
+                "in a later phase."}
+            </CardContent>
+          </Card>
+        )}
+      </BodySystemsWorkspace>
+
+      <AISuggestionShell suggestions={[]} />
+    </div>
+  );
+
+  return (
+    <div className="h-full w-full" data-patient-id={patientId} data-visit-id={visitId}>
+      {viewportKind === "mobile" ? (
+        <ResponsiveMobileLayout registry={registry} header={header} content={content} />
+      ) : (
+        <ResponsiveDesktopLayout registry={registry} header={header} content={content} />
+      )}
+
+      <ReviewExceptionDrawer
+        open={exceptionDrawerOpen}
+        onOpenChange={setExceptionDrawerOpen}
+        exceptions={state.exceptions}
+        onNavigateToSystem={(system) => {
+          state.selectSystem(system);
+          setExceptionDrawerOpen(false);
+        }}
+        onOpenCorrection={(system) => {
+          state.openCorrection(system);
+          state.selectSystem(system);
+          setExceptionDrawerOpen(false);
+        }}
+      />
+    </div>
+  );
+}
