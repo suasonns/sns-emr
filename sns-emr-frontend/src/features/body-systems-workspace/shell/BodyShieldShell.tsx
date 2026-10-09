@@ -28,6 +28,11 @@ import {
   RespiratorySystemPanel,
   type RespiratoryFieldValues,
 } from "../systems/respiratory/RespiratorySystemPanel";
+import {
+  CardiovascularSystemPanel,
+  INITIAL_CARDIOVASCULAR_FIELD_VALUES,
+  type CardiovascularFieldValues,
+} from "../systems/cardiovascular/CardiovascularSystemPanel";
 import { useBodySystemsAssessmentState } from "../state/useBodySystemsAssessmentState";
 import { getVisitModeConfig, type BodySystemCode, type VisitMode } from "../../../domain/body-systems";
 
@@ -37,7 +42,7 @@ const VISIT_MODE_TABS: { value: VisitMode; label: string }[] = [
   { value: "recertification", label: "Recertification" },
 ];
 
-const PILOT_SYSTEMS: readonly BodySystemCode[] = ["neurological", "respiratory"];
+const PILOT_SYSTEMS: readonly BodySystemCode[] = ["neurological", "respiratory", "cardiovascular"];
 
 export interface BodyShieldShellProps {
   patientId: string;
@@ -59,6 +64,9 @@ export function BodyShieldShell({
   const [exceptionDrawerOpen, setExceptionDrawerOpen] = useState(false);
   const [respiratoryValues, setRespiratoryValues] = useState<RespiratoryFieldValues>(
     INITIAL_RESPIRATORY_FIELD_VALUES,
+  );
+  const [cardiovascularValues, setCardiovascularValues] = useState<CardiovascularFieldValues>(
+    INITIAL_CARDIOVASCULAR_FIELD_VALUES,
   );
 
   const state = useBodySystemsAssessmentState(bodySystemsAssessmentId);
@@ -149,6 +157,18 @@ export function BodyShieldShell({
 
         {state.selectedSystem === "respiratory" && (
           <RespiratorySystemPanel values={respiratoryValues} onChange={setRespiratoryValues} />
+        )}
+
+        {state.selectedSystem === "cardiovascular" && (
+          <CardiovascularSystemPanel
+            situation={selectedSystemState.situation}
+            onSituationChange={(situation) => state.setSituation("cardiovascular", situation)}
+            onRequirementSatisfied={(key) => state.markRequirementSatisfied("cardiovascular", key)}
+            onLimitationChange={(limitation) => state.setLimitation("cardiovascular", limitation)}
+            missingRequirements={state.missingRequirementsFor("cardiovascular")}
+            values={cardiovascularValues}
+            onChange={setCardiovascularValues}
+          />
         )}
 
         {!PILOT_SYSTEMS.includes(state.selectedSystem) && (

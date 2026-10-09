@@ -32,6 +32,11 @@ export {
   type RespiratoryFieldValues,
   type HopeImpactValue,
 } from "./systems/respiratory/RespiratorySystemPanel";
+export {
+  CardiovascularSystemPanel,
+  INITIAL_CARDIOVASCULAR_FIELD_VALUES,
+  type CardiovascularFieldValues,
+} from "./systems/cardiovascular/CardiovascularSystemPanel";
 
 export {
   useBodySystemsAssessmentState,
