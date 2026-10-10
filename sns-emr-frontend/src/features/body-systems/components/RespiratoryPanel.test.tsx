@@ -70,6 +70,9 @@ describe("RespiratoryPanel — load states", () => {
     expect(screen.getByTestId("respiratory-intervention-section")).toBeTruthy();
     expect(screen.getByTestId("respiratory-follow-up-section")).toBeTruthy();
     expect(screen.queryByTestId("respiratory-limitation-section")).toBeNull();
+    // Progressive disclosure: intervention fields are hidden until dyspnea
+    // is moderate/severe or an intervention has already been documented.
+    expect(screen.queryByTestId("respiratory-field-respiratory_treatment_initiated")).toBeNull();
   });
 
   it("hydrates a previously-saved draft's fields", async () => {
@@ -142,7 +145,11 @@ describe("RespiratoryPanel — assessment limitation is explicit and non-gating"
 
 describe("RespiratoryPanel — field editing", () => {
   it("records a boolean field toggle (treatment initiated) into the editable draft", async () => {
-    mocks.getRespiratoryAssessment.mockResolvedValueOnce(baseAssessment());
+    // Intervention fields are progressively disclosed once dyspnea is
+    // moderate or severe (usability-first directive section 9/15).
+    mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+      baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate" } }),
+    );
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 

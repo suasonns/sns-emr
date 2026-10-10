@@ -29,6 +29,7 @@ import {
   type RespiratoryFieldDefinition,
 } from "../../../domain/body-systems/respiratoryFieldInventory";
 import { useRespiratoryAssessment, type RespiratoryDraft } from "./useRespiratoryAssessment";
+import type { AssessmentSituation } from "../../../domain/body-systems";
 
 export interface RespiratoryPanelProps {
   patientId: string;
@@ -260,6 +261,141 @@ function GenericField({
   }
 }
 
+const OXYGEN_DETAIL_FIELD_IDS = new Set([
+  "respiratory_oxygen_delivery_type",
+  "respiratory_oxygen_liters_per_minute",
+  "respiratory_oxygen_sat_on_o2",
+]);
+
+/**
+ * Usability-first presentation layer (progressive disclosure). Contract v2
+ * field requirements, blocking rules, and completion logic are unchanged —
+ * this only controls which already-required fields are visible right now,
+ * per Contract v2's own allowance for hiding fields the parent response
+ * makes inapplicable (e.g. oxygen device/flow/SpO2-on-O2 only matter once
+ * oxygen is actually in use; sputum character only matters for a
+ * productive cough).
+ */
+function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: RespiratoryDraft): boolean {
+  if (OXYGEN_DETAIL_FIELD_IDS.has(field.fieldId)) {
+    return draft.oxygenTherapy?.inUse === true;
+  }
+  if (field.fieldId === "respiratory_sputum_character") {
+    return draft.coughType === "Productive";
+  }
+  if (field.fieldId === "respiratory_exertion_level") {
+    // Dyspnea context: only relevant once some level of shortness of
+    // breath has actually been documented (Contract v2: never inferred).
+    return Boolean(draft.sobSeverity) && draft.sobSeverity !== "None";
+  }
+  return true;
+}
+
+/** Moderate-or-severe dyspnea, per the usability directive's explicit
+ * trigger for showing the intervention/response/urgency/follow-up
+ * disposition workflow. "At rest" dyspnea is clinically at least as
+ * significant as "Severe" and is included. */
+function isDyspneaModerateOrSevere(draft: RespiratoryDraft): boolean {
+  return draft.sobSeverity === "Moderate" || draft.sobSeverity === "Severe" || draft.sobSeverity === "At rest";
+}
+
+/** True once an intervention has already been documented, regardless of
+ * current dyspnea severity — previously-entered data must never be hidden
+ * by a later, less-severe re-assessment. */
+function hasDocumentedIntervention(draft: RespiratoryDraft): boolean {
+  return Boolean(
+    draft.treatmentInitiated === true ||
+      draft.treatmentDeclined === true ||
+      draft.ventilator?.shortTermVentilator === true ||
+      draft.ventilator?.longTermVentilator === true,
+  );
+}
+
+function describeDyspneaBurden(draft: RespiratoryDraft): string {
+  if (!draft.sobSeverity) return "Not yet documented";
+  if (draft.sobSeverity === "None") return "None reported";
+  return `${draft.sobSeverity}${draft.exertionLevel ? ` (${draft.exertionLevel})` : ""}`;
+}
+
+function describeLungFindings(draft: RespiratoryDraft): string {
+  const sounds = draft.lungSounds ?? [];
+  if (sounds.length === 0) return "Not yet documented";
+  if (sounds.length === 1 && sounds[0] === "Clear") return "Clear";
+  return sounds.join(", ");
+}
+
+function describeCough(draft: RespiratoryDraft): string {
+  if (!draft.coughType) return "Not yet documented";
+  if (draft.coughType === "None") return "None";
+  if (draft.coughType === "Productive" && draft.sputumCharacter) {
+    return `Productive — ${draft.sputumCharacter}`;
+  }
+  return draft.coughType;
+}
+
+function describeOxygenStatus(draft: RespiratoryDraft): string {
+  if (draft.oxygenTherapy?.inUse !== true) {
+    return draft.oxygenTherapy?.onRoomAir === true ? "Room air" : "Not yet documented";
+  }
+  const parts = [draft.oxygenTherapy.type, draft.oxygenTherapy.litersPerMinute != null ? `${draft.oxygenTherapy.litersPerMinute} L/min` : null].filter(
+    Boolean,
+  );
+  return parts.length > 0 ? parts.join(" ") : "In use";
+}
+
+function describeRespiratorySupport(draft: RespiratoryDraft): string {
+  if (draft.ventilator?.longTermVentilator) return "Long-term ventilator";
+  if (draft.ventilator?.shortTermVentilator) return "Short-term ventilator";
+  return "None";
+}
+
+function describeIntervention(draft: RespiratoryDraft): string {
+  if (draft.treatmentInitiated) return "Treatment initiated";
+  if (draft.treatmentDeclined) return "Treatment declined";
+  return "None documented";
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3 text-xs">
+      <span className="text-rnica-muted">{label}</span>
+      <span className="font-medium text-rnica-textStrong">{value}</span>
+    </div>
+  );
+}
+
+function RespiratorySummary({
+  draft,
+  situation,
+  reviewComplete,
+}: {
+  draft: RespiratoryDraft;
+  situation: AssessmentSituation | null;
+  reviewComplete: boolean;
+}) {
+  const reviewStateLabel = reviewComplete
+    ? "Reviewed"
+    : situation
+      ? "In progress"
+      : "Review not yet started";
+  return (
+    <section
+      className="flex flex-col gap-1.5 rounded-lg border border-rnica-border bg-rnica-bg p-3"
+      aria-label="Respiratory summary"
+      data-testid="respiratory-summary-section"
+    >
+      <h3 className="text-xs font-semibold uppercase text-rnica-muted">Summary</h3>
+      <SummaryRow label="Review state" value={reviewStateLabel} />
+      <SummaryRow label="Dyspnea" value={describeDyspneaBurden(draft)} />
+      <SummaryRow label="Lung findings" value={describeLungFindings(draft)} />
+      <SummaryRow label="Cough / secretions" value={describeCough(draft)} />
+      <SummaryRow label="Oxygen" value={describeOxygenStatus(draft)} />
+      <SummaryRow label="Respiratory support" value={describeRespiratorySupport(draft)} />
+      <SummaryRow label="Intervention" value={describeIntervention(draft)} />
+    </section>
+  );
+}
+
 const SAVE_STATE_MESSAGE: Record<string, string> = {
   idle: "",
   saving: "Saving…",
@@ -273,6 +409,7 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
     loadState,
     assessment,
     draft,
+    situation,
     completion,
     updateDraft,
     saveState,
@@ -332,6 +469,7 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
 
   return (
     <div data-testid="respiratory-panel" className="flex flex-col gap-4 p-3">
+      <RespiratorySummary draft={draft} situation={situation} reviewComplete={completion.complete} />
       {/*
         Contract v2: every current-evidence field is always rendered,
         always editable, and never gated behind an upfront selector. The
@@ -374,24 +512,27 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
 
       <section className="flex flex-col gap-3" aria-label="Current evidence" data-testid="respiratory-current-evidence-section">
         <h3 className="text-xs font-semibold uppercase text-rnica-muted">Current evidence</h3>
-        {detailFields.map((field) => (
-          <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
-        ))}
+        {detailFields
+          .filter((field) => isFieldCurrentlyRelevant(field, draft))
+          .map((field) => (
+            <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+          ))}
       </section>
 
       <section className="flex flex-col gap-3" aria-label="Interventions" data-testid="respiratory-intervention-section">
         <h3 className="text-xs font-semibold uppercase text-rnica-muted">Interventions</h3>
-        {interventionFields.map((field) => (
-          <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
-        ))}
+        {isDyspneaModerateOrSevere(draft) || hasDocumentedIntervention(draft) ? (
+          interventionFields.map((field) => (
+            <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+          ))
+        ) : (
+          <p className="text-xs text-rnica-muted">No intervention required unless dyspnea is moderate or severe.</p>
+        )}
       </section>
 
       <section className="flex flex-col gap-2" aria-label="Follow-up" data-testid="respiratory-follow-up-section">
         <h3 className="text-xs font-semibold uppercase text-rnica-muted">Follow-up</h3>
-        <p className="text-xs text-rnica-muted">
-          No repository-approved follow-up responsibility/timing field exists yet for Respiratory; this is tracked
-          as an informational review exception below rather than a blocking requirement.
-        </p>
+        <p className="text-xs text-rnica-muted">No follow-up field available yet; tracked below as informational.</p>
       </section>
 
       <div className="flex flex-col gap-1">
