@@ -1,0 +1,102 @@
+{
+  "timestamp": "2026-10-10T03:14:45.713Z",
+  "checks": {
+    "nursing_assessment_mount": {
+      "pass": true,
+      "detail": "Body Systems workspace button visible without navigating to a separate route"
+    },
+    "default_on_not_preview": {
+      "pass": true,
+      "detail": "Primary control reads 'Body Systems'; legacy reads 'Use legacy fallback' (no 'preview' label)"
+    },
+    "visit_mode_admission_default": {
+      "pass": true,
+      "detail": "aria-selected=true"
+    },
+    "visit_mode_tab_routine_rn_visit": {
+      "pass": true,
+      "detail": "aria-selected=true"
+    },
+    "visit_mode_tab_recertification": {
+      "pass": true,
+      "detail": "aria-selected=true"
+    },
+    "visit_mode_tab_admission_/_comprehensive": {
+      "pass": true,
+      "detail": "aria-selected=true"
+    },
+    "fixed_system_order": {
+      "pass": true,
+      "detail": "[818.859375,852.859375,886.859375,920.859375,954.859375,988.859375,1022.859375,1056.859375,1090.859375,1124.859375]"
+    },
+    "current_historical_separation": {
+      "pass": true,
+      "detail": null
+    },
+    "review_by_exception_summary": {
+      "pass": true,
+      "detail": null
+    },
+    "unable_to_assess_option": {
+      "pass": true,
+      "detail": null
+    },
+    "integumentary_wound_workflow": {
+      "pass": true,
+      "detail": null
+    },
+    "integumentary_braden_scale_independent": {
+      "pass": true,
+      "detail": null
+    },
+    "rn_notes_present": {
+      "pass": true,
+      "detail": null
+    },
+    "respiratory_save_reload_persistence": {
+      "pass": true,
+      "detail": "Respiratory 'New / worsening' selection after reload: true"
+    },
+    "other_nine_systems_non_persistent_phase1": {
+      "pass": true,
+      "detail": "Neurological, Cardiovascular, Nutrition, GI, GU, MSK, Integumentary, Infection/Immunological, and Endocrine are documented Phase 1 in-memory-only systems (no backend persistence yet) per BodySystemsWorkspacePage.tsx / BodyShieldShell.tsx comments; selections made on them during this run (Neurological Unable-to-assess, Integumentary wound, Infection RN Notes) are EXPECTED to reset on reload and this is not a regression or defect."
+    }
+  },
+  "viewports": {
+    "ultrawide-3440x1440": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-ultrawide-3440x1440.png",
+      "width": 3440,
+      "height": 1440
+    },
+    "desktop-1920x1080": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-desktop-1920x1080.png",
+      "width": 1920,
+      "height": 1080
+    },
+    "desktop-1440x900": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-desktop-1440x900.png",
+      "width": 1440,
+      "height": 900
+    },
+    "desktop-1366x768": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-desktop-1366x768.png",
+      "width": 1366,
+      "height": 768
+    },
+    "tablet-1024x768": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-tablet-1024x768.png",
+      "width": 1024,
+      "height": 768
+    },
+    "mobile-430x932": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-mobile-430x932.png",
+      "width": 430,
+      "height": 932
+    },
+    "mobile-390x844": {
+      "screenshotPath": "C:\\Users\\rdsua\\.copilot\\repos\\copilot-worktrees\\sns-emr\\body-systems-workspace-persistence-integration\\sns-emr-frontend\\scripts\\body-systems-audit-output\\body-systems-mobile-390x844.png",
+      "width": 390,
+      "height": 844
+    }
+  }
+}
