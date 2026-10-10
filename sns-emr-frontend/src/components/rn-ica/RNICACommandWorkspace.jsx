@@ -12,6 +12,7 @@ import {
 import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
 import { RnicaWorkflowRail, RnicaWorkflowSheet } from "./RnicaWorkflowRail";
 import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
+import { BodySystemsWorkspacePage } from "../../features/body-systems-workspace";
 import EvidenceIntakeOverview from "./evidence-intake/EvidenceIntakeOverview";
 import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeReview";
 import PainSymptomBurdenOverview from "./pain-symptom-burden/PainSymptomBurdenOverview";
@@ -407,6 +408,17 @@ export default function RNICACommandWorkspace({
   // auto-tracks whether findings exist; once the user manually toggles it
   // that explicit choice is respected until they toggle again.
   const [findingsRailExpanded, setFindingsRailExpanded] = useState(null);
+  // SNS Body Systems Engineering Specification -- coexistence toggle
+  // (Initial Comprehensive RN Assessment slice). The approved Workspace
+  // (BodyShieldShell, 10-system fixed register) replaces this legacy
+  // accordion *inside* the existing Nursing Assessment bodySystems screen
+  // -- it is not a new route, not a new peer destination, and the legacy
+  // accordion is not retired. Defaults to the legacy accordion (false) so
+  // no existing workflow behavior changes until a nurse/reviewer opts in;
+  // this is the smallest safe coexistence mechanism available (local
+  // component state), since no repository-wide feature-flag system exists
+  // to reuse for this migration.
+  const [useNewBodySystemsWorkspace, setUseNewBodySystemsWorkspace] = useState(false);
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
@@ -787,6 +799,35 @@ export default function RNICACommandWorkspace({
         density={density}
         onChangeDensity={changeDensity}
       >
+        {/* SNS Body Systems Engineering Specification -- Initial
+            Comprehensive RN Assessment coexistence toggle. Legacy
+            accordion remains the default rendering; the approved Workspace
+            mounts in the exact same bodySystems screen slot, inside the
+            same RnicaScreenShell (same patient/visit/assessment context,
+            same Save/Lock/Previous/Next controls) rather than a separate
+            route. Toggle state is intentionally local/ephemeral (not
+            persisted) until replacement readiness is proven. */}
+        <div className="rnica-bodysystems__workspace-toggle" role="group" aria-label="Body Systems rendering mode">
+          <button
+            type="button"
+            className={`rnica-bodysystems__workspace-toggle-btn${!useNewBodySystemsWorkspace ? " is-active" : ""}`}
+            aria-pressed={!useNewBodySystemsWorkspace}
+            onClick={() => setUseNewBodySystemsWorkspace(false)}
+          >
+            Legacy Body Systems
+          </button>
+          <button
+            type="button"
+            className={`rnica-bodysystems__workspace-toggle-btn${useNewBodySystemsWorkspace ? " is-active" : ""}`}
+            aria-pressed={useNewBodySystemsWorkspace}
+            onClick={() => setUseNewBodySystemsWorkspace(true)}
+          >
+            Body Systems Workspace (preview)
+          </button>
+        </div>
+        {useNewBodySystemsWorkspace ? (
+          <BodySystemsWorkspacePage patientId={patient?.id || ""} />
+        ) : (
         <div className={`rnica-bodysystems${railExpanded ? "" : " rnica-bodysystems--rail-collapsed"}`}>
           <div className="rnica-bodysystems__main">
             <div className="rnica-bodysystems__status">
@@ -888,6 +929,7 @@ export default function RNICACommandWorkspace({
             </button>
           )}
         </div>
+        )}
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
           <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>

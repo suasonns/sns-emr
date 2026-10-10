@@ -918,6 +918,30 @@
   align-items: start;
 }
 
+/* Legacy/Workspace coexistence toggle (SNS Body Systems Engineering
+   Specification -- Initial Comprehensive RN Assessment slice). Local,
+   ephemeral render-mode switch inside the same bodySystems screen; not a
+   new route. */
+.rnica-bodysystems__workspace-toggle {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.65rem;
+}
+.rnica-bodysystems__workspace-toggle-btn {
+  font: 600 11px Inter, sans-serif;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 0.4rem;
+  background: var(--sns-bgAlt);
+  color: var(--sns-muted);
+  cursor: pointer;
+}
+.rnica-bodysystems__workspace-toggle-btn.is-active {
+  border-color: var(--sns-teal);
+  background: var(--sns-teal);
+  color: var(--sns-bg);
+}
+
 .rnica-bodysystems__main { min-width: 0; }
 
 .rnica-bodysystems__status {
