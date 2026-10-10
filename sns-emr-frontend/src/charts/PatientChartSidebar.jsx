@@ -46,6 +46,7 @@ const navSections = [
     { label: 'Psychosocial Assessment', key: 'psychosocial-assessment' },
     { label: 'Assessment History', key: 'assessment-history' },
   ] },
+  { label: 'Body Systems', key: 'body-systems', children: [] },
   { label: 'Visit Notes', key: 'visit-notes', children: [
     { label: 'Add New Visit', key: 'add-visit' },
     { label: 'My Visit Notes', key: 'my-visit-notes' },
