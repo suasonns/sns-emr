@@ -12,12 +12,15 @@ import {
   getRespiratoryAssessment,
   saveRespiratoryDraft,
   RespiratoryStaleVersionError,
+  RespiratoryCompletionRejectedError,
   type RespiratoryAssessmentDTO,
 } from "../../../api/bodySystems";
 import {
-  mapRespiratoryOverviewToSituation,
   buildRespiratoryExceptions,
+  deriveRespiratorySituation,
+  getRespiratoryReviewCompletion,
   type RespiratoryAssessmentValues,
+  type RespiratoryReviewCompletionResult,
 } from "../../../domain/body-systems/respiratoryWorkflowRules";
 import type { AssessmentSituation } from "../../../domain/body-systems";
 
@@ -48,14 +51,18 @@ export interface UseRespiratoryAssessmentResult {
   assessment: RespiratoryAssessmentDTO | null;
   draft: RespiratoryDraft;
   situation: AssessmentSituation | null;
+  completion: RespiratoryReviewCompletionResult;
   updateDraft: (patch: Partial<RespiratoryDraft>) => void;
   saveState: RespiratorySaveState;
   saveError: string | null;
+  /** Persists the current draft as-is. Always available (Contract v2: draft save is never gated on any field, including situation/completion). Leaves the system in IN_PROGRESS. */
   save: () => Promise<void>;
+  /** Explicit, non-gating completion action. Validates `completion.complete` itself -- callers do not need to pre-check it, but should surface `completion.blockingMessages` in the UI so a blocked attempt is never silent. Resolves to REVIEWED/REVIEWED_WITH_EXCEPTION only when the required review groups for the derived situation are satisfied. */
+  completeReview: () => Promise<void>;
   reload: () => Promise<void>;
 }
 
-export function useRespiratoryAssessment(patientId: string): UseRespiratoryAssessmentResult {
+export function useRespiratoryAssessment(assessmentId: string): UseRespiratoryAssessmentResult {
   const [loadState, setLoadState] = useState<RespiratoryLoadState>("loading");
   const [assessment, setAssessment] = useState<RespiratoryAssessmentDTO | null>(null);
   const [draft, setDraft] = useState<RespiratoryDraft>(EMPTY_DRAFT);
@@ -73,7 +80,7 @@ export function useRespiratoryAssessment(patientId: string): UseRespiratoryAsses
   const reload = useCallback(async () => {
     setLoadState("loading");
     try {
-      const result = await getRespiratoryAssessment(patientId);
+      const result = await getRespiratoryAssessment(assessmentId);
       setAssessment(result);
       setDraft(draftFromServerData(result.data));
       setLoadState("loaded");
@@ -89,7 +96,7 @@ export function useRespiratoryAssessment(patientId: string): UseRespiratoryAsses
         setLoadState("network_error");
       }
     }
-  }, [patientId]);
+  }, [assessmentId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -97,7 +104,7 @@ export function useRespiratoryAssessment(patientId: string): UseRespiratoryAsses
     const run = async () => {
       setLoadState("loading");
       try {
-        const result = await getRespiratoryAssessment(patientId);
+        const result = await getRespiratoryAssessment(assessmentId);
         if (cancelled) return;
         setAssessment(result);
         setDraft(draftFromServerData(result.data));
@@ -121,18 +128,59 @@ export function useRespiratoryAssessment(patientId: string): UseRespiratoryAsses
     return () => {
       cancelled = true;
     };
-  }, [patientId]);
+  }, [assessmentId]);
 
   const updateDraft = useCallback((patch: Partial<RespiratoryDraft>) => {
     setDraft((current) => ({ ...current, ...patch }));
   }, []);
 
-  const situation: AssessmentSituation | null = draft.respiratoryOverview
-    ? mapRespiratoryOverviewToSituation(draft.respiratoryOverview)
-    : null;
+  const situation: AssessmentSituation | null = deriveRespiratorySituation(draft);
+  const completion = getRespiratoryReviewCompletion(draft);
 
+  /**
+   * Draft save. Deliberately NEVER gated on `situation`/completion — Contract
+   * v2 requires draft save to always be available. Persists whatever is
+   * currently entered and leaves the system IN_PROGRESS; it never promotes
+   * the review state to REVIEWED/REVIEWED_WITH_EXCEPTION on its own (only
+   * `completeReview` does that), so a half-finished draft can never be
+   * silently reported as a completed review.
+   */
   const save = useCallback(async () => {
-    if (!assessment || !situation) {
+    if (!assessment) {
+      return;
+    }
+    setSaveState("saving");
+    setSaveError(null);
+    try {
+      const saved = await saveRespiratoryDraft(assessmentId, {
+        situation,
+        data: { ...draft } as Record<string, unknown>,
+        reviewState: "in_progress",
+        reviewExceptions: [],
+        expectedVersion: assessment.version,
+      });
+      setAssessment(saved);
+      setDraft(draftFromServerData(saved.data));
+      setSaveState("saved");
+    } catch (error) {
+      if (error instanceof RespiratoryStaleVersionError) {
+        setSaveState("conflict");
+        setSaveError(error.message);
+      } else {
+        setSaveState("error");
+        setSaveError("Save failed. Check your connection and try again.");
+      }
+    }
+  }, [assessment, draft, assessmentId, situation]);
+
+  /**
+   * Explicit "Complete system review" action. Re-validates completion
+   * itself (never trusts a stale caller-side check) using the SAME
+   * requirement engine the draft/record-blocking exceptions come from, so
+   * the completion gate and the exception list can never disagree.
+   */
+  const completeReview = useCallback(async () => {
+    if (!assessment || !situation || !completion.complete) {
       return;
     }
     setSaveState("saving");
@@ -142,7 +190,7 @@ export function useRespiratoryAssessment(patientId: string): UseRespiratoryAsses
       ? "reviewed_with_exception"
       : "reviewed";
     try {
-      const saved = await saveRespiratoryDraft(patientId, {
+      const saved = await saveRespiratoryDraft(assessmentId, {
         situation,
         data: { ...draft } as Record<string, unknown>,
         reviewState,
@@ -161,12 +209,30 @@ export function useRespiratoryAssessment(patientId: string): UseRespiratoryAsses
       if (error instanceof RespiratoryStaleVersionError) {
         setSaveState("conflict");
         setSaveError(error.message);
+      } else if (error instanceof RespiratoryCompletionRejectedError) {
+        // Server-side anti-forgery rejected completion even though the
+        // client's own check passed — surface the server's exact reason so
+        // the two are never silently out of sync.
+        setSaveState("error");
+        setSaveError(error.message);
       } else {
         setSaveState("error");
         setSaveError("Save failed. Check your connection and try again.");
       }
     }
-  }, [assessment, draft, patientId, situation]);
+  }, [assessment, completion.complete, draft, assessmentId, situation]);
 
-  return { loadState, assessment, draft, situation, updateDraft, saveState, saveError, save, reload };
+  return {
+    loadState,
+    assessment,
+    draft,
+    situation,
+    completion,
+    updateDraft,
+    saveState,
+    saveError,
+    save,
+    completeReview,
+    reload,
+  };
 }

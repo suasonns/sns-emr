@@ -82,6 +82,19 @@ class BodySystemsAssessment(Base):
     tenant_id = Column(UUID(as_uuid=True), ForeignKey("tenants.id"), nullable=False, index=True)
     patient_id = Column(UUID(as_uuid=True), ForeignKey("patients.id", ondelete="CASCADE"), nullable=False, index=True)
     visit_id = Column(UUID(as_uuid=True), ForeignKey("visits.id", ondelete="SET NULL"), nullable=True, index=True)
+    # Scopes this Body Systems assessment to the specific RN ICA episode it
+    # belongs to (RnicaAssessment.id — the same identity `/rnica/{assessment_id}`
+    # already authorizes on in app/api/visits.py). Added post-proof-of-pattern
+    # milestone once Respiratory was mounted into the live RNICA route: a
+    # patient-only lookup ("most recent non-signed") cannot tell two RNICA
+    # episodes for the same patient apart, so it is no longer sufficient once
+    # this is a real, episode-scoped clinical record rather than a detached
+    # proof of pattern. Nullable for the handful of pre-existing rows created
+    # before this column existed; every new row created going forward always
+    # sets it. Forward-only — see migration c1e2a3b4d5f6.
+    rnica_assessment_id = Column(
+        UUID(as_uuid=True), ForeignKey("rnica_assessments.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     visit_mode = Column(String(32), nullable=False)
     status = Column(String(32), nullable=False, default="draft", server_default=text("'draft'"))
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=text("now()"))
@@ -98,6 +111,7 @@ class BodySystemsAssessment(Base):
 
     patient = relationship("Patient", backref="body_systems_assessments")
     visit = relationship("Visit", backref="body_systems_assessments")
+    rnica_assessment = relationship("RnicaAssessment", backref="body_systems_assessments")
     system_assessments = relationship(
         "SystemAssessment", back_populates="body_systems_assessment", cascade="all, delete-orphan"
     )

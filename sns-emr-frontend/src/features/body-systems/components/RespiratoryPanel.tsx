@@ -13,14 +13,15 @@
  * an API client, or draft persistence — that remains out of scope per the
  * milestone's "one system at a time" delivery rule.
  */
-import { Fragment, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Textarea } from "../../../components/ui/textarea";
 import { Button } from "../../../components/ui/button";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
 import {
-  RESPIRATORY_OVERVIEW_FIELD,
+  RESPIRATORY_NO_CURRENT_CONCERN_FIELD,
+  RESPIRATORY_UNABLE_TO_ASSESS_FIELD,
   RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD,
   RESPIRATORY_UNABLE_TO_ASSESS_OTHER_FIELD,
   RESPIRATORY_NOTES_FIELD,
@@ -31,11 +32,22 @@ import { useRespiratoryAssessment, type RespiratoryDraft } from "./useRespirator
 
 export interface RespiratoryPanelProps {
   patientId: string;
+  /** RNICA episode id (`RnicaAssessment.id`) that scopes this Respiratory
+   * record — required so two episodes for the same patient never read or
+   * write each other's assessment. */
+  assessmentId: string;
+  /** True once the owning RNICA episode is locked/signed. Disables every
+   * input and the Save/Complete actions as defense-in-depth alongside the
+   * backend's own 409 rejection (`RnicaAssessment.status == "LOCKED"`) —
+   * mirrors the same `locked` concept `renderGenericSection` already
+   * respects for every other Body System. */
+  readOnly?: boolean;
 }
 
 const INTERVENTION_FIELD_IDS = new Set(["respiratory_treatment_initiated", "respiratory_treatment_declined"]);
 const HANDLED_SEPARATELY_FIELD_IDS = new Set([
-  RESPIRATORY_OVERVIEW_FIELD.fieldId,
+  RESPIRATORY_NO_CURRENT_CONCERN_FIELD.fieldId,
+  RESPIRATORY_UNABLE_TO_ASSESS_FIELD.fieldId,
   RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD.fieldId,
   RESPIRATORY_UNABLE_TO_ASSESS_OTHER_FIELD.fieldId,
   RESPIRATORY_NOTES_FIELD.fieldId,
@@ -80,15 +92,17 @@ function SingleSelectField({
   field,
   value,
   onChange,
+  disabled = false,
 }: {
   field: RespiratoryFieldDefinition;
   value: unknown;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1" data-testid={`respiratory-field-${field.fieldId}`}>
       <FieldLabel htmlFor={field.fieldId}>{field.label}</FieldLabel>
-      <Select value={typeof value === "string" ? value : ""} onValueChange={onChange}>
+      <Select value={typeof value === "string" ? value : ""} onValueChange={onChange} disabled={disabled}>
         <SelectTrigger id={field.fieldId} aria-label={field.label}>
           <SelectValue placeholder="Select…" />
         </SelectTrigger>
@@ -108,10 +122,12 @@ function MultiSelectField({
   field,
   value,
   onChange,
+  disabled = false,
 }: {
   field: RespiratoryFieldDefinition;
   value: unknown;
   onChange: (value: string[]) => void;
+  disabled?: boolean;
 }) {
   const selected = Array.isArray(value) ? (value as string[]) : [];
   return (
@@ -126,6 +142,7 @@ function MultiSelectField({
               <Checkbox
                 id={optionId}
                 checked={checked}
+                disabled={disabled}
                 onCheckedChange={(next) =>
                   onChange(next ? [...selected, option] : selected.filter((item) => item !== option))
                 }
@@ -143,14 +160,16 @@ function BooleanField({
   field,
   value,
   onChange,
+  disabled = false,
 }: {
   field: RespiratoryFieldDefinition;
   value: unknown;
   onChange: (value: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <label htmlFor={field.fieldId} className="flex items-center gap-1.5 text-xs text-rnica-text" data-testid={`respiratory-field-${field.fieldId}`}>
-      <Checkbox id={field.fieldId} checked={value === true} onCheckedChange={(next) => onChange(next === true)} />
+      <Checkbox id={field.fieldId} checked={value === true} disabled={disabled} onCheckedChange={(next) => onChange(next === true)} />
       {field.label}
     </label>
   );
@@ -160,10 +179,12 @@ function NumberField({
   field,
   value,
   onChange,
+  disabled = false,
 }: {
   field: RespiratoryFieldDefinition;
   value: unknown;
   onChange: (value: number | undefined) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1" data-testid={`respiratory-field-${field.fieldId}`}>
@@ -174,7 +195,8 @@ function NumberField({
       <input
         id={field.fieldId}
         type="number"
-        className="h-9 w-full rounded-lg border border-rnica-border bg-rnica-bg px-3 py-2 text-[11px] text-rnica-text focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-rnica-focusRing"
+        disabled={disabled}
+        className="h-9 w-full rounded-lg border border-rnica-border bg-rnica-bg px-3 py-2 text-[11px] text-rnica-text focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-rnica-focusRing disabled:cursor-not-allowed disabled:opacity-50"
         value={typeof value === "number" ? value : ""}
         onChange={(event) => onChange(event.target.value === "" ? undefined : Number(event.target.value))}
       />
@@ -186,10 +208,12 @@ function TextField({
   field,
   value,
   onChange,
+  disabled = false,
 }: {
   field: RespiratoryFieldDefinition;
   value: unknown;
   onChange: (value: string) => void;
+  disabled?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1" data-testid={`respiratory-field-${field.fieldId}`}>
@@ -197,7 +221,8 @@ function TextField({
       <input
         id={field.fieldId}
         type="text"
-        className="h-9 w-full rounded-lg border border-rnica-border bg-rnica-bg px-3 py-2 text-[11px] text-rnica-text focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-rnica-focusRing"
+        disabled={disabled}
+        className="h-9 w-full rounded-lg border border-rnica-border bg-rnica-bg px-3 py-2 text-[11px] text-rnica-text focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-rnica-focusRing disabled:cursor-not-allowed disabled:opacity-50"
         value={typeof value === "string" ? value : ""}
         onChange={(event) => onChange(event.target.value)}
       />
@@ -209,25 +234,27 @@ function GenericField({
   field,
   draft,
   updateDraft,
+  disabled = false,
 }: {
   field: RespiratoryFieldDefinition;
   draft: RespiratoryDraft;
   updateDraft: (patch: Partial<RespiratoryDraft>) => void;
+  disabled?: boolean;
 }) {
   const value = getFieldValue(draft, field);
   const onChange = (next: unknown) => updateDraft(setFieldValue(draft, field, next) as Partial<RespiratoryDraft>);
 
   switch (field.responseType) {
     case "single_select":
-      return <SingleSelectField field={field} value={value} onChange={(v) => onChange(v)} />;
+      return <SingleSelectField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
     case "multi_select":
-      return <MultiSelectField field={field} value={value} onChange={(v) => onChange(v)} />;
+      return <MultiSelectField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
     case "boolean":
-      return <BooleanField field={field} value={value} onChange={(v) => onChange(v)} />;
+      return <BooleanField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
     case "number":
-      return <NumberField field={field} value={value} onChange={(v) => onChange(v)} />;
+      return <NumberField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
     case "text":
-      return <TextField field={field} value={value} onChange={(v) => onChange(v)} />;
+      return <TextField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
     default:
       return null;
   }
@@ -235,15 +262,25 @@ function GenericField({
 
 const SAVE_STATE_MESSAGE: Record<string, string> = {
   idle: "",
-  saving: "Saving Respiratory draft…",
-  saved: "Respiratory draft saved.",
+  saving: "Saving…",
+  saved: "Saved.",
   error: "Save failed.",
   conflict: "Save blocked — this assessment changed elsewhere.",
 };
 
-export function RespiratoryPanel({ patientId }: RespiratoryPanelProps) {
-  const { loadState, assessment, draft, situation, updateDraft, saveState, saveError, save, reload } =
-    useRespiratoryAssessment(patientId);
+export function RespiratoryPanel({ assessmentId, readOnly = false }: RespiratoryPanelProps) {
+  const {
+    loadState,
+    assessment,
+    draft,
+    completion,
+    updateDraft,
+    saveState,
+    saveError,
+    save,
+    completeReview,
+    reload,
+  } = useRespiratoryAssessment(assessmentId);
 
   if (loadState === "loading") {
     return (
@@ -286,7 +323,7 @@ export function RespiratoryPanel({ patientId }: RespiratoryPanelProps) {
     );
   }
 
-  const isUnableToAssess = situation === "unable_to_assess";
+  const isUnableToAssess = draft.respiratoryUnableToAssess === true;
   const unableToAssessReasonValue = getFieldValue(draft, RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD);
   const detailFields = RESPIRATORY_FIELD_INVENTORY.filter(
     (field) => !HANDLED_SEPARATELY_FIELD_IDS.has(field.fieldId) && !INTERVENTION_FIELD_IDS.has(field.fieldId),
@@ -295,53 +332,67 @@ export function RespiratoryPanel({ patientId }: RespiratoryPanelProps) {
 
   return (
     <div data-testid="respiratory-panel" className="flex flex-col gap-4 p-3">
-      <SingleSelectField
-        field={RESPIRATORY_OVERVIEW_FIELD}
-        value={draft.respiratoryOverview}
-        onChange={(value) => updateDraft({ respiratoryOverview: value })}
+      {/*
+        Contract v2: every current-evidence field is always rendered,
+        always editable, and never gated behind an upfront selector. The
+        "no current concern" and "unable to assess" controls below are
+        explicit, independent, non-gating declarations — not a radio/select
+        that must be answered first.
+      */}
+      <BooleanField
+        field={RESPIRATORY_NO_CURRENT_CONCERN_FIELD}
+        value={draft.respiratoryNoCurrentConcern}
+        onChange={(value) => updateDraft({ respiratoryNoCurrentConcern: value })}
+        disabled={readOnly}
+      />
+      <BooleanField
+        field={RESPIRATORY_UNABLE_TO_ASSESS_FIELD}
+        value={draft.respiratoryUnableToAssess}
+        onChange={(value) => updateDraft({ respiratoryUnableToAssess: value })}
+        disabled={readOnly}
       />
 
-      {isUnableToAssess ? (
-        <section className="flex flex-col gap-3" data-testid="respiratory-limitation-section" aria-label="Limitations">
-          <h3 className="text-xs font-semibold uppercase text-rnica-muted">Limitations</h3>
+      {isUnableToAssess && (
+        <section className="flex flex-col gap-3" data-testid="respiratory-limitation-section" aria-label="Assessment limitation">
+          <h3 className="text-xs font-semibold uppercase text-rnica-muted">Assessment limitation</h3>
           <SingleSelectField
             field={RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD}
             value={unableToAssessReasonValue}
             onChange={(value) => updateDraft({ respiratoryUnableToAssessReason: value })}
+            disabled={readOnly}
           />
           {unableToAssessReasonValue === "Other" && (
             <TextField
               field={RESPIRATORY_UNABLE_TO_ASSESS_OTHER_FIELD}
               value={draft.respiratoryUnableToAssessOther}
               onChange={(value) => updateDraft({ respiratoryUnableToAssessOther: value })}
+              disabled={readOnly}
             />
           )}
         </section>
-      ) : (
-        <Fragment>
-          <section className="flex flex-col gap-3" aria-label="Current evidence" data-testid="respiratory-current-evidence-section">
-            <h3 className="text-xs font-semibold uppercase text-rnica-muted">Current evidence</h3>
-            {detailFields.map((field) => (
-              <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} />
-            ))}
-          </section>
-
-          <section className="flex flex-col gap-3" aria-label="Interventions" data-testid="respiratory-intervention-section">
-            <h3 className="text-xs font-semibold uppercase text-rnica-muted">Interventions</h3>
-            {interventionFields.map((field) => (
-              <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} />
-            ))}
-          </section>
-
-          <section className="flex flex-col gap-2" aria-label="Follow-up" data-testid="respiratory-follow-up-section">
-            <h3 className="text-xs font-semibold uppercase text-rnica-muted">Follow-up</h3>
-            <p className="text-xs text-rnica-muted">
-              No repository-approved follow-up responsibility/timing field exists yet for Respiratory; this is tracked
-              as an informational review exception below rather than a blocking requirement.
-            </p>
-          </section>
-        </Fragment>
       )}
+
+      <section className="flex flex-col gap-3" aria-label="Current evidence" data-testid="respiratory-current-evidence-section">
+        <h3 className="text-xs font-semibold uppercase text-rnica-muted">Current evidence</h3>
+        {detailFields.map((field) => (
+          <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-3" aria-label="Interventions" data-testid="respiratory-intervention-section">
+        <h3 className="text-xs font-semibold uppercase text-rnica-muted">Interventions</h3>
+        {interventionFields.map((field) => (
+          <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+        ))}
+      </section>
+
+      <section className="flex flex-col gap-2" aria-label="Follow-up" data-testid="respiratory-follow-up-section">
+        <h3 className="text-xs font-semibold uppercase text-rnica-muted">Follow-up</h3>
+        <p className="text-xs text-rnica-muted">
+          No repository-approved follow-up responsibility/timing field exists yet for Respiratory; this is tracked
+          as an informational review exception below rather than a blocking requirement.
+        </p>
+      </section>
 
       <div className="flex flex-col gap-1">
         <FieldLabel htmlFor={RESPIRATORY_NOTES_FIELD.fieldId}>{RESPIRATORY_NOTES_FIELD.label}</FieldLabel>
@@ -349,6 +400,7 @@ export function RespiratoryPanel({ patientId }: RespiratoryPanelProps) {
           id={RESPIRATORY_NOTES_FIELD.fieldId}
           value={draft.notes ?? ""}
           onChange={(event) => updateDraft({ notes: event.target.value })}
+          disabled={readOnly}
         />
       </div>
 
@@ -365,24 +417,50 @@ export function RespiratoryPanel({ patientId }: RespiratoryPanelProps) {
         </section>
       )}
 
+      {!completion.complete && (
+        <section
+          className="flex flex-col gap-1 rounded-lg border border-rnica-border bg-rnica-bg p-2"
+          aria-label="Remaining to complete review"
+          data-testid="respiratory-completion-blockers"
+        >
+          <h3 className="text-xs font-semibold uppercase text-rnica-muted">Remaining to complete review</h3>
+          <ul className="flex flex-col gap-1">
+            {completion.blockingMessages.map((message) => (
+              <li key={message} className="text-xs text-rnica-text">
+                {message}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+
       <div className="flex items-center gap-3">
         <Button
           size="sm"
+          variant="outline"
           onClick={() => void save()}
-          disabled={saveState === "saving" || !situation}
+          disabled={readOnly || saveState === "saving"}
           data-testid="respiratory-save-button"
         >
           Save draft
         </Button>
+        <Button
+          size="sm"
+          onClick={() => void completeReview()}
+          disabled={readOnly || saveState === "saving" || !completion.complete}
+          data-testid="respiratory-complete-review-button"
+        >
+          Complete system review
+        </Button>
         <span role="status" data-testid="respiratory-save-status" className="text-xs text-rnica-muted">
-          {SAVE_STATE_MESSAGE[saveState]}
+          {readOnly ? "This episode is locked — Respiratory is read-only." : SAVE_STATE_MESSAGE[saveState]}
         </span>
-        {saveState === "conflict" && (
+        {!readOnly && saveState === "conflict" && (
           <Button variant="outline" size="sm" onClick={() => void reload()}>
             Reload latest
           </Button>
         )}
-        {saveState === "error" && (
+        {!readOnly && saveState === "error" && (
           <Button variant="outline" size="sm" onClick={() => void save()}>
             Retry
           </Button>

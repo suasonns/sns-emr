@@ -58,11 +58,24 @@ export interface RespiratoryFieldDefinition {
 }
 
 /**
- * Situation selector. Legacy source: `respiratoryOverview` (segmented,
- * "Respiratory Overview" card) — owner-approved "Respiratory Overview
- * Workflow Reorganization" (2026-10-06). Maps 1:1 to the canonical
- * `AssessmentSituation` enum; see `mapLegacyRespiratoryOverviewToSituation`
- * below for the exact value mapping.
+ * HISTORICAL/LEGACY-READ ONLY. The `respiratoryOverview` 4-way selector
+ * ("No Current Respiratory Concern" / "Existing Respiratory Findings
+ * Review" / "New or Worsening Respiratory Findings" / "Unable to Assess")
+ * was the legacy production situation-entry gate: it had to be answered
+ * before any other field was enabled/required, it decided which fields
+ * rendered, and it gated Save itself. Contract v2 (RNICA Body Systems
+ * Single Build Contract v2, section on review-state/situation gates)
+ * explicitly prohibits a situation selector from controlling whether a
+ * system renders, whether review is required, requiredness, completion,
+ * or Save availability.
+ *
+ * This definition is kept ONLY so `legacyRNICAAdapter.ts` can continue to
+ * read historical `respiratory.respiratoryOverview` values already stored
+ * on legacy records for read-only historical display — it must never again
+ * be rendered as a gating control in the Contract v2 Respiratory panel.
+ * See `RESPIRATORY_NO_CURRENT_CONCERN_FIELD` and
+ * `RESPIRATORY_UNABLE_TO_ASSESS_FIELD` below for the two explicit,
+ * non-gating actions that replace it.
  */
 export const RESPIRATORY_OVERVIEW_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_overview",
@@ -77,8 +90,44 @@ export const RESPIRATORY_OVERVIEW_FIELD: RespiratoryFieldDefinition = {
     "New or Worsening Respiratory Findings",
     "Unable to Assess",
   ],
-  nullable: false,
-  notes: "Gates which detail fields below are required; this selection itself is the explicit current-review action for the no_current_concern situation.",
+  nullable: true,
+  notes: "HISTORICAL READ-ONLY. Not rendered as a gate in the Contract v2 panel; superseded by RESPIRATORY_NO_CURRENT_CONCERN_FIELD and RESPIRATORY_UNABLE_TO_ASSESS_FIELD.",
+};
+
+/**
+ * Explicit, non-gating "no current concern" declaration. Unlike the legacy
+ * overview selector, this does not have to be answered before other fields
+ * are visible/editable — all current-evidence fields are always rendered.
+ * It exists because Contract v2 requires an explicit nurse action (not a
+ * blank default) to record "reviewed, no current respiratory concern";
+ * leaving every field blank must never be silently treated as normal.
+ */
+export const RESPIRATORY_NO_CURRENT_CONCERN_FIELD: RespiratoryFieldDefinition = {
+  fieldId: "respiratory_no_current_concern",
+  label: "No current respiratory concern",
+  owner: "respiratory",
+  ownerFactKey: "respiratory_exertion_tolerance",
+  legacySource: "respiratory.respiratoryNoCurrentConcern",
+  responseType: "boolean",
+  nullable: true,
+  notes: "Explicit nurse declaration only; does not gate rendering or requiredness of any other field.",
+};
+
+/**
+ * Explicit, non-gating "unable to fully assess" toggle. Opens the
+ * Assessment Limitation fields (reason / other) below it without hiding or
+ * disabling any current-evidence field — a nurse may document both partial
+ * current findings AND a limitation for the remaining scope.
+ */
+export const RESPIRATORY_UNABLE_TO_ASSESS_FIELD: RespiratoryFieldDefinition = {
+  fieldId: "respiratory_unable_to_assess",
+  label: "Unable to fully assess respiratory system",
+  owner: "respiratory",
+  ownerFactKey: "respiratory_exertion_tolerance",
+  legacySource: "respiratory.respiratoryUnableToAssess",
+  responseType: "boolean",
+  nullable: true,
+  notes: "Explicit limitation toggle; reveals (does not require) the limitation reason fields. Never hides current-evidence fields.",
 };
 
 export const RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD: RespiratoryFieldDefinition = {
@@ -321,9 +370,16 @@ export const RESPIRATORY_NOTES_FIELD: RespiratoryFieldDefinition = {
   nullable: true,
 };
 
-/** Every verified Respiratory field, in the same order as the existing production render-schema. */
+/**
+ * Every verified Respiratory field, in the same order as the existing
+ * production render-schema. `RESPIRATORY_OVERVIEW_FIELD` is intentionally
+ * NOT included here — it is historical/legacy-read-only and must never be
+ * rendered by the Contract v2 panel. `RESPIRATORY_NO_CURRENT_CONCERN_FIELD`
+ * and `RESPIRATORY_UNABLE_TO_ASSESS_FIELD` are its non-gating replacements.
+ */
 export const RESPIRATORY_FIELD_INVENTORY: readonly RespiratoryFieldDefinition[] = [
-  RESPIRATORY_OVERVIEW_FIELD,
+  RESPIRATORY_NO_CURRENT_CONCERN_FIELD,
+  RESPIRATORY_UNABLE_TO_ASSESS_FIELD,
   RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD,
   RESPIRATORY_UNABLE_TO_ASSESS_OTHER_FIELD,
   RESPIRATORY_SOB_SEVERITY_FIELD,

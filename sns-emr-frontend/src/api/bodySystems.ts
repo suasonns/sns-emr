@@ -3,9 +3,14 @@
  *
  * Thin wrapper over the backend endpoints added in
  * backend/app/api/routes/body_systems.py
- * (GET/PUT /visits/body-systems/patients/{patientId}/respiratory), using
+ * (GET/PUT /visits/body-systems/rnica/{assessmentId}/respiratory), using
  * the existing shared axios client (`./client`) so auth/refresh/session
  * handling is identical to every other API module in this folder.
+ *
+ * Scoped by RNICA episode (`assessmentId` — the same id the rest of the
+ * app already calls `assessmentId` for `/rnica/{assessmentId}` routes),
+ * NOT by patient alone: two RNICA episodes for the same patient must
+ * never read or write each other's Respiratory record.
  */
 import api from "./client";
 import type { AssessmentSituation, SystemReviewState } from "../domain/body-systems";
@@ -21,6 +26,7 @@ export interface RespiratoryReviewExceptionDTO {
 export interface RespiratoryAssessmentDTO {
   id: string;
   bodySystemsAssessmentId: string;
+  rnicaAssessmentId: string;
   assessmentStatus: string;
   system: "respiratory";
   situation: AssessmentSituation | null;
@@ -54,21 +60,48 @@ export class RespiratoryStaleVersionError extends Error {
   }
 }
 
-export async function getRespiratoryAssessment(patientId: string): Promise<RespiratoryAssessmentDTO> {
-  const response = await api.get(`/visits/body-systems/patients/${patientId}/respiratory`);
+/**
+ * A completion attempt rejected by the SERVER's own anti-forgery check
+ * (HTTP 422 with a structured `missingRequirements` list) — distinct from
+ * a plain validation error, so callers can surface the exact same
+ * blocking messages the client-side `getRespiratoryReviewCompletion`
+ * would have shown, confirming client and server agreed.
+ */
+export class RespiratoryCompletionRejectedError extends Error {
+  readonly missingRequirements: string[];
+  constructor(message: string, missingRequirements: string[]) {
+    super(message);
+    this.name = "RespiratoryCompletionRejectedError";
+    this.missingRequirements = missingRequirements;
+  }
+}
+
+export async function getRespiratoryAssessment(assessmentId: string): Promise<RespiratoryAssessmentDTO> {
+  const response = await api.get(`/visits/body-systems/rnica/${assessmentId}/respiratory`);
   return response.data as RespiratoryAssessmentDTO;
 }
 
 export async function saveRespiratoryDraft(
-  patientId: string,
+  assessmentId: string,
   payload: SaveRespiratoryDraftPayload,
 ): Promise<RespiratoryAssessmentDTO> {
   try {
-    const response = await api.put(`/visits/body-systems/patients/${patientId}/respiratory`, payload);
+    const response = await api.put(`/visits/body-systems/rnica/${assessmentId}/respiratory`, payload);
     return response.data as RespiratoryAssessmentDTO;
   } catch (error) {
-    if ((error as { response?: { status?: number } })?.response?.status === 409) {
+    const status = (error as { response?: { status?: number; data?: unknown } })?.response?.status;
+    if (status === 409) {
       throw new RespiratoryStaleVersionError();
+    }
+    if (status === 422) {
+      const detail = (error as { response?: { data?: { detail?: unknown } } })?.response?.data?.detail;
+      if (detail && typeof detail === "object" && "missingRequirements" in (detail as Record<string, unknown>)) {
+        const detailObj = detail as { message?: string; missingRequirements?: string[] };
+        throw new RespiratoryCompletionRejectedError(
+          detailObj.message ?? "Cannot complete review: required fields are missing.",
+          detailObj.missingRequirements ?? [],
+        );
+      }
     }
     throw error;
   }

@@ -43,6 +43,8 @@ export interface RespiratoryVentilatorValues {
 /** Shape of the Respiratory data this module evaluates — a subset of the legacy `respiratory` object limited to verified fields. */
 export interface RespiratoryAssessmentValues {
   respiratoryOverview?: string;
+  respiratoryNoCurrentConcern?: boolean;
+  respiratoryUnableToAssess?: boolean;
   respiratoryUnableToAssessReason?: string;
   respiratoryUnableToAssessOther?: string;
   sobSeverity?: string;
@@ -208,3 +210,92 @@ export function buildRespiratoryExceptions(
 
 /** Convenience re-export so callers don't need a separate import from `stateMachine.ts` just to check the full requirement list for a situation. */
 export { getSituationRequirements };
+
+// ---------------------------------------------------------------------------
+// Non-gating situation derivation (Contract v2 integration)
+// ---------------------------------------------------------------------------
+
+/**
+ * Derives the current `AssessmentSituation` from entered data, instead of
+ * requiring the nurse to pick it from an upfront selector before any other
+ * field is enabled. This is the replacement for the retired
+ * `respiratoryOverview` entry gate: every current-evidence field is always
+ * visible and editable regardless of this derived value, and this function
+ * is re-evaluated on every change rather than being fixed once at entry.
+ *
+ * Returns `null` when nothing has been entered yet — a blank/untouched
+ * system has no situation and must never be reported as
+ * "no_current_concern" merely because it is empty (Contract v2: blank data
+ * can never auto-complete review).
+ *
+ * Precedence: an explicit "unable to assess" toggle always wins (a nurse
+ * may document partial current findings AND a limitation for the rest, but
+ * the system as a whole is reported unable-to-assess until that toggle is
+ * cleared). Otherwise, any current-evidence field populated means the
+ * situation is derived from the data (new_or_worsening vs. stable_existing
+ * based on `clinicalStatusChange`). Otherwise, the explicit
+ * "no current concern" declaration (and only that explicit declaration)
+ * resolves to no_current_concern.
+ */
+export function deriveRespiratorySituation(values: RespiratoryAssessmentValues): AssessmentSituation | null {
+  if (values.respiratoryUnableToAssess) {
+    return "unable_to_assess";
+  }
+  if (hasDocumentedCurrentFindingOrChange(values)) {
+    const isWorsening =
+      values.clinicalStatusChange === "Declining" || values.clinicalStatusChange === "New Symptom Since Prior Assessment";
+    return isWorsening ? "new_or_worsening" : "stable_existing";
+  }
+  if (values.respiratoryNoCurrentConcern) {
+    return "no_current_concern";
+  }
+  return null;
+}
+
+export interface RespiratoryReviewCompletionResult {
+  /** Whether "Complete system review" may be performed right now. */
+  complete: boolean;
+  /** Human-readable, field-referencing messages describing what is missing. Empty when `complete` is true. */
+  blockingMessages: string[];
+  /** The derived situation used to evaluate completion, or null if nothing has been entered yet. */
+  situation: AssessmentSituation | null;
+}
+
+const BLOCKING_MESSAGE_BY_REQUIREMENT_KEY: Record<string, string> = {
+  current_review_evidence: "Record the explicit \"No current respiratory concern\" declaration.",
+  current_confirmation: "Document at least one current respiratory finding or a clinical status change.",
+  current_finding_or_change: "Document the current respiratory finding or clinical status change.",
+  intervention_or_response: "Document the intervention/response (treatment initiated or declined, or active oxygen/ventilator support).",
+  reason: "Document the reason the respiratory system could not be fully assessed.",
+};
+
+/**
+ * Explicit, non-gating "Complete system review" validation. Unlike the
+ * retired entry gate, this is evaluated against whatever situation the
+ * data itself resolves to (see `deriveRespiratorySituation`) and never
+ * blocks draft save — it only blocks the explicit completion action.
+ * Requirement keys with no repository-backed field
+ * (`isRespiratoryRequirementNotVerified`) never block completion; they
+ * remain informational-only per the existing milestone scope.
+ */
+export function getRespiratoryReviewCompletion(values: RespiratoryAssessmentValues): RespiratoryReviewCompletionResult {
+  const situation = deriveRespiratorySituation(values);
+  if (!situation) {
+    return {
+      complete: false,
+      situation: null,
+      blockingMessages: [
+        "Enter at least one respiratory finding, or explicitly record \"No current respiratory concern\" / \"Unable to fully assess\".",
+      ],
+    };
+  }
+  const satisfiedKeys = getSatisfiedRespiratoryRequirementKeys(situation, values);
+  const missingKeys = getMissingSituationRequirements(situation, satisfiedKeys).filter(
+    (key) => !isRespiratoryRequirementNotVerified(key),
+  );
+  return {
+    complete: missingKeys.length === 0,
+    situation,
+    blockingMessages: missingKeys.map((key) => BLOCKING_MESSAGE_BY_REQUIREMENT_KEY[key] ?? `Missing requirement: ${key}`),
+  };
+}

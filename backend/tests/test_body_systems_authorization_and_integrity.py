@@ -1,11 +1,11 @@
-"""Body Systems (Respiratory) — authorization, audit, hydration, and
-signed-record integrity tests.
+"""Body Systems (Respiratory) — authorization, audit, hydration,
+episode-isolation, and signed/locked-record integrity tests.
 
-Added during Respiratory closeout to cover items identified as missing
-from the original `test_body_systems_api.py`/`test_body_systems_models.py`
-coverage: cross-tenant/cross-patient denial, invalid review-exception
-value rejection, audit-log assertions, a GET-after-PUT hydration
-round-trip, and signed-assessment protection.
+Episode scoping update: every route is now `/visits/body-systems/rnica/
+{assessment_id}/respiratory` (the SAME `RnicaAssessment.id` identity
+`/rnica/{assessment_id}` already authorizes on in app/api/visits.py), NOT
+patient-only. Every test below constructs an explicit `RnicaAssessment`
+row rather than relying on an implicit patient-only lookup.
 
 Every test reuses EXISTING repository infrastructure only:
 - Cross-tenant/cross-patient denial is enforced by the shared
@@ -13,14 +13,12 @@ Every test reuses EXISTING repository infrastructure only:
   function every other patient-scoped router (including RNICA) already
   depends on. These tests prove Body Systems inherits that existing
   convention correctly -- they do not add a new authorization mechanism.
+- Episode/RNICA isolation is enforced by scoping `BodySystemsAssessment`
+  by `rnica_assessment_id`, mirroring the same identity RNICA's own save/
+  lock routes already authorize by.
 - Audit assertions query the existing `AuditLog` model/table, the SAME
   audit sink RNICA writes to via `app.services.audit_logger.log_event`.
-- No new role, capability, or status value is invented. The repository
-  has no separate "write capability" distinct from patient access (see
-  `body_systems.py`'s own docstring and the independent RNICA comparison
-  performed earlier in this milestone) -- so there is no distinct
-  write-permission-denial case to test beyond what `get_authorized_patient`
-  already covers for both GET and PUT.
+- No new role, capability, or status value is invented.
 """
 from __future__ import annotations
 
@@ -33,6 +31,7 @@ from sqlalchemy.orm import Session as SQLAlchemySession
 from app.models.audit_log import AuditLog
 from app.models.body_systems import BodySystemsAssessment, ReviewException, SystemAssessment
 from app.models.patient import Patient
+from app.models.rnica_assessment import RnicaAssessment
 from app.models.tenant import Tenant
 from app.models.user import User
 from app.core.security import create_access_token
@@ -53,6 +52,23 @@ def _make_patient(db_session, tenant_id, *, mrn_prefix="BODYSYSAUTH"):
     db_session.add(patient)
     db_session.commit()
     return patient
+
+
+def _make_rnica_assessment(db_session, patient, tenant_id, *, status="DRAFT"):
+    record = RnicaAssessment(
+        id=uuid.uuid4(),
+        patient_id=patient.id,
+        tenant_id=tenant_id,
+        assessment_type="RNICA",
+        status=status,
+    )
+    db_session.add(record)
+    db_session.commit()
+    return record
+
+
+def _url(assessment_id) -> str:
+    return f"/visits/body-systems/rnica/{assessment_id}/respiratory"
 
 
 def _headers(user_id: uuid.UUID, role: str, tenant_id: uuid.UUID) -> dict[str, str]:
@@ -100,41 +116,38 @@ class TestCrossTenantAndCrossPatientIsolation:
 
     def test_get_denies_caller_from_another_tenant(self, client, db_session, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
 
         other_tenant_id = uuid.uuid4()
         other_user_id = uuid.uuid4()
         _ensure_tenant_and_user(db_session, other_tenant_id, other_user_id)
 
-        response = client.get(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
-            headers=_headers(other_user_id, "RN", other_tenant_id),
-        )
+        response = client.get(_url(rnica.id), headers=_headers(other_user_id, "RN", other_tenant_id))
         assert response.status_code == 404
 
     def test_put_denies_caller_from_another_tenant(self, client, db_session, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
 
         other_tenant_id = uuid.uuid4()
         other_user_id = uuid.uuid4()
         _ensure_tenant_and_user(db_session, other_tenant_id, other_user_id)
 
         response = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=_headers(other_user_id, "RN", other_tenant_id),
-            json={"data": {"respiratory_overview": "No Current Respiratory Concern"}},
+            json={"data": {"respiratoryNoCurrentConcern": True}},
         )
         assert response.status_code == 404
 
     def test_inactive_user_is_denied(self, client, db_session, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
 
         inactive_user_id = uuid.uuid4()
         _ensure_tenant_and_user(db_session, uuid.UUID(tenant.id), inactive_user_id, active=False)
 
-        response = client.get(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
-            headers=_headers(inactive_user_id, "RN", uuid.UUID(tenant.id)),
-        )
+        response = client.get(_url(rnica.id), headers=_headers(inactive_user_id, "RN", uuid.UUID(tenant.id)))
         assert response.status_code == 403
 
     def test_saving_one_patients_respiratory_assessment_does_not_affect_another_patients(
@@ -142,37 +155,64 @@ class TestCrossTenantAndCrossPatientIsolation:
     ):
         patient_a = _make_patient(db_session, uuid.UUID(tenant.id), mrn_prefix="BSA-A")
         patient_b = _make_patient(db_session, uuid.UUID(tenant.id), mrn_prefix="BSA-B")
+        rnica_a = _make_rnica_assessment(db_session, patient_a, uuid.UUID(tenant.id))
+        rnica_b = _make_rnica_assessment(db_session, patient_b, uuid.UUID(tenant.id))
 
-        client.get(f"/visits/body-systems/patients/{patient_a.id}/respiratory", headers=rn_headers)
-        baseline_b = client.get(
-            f"/visits/body-systems/patients/{patient_b.id}/respiratory", headers=rn_headers
-        ).json()
+        client.get(_url(rnica_a.id), headers=rn_headers)
+        baseline_b = client.get(_url(rnica_b.id), headers=rn_headers).json()
 
         client.put(
-            f"/visits/body-systems/patients/{patient_a.id}/respiratory",
+            _url(rnica_a.id),
             headers=rn_headers,
             json={"situation": "new_or_worsening", "data": {"sobSeverity": "Severe"}},
         )
 
-        after_b = client.get(
-            f"/visits/body-systems/patients/{patient_b.id}/respiratory", headers=rn_headers
-        ).json()
+        after_b = client.get(_url(rnica_b.id), headers=rn_headers).json()
         # Patient B's own Respiratory draft is untouched by Patient A's save:
         # same id, same version, same (empty) data -- proving the route's
-        # patient-scoped resolution can't cross between assessments/patients.
+        # episode-scoped resolution can't cross between assessments/patients.
         assert after_b["id"] == baseline_b["id"]
         assert after_b["version"] == baseline_b["version"]
         assert after_b["data"] == {}
         assert after_b["situation"] is None
 
 
+class TestEpisodeIsolation:
+    """A patient may have multiple RNICA episodes over time; Respiratory
+    must never let one episode's save leak into, or be read back as,
+    another episode's record -- even for the SAME patient."""
+
+    def test_mismatched_assessment_id_never_returns_another_episodes_data(
+        self, client, db_session, rn_headers, tenant
+    ):
+        patient = _make_patient(db_session, uuid.UUID(tenant.id), mrn_prefix="BSA-EPISODE")
+        episode_one = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        episode_two = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+
+        client.put(
+            _url(episode_one.id),
+            headers=rn_headers,
+            json={"situation": "new_or_worsening", "data": {"sobSeverity": "Severe - episode one only"}},
+        )
+
+        fresh_episode_two = client.get(_url(episode_two.id), headers=rn_headers).json()
+        assert fresh_episode_two["data"] == {}
+        assert fresh_episode_two["situation"] is None
+
+    def test_nonexistent_assessment_id_is_rejected_even_for_a_real_patient(self, client, db_session, rn_headers, tenant):
+        _make_patient(db_session, uuid.UUID(tenant.id), mrn_prefix="BSA-NOEPISODE")
+        response = client.get(_url(uuid.uuid4()), headers=rn_headers)
+        assert response.status_code == 404
+
+
 class TestReviewExceptionValueValidation:
     def test_invalid_exception_type_is_rejected(self, client, db_session, rn_headers, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
-        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        client.get(_url(rnica.id), headers=rn_headers)
 
         response = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
             json={
                 "data": {},
@@ -185,10 +225,11 @@ class TestReviewExceptionValueValidation:
 
     def test_invalid_blocking_level_is_rejected(self, client, db_session, rn_headers, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
-        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        client.get(_url(rnica.id), headers=rn_headers)
 
         response = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
             json={
                 "data": {},
@@ -201,10 +242,11 @@ class TestReviewExceptionValueValidation:
 
     def test_informational_exception_does_not_block_save(self, client, db_session, rn_headers, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
-        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        client.get(_url(rnica.id), headers=rn_headers)
 
         response = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
             json={
                 "data": {},
@@ -220,14 +262,15 @@ class TestReviewExceptionValueValidation:
 class TestAuditLogging:
     def test_save_creates_an_audit_event_with_required_context(self, client, db_session, rn_headers, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
-        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        client.get(_url(rnica.id), headers=rn_headers)
 
         before_count = db_session.query(AuditLog).filter(AuditLog.action == "body_systems.respiratory.save_draft").count()
 
         saved = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
-            json={"situation": "stable_existing", "data": {"sobSeverity": "None"}},
+            json={"situation": "stable_existing", "data": {"sobSeverity": "None", "clinicalStatusChange": "Stable"}},
         ).json()
 
         events = (
@@ -244,105 +287,117 @@ class TestAuditLogging:
         assert event.entity_id == saved["id"]
         assert event.created_at is not None
         assert event.event_metadata.get("situation") == "stable_existing"
+        assert event.event_metadata.get("rnicaAssessmentId") == str(rnica.id)
         # No raw secrets/tokens and no unnecessary patient identifiers
         # beyond the patient id itself, which the metadata already needs
         # for traceability.
         assert "password" not in str(event.event_metadata).lower()
         assert "token" not in str(event.event_metadata).lower()
 
+    def test_audit_actor_is_always_the_authenticated_caller_not_a_client_supplied_value(
+        self, client, db_session, rn_headers, tenant
+    ):
+        """A client cannot forge the audit actor by sending a different
+        user id anywhere in the payload -- the backend only ever reads it
+        from `current_user` (the verified JWT), never from the request
+        body."""
+        patient = _make_patient(db_session, uuid.UUID(tenant.id))
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        forged_user_id = str(uuid.uuid4())
+
+        saved = client.put(
+            _url(rnica.id),
+            headers=rn_headers,
+            json={
+                "data": {"userId": forged_user_id, "assessedBy": forged_user_id},
+            },
+        ).json()
+
+        event = (
+            db_session.query(AuditLog)
+            .filter(AuditLog.entity_id == saved["id"])
+            .order_by(AuditLog.created_at.desc())
+            .first()
+        )
+        assert event is not None
+        assert event.user_id != forged_user_id
+        assert str(event.user_id) == str(TEST_USER_ID)
+
 
 class TestHydrationRoundTrip:
     def test_put_then_separate_get_returns_the_same_persisted_values(self, client, db_session, rn_headers, tenant):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
-        initial = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        initial = client.get(_url(rnica.id), headers=rn_headers).json()
 
         put_response = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
             json={
                 "situation": "unable_to_assess",
-                "data": {"respiratory_overview": "Unable to Assess", "respiratory_unable_to_assess_reason": "Patient unresponsive"},
+                "data": {"respiratoryUnableToAssess": True, "respiratoryUnableToAssessReason": "Patient unresponsive"},
                 "reviewState": "reviewed_with_exception",
                 "reviewExceptions": [
-                    {"type": "unable_to_assess", "message": "x", "blockingLevel": "record_blocking", "fieldPath": "respiratory_unable_to_assess_reason"}
+                    {"type": "unable_to_assess", "message": "x", "blockingLevel": "record_blocking", "fieldPath": "respiratoryUnableToAssessReason"}
                 ],
                 "expectedVersion": initial["version"],
             },
         ).json()
 
-        get_after = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
+        get_after = client.get(_url(rnica.id), headers=rn_headers).json()
 
         assert get_after["situation"] == put_response["situation"] == "unable_to_assess"
         assert get_after["data"] == put_response["data"]
         assert get_after["version"] == put_response["version"] == initial["version"] + 1
         assert get_after["reviewState"] == "reviewed_with_exception"
         assert len(get_after["openReviewExceptions"]) == 1
-        assert get_after["openReviewExceptions"][0]["fieldPath"] == "respiratory_unable_to_assess_reason"
+        assert get_after["openReviewExceptions"][0]["fieldPath"] == "respiratoryUnableToAssessReason"
 
         # No other Body System's row was created by this Respiratory save.
-        assessment = db_session.query(BodySystemsAssessment).filter(BodySystemsAssessment.patient_id == patient.id).one()
+        assessment = db_session.query(BodySystemsAssessment).filter(BodySystemsAssessment.rnica_assessment_id == rnica.id).one()
         system_rows = db_session.query(SystemAssessment).filter(SystemAssessment.body_systems_assessment_id == assessment.id).all()
         assert [row.system for row in system_rows] == ["respiratory"]
 
         # A repeated GET does not mutate data (version stays the same).
-        repeat_get = client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers).json()
+        repeat_get = client.get(_url(rnica.id), headers=rn_headers).json()
         assert repeat_get["version"] == get_after["version"]
 
 
-class TestSignedAssessmentProtection:
-    """Traces the repository's actual finalized-record convention: a
-    `BodySystemsAssessment.status == "signed"` row is never reused by
-    `_get_or_create_current_assessment` (it only queries `status != "signed"`),
-    so a further Respiratory save after signing creates a NEW draft
-    assessment instead of mutating the signed one -- this is the existing,
-    already-implemented noneditable-record convention; this test proves it
-    rather than inventing a new one."""
+class TestLockedRnicaAssessmentProtection:
+    """Traces the actual production invariant this milestone introduced:
+    once the owning `RnicaAssessment.status == "LOCKED"`, Respiratory can
+    no longer be saved at all (409), and its last-persisted data/version
+    are left completely untouched -- rather than silently starting a new
+    draft, which would have let a clinician believe they successfully
+    documented something against a finalized episode."""
 
-    def test_save_after_signing_starts_a_new_draft_and_leaves_the_signed_one_untouched(
+    def test_locked_episode_rejects_further_saves_and_preserves_prior_data(
         self, client, db_session, rn_headers, tenant
     ):
         patient = _make_patient(db_session, uuid.UUID(tenant.id))
-        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
-        client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        client.get(_url(rnica.id), headers=rn_headers)
+        baseline = client.put(
+            _url(rnica.id),
             headers=rn_headers,
-            json={"situation": "no_current_concern", "data": {"respiratory_overview": "No Current Respiratory Concern"}},
-        )
-
-        signed_assessment = (
-            db_session.query(BodySystemsAssessment).filter(BodySystemsAssessment.patient_id == patient.id).one()
-        )
-        signed_assessment.status = "signed"
-        signed_assessment.signed_at = datetime.now(timezone.utc)
-        signed_assessment.signed_by = TEST_USER_ID
-        db_session.commit()
-        signed_system_row = (
-            db_session.query(SystemAssessment)
-            .filter(SystemAssessment.body_systems_assessment_id == signed_assessment.id)
-            .one()
-        )
-        signed_version = signed_system_row.version
-        signed_data = dict(signed_system_row.data)
-
-        # GET after signing returns a brand-new (not the signed) assessment.
-        get_after_sign = client.get(
-            f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers
+            json={"situation": "no_current_concern", "data": {"respiratoryNoCurrentConcern": True}},
         ).json()
-        assert get_after_sign["bodySystemsAssessmentId"] != str(signed_assessment.id)
-        assert get_after_sign["situation"] is None
-        assert get_after_sign["data"] == {}
 
-        # A further save doesn't touch the signed row at all.
-        client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+        rnica.status = "LOCKED"
+        db_session.commit()
+
+        rejected = client.put(
+            _url(rnica.id),
             headers=rn_headers,
-            json={"situation": "new_or_worsening", "data": {"sobSeverity": "Moderate"}},
+            json={"situation": "new_or_worsening", "data": {"sobSeverity": "Severe - should not persist"}},
         )
-        db_session.refresh(signed_system_row)
-        db_session.refresh(signed_assessment)
-        assert signed_assessment.status == "signed"
-        assert signed_system_row.version == signed_version
-        assert dict(signed_system_row.data) == signed_data
+        assert rejected.status_code == 409
+
+        system_row = db_session.get(SystemAssessment, uuid.UUID(baseline["id"]))
+        db_session.refresh(system_row)
+        assert system_row.version == baseline["version"]
+        assert dict(system_row.data) == baseline["data"]
+        assert system_row.situation == baseline["situation"]
 
 
 class TestTransactionRollback:
@@ -362,13 +417,15 @@ class TestTransactionRollback:
     ):
         patient = _make_patient(db_session, uuid.UUID(tenant.id), mrn_prefix="BSA-ROLLBACK")
         other_patient = _make_patient(db_session, uuid.UUID(tenant.id), mrn_prefix="BSA-ROLLBACK-OTHER")
+        rnica = _make_rnica_assessment(db_session, patient, uuid.UUID(tenant.id))
+        other_rnica = _make_rnica_assessment(db_session, other_patient, uuid.UUID(tenant.id))
 
         # Establish a committed baseline with one open review exception,
         # so the rollback test can prove that pre-existing row survives
         # an aborted replacement attempt.
-        client.get(f"/visits/body-systems/patients/{patient.id}/respiratory", headers=rn_headers)
+        client.get(_url(rnica.id), headers=rn_headers)
         baseline = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
             json={
                 "situation": "stable_existing",
@@ -378,15 +435,13 @@ class TestTransactionRollback:
                 ],
             },
         ).json()
-        other_baseline = client.get(
-            f"/visits/body-systems/patients/{other_patient.id}/respiratory", headers=rn_headers
-        ).json()
+        other_baseline = client.get(_url(other_rnica.id), headers=rn_headers).json()
 
         audit_count_before = db_session.query(AuditLog).filter(
             AuditLog.action == "body_systems.respiratory.save_draft"
         ).count()
         assessment_count_before = db_session.query(BodySystemsAssessment).filter(
-            BodySystemsAssessment.patient_id == patient.id
+            BodySystemsAssessment.rnica_assessment_id == rnica.id
         ).count()
         system_assessment_count_before = db_session.query(SystemAssessment).filter(
             SystemAssessment.id == uuid.UUID(baseline["id"])
@@ -406,7 +461,7 @@ class TestTransactionRollback:
         try:
             with pytest.raises(Exception):
                 client.put(
-                    f"/visits/body-systems/patients/{patient.id}/respiratory",
+                    _url(rnica.id),
                     headers=rn_headers,
                     json={
                         "situation": "new_or_worsening",
@@ -422,9 +477,9 @@ class TestTransactionRollback:
             # test (and any other test) uses the real Session.commit.
             monkeypatch.setattr(SQLAlchemySession, "commit", original_commit)
 
-        # 1) No duplicate Body Systems assessment was created for this patient.
+        # 1) No duplicate Body Systems assessment was created for this episode.
         assert (
-            db_session.query(BodySystemsAssessment).filter(BodySystemsAssessment.patient_id == patient.id).count()
+            db_session.query(BodySystemsAssessment).filter(BodySystemsAssessment.rnica_assessment_id == rnica.id).count()
             == assessment_count_before
         )
         # 2) No duplicate Respiratory system assessment row exists.
@@ -458,21 +513,19 @@ class TestTransactionRollback:
             db_session.query(AuditLog).filter(AuditLog.action == "body_systems.respiratory.save_draft").count()
             == audit_count_before
         )
-        # 6) Another patient's Respiratory data remains completely untouched.
-        other_after = client.get(
-            f"/visits/body-systems/patients/{other_patient.id}/respiratory", headers=rn_headers
-        ).json()
+        # 6) Another episode's Respiratory data remains completely untouched.
+        other_after = client.get(_url(other_rnica.id), headers=rn_headers).json()
         assert other_after["version"] == other_baseline["version"]
         assert other_after["data"] == other_baseline["data"]
 
-        # 7) A subsequent valid request against the same patient still
+        # 7) A subsequent valid request against the same episode still
         #    succeeds (the connection/session pool is healthy afterward).
         recovery = client.put(
-            f"/visits/body-systems/patients/{patient.id}/respiratory",
+            _url(rnica.id),
             headers=rn_headers,
             json={
                 "situation": "new_or_worsening",
-                "data": {"sobSeverity": "Moderate"},
+                "data": {"sobSeverity": "Moderate", "treatmentInitiated": True},
                 "expectedVersion": baseline["version"],
             },
         )

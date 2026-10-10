@@ -1,14 +1,22 @@
-"""Body Systems — Respiratory proof-of-pattern API endpoints.
+"""Body Systems — Respiratory API endpoints (live RNICA mount).
 
 Backs the frontend Respiratory panel (sns-emr-frontend/src/domain/body-systems
 /respiratoryFieldInventory.ts, respiratoryWorkflowRules.ts) with real
-persistence (app/models/body_systems.py). Intentionally minimal for the
-proof-of-pattern milestone: find-or-create the current draft assessment,
-and save it. Situation classification and exception derivation remain the
-frontend domain layer's responsibility (respiratoryWorkflowRules.ts is the
-single source of truth for that business logic); the backend persists
-whatever the client computed and enforces only structural/concurrency/
-authorization rules.
+persistence (app/models/body_systems.py). Situation classification and
+exception derivation remain the frontend domain layer's primary
+responsibility (respiratoryWorkflowRules.ts is the single source of truth
+for that business logic); the backend persists what the client computed
+but additionally enforces (see `_assert_completion_is_not_forged` below)
+that a REVIEWED/REVIEWED_WITH_EXCEPTION reviewState cannot be reached
+without the same required-field invariants the frontend enforces -- a
+client cannot bypass completion requirements merely by sending the
+end-state string.
+
+Episode/RNICA scoping: every route is scoped by `{assessment_id}`, the
+SAME `RnicaAssessment.id` identity `/rnica/{assessment_id}` in
+app/api/visits.py already authorizes on. A patient-only lookup cannot
+distinguish two RNICA episodes for the same patient; this module never
+falls back to a patient-only "most recent" query.
 
 Permission model: deliberately reuses the SAME pattern already used by RN
 ICA's own save/update/lock endpoints (app/api/visits.py) -- tenant +
@@ -25,7 +33,8 @@ documentation saves).
 Audit: every save calls `app.services.audit_logger.log_event`, the same
 non-blocking audit mechanism RNICA uses (`_safe_log_event` wraps it there;
 this module calls it directly since Body Systems writes are not on an
-error-sensitive hot path).
+error-sensitive hot path). The audit actor is always derived from the
+authenticated `current_user`, never from the client payload.
 """
 from __future__ import annotations
 
@@ -48,11 +57,136 @@ from app.models.body_systems import (
     ReviewException,
     SystemAssessment,
 )
+from app.models.rnica_assessment import RnicaAssessment
 from app.services.audit_logger import log_event
 
 router = APIRouter(prefix="/visits/body-systems", tags=["body-systems"])
 
 RESPIRATORY_SYSTEM = "respiratory"
+
+# ---------------------------------------------------------------------------
+# Server-side completion safety (cannot be forged by the client).
+#
+# Ports the SAME blocking requirement logic as
+# sns-emr-frontend/src/domain/body-systems/respiratoryWorkflowRules.ts
+# (getSatisfiedRespiratoryRequirementKeys / stateMachine.ts
+# SITUATION_REQUIREMENTS), restricted to the subset of requirement keys
+# that module treats as record-blocking (i.e. NOT in
+# RESPIRATORY_NOT_VERIFIED_REQUIREMENTS, which remain informational-only
+# on both sides). If the frontend's requirement graph changes, this must
+# be updated to match -- the two are intentionally kept in lockstep rather
+# than only existing on the client.
+# ---------------------------------------------------------------------------
+
+_CLINICAL_STATUS_CHANGE_WORSENING = {"Declining", "New Symptom Since Prior Assessment"}
+
+
+def _has_any_current_finding_field(data: dict[str, Any]) -> bool:
+    oxygen = data.get("oxygenTherapy") or {}
+    ventilator = data.get("ventilator") or {}
+    return bool(
+        data.get("sobSeverity")
+        or data.get("exertionLevel")
+        or (data.get("lungSounds") or [])
+        or (data.get("respirations") or [])
+        or data.get("coughType")
+        or data.get("sputumCharacter")
+        or (isinstance(oxygen, dict) and oxygen.get("inUse"))
+        or (isinstance(ventilator, dict) and ventilator.get("shortTermVentilator"))
+        or (isinstance(ventilator, dict) and ventilator.get("longTermVentilator"))
+    )
+
+
+def _has_documented_intervention_or_response(data: dict[str, Any]) -> bool:
+    oxygen = data.get("oxygenTherapy") or {}
+    ventilator = data.get("ventilator") or {}
+    return bool(
+        data.get("treatmentInitiated") is True
+        or data.get("treatmentDeclined") is True
+        or (isinstance(oxygen, dict) and oxygen.get("inUse") is True)
+        or (isinstance(ventilator, dict) and ventilator.get("shortTermVentilator") is True)
+        or (isinstance(ventilator, dict) and ventilator.get("longTermVentilator") is True)
+    )
+
+
+def _has_documented_current_finding_or_change(data: dict[str, Any]) -> bool:
+    change = data.get("clinicalStatusChange")
+    return bool(change in _CLINICAL_STATUS_CHANGE_WORSENING or _has_any_current_finding_field(data))
+
+
+def _has_documented_unable_to_assess_reason(data: dict[str, Any]) -> bool:
+    reason = data.get("respiratoryUnableToAssessReason")
+    if not reason:
+        return False
+    if reason == "Other":
+        other = data.get("respiratoryUnableToAssessOther")
+        return bool(other and str(other).strip())
+    return True
+
+
+def _missing_blocking_respiratory_requirements(situation: Optional[str], data: dict[str, Any]) -> list[str]:
+    """Returns the record-blocking requirement keys still missing for
+    `situation`. An empty list means the blocking requirements for that
+    situation are satisfied (informational-only requirements -- e.g.
+    `dated_prior_reference`, `follow_up_decision`, `scope`,
+    `assessed_portion_if_any`, `follow_up_responsibility`,
+    `timing_or_contingency` -- are intentionally never included here;
+    they cannot block completion on either side of the stack)."""
+    if situation == "no_current_concern":
+        return []
+    if situation == "stable_existing":
+        satisfied = _has_any_current_finding_field(data) or bool(data.get("clinicalStatusChange"))
+        return [] if satisfied else ["current_confirmation"]
+    if situation == "new_or_worsening":
+        missing: list[str] = []
+        if not _has_documented_current_finding_or_change(data):
+            missing.append("current_finding_or_change")
+        if not _has_documented_intervention_or_response(data):
+            missing.append("intervention_or_response")
+        return missing
+    if situation == "unable_to_assess":
+        return [] if _has_documented_unable_to_assess_reason(data) else ["reason"]
+    return ["situation"]
+
+
+def _assert_completion_is_not_forged(
+    review_state: str, situation: Optional[str], data: dict[str, Any], exceptions: list["ReviewExceptionIn"]
+) -> None:
+    """Raises 422 if `review_state` claims REVIEWED/REVIEWED_WITH_EXCEPTION
+    without the data to back it up. Draft saves (not_reviewed/in_progress)
+    are never subject to this check -- per spec, draft save must remain
+    available when incomplete."""
+    if review_state not in ("reviewed", "reviewed_with_exception"):
+        return
+    if situation is None:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Cannot complete review: no situation could be derived from the entered data.",
+                "missingRequirements": ["situation"],
+            },
+        )
+    missing = _missing_blocking_respiratory_requirements(situation, data)
+    if missing:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": "Cannot complete review: required fields are missing.",
+                "missingRequirements": missing,
+            },
+        )
+    has_open_record_blocking = any(exception.blockingLevel == "record_blocking" for exception in exceptions)
+    if review_state == "reviewed" and has_open_record_blocking:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "message": (
+                    "Cannot mark REVIEWED while record-blocking exceptions are open; "
+                    "use reviewState=reviewed_with_exception instead."
+                ),
+                "missingRequirements": [],
+            },
+        )
 
 
 def get_db():
@@ -87,18 +221,37 @@ def _user_id(current_user: CurrentUser) -> Optional[str]:
     return str(raw) if raw else None
 
 
-def _get_or_create_current_assessment(db: Session, patient_id: uuid.UUID, tenant_id: uuid.UUID) -> BodySystemsAssessment:
-    """Returns the patient's most recent non-signed Body Systems assessment,
-    creating a fresh draft if none exists yet. A patient has at most one
-    "current" (not yet signed) assessment at a time for this proof-of-pattern
-    milestone -- once signed, the next save starts a new one.
+def _get_authorized_rnica_assessment(db: Session, assessment_id: uuid.UUID, current_user: CurrentUser):
+    """Looks up the RNICA episode by id (the SAME identity
+    `/rnica/{assessment_id}` already authorizes on in app/api/visits.py),
+    then authorizes the caller against its patient via the shared
+    `get_authorized_patient` helper -- the exact convention every other
+    patient-scoped router in this codebase follows. 404s rather than 403s
+    when the assessment_id does not exist at all, matching the existing
+    `/rnica/{assessment_id}` routes' behavior, so a guess of a nonexistent
+    id cannot be distinguished from a real-but-unauthorized one by response
+    code alone (both are rejected; only the message differs for debugging)."""
+    record = db.query(RnicaAssessment).filter(RnicaAssessment.id == assessment_id).first()
+    if record is None:
+        raise HTTPException(status_code=404, detail="RNICA assessment not found")
+    patient = get_authorized_patient(db, record.patient_id, current_user)
+    return record, patient
+
+
+def _get_or_create_current_assessment(
+    db: Session, patient_id: uuid.UUID, tenant_id: uuid.UUID, rnica_assessment_id: uuid.UUID
+) -> BodySystemsAssessment:
+    """Returns the Body Systems assessment for THIS SPECIFIC RNICA episode
+    (`rnica_assessment_id`), creating a fresh draft if none exists yet.
+    Episode-scoped, NOT patient-scoped: two RNICA episodes for the same
+    patient never share or collide with each other's Body Systems record.
     """
     assessment = (
         db.query(BodySystemsAssessment)
         .filter(
+            BodySystemsAssessment.rnica_assessment_id == rnica_assessment_id,
             BodySystemsAssessment.patient_id == patient_id,
             BodySystemsAssessment.tenant_id == tenant_id,
-            BodySystemsAssessment.status != "signed",
         )
         .order_by(BodySystemsAssessment.started_at.desc())
         .first()
@@ -110,6 +263,7 @@ def _get_or_create_current_assessment(db: Session, patient_id: uuid.UUID, tenant
         id=uuid.uuid4(),
         tenant_id=tenant_id,
         patient_id=patient_id,
+        rnica_assessment_id=rnica_assessment_id,
         visit_mode="routine_rn",
         status="draft",
     )
@@ -181,40 +335,41 @@ def _open_exceptions_for(db: Session, assessment_id: uuid.UUID, system: str) -> 
     )
 
 
-@router.get("/patients/{patient_id}/respiratory")
+@router.get("/rnica/{assessment_id}/respiratory")
 def get_current_respiratory_assessment(
-    patient_id: str,
+    assessment_id: str,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),
 ):
     try:
-        patient_uuid = uuid.UUID(patient_id)
+        assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
 
-    patient = get_authorized_patient(db, patient_uuid, current_user)
-    assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
+    rnica_record, patient = _get_authorized_rnica_assessment(db, assessment_uuid, current_user)
+    assessment = _get_or_create_current_assessment(db, patient.id, patient.tenant_id, assessment_uuid)
     system_assessment = _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
     open_exceptions = _open_exceptions_for(db, assessment.id, RESPIRATORY_SYSTEM)
 
     return {
         "bodySystemsAssessmentId": str(assessment.id),
+        "rnicaAssessmentId": str(rnica_record.id),
         "assessmentStatus": assessment.status,
         **_serialize_system_assessment(system_assessment, open_exceptions),
     }
 
 
-@router.put("/patients/{patient_id}/respiratory")
+@router.put("/rnica/{assessment_id}/respiratory")
 def save_respiratory_draft(
-    patient_id: str,
+    assessment_id: str,
     payload: SaveRespiratoryDraftRequest,
     db: Session = Depends(get_db),
     current_user: CurrentUser = Security(get_current_user),
 ):
     try:
-        patient_uuid = uuid.UUID(patient_id)
+        assessment_uuid = uuid.UUID(assessment_id)
     except ValueError:
-        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+        raise HTTPException(status_code=422, detail="assessment_id must be a valid UUID") from None
 
     if payload.situation is not None and payload.situation not in ASSESSMENT_SITUATIONS:
         raise HTTPException(status_code=422, detail=f"situation must be one of {ASSESSMENT_SITUATIONS}")
@@ -229,8 +384,19 @@ def save_respiratory_draft(
                 detail=f"reviewExceptions[].blockingLevel must be one of {EXCEPTION_BLOCKING_LEVELS}",
             )
 
-    patient = get_authorized_patient(db, patient_uuid, current_user)
-    assessment = _get_or_create_current_assessment(db, patient_uuid, patient.tenant_id)
+    # Anti-forgery: a client cannot reach REVIEWED/REVIEWED_WITH_EXCEPTION
+    # merely by sending that string -- the data must actually back it up.
+    _assert_completion_is_not_forged(payload.reviewState, payload.situation, payload.data, payload.reviewExceptions)
+
+    rnica_record, patient = _get_authorized_rnica_assessment(db, assessment_uuid, current_user)
+
+    if rnica_record.status == "LOCKED":
+        raise HTTPException(
+            status_code=409,
+            detail="This RNICA assessment is already locked/signed; Body Systems can no longer be modified.",
+        )
+
+    assessment = _get_or_create_current_assessment(db, patient.id, patient.tenant_id, assessment_uuid)
     system_assessment = _get_or_create_system_assessment(db, assessment, RESPIRATORY_SYSTEM)
 
     if payload.expectedVersion is not None and payload.expectedVersion != system_assessment.version:
@@ -287,7 +453,8 @@ def save_respiratory_draft(
         entity_type="system_assessment",
         entity_id=str(system_assessment.id),
         metadata={
-            "patientId": str(patient_uuid),
+            "patientId": str(patient.id),
+            "rnicaAssessmentId": str(rnica_record.id),
             "bodySystemsAssessmentId": str(assessment.id),
             "situation": system_assessment.situation,
             "reviewState": system_assessment.review_state,
@@ -299,6 +466,7 @@ def save_respiratory_draft(
     open_exceptions = _open_exceptions_for(db, assessment.id, RESPIRATORY_SYSTEM)
     return {
         "bodySystemsAssessmentId": str(assessment.id),
+        "rnicaAssessmentId": str(rnica_record.id),
         "assessmentStatus": assessment.status,
         **_serialize_system_assessment(system_assessment, open_exceptions),
     }

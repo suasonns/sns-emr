@@ -23,6 +23,11 @@ export interface BodySystemRegisterRowProps {
  * renders the real, editable `RespiratoryPanel` instead, wired to the
  * Respiratory API for `patientId`. No other system may render that panel
  * or call that API.
+ *
+ * This preview harness has no real RNICA episode to scope by (it is a
+ * dev-only synthetic-row preview, not the live RNICA route), so it passes
+ * `patientId` as a STAND-IN `assessmentId`. The live RNICA.jsx mount
+ * (RNICA.jsx, not this file) passes the real `RnicaAssessment.id`.
  */
 export function BodySystemRegisterRow({ row, patientId }: BodySystemRegisterRowProps) {
   return (
@@ -35,7 +40,7 @@ export function BodySystemRegisterRow({ row, patientId }: BodySystemRegisterRowP
       </AccordionTrigger>
       <AccordionContent>
         {row.system === "respiratory" ? (
-          <RespiratoryPanel patientId={patientId} />
+          <RespiratoryPanel patientId={patientId} assessmentId={patientId} />
         ) : (
           <p className="text-xs text-rnica-muted">Read-only synthetic register preview</p>
         )}

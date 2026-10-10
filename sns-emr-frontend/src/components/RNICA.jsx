@@ -23,6 +23,13 @@ import {
   RNICA_BODY_SYSTEM_MODULES,
   RNICA_BODY_SYSTEM_SIDEBAR_ITEMS,
 } from "../config/bodySystems";
+// Contract v2 Body Systems — live Respiratory mount only (other 9 systems
+// remain on the legacy `renderGenericSection` path per approved scope;
+// see RespiratoryPanel's own docstring for the Contract v2 state machine
+// it owns: REVIEW_REQUIRED / IN_PROGRESS / REVIEWED_COMPLETE /
+// REVIEWED_WITH_EXCEPTION, replacing legacy VisitMode/AssessmentSituation
+// gating for this one system only).
+import { RespiratoryPanel } from "../features/body-systems/components/RespiratoryPanel";
 import AdmissionActionCenterDrawer, {
   AdmissionActionCenterButton,
 } from "./AdmissionActionCenterDrawer";
@@ -19542,9 +19549,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           <div style={{ padding: 16, contentVisibility: "auto", containIntrinsicSize: "600px" }}>
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles, "all", assessmentUiProfile)
-              : config && sectionData
-                ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
-                : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
+              : route.formSection === "respiratory"
+                ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} />
+                : config && sectionData
+                  ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
+                  : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
       </div>
@@ -19563,24 +19572,26 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const isDemographicsModule = ["demographics", "caregiverAssessment", "advancedCarePlanning"].includes(route.key);
     const content = isDemographicsModule
       ? renderDemographics(formData.demographics, updateField, COLORS, styles, route.key, assessmentUiProfile)
-      : config && sectionData
-        ? renderGenericSection(
-            route.formSection,
-            sectionData,
-            updateField,
-            config,
-            formData.demographics,
-            formData,
-            COLORS,
-            styles,
-            patientId,
-            assessmentId,
-            locked,
-            true,
-            onNavigateToSection,
-            assessmentUiProfile,
-          )
-        : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
+      : route.formSection === "respiratory"
+        ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} />
+        : config && sectionData
+          ? renderGenericSection(
+              route.formSection,
+              sectionData,
+              updateField,
+              config,
+              formData.demographics,
+              formData,
+              COLORS,
+              styles,
+              patientId,
+              assessmentId,
+              locked,
+              true,
+              onNavigateToSection,
+              assessmentUiProfile,
+            )
+          : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
     const visible = route.key === activeSection || forceVisibleKeys.includes(route.key);
     return (
@@ -19699,9 +19710,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         reviewed: workflowStatus ? workflowStatus.code === "ready_for_review" : sectionHasDocumentedData(sectionData),
         statusLabel: workflowStatus?.label,
         statusVariant: workflowStatus?.variant,
-        content: config && sectionData
-          ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
-          : null,
+        content: module.key === "respiratory"
+          ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} />
+          : config && sectionData
+            ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
+            : null,
       };
     }).filter(Boolean);
   }, [routes, formData, sidebarConfigItems, COLORS, styles, patientId, assessmentId, locked, onNavigateToSection, assessmentUiProfile]);
