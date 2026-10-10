@@ -9,6 +9,7 @@
  * domain foundation in `src/domain/body-systems`.
  */
 export { BodyShieldShell } from "./shell/BodyShieldShell";
+export { BodySystemsWorkspacePage } from "./BodySystemsWorkspacePage";
 export { ResponsiveDesktopLayout } from "./shell/ResponsiveDesktopLayout";
 export { ResponsiveMobileLayout } from "./shell/ResponsiveMobileLayout";
 export { useViewportKind } from "./shell/useViewportKind";

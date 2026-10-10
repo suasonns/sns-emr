@@ -22,6 +22,7 @@ import { listMedications } from '../api/medications';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
 import { useThemeMode } from '../theme/theme';
 import ComplianceHopeBoard from '../intake/ComplianceHopeBoard';
+import { BodySystemsWorkspacePage } from '../features/body-systems-workspace';
 import DischargePlanningBoard from './DischargePlanningBoard';
 import IssuesOutcomesBoard from './IssuesOutcomesBoard';
 import InterdisciplinaryContinuityBoard from './InterdisciplinaryContinuityBoard';
@@ -768,6 +769,8 @@ const PatientChart = () => {
         return <SpiritualAssessmentBoard patientId={resolvedPatientId} selectedAssessmentId={activeSection === 'spiritual-assessment' ? assessmentHistorySelection?.assessmentId : null} />;
       case 'pain-assessment':
         return <NursingAssessmentBoard patientId={resolvedPatientId} />;
+      case 'body-systems':
+        return <BodySystemsWorkspacePage patientId={resolvedPatientId} />;
       case 'assessments':
       case 'assessment-history':
         return <AssessmentBoard />;
