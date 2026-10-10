@@ -17,12 +17,20 @@
  */
 import * as React from "react";
 import { BodyShieldShell } from "./shell/BodyShieldShell";
+import type { VisitMode } from "../../domain/body-systems";
 
 export interface BodySystemsWorkspacePageProps {
   patientId: string;
+  /**
+   * The Workspace visit mode to open in, resolved by the host screen from
+   * the real Nursing Assessment context (see `resolveBodySystemsVisitMode`).
+   * Defaults to the Workspace's own fallback (`routine_rn`) only when the
+   * host has not supplied a resolved mode.
+   */
+  initialVisitMode?: VisitMode;
 }
 
-export function BodySystemsWorkspacePage({ patientId }: BodySystemsWorkspacePageProps) {
+export function BodySystemsWorkspacePage({ patientId, initialVisitMode }: BodySystemsWorkspacePageProps) {
   if (!patientId) {
     return null;
   }
@@ -32,6 +40,7 @@ export function BodySystemsWorkspacePage({ patientId }: BodySystemsWorkspacePage
       patientId={patientId}
       visitId={`chart-visit:${patientId}`}
       bodySystemsAssessmentId={`body-systems-assessment:${patientId}`}
+      initialVisitMode={initialVisitMode}
     />
   );
 }

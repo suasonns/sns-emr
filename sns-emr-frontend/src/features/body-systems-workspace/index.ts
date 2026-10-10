@@ -10,6 +10,10 @@
  */
 export { BodyShieldShell } from "./shell/BodyShieldShell";
 export { BodySystemsWorkspacePage } from "./BodySystemsWorkspacePage";
+export {
+  resolveBodySystemsVisitMode,
+  type NursingAssessmentVisitContext,
+} from "./visitModeAdapter";
 export { ResponsiveDesktopLayout } from "./shell/ResponsiveDesktopLayout";
 export { ResponsiveMobileLayout } from "./shell/ResponsiveMobileLayout";
 export { useViewportKind } from "./shell/useViewportKind";

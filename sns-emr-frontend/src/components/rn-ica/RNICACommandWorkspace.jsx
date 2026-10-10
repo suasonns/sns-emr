@@ -12,7 +12,7 @@ import {
 import { RNICA_THIRTEEN_SCREENS, groupRoutesIntoScreens, screenForModuleKey } from "./rnicaThirteenScreenTaxonomy";
 import { RnicaWorkflowRail, RnicaWorkflowSheet } from "./RnicaWorkflowRail";
 import PatientStoryShadcn from "./patient-story/PatientStoryShadcn";
-import { BodySystemsWorkspacePage } from "../../features/body-systems-workspace";
+import { BodySystemsWorkspacePage, resolveBodySystemsVisitMode } from "../../features/body-systems-workspace";
 import EvidenceIntakeOverview from "./evidence-intake/EvidenceIntakeOverview";
 import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeReview";
 import PainSymptomBurdenOverview from "./pain-symptom-burden/PainSymptomBurdenOverview";
@@ -413,12 +413,20 @@ export default function RNICACommandWorkspace({
   // (BodyShieldShell, 10-system fixed register) replaces this legacy
   // accordion *inside* the existing Nursing Assessment bodySystems screen
   // -- it is not a new route, not a new peer destination, and the legacy
-  // accordion is not retired. Defaults to the legacy accordion (false) so
-  // no existing workflow behavior changes until a nurse/reviewer opts in;
-  // this is the smallest safe coexistence mechanism available (local
-  // component state), since no repository-wide feature-flag system exists
-  // to reuse for this migration.
-  const [useNewBodySystemsWorkspace, setUseNewBodySystemsWorkspace] = useState(false);
+  // accordion is not retired. Per product-owner correction, the approved
+  // Workspace is now the default rendering for this screen; the legacy
+  // accordion remains reachable only as a temporary, clearly-labeled
+  // rollback fallback (not an equal permanent workflow) until replacement
+  // readiness is fully proven. This is the smallest safe coexistence
+  // mechanism available (local component state), since no repository-wide
+  // feature-flag system exists to reuse for this migration.
+  const [useNewBodySystemsWorkspace, setUseNewBodySystemsWorkspace] = useState(true);
+  // Deterministic visit-mode selection from the real assessment context
+  // this component already receives (isOngoingAssessment/isUpdateAssessment,
+  // sourced from RNICA.jsx's isOngoing/assessmentType) -- no fixture,
+  // sample label, or hardcoded default decides this. See
+  // resolveBodySystemsVisitMode in features/body-systems-workspace.
+  const bodySystemsVisitMode = resolveBodySystemsVisitMode({ isOngoingAssessment, isUpdateAssessment });
   // 13-screen presentation grouping (Phase B). This groups the same,
   // unchanged module routes under the approved 13-screen taxonomy -- it
   // does not add, remove, or reorder any module's content, validation, or
@@ -800,33 +808,34 @@ export default function RNICACommandWorkspace({
         onChangeDensity={changeDensity}
       >
         {/* SNS Body Systems Engineering Specification -- Initial
-            Comprehensive RN Assessment coexistence toggle. Legacy
-            accordion remains the default rendering; the approved Workspace
-            mounts in the exact same bodySystems screen slot, inside the
-            same RnicaScreenShell (same patient/visit/assessment context,
-            same Save/Lock/Previous/Next controls) rather than a separate
-            route. Toggle state is intentionally local/ephemeral (not
-            persisted) until replacement readiness is proven. */}
+            Comprehensive RN Assessment coexistence toggle. The approved
+            Workspace is now the default for this screen; the legacy
+            accordion remains available only as a temporary rollback
+            fallback, inside the same RnicaScreenShell (same patient/visit/
+            assessment context, same Save/Lock/Previous/Next controls)
+            rather than a separate route. Toggle state is intentionally
+            local/ephemeral (not persisted) until the legacy fallback is
+            retired. */}
         <div className="rnica-bodysystems__workspace-toggle" role="group" aria-label="Body Systems rendering mode">
-          <button
-            type="button"
-            className={`rnica-bodysystems__workspace-toggle-btn${!useNewBodySystemsWorkspace ? " is-active" : ""}`}
-            aria-pressed={!useNewBodySystemsWorkspace}
-            onClick={() => setUseNewBodySystemsWorkspace(false)}
-          >
-            Legacy Body Systems
-          </button>
           <button
             type="button"
             className={`rnica-bodysystems__workspace-toggle-btn${useNewBodySystemsWorkspace ? " is-active" : ""}`}
             aria-pressed={useNewBodySystemsWorkspace}
             onClick={() => setUseNewBodySystemsWorkspace(true)}
           >
-            Body Systems Workspace (preview)
+            Body Systems
+          </button>
+          <button
+            type="button"
+            className={`rnica-bodysystems__workspace-toggle-btn${!useNewBodySystemsWorkspace ? " is-active" : ""}`}
+            aria-pressed={!useNewBodySystemsWorkspace}
+            onClick={() => setUseNewBodySystemsWorkspace(false)}
+          >
+            Use legacy fallback
           </button>
         </div>
         {useNewBodySystemsWorkspace ? (
-          <BodySystemsWorkspacePage patientId={patient?.id || ""} />
+          <BodySystemsWorkspacePage patientId={patient?.id || ""} initialVisitMode={bodySystemsVisitMode} />
         ) : (
         <div className={`rnica-bodysystems${railExpanded ? "" : " rnica-bodysystems--rail-collapsed"}`}>
           <div className="rnica-bodysystems__main">
