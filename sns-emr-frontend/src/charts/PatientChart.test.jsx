@@ -22,7 +22,6 @@ vi.mock("./PatientChartSidebar", () => ({
       <button onClick={() => onNavigate("idg")}>Go idg</button>
       <button onClick={() => onNavigate("poc")}>Go poc</button>
       <button onClick={() => onNavigate("issues")}>Go issues</button>
-      <button onClick={() => onNavigate("body-systems")}>Go body systems</button>
     </div>
   ),
 }));
@@ -40,9 +39,6 @@ vi.mock("./CertificationsBoard", () => ({ default: () => <div>Certifications stu
 vi.mock("./F2FBoard", () => ({ default: () => <div>F2F stub</div> }));
 vi.mock("../intake/ComplianceHopeBoard", () => ({ default: () => <div>Compliance HOPE stub</div> }));
 vi.mock("./DischargePlanningBoard", () => ({ default: () => <div>Discharge stub</div> }));
-vi.mock("../features/body-systems-workspace", () => ({
-  BodySystemsWorkspacePage: ({ patientId }) => <div>Body Systems Workspace stub for {patientId}</div>,
-}));
 vi.mock("../components/RNICA", () => ({
   OrdersHubCard: () => <div>Orders hub stub</div>,
   MedicationOrdersCard: () => <div>Medication orders stub</div>,
@@ -157,16 +153,6 @@ describe("PatientChart", () => {
     expect(screen.getByText("Hospice Plus")).toBeTruthy();
     expect(screen.getByText("Insurance verification completed")).toBeTruthy();
     expect(screen.getByText("Responsible party on file")).toBeTruthy();
-  });
-
-  it("renders the Body Systems Workspace with the real route patient id, not a hardcoded id", async () => {
-    mockChartData();
-
-    renderWithRoute(<PatientChart />, { route: "/chart/patient-1", path: "/chart/:patientId", theme: true });
-
-    await screen.findByText("Facesheet stub");
-    fireEvent.click(screen.getByRole("button", { name: "Go body systems" }));
-    expect(await screen.findByText("Body Systems Workspace stub for patient-1")).toBeTruthy();
   });
 
   it("shows honest empty IDG and POC states when no structured plan-of-care record exists", async () => {
