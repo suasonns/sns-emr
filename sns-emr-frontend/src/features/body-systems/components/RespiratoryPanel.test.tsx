@@ -48,6 +48,16 @@ function selectSingle(name: string, value: string) {
   fireEvent.click(option);
 }
 
+/** For fields the approved production candidate renders as a segmented
+ * button row or true radio group (not a dropdown): SOB Severity, Treatment
+ * Decision, Oxygen Use, Cough Type, Respiratory Support Status, Assessment
+ * Context, Comparison to Prior, etc. */
+function selectExclusive(name: string, value: string) {
+  const group = screen.getByRole("radiogroup", { name });
+  const option = within(group).getByRole("radio", { name: value });
+  fireEvent.click(option);
+}
+
 beforeEach(() => {
   mocks.getRespiratoryAssessment.mockReset();
   mocks.saveRespiratoryDraft.mockReset();
@@ -84,7 +94,7 @@ describe("RespiratoryPanel — load states", () => {
     );
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
-    expect(within(screen.getByRole("combobox", { name: "SOB Severity" })).getByText("Moderate")).toBeTruthy();
+    expect(within(screen.getByRole("radiogroup", { name: "SOB Severity" })).getByRole("radio", { name: "Moderate", checked: true })).toBeTruthy();
   });
 
   it("shows an unauthorized message on a 401/403 response", async () => {
@@ -144,7 +154,7 @@ describe("RespiratoryPanel — assessment limitation is explicit and non-gating"
 });
 
 describe("RespiratoryPanel — field editing", () => {
-  it("records a boolean field toggle (treatment initiated) into the editable draft", async () => {
+  it("records a canonical Treatment Decision selection into the editable draft and keeps the legacy compatibility keys in sync", async () => {
     // Intervention fields are progressively disclosed once dyspnea is
     // moderate or severe (usability-first directive section 9/15).
     mocks.getRespiratoryAssessment.mockResolvedValueOnce(
@@ -153,12 +163,19 @@ describe("RespiratoryPanel — field editing", () => {
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
-    const checkbox = within(screen.getByTestId("respiratory-field-respiratory_treatment_initiated")).getByRole(
-      "checkbox",
-    );
-    expect(checkbox.getAttribute("aria-checked")).toBe("false");
-    fireEvent.click(checkbox);
-    expect(checkbox.getAttribute("aria-checked")).toBe("true");
+    // The retired legacy "Treatment for shortness of breath initiated" /
+    // "Treatment declined" checkboxes must no longer render as standalone
+    // nurse-facing controls — Treatment Decision is the sole source of
+    // truth now.
+    expect(screen.queryByTestId("respiratory-field-respiratory_treatment_initiated")).toBeNull();
+    expect(screen.queryByTestId("respiratory-field-respiratory_treatment_declined")).toBeNull();
+
+    const option = within(screen.getByRole("radiogroup", { name: "Treatment Decision" })).getByRole("radio", {
+      name: "Initiated",
+    });
+    expect(option.getAttribute("aria-checked")).toBe("false");
+    fireEvent.click(option);
+    expect(option.getAttribute("aria-checked")).toBe("true");
   });
 
   it("records a free-text notes entry", async () => {
@@ -248,6 +265,11 @@ describe("RespiratoryPanel — Complete system review is explicit and blocking-v
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
     fireEvent.click(within(screen.getByTestId("respiratory-field-respiratory_no_current_concern")).getByRole("checkbox"));
+    selectExclusive("Assessment Context", "No Current Respiratory Concern");
+    selectExclusive("Comparison to Prior", "Comparison Unavailable");
+    selectExclusive("Oxygen Use", "No");
+    selectExclusive("Cough Type", "None");
+    selectExclusive("Respiratory Support Status", "None");
 
     const completeButton = screen.getByTestId("respiratory-complete-review-button") as HTMLButtonElement;
     expect(completeButton.disabled).toBe(false);
@@ -283,6 +305,11 @@ describe("RespiratoryPanel — Complete system review is explicit and blocking-v
 
     fireEvent.click(within(screen.getByTestId("respiratory-field-respiratory_unable_to_assess")).getByRole("checkbox"));
     selectSingle("Reason Unable to Assess", "Patient unresponsive");
+    selectExclusive("Assessment Context", "No Current Respiratory Concern");
+    selectExclusive("Comparison to Prior", "Comparison Unavailable");
+    selectExclusive("Oxygen Use", "No");
+    selectExclusive("Cough Type", "None");
+    selectExclusive("Respiratory Support Status", "None");
 
     fireEvent.click(screen.getByTestId("respiratory-complete-review-button"));
 
