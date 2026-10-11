@@ -38,6 +38,22 @@ def _make_rnica_assessment(db_session, patient, tenant_id, *, status="DRAFT"):
     return record
 
 
+# The 5 product-owner-authorized fields that are unconditionally required
+# by `get_missing_product_authorized_requirements` regardless of
+# situation -- see respiratory_product_requirements.py. Values chosen
+# deliberately avoid triggering any further conditional requirement (e.g.
+# `assessmentContext="UNABLE_TO_FULLY_ASSESS"` would additionally require
+# `comfortFunctionImpact`), so tests that only care about some other
+# behavior can merge this in without chasing a cascade of unrelated gaps.
+_BASE_ALWAYS_REQUIRED_RESPIRATORY_FIELDS = {
+    "assessmentContext": "NO_CURRENT_RESPIRATORY_CONCERN",
+    "clinicalComparison": "COMPARISON_UNAVAILABLE",
+    "oxygenUse": "NO",
+    "coughType": "None",
+    "respiratorySupportStatus": "NONE",
+}
+
+
 def _url(assessment_id) -> str:
     return f"/visits/body-systems/rnica/{assessment_id}/respiratory"
 
@@ -103,6 +119,7 @@ class TestSaveRespiratoryDraft:
                 "data": {
                     "respiratoryUnableToAssess": True,
                     "respiratoryUnableToAssessReason": "Patient declined",
+                    **_BASE_ALWAYS_REQUIRED_RESPIRATORY_FIELDS,
                 },
                 "reviewState": "reviewed_with_exception",
                 "reviewExceptions": [
@@ -204,7 +221,16 @@ class TestSaveRespiratoryDraft:
             headers=rn_headers,
             json={
                 "situation": "new_or_worsening",
-                "data": {"sobSeverity": "moderate", "treatmentInitiated": True},
+                "data": {
+                    "sobSeverity": "moderate",
+                    "treatmentInitiated": True,
+                    **_BASE_ALWAYS_REQUIRED_RESPIRATORY_FIELDS,
+                    "treatmentDecision": "INITIATED",
+                    "treatmentDescription": "Bronchodilator administered per order.",
+                    "treatmentResponseStatus": "PENDING",
+                    "followUpNeed": "NOT_INDICATED",
+                    "oxygenEffectivenessResponse": "Patient reports improved breathing after treatment.",
+                },
                 "reviewState": "reviewed",
             },
         )

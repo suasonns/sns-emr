@@ -335,7 +335,15 @@ class TestHydrationRoundTrip:
             headers=rn_headers,
             json={
                 "situation": "unable_to_assess",
-                "data": {"respiratoryUnableToAssess": True, "respiratoryUnableToAssessReason": "Patient unresponsive"},
+                "data": {
+                    "respiratoryUnableToAssess": True,
+                    "respiratoryUnableToAssessReason": "Patient unresponsive",
+                    "assessmentContext": "NO_CURRENT_RESPIRATORY_CONCERN",
+                    "clinicalComparison": "COMPARISON_UNAVAILABLE",
+                    "oxygenUse": "NO",
+                    "coughType": "None",
+                    "respiratorySupportStatus": "NONE",
+                },
                 "reviewState": "reviewed_with_exception",
                 "reviewExceptions": [
                     {"type": "unable_to_assess", "message": "x", "blockingLevel": "record_blocking", "fieldPath": "respiratoryUnableToAssessReason"}
