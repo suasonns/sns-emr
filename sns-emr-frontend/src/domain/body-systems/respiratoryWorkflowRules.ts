@@ -25,19 +25,43 @@ import {
   buildRequiredFieldMissingException,
 } from "./exceptionRules";
 import { isRespiratoryRequirementNotVerified } from "./respiratoryFieldInventory";
+import { textFilled } from "./respiratoryProductRequirements";
+import {
+  getMissingProductAuthorizedRequirements,
+  type RespiratoryProductAuthorizedValues,
+} from "./respiratoryProductRequirements";
 import type { AssessmentSituation, ReviewException } from "./types";
 
 export interface RespiratoryOxygenTherapyValues {
   inUse?: boolean;
   type?: string;
   litersPerMinute?: number;
+  hoursPerDay?: string;
+  deliveryMode?: string;
   satOnO2?: number;
   onRoomAir?: boolean;
+  // Product-owner-authorized fields (new canonical oxygen measurement/
+  // delivery detail; coexist with the legacy fields above — see
+  // respiratoryProductRequirements.ts and spec section 13).
+  deliveryDevice?: string;
+  otherDevice?: string;
+  flowValue?: number;
+  flowUnit?: string;
+  frequency?: string;
 }
 
 export interface RespiratoryVentilatorValues {
   shortTermVentilator?: boolean;
   longTermVentilator?: boolean;
+  ventilatorTypeAndSettings?: string;
+  tracheostomyType?: string;
+  tracheostomySize?: string;
+  // Product-owner-authorized fields (coexist with the legacy short/long-term
+  // booleans above — see respiratoryProductRequirements.ts).
+  duration?: string;
+  settingsSource?: string;
+  settingsDate?: string;
+  settingsTime?: string;
 }
 
 /** Shape of the Respiratory data this module evaluates — a subset of the legacy `respiratory` object limited to verified fields. */
@@ -47,6 +71,9 @@ export interface RespiratoryAssessmentValues {
   respiratoryUnableToAssess?: boolean;
   respiratoryUnableToAssessReason?: string;
   respiratoryUnableToAssessOther?: string;
+  shortnessOfBreathScreened?: boolean;
+  screeningDate?: string;
+  treatmentDate?: string;
   sobSeverity?: string;
   exertionLevel?: string;
   lungSounds?: readonly string[];
@@ -59,6 +86,130 @@ export interface RespiratoryAssessmentValues {
   treatmentDeclined?: boolean;
   clinicalStatusChange?: string;
   notes?: string;
+
+  // --- Product-owner-authorized fields (spec sections 3-9) --------------
+  assessmentContext?: string;
+  clinicalComparison?: string;
+  clinicalStatusChangeDetail?: string;
+  comfortFunctionImpact?: string;
+  comfortFunctionEvidence?: string;
+  comfortFunctionScreeningDate?: string;
+  comfortFunctionScreeningTime?: string;
+  configuredRequirementResponse?: string;
+  configuredFollowUpStatus?: string;
+  treatmentDecision?: string;
+  treatmentDescription?: string;
+  treatmentDeclineReason?: string;
+  treatmentActionDate?: string;
+  treatmentActionTime?: string;
+  treatmentResponseTime?: string;
+  treatmentResponse?: string;
+  treatmentResponseStatus?: string;
+  followUpNeed?: string;
+  followUpTimingPlan?: string;
+  followUpResponsibleClinician?: string;
+  pocReviewNeed?: string;
+  pocReviewReason?: string;
+  pocSourceReference?: string;
+  oxygenUse?: string;
+  oxygenUnableToVerifyReason?: string;
+  spo2Value?: number;
+  spo2MeasurementCondition?: string;
+  spo2NotObtainedReason?: string;
+  measuredOxygenFlowOrConcentration?: string;
+  oxygenMeasurementDate?: string;
+  oxygenMeasurementTime?: string;
+  oxygenEffectivenessResponse?: string;
+  sputumAmount?: string;
+  sputumColor?: string;
+  sputumOtherSpecification?: string;
+  coughClinicalSignificance?: string;
+  coughActionDecision?: string;
+  coughActionDescription?: string;
+  coughDeclineReason?: string;
+  coughResponse?: string;
+  coughActionDateTime?: string;
+  coughFollowUpTimingPlan?: string;
+  coughFollowUpResponsibleClinician?: string;
+  respiratorySupportStatus?: string;
+  respiratorySupportTypes?: readonly string[];
+  airwaySiteFindings?: string;
+  respiratorySupportResponse?: string;
+  respiratorySupportFollowUpPlan?: string;
+  respiratorySupportUnableToVerifyReason?: string;
+}
+
+/** Projects the fields `respiratoryProductRequirements.ts` needs out of the full `RespiratoryAssessmentValues` shape. */
+function toProductAuthorizedValues(values: RespiratoryAssessmentValues): RespiratoryProductAuthorizedValues {
+  return {
+    assessmentContext: values.assessmentContext,
+    clinicalComparison: values.clinicalComparison,
+    clinicalStatusChangeDetail: values.clinicalStatusChangeDetail,
+    comfortFunctionImpact: values.comfortFunctionImpact,
+    comfortFunctionEvidence: values.comfortFunctionEvidence,
+    configuredRequirementResponse: values.configuredRequirementResponse,
+    configuredFollowUpStatus: values.configuredFollowUpStatus,
+    treatmentDecision: values.treatmentDecision,
+    treatmentDescription: values.treatmentDescription,
+    treatmentDeclineReason: values.treatmentDeclineReason,
+    treatmentActionDate: values.treatmentActionDate,
+    treatmentActionTime: values.treatmentActionTime,
+    treatmentResponse: values.treatmentResponse,
+    treatmentResponseStatus: values.treatmentResponseStatus,
+    followUpNeed: values.followUpNeed,
+    followUpTimingPlan: values.followUpTimingPlan,
+    followUpResponsibleClinician: values.followUpResponsibleClinician,
+    pocReviewNeed: values.pocReviewNeed,
+    pocReviewReason: values.pocReviewReason,
+    oxygenUse: values.oxygenUse,
+    oxygenUnableToVerifyReason: values.oxygenUnableToVerifyReason,
+    oxygenTherapy: values.oxygenTherapy
+      ? {
+          deliveryDevice: values.oxygenTherapy.deliveryDevice,
+          otherDevice: values.oxygenTherapy.otherDevice,
+          flowValue: values.oxygenTherapy.flowValue,
+          flowUnit: values.oxygenTherapy.flowUnit,
+          frequency: values.oxygenTherapy.frequency,
+          hoursPerDay: values.oxygenTherapy.hoursPerDay,
+          deliveryMode: values.oxygenTherapy.deliveryMode,
+        }
+      : undefined,
+    spo2Value: values.spo2Value,
+    spo2MeasurementCondition: values.spo2MeasurementCondition,
+    spo2NotObtainedReason: values.spo2NotObtainedReason,
+    measuredOxygenFlowOrConcentration: values.measuredOxygenFlowOrConcentration,
+    oxygenMeasurementDate: values.oxygenMeasurementDate,
+    oxygenMeasurementTime: values.oxygenMeasurementTime,
+    oxygenEffectivenessResponse: values.oxygenEffectivenessResponse,
+    coughType: values.coughType,
+    sputumCharacter: values.sputumCharacter,
+    sputumAmount: values.sputumAmount,
+    sputumColor: values.sputumColor,
+    sputumOtherSpecification: values.sputumOtherSpecification,
+    coughClinicalSignificance: values.coughClinicalSignificance,
+    coughActionDecision: values.coughActionDecision,
+    coughActionDescription: values.coughActionDescription,
+    coughDeclineReason: values.coughDeclineReason,
+    coughResponse: values.coughResponse,
+    coughActionDateTime: values.coughActionDateTime,
+    coughFollowUpTimingPlan: values.coughFollowUpTimingPlan,
+    coughFollowUpResponsibleClinician: values.coughFollowUpResponsibleClinician,
+    sobSeverity: values.sobSeverity,
+    respiratorySupportStatus: values.respiratorySupportStatus,
+    respiratorySupportTypes: values.respiratorySupportTypes,
+    ventilator: values.ventilator
+      ? {
+          duration: values.ventilator.duration,
+          settingsSource: values.ventilator.settingsSource,
+          settingsDate: values.ventilator.settingsDate,
+          settingsTime: values.ventilator.settingsTime,
+        }
+      : undefined,
+    airwaySiteFindings: values.airwaySiteFindings,
+    respiratorySupportResponse: values.respiratorySupportResponse,
+    respiratorySupportFollowUpPlan: values.respiratorySupportFollowUpPlan,
+    respiratorySupportUnableToVerifyReason: values.respiratorySupportUnableToVerifyReason,
+  };
 }
 
 /** Maps the verified `respiratoryOverview` controlled values to the canonical `AssessmentSituation` enum. Exhaustive; throws on an unrecognized value rather than silently defaulting a situation. */
@@ -83,7 +234,14 @@ function hasAnyCurrentFindingFieldPopulated(values: RespiratoryAssessmentValues)
       values.exertionLevel ||
       (values.lungSounds && values.lungSounds.length > 0) ||
       (values.respirations && values.respirations.length > 0) ||
-      values.coughType ||
+      // "None" is coughType's explicit "no cough finding" sentinel value
+      // (same convention as sobSeverity's "None"), not an entered finding.
+      // Excluding it here matters once `respiratory_cough_type` becomes
+      // an always-required field (respiratoryProductRequirements.ts): a
+      // "No current respiratory concern" review must still be able to
+      // record coughType = "None" without that choice itself flipping the
+      // derived situation away from `no_current_concern`.
+      (values.coughType && values.coughType !== "None") ||
       values.sputumCharacter ||
       values.oxygenTherapy?.inUse ||
       values.ventilator?.shortTermVentilator ||
@@ -91,13 +249,82 @@ function hasAnyCurrentFindingFieldPopulated(values: RespiratoryAssessmentValues)
   );
 }
 
+function hasDocumentedIntervention(values: RespiratoryAssessmentValues): boolean {
+  return values.treatmentDecision === "INITIATED" || values.treatmentDecision === "ALREADY_IN_PLACE";
+}
+
+function hasDocumentedResponse(values: RespiratoryAssessmentValues): boolean {
+  if (!hasDocumentedIntervention(values)) {
+    return false;
+  }
+  if (!values.treatmentResponseStatus) {
+    return false;
+  }
+  if (values.treatmentResponseStatus === "PENDING") {
+    return true;
+  }
+  return textFilled(values.treatmentResponse);
+}
+
+function hasDocumentedDeclineDisposition(values: RespiratoryAssessmentValues): boolean {
+  if (values.treatmentDecision !== "DECLINED") {
+    return false;
+  }
+  if (!textFilled(values.treatmentDeclineReason)) {
+    return false;
+  }
+  if (!values.followUpNeed) {
+    return false;
+  }
+  if (values.followUpNeed === "NEEDED") {
+    return textFilled(values.followUpTimingPlan) && textFilled(values.followUpResponsibleClinician);
+  }
+  return true;
+}
+
+function hasDocumentedNotIndicatedDisposition(values: RespiratoryAssessmentValues): boolean {
+  return values.treatmentDecision === "NOT_INDICATED";
+}
+
+/**
+ * Canonical Treatment Decision counterpart of the legacy-only check below.
+ * Per the product-owner-authorized semantics:
+ * - INITIATED/ALREADY_IN_PLACE counts as documented intervention only once
+ *   its applicable response evidence is also present (an enum selection
+ *   alone is not a complete intervention);
+ * - DECLINED counts as a documented disposition (not an intervention) once
+ *   the decline reason and applicable follow-up are complete;
+ * - NOT_INDICATED counts as a documented disposition (not an intervention
+ *   or response) from the selection alone — there is no repository-backed
+ *   rationale field for this value yet, so a rationale cannot be required
+ *   here without inventing one.
+ */
+function hasCompleteTreatmentDisposition(values: RespiratoryAssessmentValues): boolean {
+  return (
+    (hasDocumentedIntervention(values) && hasDocumentedResponse(values)) ||
+    hasDocumentedDeclineDisposition(values) ||
+    hasDocumentedNotIndicatedDisposition(values)
+  );
+}
+
+/**
+ * Legacy boolean pair (kept, unchanged) OR'd with the canonical Treatment
+ * Decision disposition and the canonical oxygen-use/ventilator-duration
+ * fields — either path independently satisfies this situation-branch
+ * requirement, so a record entered entirely through the canonical UI (with
+ * the legacy checkboxes now hidden) is evaluated the same as one entered
+ * through the retired legacy controls.
+ */
 function hasDocumentedInterventionOrResponse(values: RespiratoryAssessmentValues): boolean {
   return Boolean(
     values.treatmentInitiated === true ||
       values.treatmentDeclined === true ||
       values.oxygenTherapy?.inUse === true ||
       values.ventilator?.shortTermVentilator === true ||
-      values.ventilator?.longTermVentilator === true,
+      values.ventilator?.longTermVentilator === true ||
+      hasCompleteTreatmentDisposition(values) ||
+      values.oxygenUse === "YES" ||
+      Boolean(values.ventilator?.duration),
   );
 }
 
@@ -259,6 +486,8 @@ export interface RespiratoryReviewCompletionResult {
   blockingMessages: string[];
   /** The derived situation used to evaluate completion, or null if nothing has been entered yet. */
   situation: AssessmentSituation | null;
+  /** Field IDs (from `respiratoryFieldInventory.ts`) for every unresolved product-owner-authorized requirement — for field-level highlighting in the panel. */
+  missingProductAuthorizedFieldIds: string[];
 }
 
 const BLOCKING_MESSAGE_BY_REQUIREMENT_KEY: Record<string, string> = {
@@ -279,6 +508,10 @@ const BLOCKING_MESSAGE_BY_REQUIREMENT_KEY: Record<string, string> = {
  * remain informational-only per the existing milestone scope.
  */
 export function getRespiratoryReviewCompletion(values: RespiratoryAssessmentValues): RespiratoryReviewCompletionResult {
+  const productAuthorizedGaps = getMissingProductAuthorizedRequirements(toProductAuthorizedValues(values));
+  const productAuthorizedFieldIds = productAuthorizedGaps.map((gap) => gap.fieldId);
+  const productAuthorizedMessages = productAuthorizedGaps.map((gap) => gap.message);
+
   const situation = deriveRespiratorySituation(values);
   if (!situation) {
     return {
@@ -286,7 +519,9 @@ export function getRespiratoryReviewCompletion(values: RespiratoryAssessmentValu
       situation: null,
       blockingMessages: [
         "Enter at least one respiratory finding, or explicitly record \"No current respiratory concern\" / \"Unable to fully assess\".",
+        ...productAuthorizedMessages,
       ],
+      missingProductAuthorizedFieldIds: productAuthorizedFieldIds,
     };
   }
   const satisfiedKeys = getSatisfiedRespiratoryRequirementKeys(situation, values);
@@ -294,8 +529,17 @@ export function getRespiratoryReviewCompletion(values: RespiratoryAssessmentValu
     (key) => !isRespiratoryRequirementNotVerified(key),
   );
   return {
-    complete: missingKeys.length === 0,
+    // Product-owner-authorized gaps now block completion (UI controls
+    // exist for every field this engine can require as of the UI-wiring
+    // pass completed in RespiratoryPanel.tsx) — promoted per explicit
+    // product-owner direction superseding the prior informational-only
+    // decision.
+    complete: missingKeys.length === 0 && productAuthorizedGaps.length === 0,
     situation,
-    blockingMessages: missingKeys.map((key) => BLOCKING_MESSAGE_BY_REQUIREMENT_KEY[key] ?? `Missing requirement: ${key}`),
+    blockingMessages: [
+      ...missingKeys.map((key) => BLOCKING_MESSAGE_BY_REQUIREMENT_KEY[key] ?? `Missing requirement: ${key}`),
+      ...productAuthorizedMessages,
+    ],
+    missingProductAuthorizedFieldIds: productAuthorizedFieldIds,
   };
 }

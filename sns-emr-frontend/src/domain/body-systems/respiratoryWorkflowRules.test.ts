@@ -61,6 +61,55 @@ describe("Body Systems — Respiratory situation requirement satisfaction", () =
     expect(declinedTreatmentAlsoSatisfiesIntervention).toContain("intervention_or_response");
   });
 
+  it("canonical Treatment Decision also satisfies intervention_or_response once its applicable evidence is complete", () => {
+    const enumAloneIsNotEnough = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      treatmentDecision: "INITIATED",
+    });
+    expect(enumAloneIsNotEnough).not.toContain("intervention_or_response");
+
+    const initiatedWithResponse = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      treatmentDecision: "INITIATED",
+      treatmentResponseStatus: "PENDING",
+    });
+    expect(initiatedWithResponse).toContain("intervention_or_response");
+
+    const alreadyInPlaceWithResponse = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      treatmentDecision: "ALREADY_IN_PLACE",
+      treatmentResponseStatus: "OBSERVED",
+      treatmentResponse: "Symptoms improved with current regimen.",
+    });
+    expect(alreadyInPlaceWithResponse).toContain("intervention_or_response");
+
+    const declinedWithCompleteDisposition = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      treatmentDecision: "DECLINED",
+      treatmentDeclineReason: "Patient declined further intervention.",
+      followUpNeed: "NOT_NEEDED",
+    });
+    expect(declinedWithCompleteDisposition).toContain("intervention_or_response");
+
+    const notIndicated = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      treatmentDecision: "NOT_INDICATED",
+    });
+    expect(notIndicated).toContain("intervention_or_response");
+
+    const canonicalOxygenUseAlsoSatisfies = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      oxygenUse: "YES",
+    });
+    expect(canonicalOxygenUseAlsoSatisfies).toContain("intervention_or_response");
+
+    const canonicalVentilatorDurationAlsoSatisfies = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      ventilator: { duration: "SHORT_TERM" },
+    });
+    expect(canonicalVentilatorDurationAlsoSatisfies).toContain("intervention_or_response");
+  });
+
   it("unable_to_assess requires a reason, and 'Other' requires the free-text reason too", () => {
     expect(getSatisfiedRespiratoryRequirementKeys("unable_to_assess", {})).not.toContain("reason");
     expect(
