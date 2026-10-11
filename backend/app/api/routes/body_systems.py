@@ -48,6 +48,9 @@ from sqlalchemy.orm import Session
 from app.core.database import SessionLocal
 from app.core.patient_access import get_authorized_patient
 from app.core.security import CurrentUser, get_current_user
+from app.domain.body_systems.respiratory_product_requirements import (
+    get_missing_product_authorized_requirements,
+)
 from app.models.body_systems import (
     ASSESSMENT_SITUATIONS,
     BodySystemsAssessment,
@@ -84,12 +87,16 @@ _CLINICAL_STATUS_CHANGE_WORSENING = {"Declining", "New Symptom Since Prior Asses
 def _has_any_current_finding_field(data: dict[str, Any]) -> bool:
     oxygen = data.get("oxygenTherapy") or {}
     ventilator = data.get("ventilator") or {}
+    cough_type = data.get("coughType")
     return bool(
         data.get("sobSeverity")
         or data.get("exertionLevel")
         or (data.get("lungSounds") or [])
         or (data.get("respirations") or [])
-        or data.get("coughType")
+        # "None" is coughType's explicit "no cough finding" sentinel value,
+        # not an entered finding -- mirrors respiratoryWorkflowRules.ts's
+        # hasAnyCurrentFindingFieldPopulated, kept in lockstep with it.
+        or (cough_type and cough_type != "None")
         or data.get("sputumCharacter")
         or (isinstance(oxygen, dict) and oxygen.get("inUse"))
         or (isinstance(ventilator, dict) and ventilator.get("shortTermVentilator"))
@@ -158,21 +165,23 @@ def _assert_completion_is_not_forged(
     available when incomplete."""
     if review_state not in ("reviewed", "reviewed_with_exception"):
         return
+    product_authorized_gaps = get_missing_product_authorized_requirements(data)
+    product_authorized_field_ids = [field_id for field_id, _message in product_authorized_gaps]
     if situation is None:
         raise HTTPException(
             status_code=422,
             detail={
                 "message": "Cannot complete review: no situation could be derived from the entered data.",
-                "missingRequirements": ["situation"],
+                "missingRequirements": ["situation", *product_authorized_field_ids],
             },
         )
     missing = _missing_blocking_respiratory_requirements(situation, data)
-    if missing:
+    if missing or product_authorized_gaps:
         raise HTTPException(
             status_code=422,
             detail={
                 "message": "Cannot complete review: required fields are missing.",
-                "missingRequirements": missing,
+                "missingRequirements": missing + product_authorized_field_ids,
             },
         )
     has_open_record_blocking = any(exception.blockingLevel == "record_blocking" for exception in exceptions)
