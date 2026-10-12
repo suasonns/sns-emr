@@ -7484,17 +7484,48 @@ def _finalize_rnica_linked_visit(
     back the lock too (no false "locked" state without a finalized Visit).
     """
     if not record.visit_id:
-        # RNICA-only assessments with no established Visit Header link are
-        # an intentional, pre-existing scope boundary (see
-        # test_rnica_hope_phase_b_wiring.py's "intentionally left NULL"
-        # coverage) -- there is nothing to finalize, so locking must still
-        # succeed exactly as it did before this correction.
-        return
+        assessment_type = (record.assessment_type or RNICA_ADMISSION_TYPE).strip().upper()
+        if assessment_type in (RNICA_UPDATE_TYPE, RNICA_RECERT_TYPE):
+            # UPDATE/RECERT assessments never attempt Visit linkage by
+            # design (see ensureRnicaVisitId in RNICA.jsx) -- unaffected
+            # by the current-workflow Visit-ID requirement below.
+            return
+        if not record.visit_link_required:
+            # Deterministically historical: this row existed before the
+            # RNICA-VISIT-LINK-REQUIRED-001 migration cutover (see
+            # RnicaAssessment.visit_link_required) -- an intentional,
+            # pre-existing scope boundary (see
+            # test_rnica_hope_phase_b_wiring.py's "intentionally left
+            # NULL" coverage). Locking must still succeed exactly as it
+            # did before this correction.
+            return
+        # Current-workflow initial/admission RNICA: a real Visit link is
+        # required before full completion can succeed. Save Draft
+        # (update_rnica_assessment) never calls this function, so the
+        # clinician can still save while the Visit-linking retry
+        # (ensureRnicaVisitId) resolves on a subsequent save.
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Cannot complete this RN ICA: no Visit is linked yet. "
+                "Save again to retry establishing the Visit link, then "
+                "complete the assessment."
+            ),
+        )
     visit = _load_visit_for_update(db, record.visit_id)
     if visit.patient_id != record.patient_id:
         raise HTTPException(
             status_code=422,
             detail="The linked Visit does not belong to this patient and cannot be finalized.",
+        )
+    if (
+        record.admission_id is not None
+        and getattr(visit, "admission_id", None) is not None
+        and visit.admission_id != record.admission_id
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail="The linked Visit does not belong to this admission and cannot be finalized.",
         )
     if (visit.status or "").upper() == "FINALIZED":
         # Idempotent: re-locking (or re-entering this path on an already

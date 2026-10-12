@@ -72,14 +72,29 @@ def _make_linked_visit(db_session, patient, admission, tenant_id, *, visit_date:
     return visit
 
 
-def _make_rnica_assessment(db_session, patient, tenant_id, form_data, *, visit=None):
+def _make_rnica_assessment(
+    db_session,
+    patient,
+    tenant_id,
+    form_data,
+    *,
+    visit=None,
+    admission=None,
+    visit_link_required: bool | None = None,
+    assessment_type: str | None = None,
+):
     record = RnicaAssessment(
         id=uuid.uuid4(),
         patient_id=patient.id,
         tenant_id=uuid.UUID(str(tenant_id)),
+        admission_id=admission.id if admission is not None else None,
         form_data=form_data,
         visit_id=visit.id if visit is not None else None,
     )
+    if visit_link_required is not None:
+        record.visit_link_required = visit_link_required
+    if assessment_type is not None:
+        record.assessment_type = assessment_type
     db_session.add(record)
     db_session.commit()
     return record
@@ -339,18 +354,22 @@ def _visit_minutes_row(db_session, visit_id):
 
 
 @pytest.mark.integration
-def test_lock_without_linked_visit_still_succeeds_as_a_noop(client, db_session, rn_headers):
+def test_lock_without_linked_visit_succeeds_as_a_noop_for_historical_records(client, db_session, rn_headers):
     """
-    RNICA-only assessments with no established Visit Header link are a
-    pre-existing, intentional scope boundary (see
-    test_rnica_hope_phase_b_wiring.py's "intentionally left NULL"
-    coverage). Finalization must be skipped as a no-op in that case --
-    locking must still succeed exactly as it did before this correction,
-    and no VisitMinutes row may appear from nowhere.
+    RNICA-VISIT-LINK-REQUIRED-001: records that predate the Visit-linking
+    workflow (visit_link_required=False, set by migration cutover for every
+    row that existed when the column was added) are a deterministic,
+    pre-existing scope boundary -- see
+    test_rnica_hope_phase_b_wiring.py's "intentionally left NULL" coverage.
+    Finalization must be skipped as a no-op in that case -- locking must
+    still succeed exactly as it did before this correction, and no
+    VisitMinutes row may appear from nowhere.
     """
     tenant_id = db_session.info.get("tenant_id")
     patient, _admission = _make_patient_and_admission(db_session, tenant_id)
-    record = _make_rnica_assessment(db_session, patient, tenant_id, COMPLETE_FORM_DATA, visit=None)
+    record = _make_rnica_assessment(
+        db_session, patient, tenant_id, COMPLETE_FORM_DATA, visit=None, visit_link_required=False
+    )
 
     resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
     assert resp.status_code == 200, resp.text
@@ -359,6 +378,111 @@ def test_lock_without_linked_visit_still_succeeds_as_a_noop(client, db_session, 
     assert record.locked is True
     assert record.status == "LOCKED"
     assert record.visit_id is None
+
+
+@pytest.mark.integration
+def test_lock_without_linked_visit_blocks_current_workflow_rnica(client, db_session, rn_headers):
+    """
+    Current-workflow initial RN ICA (visit_link_required=True, the default
+    for every record created after the RNICA-VISIT-LINK-REQUIRED-001
+    migration cutover) must NOT be allowed to complete without a real
+    Visit link -- unlike the historical no-op case above.
+    """
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, COMPLETE_FORM_DATA, visit=None)
+    assert record.visit_link_required is True
+
+    resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert resp.status_code == 422, resp.text
+    assert "Visit is linked" in resp.json()["detail"]
+
+    db_session.refresh(record)
+    assert record.locked is False
+    assert record.visit_id is None
+
+
+@pytest.mark.integration
+def test_save_draft_succeeds_for_current_workflow_rnica_without_visit(client, db_session, rn_headers):
+    """
+    The Visit-link-required rule only gates full completion (lock) -- a
+    clinician must still be able to Save Draft while a dropped/retried
+    Visit-minting attempt (see RNICA.jsx's ensureRnicaVisitId) resolves on
+    a later save.
+    """
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(db_session, patient, tenant_id, COMPLETE_FORM_DATA, visit=None)
+
+    resp = client.put(
+        f"/visits/rnica/{record.id}",
+        json={"formData": {**COMPLETE_FORM_DATA, "finalization": {"clinicianSignature": "RN Draft"}}},
+        headers=rn_headers,
+    )
+    assert resp.status_code == 200, resp.text
+
+    db_session.refresh(record)
+    assert record.locked is False
+
+
+@pytest.mark.integration
+def test_lock_without_linked_visit_update_type_remains_unaffected(client, db_session, rn_headers):
+    """
+    UPDATE/RECERT assessments never attempt Visit linkage by design and
+    must remain unaffected by visit_link_required regardless of its value.
+    """
+    tenant_id = db_session.info.get("tenant_id")
+    patient, _admission = _make_patient_and_admission(db_session, tenant_id)
+    record = _make_rnica_assessment(
+        db_session,
+        patient,
+        tenant_id,
+        COMPLETE_FORM_DATA,
+        visit=None,
+        assessment_type="UPDATE",
+    )
+    assert record.visit_link_required is True
+
+    resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert resp.status_code == 200, resp.text
+
+    db_session.refresh(record)
+    assert record.locked is True
+    assert record.visit_id is None
+
+
+@pytest.mark.integration
+def test_lock_rejects_visit_belonging_to_different_admission(client, db_session, rn_headers):
+    """
+    Defense-in-depth cross-admission guard, mirroring the existing
+    cross-patient guard: a Visit linked to a different admission episode
+    for the same patient must not be silently finalized against this
+    RNICA record.
+    """
+    tenant_id = db_session.info.get("tenant_id")
+    patient, admission = _make_patient_and_admission(db_session, tenant_id)
+    other_admission = Admission(
+        id=uuid.uuid4(),
+        tenant_id=tenant_id,
+        patient_id=patient.id,
+        status="ACTIVE",
+    )
+    db_session.add(other_admission)
+    db_session.commit()
+
+    visit = _make_linked_visit(db_session, patient, other_admission, tenant_id)
+    record = _make_rnica_assessment(
+        db_session, patient, tenant_id, COMPLETE_FORM_DATA, visit=visit, admission=admission
+    )
+
+    resp = client.post(f"/visits/rnica/{record.id}/lock", headers=rn_headers)
+    assert resp.status_code == 422, resp.text
+    assert "admission" in resp.json()["detail"].lower()
+
+    db_session.refresh(record)
+    assert record.locked is False
+    db_session.refresh(visit)
+    assert (visit.status or "").upper() != "FINALIZED"
 
 
 @pytest.mark.integration

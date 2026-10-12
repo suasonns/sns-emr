@@ -30,6 +30,20 @@ class RnicaAssessment(Base):
     assessment_type = Column(String(32), nullable=False, default="RNICA")
     status = Column(String(32), nullable=False, default="DRAFT")
     locked = Column(Boolean, nullable=False, default=False)
+
+    # RNICA-VISIT-LINK-REQUIRED-001: deterministic, migration-time cutover
+    # distinguishing historical unlinked RN ICA records (created before the
+    # Visit-linking workflow was mandatory -- see
+    # _rnica_visit_meta_times / _finalize_rnica_linked_visit in
+    # app/api/visits.py) from current-workflow records, which must obtain
+    # a real Visit link before full completion. The migration that adds
+    # this column explicitly sets it False for every row that already
+    # exists at migration time (an objective database fact, not a guess
+    # based on timestamps or patient identity) and defaults True for every
+    # row created afterward. UPDATE/RECERT assessments never consult this
+    # flag -- they intentionally never link a Visit regardless of its
+    # value (see assessment_type).
+    visit_link_required = Column(Boolean, nullable=False, default=True, server_default=text("true"))
     hope_workflow_status = Column(String(32), nullable=False, default="OPEN")
     hope_closed_at = Column(DateTime(timezone=True), nullable=True)
     hope_closed_by = Column(UUID(as_uuid=True), nullable=True)

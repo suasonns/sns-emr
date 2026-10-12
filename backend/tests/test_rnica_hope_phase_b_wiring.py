@@ -133,13 +133,27 @@ def _rnica_form_data(symptom_impact: dict, *, visit_date: str, discipline: str =
     }
 
 
-def _save_and_lock(client, headers, patient_id, form_data, *, assessment_subtype: str | None = None):
+def _save_and_lock(client, db_session, headers, patient_id, form_data, *, assessment_subtype: str | None = None):
     payload = {"patientId": str(patient_id), "formData": form_data}
     if assessment_subtype:
         payload["assessmentSubtype"] = assessment_subtype
     save_resp = client.post("/visits/rnica/save", json=payload, headers=headers)
     assert save_resp.status_code == 200, save_resp.text
     assessment_id = save_resp.json()["assessmentId"]
+
+    # This suite's scope is HOPE Phase B event wiring, not the separate
+    # RNICA-VISIT-LINK-REQUIRED-001 Visit-linkage requirement -- these
+    # fixtures never attach a Visit (visitId) at all. Mark the record as
+    # pre-cutover/historical so completion still succeeds as a no-op here,
+    # exactly as it did before that unrelated correction (see
+    # test_rnica_finalization.py for the Visit-link-required coverage).
+    record = (
+        db_session.query(RnicaAssessment)
+        .filter_by(id=uuid.UUID(assessment_id))
+        .one()
+    )
+    record.visit_link_required = False
+    db_session.commit()
 
     lock_resp = client.post(f"/visits/rnica/{assessment_id}/lock", headers=headers)
     assert lock_resp.status_code == 200, lock_resp.text
@@ -180,7 +194,7 @@ class TestRnicaHopePhaseBAdmissionWiring:
         patient, admission = _make_patient_with_admission(db_session, tenant_id)
 
         form_data = _rnica_form_data(_symptom_impact(**symptom_overrides), visit_date="2026-01-01")
-        assessment_id, lock_json = _save_and_lock(client, rn_headers, patient.id, form_data)
+        assessment_id, lock_json = _save_and_lock(client, db_session, rn_headers, patient.id, form_data)
 
         summary = lock_json["hopePhaseB"]
         assert summary is not None, "Admission lock must trigger HOPE Phase B processing"
@@ -219,7 +233,7 @@ class TestRnicaHopePhaseBAdmissionWiring:
         patient, admission = _make_patient_with_admission(db_session, tenant_id)
 
         form_data = _rnica_form_data(ALL_MILD_SYMPTOM_IMPACT, visit_date="2026-01-01")
-        assessment_id, lock_json = _save_and_lock(client, rn_headers, patient.id, form_data)
+        assessment_id, lock_json = _save_and_lock(client, db_session, rn_headers, patient.id, form_data)
 
         summary = lock_json["hopePhaseB"]
         assert summary["hopeEventType"] == "ADMISSION"
@@ -243,7 +257,7 @@ class TestRnicaHopePhaseBAdmissionWiring:
 
         form_data = _rnica_form_data(_symptom_impact(pain="3"), visit_date="2026-06-01")
         assessment_id, lock_json = _save_and_lock(
-            client, rn_headers, patient.id, form_data, assessment_subtype="recert"
+            client, db_session, rn_headers, patient.id, form_data, assessment_subtype="recert"
         )
 
         assert lock_json["hopePhaseB"] is None
@@ -265,7 +279,7 @@ class TestRnicaHopePhaseBAdmissionWiring:
         patient, admission = _make_patient_with_admission(db_session, tenant_id)
 
         form_data = _rnica_form_data(_symptom_impact(pain="2"), visit_date="2026-01-01")
-        assessment_id, first_lock_json = _save_and_lock(client, rn_headers, patient.id, form_data)
+        assessment_id, first_lock_json = _save_and_lock(client, db_session, rn_headers, patient.id, form_data)
         assert first_lock_json["hopePhaseB"]["hopeEventType"] == "ADMISSION"
 
         second_lock_resp = client.post(f"/visits/rnica/{assessment_id}/lock", headers=rn_headers)
@@ -290,11 +304,11 @@ class TestRnicaHopePhaseBHuvWiring:
         self, client, db_session, rn_headers, patient, *, update_visit_date: str, update_symptom_impact: dict
     ):
         admission_form_data = _rnica_form_data(ALL_MILD_SYMPTOM_IMPACT, visit_date="2026-01-01")
-        _save_and_lock(client, rn_headers, patient.id, admission_form_data)
+        _save_and_lock(client, db_session, rn_headers, patient.id, admission_form_data)
 
         update_form_data = _rnica_form_data(update_symptom_impact, visit_date=update_visit_date)
         return _save_and_lock(
-            client, rn_headers, patient.id, update_form_data, assessment_subtype="update"
+            client, db_session, rn_headers, patient.id, update_form_data, assessment_subtype="update"
         )
 
     def test_huv1_moderate_trigger_completes_task_and_creates_sfv(self, client, db_session, rn_headers):
@@ -484,7 +498,7 @@ def test_hope_event_identity_survives_reload(client, db_session, rn_headers):
     patient, admission = _make_patient_with_admission(db_session, tenant_id)
 
     form_data = _rnica_form_data(_symptom_impact(pain="2"), visit_date="2026-01-01")
-    assessment_id, lock_json = _save_and_lock(client, rn_headers, patient.id, form_data)
+    assessment_id, lock_json = _save_and_lock(client, db_session, rn_headers, patient.id, form_data)
     assert lock_json["hopePhaseB"]["hopeEventType"] == "ADMISSION"
 
     # Force a genuinely fresh read: expire the whole identity map, not just

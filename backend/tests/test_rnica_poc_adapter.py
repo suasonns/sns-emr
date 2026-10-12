@@ -46,6 +46,12 @@ def _make_rnica_assessment(db_session, patient, tenant_id, form_data):
         tenant_id=uuid.UUID(str(tenant_id)),
         form_data=form_data,
     )
+    # This suite exercises the POC adapter via the RNICA lock route, not
+    # the separate RNICA-VISIT-LINK-REQUIRED-001 Visit-linkage requirement
+    # -- these fixtures never attach a Visit. Mark the record historical so
+    # lock still succeeds as a no-op here (see test_rnica_finalization.py
+    # for the Visit-link-required coverage).
+    record.visit_link_required = False
     db_session.add(record)
     db_session.commit()
     return record
