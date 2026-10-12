@@ -134,7 +134,7 @@ export default function PatientStoryShadcn({
               <CardTitle><BookOpen className="h-4 w-4 text-rnica-teal" /> Why Hospice</CardTitle>
             </CardHeader>
             <CardContent>
-              <NarrativeOrEmpty text={patient.whyHospiceNarrative} source="Diagnosis & LCD" onNavigateToSource={() => onNavigate("diagnoses")} />
+              <NarrativeOrEmpty text={patient.whyHospiceNarrative} source="Finalization" onNavigateToSource={() => onNavigate("finalization")} />
             </CardContent>
           </Card>
 

@@ -19861,7 +19861,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             attendingPhysician: patientSummary?.patient?.attending_physician_name || "",
             currentPps: formData.performanceStatus?.pps || latestPerformance?.pps || "",
             assessmentStage: isOngoing ? (assessmentType === "recert" ? "Recertification" : "Update assessment") : "Initial admission",
-            whyHospiceNarrative: formData.diagnoses.clinicalNarrative || "",
+            // P3-006: the authoritative narrative now lives on
+            // finalization.clinicalNarrative (see rnica_finalization_service.py
+            // P3-007 fix); diagnoses.clinicalNarrative is a dead legacy path
+            // no current UI action populates, which left this always blank.
+            whyHospiceNarrative: formData.finalization?.clinicalNarrative || "",
             recentHospitalization: formData.diagnoses.recentHospitalizations || "",
             functionalDeclineNarrative: formData.performanceStatus?.functionalDeclineNotes || "",
             // Read-only reflection of the existing `vitals` module's own
