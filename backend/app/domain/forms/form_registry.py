@@ -470,6 +470,7 @@ FORM_REGISTRY = {
             form_family=NoteFormFamily.CLINICAL,
             primary_form=PRIMARY_RN_INITIAL_ICA,
             modules=[
+                MOD_VISIT_HEADER,
                 MOD_PATIENT_DEMOGRAPHICS,
                 MOD_LIVING_SITUATION,
                 MOD_ADVANCED_CARE_PLANNING,

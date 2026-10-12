@@ -29,7 +29,19 @@ import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as Shadcn
 import { Badge as ShadcnBadge } from "../ui/badge";
 import { Progress as ShadcnProgress } from "../ui/progress";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "../ui/accordion";
+import { TYPE_OF_VISIT_OPTIONS, VISIT_KIND_OPTIONS, REASON_FOR_VISIT_OPTIONS, CARE_LEVEL_OPTIONS } from "./visitMetaOptions";
 import "./RNICACommandWorkspace.css";
+
+// OWNER DIRECTIVE (2026-10-19 / 2026-10-21) "PRODUCT DECISION -- the legacy
+// RNICA must not be reachable from normal clinical workflow at all." The
+// earlier "Use Classic View" -> "More -> View Legacy RNICA Layout" change
+// only relabeled the escape hatch; it did not remove it. There is exactly
+// one RNICA presented to clinical staff: this command workspace. No menu,
+// toolbar, or header control in this file may navigate a nurse out of it.
+// (The underlying `workspacePilot`/`onExitWorkspacePilot` plumbing still
+// exists further up the component tree for non-UI/dev use only -- see
+// RNICA.jsx and rnIcaCommandWorkspace.ts -- but nothing in the normal
+// clinical workflow calls it anymore.)
 
 const DENSITY_KEY = "sns-clinical-command-workspace-density";
 const LEGACY_DENSITY_KEY = "sns-rnica-workspace-density";
@@ -226,7 +238,79 @@ function NarrativeFinalReviewPanel({ completedSections, totalSections, missingCo
 // only: a compact identity/status bar, the 13-screen tab strip, the screen's
 // own content, and the save/lock controls -- there is no old-workspace
 // content behind it.
-function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, onExitPilot, saving, saveStatus, onSave, onLock, canLock, statusContext, density, onChangeDensity, updateAssessmentContext, children }) {
+// RNICA Visit Header -- the single, shared source of truth for visit
+// logistics (Visit Date, Time In/Out, Duration, Discipline, Reason for
+// Visit, Staff Assigned, Care Level) across EVERY RNICA screen. Owner
+// directive: "VISIT HEADER... WILL BE PRESENT IN EVERY VISIT REGARDLESS
+// OF THE DISCIPLINE... WITHOUT THIS NOBODY IS GETTING PAID." Renders the
+// exact same `formData.visitMeta` state the classic RNICA.jsx "Visit
+// Details" card edits via `onUpdateField("visitMeta", field, value)` --
+// no second visit-metadata store, no duplication. Duration is always
+// computed (see RNICA.jsx's Time In/Out effect) and shown read-only here.
+// Discipline is fixed per the RN Initial Comprehensive Assessment (every
+// RNICA is an RN visit) and shown read-only, matching the classic card.
+function VisitHeaderBar({ visitMeta, onUpdateField, locked }) {
+  if (!visitMeta) return null;
+  const set = (field) => (event) => onUpdateField("visitMeta", field, event.target.value);
+  return (
+    <div className="rnica-visit-header" role="group" aria-label="Visit Header">
+      <span className="rnica-visit-header__title">Visit Header</span>
+      <label className="rnica-visit-header__field">
+        <span>Visit Date</span>
+        <input type="date" value={visitMeta.visitDate || ""} onChange={set("visitDate")} disabled={locked} />
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Time In</span>
+        <input type="time" value={visitMeta.timeIn || ""} onChange={set("timeIn")} disabled={locked} />
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Time Out</span>
+        <input type="time" value={visitMeta.timeOut || ""} onChange={set("timeOut")} disabled={locked} />
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Duration</span>
+        <input value={visitMeta.duration || ""} readOnly placeholder="Calculated" />
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Visit Type</span>
+        <select value={visitMeta.typeOfVisit || ""} onChange={set("typeOfVisit")} disabled={locked}>
+          <option value="">Select</option>
+          {TYPE_OF_VISIT_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Scheduled</span>
+        <select value={visitMeta.visitKind || ""} onChange={set("visitKind")} disabled={locked}>
+          <option value="">Select</option>
+          {VISIT_KIND_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Reason for Visit</span>
+        <select value={visitMeta.reasonForVisit || ""} onChange={set("reasonForVisit")} disabled={locked}>
+          {REASON_FOR_VISIT_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Discipline</span>
+        <input value={visitMeta.discipline || "RN"} readOnly />
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Staff Assigned</span>
+        <input value={visitMeta.staffAssigned || ""} onChange={set("staffAssigned")} disabled={locked} />
+      </label>
+      <label className="rnica-visit-header__field">
+        <span>Level of Care</span>
+        <select value={visitMeta.careLevel || ""} onChange={set("careLevel")} disabled={locked}>
+          <option value="">Select</option>
+          {CARE_LEVEL_OPTIONS.map((opt) => <option key={opt} value={opt}>{opt}</option>)}
+        </select>
+      </label>
+    </div>
+  );
+}
+
+function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, activeScreenKey, onSelectScreenTab, saving, saveStatus, onSave, onLock, canLock, statusContext, density, onChangeDensity, updateAssessmentContext, visitMeta, onUpdateField, children }) {
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
   return (
     <div className={`rnica-screen rnica-screen--${density || "compact"}`}>
@@ -262,9 +346,13 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
           >
             Workflow
           </button>
-          <button type="button" onClick={onExitPilot}>Use classic view</button>
+          {/* OWNER DIRECTIVE (2026-10-19 / 2026-10-21) "PRODUCT DECISION --
+              remove the legacy RNICA entry point entirely, not just its
+              label." No control here navigates out of this workspace. */}
         </div>
       </header>
+
+      <VisitHeaderBar visitMeta={visitMeta} onUpdateField={onUpdateField} locked={locked} />
 
       <div className="rnica-screen__body">
         <RnicaWorkflowRail
@@ -309,6 +397,7 @@ function RnicaScreenShell({ patient, locked, completedSections, totalRoutes, act
 
 export default function RNICACommandWorkspace({
   patient,
+  visitMeta,
   routes,
   formSections,
   activeSection,
@@ -336,7 +425,6 @@ export default function RNICACommandWorkspace({
   onLock,
   onPrevious,
   onNext,
-  onExitPilot,
   canLock,
   isOngoingAssessment = false,
   isUpdateAssessment = false,
@@ -482,8 +570,7 @@ export default function RNICACommandWorkspace({
   // screen -- see visitRecorderOpen below); "AI Assist" and "HOPE Report"
   // reuse the existing cross-cutting screen navigation to the real
   // AI Action Center / Compliance & Readiness rail panels (no new
-  // panels/data -- those are the only working surfaces for this content);
-  // "Classic View" reuses the existing exitPilot confirm-and-switch flow.
+  // panels/data -- those are the only working surfaces for this content).
   const [visitRecorderOpen, setVisitRecorderOpen] = useState(false);
   // FR-011: the persistent Validation drawer is collapsed by default so
   // it doesn't dominate the rail; the RN expands it deliberately, same
@@ -491,12 +578,6 @@ export default function RNICACommandWorkspace({
   const [validationOpen, setValidationOpen] = useState(false);
   const aiActionCenterScreen = RNICA_THIRTEEN_SCREENS.find((screen) => screen.key === "aiActionCenter");
   const complianceReadinessScreen = RNICA_THIRTEEN_SCREENS.find((screen) => screen.key === "complianceReadiness");
-
-  const exitPilot = () => {
-    if (window.confirm("Switch to the classic RN ICA view? Save or finish any open tool drafts before switching presentations.")) {
-      onExitPilot?.();
-    }
-  };
 
   // Screen-tab navigation used by the standalone RnicaScreenShell (below).
   // Cross-cutting screens (Patient Story, Compliance & Readiness, AI Action
@@ -538,9 +619,10 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="patientStory"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
         updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
         saving={saving}
         saveStatus={saveStatus}
         onSave={onSave}
@@ -582,9 +664,10 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="hopeAdministrativeReview"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
         updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
         saving={saving}
         saveStatus={saveStatus}
         onSave={onSave}
@@ -628,9 +711,10 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="evidenceIntake"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
         updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
         saving={saving}
         saveStatus={saveStatus}
         onSave={onSave}
@@ -683,9 +767,10 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="painSymptomBurden"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
         updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
         saving={saving}
         saveStatus={saveStatus}
         onSave={onSave}
@@ -726,9 +811,10 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="diagnosisLcd"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
         updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
         saving={saving}
         saveStatus={saveStatus}
         onSave={onSave}
@@ -810,9 +896,10 @@ export default function RNICACommandWorkspace({
         completedSections={completedSections}
         totalRoutes={routes.length}
         activeScreenKey="bodySystems"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
         updateAssessmentContext={updateAssessmentContext}
         onSelectScreenTab={selectScreenTab}
-        onExitPilot={exitPilot}
         saving={saving}
         saveStatus={saveStatus}
         onSave={onSave}
@@ -1052,6 +1139,8 @@ export default function RNICACommandWorkspace({
         </div>
       </ClinicalCommandHeader>
 
+      <VisitHeaderBar visitMeta={visitMeta} onUpdateField={onUpdateField} locked={locked} />
+
       {/* RNICA Workspace toolbar (owner directive FR-002) -- global, so it
           applies to every screen using this shared layout, not only
           Diagnosis & LCD. Each button reuses existing, already-working
@@ -1079,9 +1168,11 @@ export default function RNICACommandWorkspace({
         >
           HOPE Report
         </button>
-        <button type="button" className="rnica-command-toolbar__btn" onClick={exitPilot}>
-          Classic View
-        </button>
+        {/* OWNER DIRECTIVE (2026-10-19 / 2026-10-21) "PRODUCT DECISION --
+            there is exactly one RNICA presented to clinical staff." No
+            control in this toolbar (or anywhere else in this workspace)
+            navigates a nurse out of the active workspace into the legacy
+            RNICA layout. */}
         {/* Compact "Jump To" replacement for the removed Bedside Quick
             Access / Assessment Modules panel (owner directive
             2026-09-26): RNICA Workflow Navigation (left navigator) remains

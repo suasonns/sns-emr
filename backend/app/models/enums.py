@@ -237,6 +237,13 @@ class VisitFormType(str, enum.Enum):
     ASSESS = "ASSESS"
     ROUTINE_VISIT = "ROUTINE_VISIT"
     SHORT_FORM = "SHORT_FORM"
+    # RNICA Visit Header linkage (Phase 1): lets create_visit() mint the one
+    # authoritative Visit for the RN Initial Comprehensive Assessment itself
+    # (app/domain/forms/form_registry.py's FORM_INITIAL_ICA package), instead
+    # of that assessment's own save endpoint (POST /rnica/save) having no
+    # Visit at all. Plain Python str enum backed by Visit.form_type's
+    # String(64) column -- no DB schema change required.
+    INITIAL_ICA = "INITIAL_ICA"
     PRE_ADMIT_EVAL = "PRE_ADMIT_EVAL"
     AFTER_DEATH = "AFTER_DEATH"
     ON_CALL_TRIAGE = "ON_CALL_TRIAGE"

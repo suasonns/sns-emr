@@ -19,6 +19,11 @@ type AssessmentPayload = {
   // create time (a brand-new assessment has nothing applied yet) but
   // accepted for symmetry with the update path.
   fieldProvenance?: Array<Record<string, unknown>>;
+  // RNICA VISIT HEADER LINKAGE (Phase 1): the id of the authoritative
+  // Visit (see POST /visits/ -> create_visit()) this RN Initial
+  // Comprehensive Assessment belongs to. Minted once by the caller via
+  // createVisitNote() before the first save, never synthesized here.
+  visitId?: string | null;
 };
 
 type AssessmentQueryOptions = {
@@ -36,6 +41,7 @@ export type AssessmentRecordSummary = {
   createdAt?: string | null;
   updatedAt?: string | null;
   visitDate?: string | null;
+  visitId?: string | null;
 };
 
 export type HopeWorkflowState = {
@@ -168,10 +174,12 @@ export async function getRnicaAdmissionStatus(patientId: string) {
 export async function updateRnicaAssessment(
   assessmentId: string,
   formData: Record<string, unknown>,
-  fieldProvenance?: Array<Record<string, unknown>>
+  fieldProvenance?: Array<Record<string, unknown>>,
+  visitId?: string | null
 ) {
   const body: Record<string, unknown> = { formData };
   if (fieldProvenance) body.fieldProvenance = fieldProvenance;
+  if (visitId) body.visitId = visitId;
   return unwrap(api.put(`/visits/rnica/${assessmentId}`, body), "RN ICA update failed");
 }
 

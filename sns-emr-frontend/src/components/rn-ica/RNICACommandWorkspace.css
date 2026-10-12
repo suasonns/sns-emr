@@ -102,6 +102,11 @@
   max-width: 14rem;
 }
 
+/* OWNER DIRECTIVE (2026-10-19 / 2026-10-21) "PRODUCT DECISION -- the
+   legacy RNICA entry point was removed from the workspace entirely (see
+   RNICACommandWorkspace.jsx); no toolbar/menu trigger or legacy-layout
+   menu item exists anymore, so the styling for them is gone too. */
+
 /* Voice Documentation drawer -- shown only while the toolbar toggle is
    active (FR-005: Visit Recording is no longer a permanent card). */
 .rnica-command-voice-drawer { margin-bottom: var(--cw-gap, 1rem); }
@@ -534,6 +539,61 @@
   margin-right: 0.3rem;
 }
 
+/* RNICA Visit Header -- present on every RNICA screen (owner directive:
+   "VISIT HEADER... WILL BE PRESENT IN EVERY VISIT REGARDLESS OF
+   DISCIPLINE"). A single editable strip, visually distinct from the
+   read-only admission-facts bar above it, so Visit Date/Time In/Time
+   Out/Discipline/Reason for Visit/Staff Assigned/Level of Care are always
+   visible and editable regardless of which of the 13 screens is active. */
+.rnica-visit-header {
+  display: flex;
+  align-items: flex-end;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+  border-bottom: 1px solid var(--sns-border);
+  background: var(--sns-card-muted, var(--sns-bg));
+}
+.rnica-visit-header__title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--sns-teal);
+  margin-right: 0.25rem;
+  align-self: center;
+}
+.rnica-visit-header__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  font-size: 10px;
+}
+.rnica-visit-header__field > span {
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sns-muted);
+}
+.rnica-visit-header__field input,
+.rnica-visit-header__field select {
+  font-size: 12px;
+  padding: 0.2rem 0.35rem;
+  border: 1px solid var(--sns-border);
+  border-radius: 4px;
+  background: var(--sns-card);
+  color: var(--sns-text, inherit);
+  min-width: 7.5rem;
+}
+.rnica-visit-header__field input[readonly] {
+  background: var(--sns-bg);
+  color: var(--sns-muted);
+}
+@media (max-width: 720px) {
+  .rnica-visit-header { gap: 0.5rem; }
+  .rnica-visit-header__field input,
+  .rnica-visit-header__field select { min-width: 6rem; }
+}
+
 .rnica-screen__status {
   display: flex;
   align-items: center;
@@ -799,8 +859,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 0.4rem;
-  margin: 0 auto 0.85rem;
-  max-width: 72rem;
+  margin: 0 0 0.85rem;
 }
 
 .rnica-screen__subnav button {
@@ -836,8 +895,7 @@
 }
 
 .rnica-screen__stepnav {
-  max-width: 72rem;
-  margin: 0.5rem auto 0;
+  margin: 0.5rem 0 0;
 }
 
 .rnica-screen__content {
@@ -845,9 +903,7 @@
   min-width: 0;
   overflow-y: auto;
   padding: var(--cw-pad, 1rem);
-  max-width: 72rem;
   width: 100%;
-  margin: 0 auto;
 }
 
 .rnica-screen__footer {

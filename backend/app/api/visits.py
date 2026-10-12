@@ -235,6 +235,51 @@ def _get_current_admission_for_patient(db: Session, patient_uuid, tenant_id):
     )
 
 
+# RNICA VISIT HEADER LINKAGE (Phase 1)
+# ---------------------------------------------------------------------------
+# Per explicit product-owner direction: this endpoint must NEVER mint its
+# own Visit row (that would be a second, competing Visit-creation path).
+# The ONE authoritative way a Visit is created is still create_visit()
+# (POST /visits/, used today by VisitNotes.jsx's "Add New Visit" for
+# RN/LVN/SC/MSW and by the CHHA visit-note card). The frontend's RNICA
+# creation flow now calls that same endpoint first (form_type=INITIAL_ICA,
+# see VisitFormType.INITIAL_ICA and form_registry.FORM_INITIAL_ICA) and
+# hands the resulting Visit ID to this save endpoint, which only validates
+# and records it -- it never fabricates, duplicates, or re-derives a Visit.
+def _resolve_incoming_rnica_visit_id(
+    db: Session,
+    *,
+    raw_visit_id,
+    patient_uuid,
+    tenant_id,
+):
+    if not raw_visit_id:
+        return None
+    try:
+        visit_uuid = uuid.UUID(str(raw_visit_id))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=422, detail="visitId must be a valid UUID") from None
+    visit = (
+        db.query(Visit)
+        .filter(
+            Visit.id == visit_uuid,
+            Visit.patient_id == patient_uuid,
+            Visit.tenant_id == tenant_id,
+        )
+        .first()
+    )
+    if visit is None:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "visitId does not reference an existing Visit for this patient. "
+                "Create the Visit first (the authoritative /visits endpoint) before "
+                "linking it to this RNICA assessment."
+            ),
+        )
+    return visit.id
+
+
 def _assessment_completed_datetime(record: RnicaAssessment) -> datetime | None:
     form_data = record.form_data or {}
     visit_meta = form_data.get("visitMeta") or {}
@@ -1011,6 +1056,7 @@ def save_rnica_assessment(
                 "status": "saved",
                 "assessmentType": existing_for_request.assessment_type,
                 "deduplicated": True,
+                "visitId": str(existing_for_request.visit_id) if existing_for_request.visit_id else None,
             }
 
     if normalized_assessment_type == RNICA_ADMISSION_TYPE:
@@ -1045,6 +1091,17 @@ def save_rnica_assessment(
         patient_id=patient_uuid,
         tenant_id=getattr(patient, "tenant_id", None),
         admission_id=current_admission.id if current_admission else None,
+        # RNICA VISIT HEADER LINKAGE (Phase 1): visitId is minted by the
+        # authoritative create_visit() endpoint BEFORE the frontend ever
+        # calls this save endpoint (see visitNoteHelpers / RNICA.jsx's
+        # initial-save flow) -- this only records the already-created
+        # Visit's id, it never creates one itself.
+        visit_id=_resolve_incoming_rnica_visit_id(
+            db,
+            raw_visit_id=(payload or {}).get("visitId"),
+            patient_uuid=patient_uuid,
+            tenant_id=getattr(patient, "tenant_id", None),
+        ),
         form_data=form_data,
         field_provenance=(payload or {}).get("fieldProvenance") or [],
         assessment_type=normalized_assessment_type,
@@ -1066,6 +1123,7 @@ def save_rnica_assessment(
         "assessmentId": str(assessment.id),
         "status": "saved",
         "assessmentType": normalized_assessment_type,
+        "visitId": str(assessment.visit_id) if assessment.visit_id else None,
     }
 @router.get("/rnica/admission-status/{patient_id}")
 def get_rnica_admission_status(
@@ -1326,6 +1384,25 @@ def update_rnica_assessment(
         # not an append, so a stale/partial client never has to guess how
         # to merge with server state.
         record.field_provenance = incoming_provenance
+    # RNICA VISIT HEADER LINKAGE (Phase 1): backfill-only. If this
+    # assessment was created before a Visit existed (or the earlier save
+    # was interrupted before the Visit id reached the server), a later
+    # save may carry the already-minted visitId and we accept it once.
+    # Once record.visit_id is set it is the authoritative link and is
+    # never silently overwritten/replaced by a later client payload --
+    # that would let stale/drifted client state corrupt a correct link.
+    if record.visit_id is None:
+        patient_for_visit = (
+            db.query(Patient)
+            .filter(Patient.id == record.patient_id)
+            .first()
+        )
+        record.visit_id = _resolve_incoming_rnica_visit_id(
+            db,
+            raw_visit_id=(payload or {}).get("visitId"),
+            patient_uuid=record.patient_id,
+            tenant_id=getattr(patient_for_visit, "tenant_id", None),
+        )
     rnica_hope_workflow_service.sync_submission_fields_from_form_data(record, form_data)
     db.commit()
     patient = (
@@ -1344,6 +1421,7 @@ def update_rnica_assessment(
         "status": "updated",
         "locked": record.locked,
         "assessmentType": record.assessment_type or RNICA_ADMISSION_TYPE,
+        "visitId": str(record.visit_id) if record.visit_id else None,
     }
 @router.delete("/rnica/{assessment_id}")
 def delete_rnica_assessment(
@@ -2673,7 +2751,7 @@ class VisitCreateRequest(BaseModel):
         None,
         description=(
             "Workflow selector: "
-            "ASSESS, PRE_ADMIT_EVAL, SHORT_FORM, SUPV_VISIT_ONLY, "
+            "ASSESS, INITIAL_ICA, PRE_ADMIT_EVAL, SHORT_FORM, SUPV_VISIT_ONLY, "
             "ON_CALL_TRIAGE, MISSED_VISIT, DECLINED_VISIT, "
             "ANCILLARY_SUPPORT, VOLUNTEER_SUPPORT, RESPITE_RELIEF, "
             "BEREAVEMENT_VISIT, DEATH_VISIT, AFTER_DEATH, "
@@ -3389,6 +3467,20 @@ def _enforce_form_selection_rules(
     event = event_type
     issue_present = event in ISSUE_EVENT_TYPES
     is_prn = schedule == "UNSCHEDULED"
+    if form_type == VisitFormType.INITIAL_ICA.value:
+        # RNICA Visit Header linkage (Phase 1): the RN Initial Comprehensive
+        # Assessment is a one-time, non-issue-driven visit -- it has no
+        # concept of a change-of-condition "issue" the way an ongoing
+        # ASSESS visit does, so none of the issue/schedule gating below
+        # applies. Only RN ever opens this form type (see
+        # form_registry.FORM_REGISTRY, which only defines FORM_INITIAL_ICA
+        # under the "RN" discipline).
+        if discipline != "RN":
+            raise HTTPException(
+                status_code=422,
+                detail="INITIAL_ICA is only valid for the RN discipline.",
+            )
+        return
     if discipline == "SW":
         if form_type != VisitFormType.ROUTINE_VISIT.value:
             raise HTTPException(
