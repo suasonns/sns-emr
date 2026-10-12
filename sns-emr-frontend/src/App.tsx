@@ -1,51 +1,60 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { Suspense, lazy, useEffect } from "react";
 import type { ReactNode } from "react";
-
-import SNSAnalytics from "./pages/SNSAnalytics";
-import LoginPage from "./pages/LoginPage";
-import SetPasswordPage from "./pages/SetPasswordPage";
-import CareOverviewPage from "./pages/CareOverviewPage";
-import PlanOfCarePage from "./pages/PlanOfCarePage";
-import RNICAPage from "./pages/RNICAPage";
-import MSWICAPage from "./pages/MSWICAPage";
-import SCICAPage from "./pages/SCICAPage";
-import PatientLCDPage from "./pages/PatientLCDPage";
-import BereavementDataPage from "./pages/BereavementDataPage";
-import IncidentOccurrenceDataPage from "./pages/IncidentOccurrenceDataPage";
-import ClinicalAlertsDataPage from "./pages/ClinicalAlertsDataPage";
-import PhysicianDataPage from "./pages/PhysicianDataPage";
-import CommunicationLogDataPage from "./pages/CommunicationLogDataPage";
-import SecureInboxDataPage from "./pages/SecureInboxDataPage";
-import ComplianceDataPage from "./pages/ComplianceDataPage";
-import VolunteerSchedulingDataPage from "./pages/VolunteerSchedulingDataPage";
-import MyProfilePage from "./pages/MyProfilePage";
-import IDGWorkspacePage from "./pages/IDGWorkspacePage";
-import OwnerDashboard from "./owner/OwnerDashboard";
-import TenantDashboard from "./tenant/TenantDashboard";
-import BillingOverviewPage from "./pages/billing/BillingOverviewPage";
-import BillerShell from "./components/billing/BillerShell";
-import VisitsNotesPage from "./pages/billing/VisitsNotesPage";
-import PocCertificationPage from "./pages/billing/PocCertificationPage";
-import NoeTrackingPage from "./pages/billing/NoeTrackingPage";
-import ReadinessWorkflowPage from "./pages/billing/ReadinessWorkflowPage";
-import ComingSoonPage from "./pages/billing/ComingSoonPage";
-import ClaimsManagementPage from "./pages/billing/ClaimsManagementPage";
-import DenialsAppealsPage from "./pages/billing/DenialsAppealsPage";
-import EligibilityVerificationPage from "./pages/billing/EligibilityVerificationPage";
-import PaymentPostingPage from "./pages/billing/PaymentPostingPage";
-import ReportsPage from "./pages/billing/ReportsPage";
-import CapCalculationPage from "./pages/billing/CapCalculationPage";
-import AgingReportPage from "./pages/billing/AgingReportPage";
-import CreditBalanceReportPage from "./pages/billing/CreditBalanceReportPage";
-import FacilityCollectionsReportPage from "./pages/billing/FacilityCollectionsReportPage";
-import PatientChart from "./charts/PatientChart";
 import RequireFeatureAccess from "./components/RequireFeatureAccess";
 import RequireRoleAccess from "./components/RequireRoleAccess";
 import { BodySystemsWorkspacePreview } from "./features/body-systems";
-import { useEffect } from "react";
 import OfflineStatusBadge from "./offline/OfflineStatusBadge";
 import { startConnectivityMonitor } from "./offline/networkStatus";
 import { startSyncManager } from "./offline/syncManager";
+
+// HOPE-BUNDLE-SIZE-001: every route-level page is route-split via
+// React.lazy() rather than statically imported. Before this change, the
+// production build's main JS chunk was ~2.25 MB (every page for every
+// discipline/billing/admin screen bundled into one file), exceeding the
+// PWA service worker's 2 MiB precache limit and causing the production
+// build to fail. This is a pure code-splitting change -- no behavior,
+// route, or component changes -- so each page now loads its own chunk on
+// first navigation instead of all being downloaded (and precached)
+// up front. See the <Suspense> boundary around <Routes> below.
+const SNSAnalytics = lazy(() => import("./pages/SNSAnalytics"));
+const LoginPage = lazy(() => import("./pages/LoginPage"));
+const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
+const CareOverviewPage = lazy(() => import("./pages/CareOverviewPage"));
+const PlanOfCarePage = lazy(() => import("./pages/PlanOfCarePage"));
+const RNICAPage = lazy(() => import("./pages/RNICAPage"));
+const MSWICAPage = lazy(() => import("./pages/MSWICAPage"));
+const SCICAPage = lazy(() => import("./pages/SCICAPage"));
+const PatientLCDPage = lazy(() => import("./pages/PatientLCDPage"));
+const BereavementDataPage = lazy(() => import("./pages/BereavementDataPage"));
+const IncidentOccurrenceDataPage = lazy(() => import("./pages/IncidentOccurrenceDataPage"));
+const ClinicalAlertsDataPage = lazy(() => import("./pages/ClinicalAlertsDataPage"));
+const PhysicianDataPage = lazy(() => import("./pages/PhysicianDataPage"));
+const CommunicationLogDataPage = lazy(() => import("./pages/CommunicationLogDataPage"));
+const SecureInboxDataPage = lazy(() => import("./pages/SecureInboxDataPage"));
+const ComplianceDataPage = lazy(() => import("./pages/ComplianceDataPage"));
+const VolunteerSchedulingDataPage = lazy(() => import("./pages/VolunteerSchedulingDataPage"));
+const MyProfilePage = lazy(() => import("./pages/MyProfilePage"));
+const IDGWorkspacePage = lazy(() => import("./pages/IDGWorkspacePage"));
+const OwnerDashboard = lazy(() => import("./owner/OwnerDashboard"));
+const TenantDashboard = lazy(() => import("./tenant/TenantDashboard"));
+const BillingOverviewPage = lazy(() => import("./pages/billing/BillingOverviewPage"));
+const BillerShell = lazy(() => import("./components/billing/BillerShell"));
+const VisitsNotesPage = lazy(() => import("./pages/billing/VisitsNotesPage"));
+const PocCertificationPage = lazy(() => import("./pages/billing/PocCertificationPage"));
+const NoeTrackingPage = lazy(() => import("./pages/billing/NoeTrackingPage"));
+const ReadinessWorkflowPage = lazy(() => import("./pages/billing/ReadinessWorkflowPage"));
+const ComingSoonPage = lazy(() => import("./pages/billing/ComingSoonPage"));
+const ClaimsManagementPage = lazy(() => import("./pages/billing/ClaimsManagementPage"));
+const DenialsAppealsPage = lazy(() => import("./pages/billing/DenialsAppealsPage"));
+const EligibilityVerificationPage = lazy(() => import("./pages/billing/EligibilityVerificationPage"));
+const PaymentPostingPage = lazy(() => import("./pages/billing/PaymentPostingPage"));
+const ReportsPage = lazy(() => import("./pages/billing/ReportsPage"));
+const CapCalculationPage = lazy(() => import("./pages/billing/CapCalculationPage"));
+const AgingReportPage = lazy(() => import("./pages/billing/AgingReportPage"));
+const CreditBalanceReportPage = lazy(() => import("./pages/billing/CreditBalanceReportPage"));
+const FacilityCollectionsReportPage = lazy(() => import("./pages/billing/FacilityCollectionsReportPage"));
+const PatientChart = lazy(() => import("./charts/PatientChart"));
 
 const tenantRoute = (element: ReactNode) => (
   <RequireRoleAccess access="tenant">{element}</RequireRoleAccess>
@@ -64,6 +73,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <OfflineStatusBadge />
+      <Suspense fallback={null}>
       <Routes>
 
         {/* Default route */}
@@ -146,6 +156,7 @@ export default function App() {
         <Route path="*" element={<Navigate to="/login" replace />} />
 
       </Routes>
+      </Suspense>
     </BrowserRouter>
   );
 }
