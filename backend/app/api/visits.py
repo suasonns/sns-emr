@@ -1706,6 +1706,17 @@ def lock_rnica_assessment(
                 "checks": readiness["checks"],
             },
         )
+    # HOPE-VISIT-HEADER-SOT-001: full RNICA completion finalizes the Visit
+    # it is already linked to (rnica_assessments.visit_id), reusing the
+    # same VisitMinutes mechanism POST /visits/{id}/finalize uses for
+    # RN/LVN Visit Notes. This runs BEFORE record.locked is set and before
+    # the first db.commit() below, so a Visit-finalization failure (e.g.
+    # missing Time In/Out, or a missing Visit link) rolls back the entire
+    # lock -- RNICA is never left in a "locked" state without its Visit
+    # being finalized. Save Draft (update_rnica_assessment) never calls
+    # this; only this full-completion lock path does.
+    user_identifier = getattr(current_user, "id", None) or getattr(current_user, "user_id", None)
+    _finalize_rnica_linked_visit(db, record, user_identifier)
     record.locked = True
     record.status = "LOCKED"
     record.locked_at = datetime.now(timezone.utc)
@@ -7403,6 +7414,124 @@ def _upsert_visit_minutes(
                 created_by=str(actor_id) if actor_id else None,
             )
         )
+
+
+def _rnica_visit_meta_times(form_data: dict | None) -> tuple[datetime, datetime]:
+    """
+    Derives (start_time, end_time) from RNICA's Visit Header
+    (visitMeta.visitDate/timeIn/timeOut), mirroring the same cross-midnight
+    convention used by the frontend's own Duration computation (RNICA.jsx):
+    if Time Out is not after Time In, Time Out is treated as the next day.
+
+    Raises HTTPException(422) with a clinician-facing workflow message (not
+    a generic validation error) when required Visit Header fields are
+    missing, since this is reached only from the RNICA lock/completion
+    path -- never from an ad-hoc API caller.
+    """
+    visit_meta = (form_data or {}).get("visitMeta") or {}
+    visit_date = str(visit_meta.get("visitDate") or "").strip()
+    time_in = str(visit_meta.get("timeIn") or "").strip()
+    time_out = str(visit_meta.get("timeOut") or "").strip()
+    if not visit_date or not time_in or not time_out:
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Cannot complete this RN ICA: Visit Date, Time In, and Time Out "
+                "must all be recorded in the Visit Header before the visit can "
+                "be finalized."
+            ),
+        )
+    try:
+        start_time = datetime.fromisoformat(f"{visit_date[:10]}T{time_in}:00")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Visit Header Visit Date/Time In is invalid.") from None
+    try:
+        end_time = datetime.fromisoformat(f"{visit_date[:10]}T{time_out}:00")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Visit Header Time Out is invalid.") from None
+    if start_time.tzinfo is None:
+        start_time = start_time.replace(tzinfo=timezone.utc)
+    if end_time.tzinfo is None:
+        end_time = end_time.replace(tzinfo=timezone.utc)
+    if end_time <= start_time:
+        # Visit crossed midnight (e.g. Time In 22:30, Time Out 00:15) --
+        # same convention RNICA.jsx already uses for its own Duration field.
+        end_time = end_time + timedelta(days=1)
+    return start_time, end_time
+
+
+def _finalize_rnica_linked_visit(
+    db: Session,
+    record: RnicaAssessment,
+    actor_id,
+) -> None:
+    """
+    HOPE-VISIT-HEADER-SOT-001 (owner-directed RNICA defect correction):
+    when a full RN ICA is locked/completed, the Visit it is already linked
+    to (rnica_assessments.visit_id, established at save time -- see
+    _resolve_incoming_rnica_visit_id) must become the single source of
+    truth for billing/payroll, exactly the same way an RN/LVN Visit Note
+    does today via POST /visits/{id}/finalize.
+
+    This reuses that exact existing mechanism (_upsert_visit_minutes) --
+    it does not reimplement duration/unit math, does not create a second
+    Visit, and does not touch the generic finalize_visit() endpoint (which
+    enforces VisitNotes-specific rules -- clinical-note existence,
+    supervisory review -- that do not apply to RNICA's own lock gate).
+
+    Must be called *inside* the same transaction as the RNICA lock itself,
+    before that transaction's db.commit(), so a finalization failure rolls
+    back the lock too (no false "locked" state without a finalized Visit).
+    """
+    if not record.visit_id:
+        # RNICA-only assessments with no established Visit Header link are
+        # an intentional, pre-existing scope boundary (see
+        # test_rnica_hope_phase_b_wiring.py's "intentionally left NULL"
+        # coverage) -- there is nothing to finalize, so locking must still
+        # succeed exactly as it did before this correction.
+        return
+    visit = _load_visit_for_update(db, record.visit_id)
+    if visit.patient_id != record.patient_id:
+        raise HTTPException(
+            status_code=422,
+            detail="The linked Visit does not belong to this patient and cannot be finalized.",
+        )
+    if (visit.status or "").upper() == "FINALIZED":
+        # Idempotent: re-locking (or re-entering this path on an already
+        # locked assessment is unreachable today since lock_rnica_assessment
+        # short-circuits first, but this guard also protects a future
+        # unlock/relock cycle) must never duplicate VisitMinutes or
+        # recompute times that could silently drift.
+        return
+    start_time, end_time = _rnica_visit_meta_times(record.form_data or {})
+    now = datetime.now(timezone.utc)
+    visit.status = "FINALIZED"
+    if hasattr(visit, "finalized_at"):
+        visit.finalized_at = now
+    if hasattr(visit, "finalized_by"):
+        visit.finalized_by = actor_id
+    if hasattr(visit, "updated_at"):
+        visit.updated_at = now
+    _upsert_visit_minutes(
+        db,
+        visit,
+        FinalizeVisitPayload(start_time=start_time, end_time=end_time),
+        actor_id,
+    )
+    db.flush()
+    _safe_log_event(
+        db=db,
+        user_id=actor_id,
+        action="FINALIZE_VISIT",
+        entity_type="visit",
+        entity_id=visit.id,
+        metadata={
+            "form_type": getattr(visit, "form_type", None),
+            "discipline": visit.visit_discipline,
+            "finalized_via": "rnica_lock",
+            "rnica_assessment_id": str(record.id),
+        },
+    )
 
 
 @router.post("/{visit_id}/finalize", response_model=VisitMutationResponse)
