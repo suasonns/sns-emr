@@ -571,7 +571,13 @@ const PatientChart = () => {
                       </td>
                       <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}`, color: colors.text }}>
                         <div style={{ fontSize: 13, fontWeight: 700 }}>{item.assessmentLabel}</div>
-                        <div style={{ color: colors.muted, fontSize: 11.5, marginTop: 4 }}>{item.record_id}</div>
+                        {/* No raw record_id/UUID in clinician-facing text (owner
+                            directive: "RECURRING DEFECT" -- internal identifiers
+                            must never be visible in routine clinical workflow).
+                            Status/Date columns already identify the record. */}
+                        <div style={{ color: colors.muted, fontSize: 11.5, marginTop: 4 }}>
+                          {item.disciplineLabel ? `${item.disciplineLabel} · ` : ""}{String(item.status || 'DRAFT').replaceAll('_', ' ')}
+                        </div>
                       </td>
                       <td style={{ padding: '12px', borderBottom: `1px solid ${colors.border}` }}>
                         <span style={{ ...badge(statusTone(item.status), 'status'), fontSize: 8.5 }}>{String(item.status || 'DRAFT').replaceAll('_', ' ')}</span>

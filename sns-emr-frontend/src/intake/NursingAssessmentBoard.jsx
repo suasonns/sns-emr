@@ -568,7 +568,16 @@ export default function NursingAssessmentBoard({ patientId = "", onNavigateToSec
                     <tr key={record.assessmentId}>
                       <td style={workspacePilot ? undefined : styles.historyTd}>
                         <div style={{ fontWeight: 700 }}>{record.assessmentLabel}</div>
-                        <div className={workspacePilot ? "nursing-assessment-board__history-meta" : undefined} style={workspacePilot ? undefined : styles.historyMeta}>{record.assessmentId}</div>
+                        {/* Clinician-facing reference only -- no internal UUID/database
+                            identifier belongs in routine nursing workflow (owner directive:
+                            "REMOVE INTERNAL IDENTIFIERS FROM THE CLINICIAN WORKFLOW"). The
+                            Date/Type/Status columns already give the clinician everything
+                            needed to recognize the record; the raw assessmentId remains
+                            available to support/audit tooling via the API response, just
+                            not rendered here. */}
+                        <div className={workspacePilot ? "nursing-assessment-board__history-meta" : undefined} style={workspacePilot ? undefined : styles.historyMeta}>
+                          {String(record.status || "DRAFT").replaceAll("_", " ")} · {formatHistoryDate(record.visitDate || record.createdAt)}
+                        </div>
                       </td>
                       <td style={workspacePilot ? undefined : styles.historyTd}>{record.assessmentType}</td>
                       <td style={workspacePilot ? undefined : styles.historyTd}>

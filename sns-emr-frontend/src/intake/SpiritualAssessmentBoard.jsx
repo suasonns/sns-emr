@@ -154,7 +154,13 @@ export default function SpiritualAssessmentBoard({ patientId = "", selectedAsses
                   <tr key={record.assessmentId}>
                     <td style={styles.historyTd}>
                       <div style={{ fontWeight: 700 }}>{record.assessmentType || "SC ICA"}</div>
-                      <div style={{ fontSize: 11.5, color: "#94A3B8", marginTop: 4 }}>{record.assessmentId}</div>
+                      {/* No raw assessmentId/UUID in clinician-facing text (owner
+                          directive: "RECURRING DEFECT" -- internal identifiers
+                          must never be visible in routine clinical workflow).
+                          Status/Date columns already identify the record. */}
+                      <div style={{ fontSize: 11.5, color: "#94A3B8", marginTop: 4 }}>
+                        {String(record.status || "DRAFT").replaceAll("_", " ")} · {formatHistoryDate(record.visitDate || record.createdAt)}
+                      </div>
                     </td>
                     <td style={styles.historyTd}>
                       <span style={styles.smallBadge(statusTone(record.status))}>{String(record.status || "DRAFT").replaceAll("_", " ")}</span>
