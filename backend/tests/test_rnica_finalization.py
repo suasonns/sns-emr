@@ -113,6 +113,7 @@ COMPLETE_FORM_DATA = {
         "signatureCertification": True,
         "pocGenerationCompleted": True,
         "responseToInterventions": {"baselineEstablished": True},
+        "clinicalNarrative": "Patient assessed; findings synthesized; plan of care reviewed with the family.",
     },
 }
 
@@ -178,23 +179,41 @@ def test_finalization_readiness_blocks_on_missing_attestation():
     assert readiness["checks"]["attestation"]["ready"] is False
 
 
-def test_finalization_readiness_narrative_auto_passes_when_empty():
-    form_data = {**COMPLETE_FORM_DATA, "diagnoses": {**COMPLETE_FORM_DATA["diagnoses"], "clinicalNarrative": ""}}
+def test_finalization_readiness_blocks_on_missing_clinical_narrative():
+    """P3-007 regression: Lock must fail closed when no clinical narrative
+    has been written. The authoritative field is `finalization.clinicalNarrative`
+    (matches the frontend's own hard-error); the legacy, never-populated
+    `diagnoses.clinicalNarrative` path must no longer be read, and an empty
+    narrative must never be treated as "ready"."""
+    form_data = {**COMPLETE_FORM_DATA, "finalization": {**COMPLETE_FORM_DATA["finalization"], "clinicalNarrative": ""}}
+    readiness = evaluate_finalization_readiness(form_data, [])
+    assert readiness["ready"] is False
+    assert readiness["checks"]["narrativeReviewed"]["ready"] is False
+
+
+def test_finalization_readiness_narrative_present_and_ready():
+    """A written clinical narrative satisfies the gate; there is no separate
+    'reviewed' checkbox requirement (no such field exists on `finalization`)."""
+    form_data = {
+        **COMPLETE_FORM_DATA,
+        "finalization": {
+            **COMPLETE_FORM_DATA["finalization"],
+            "clinicalNarrative": "Patient documented decline.",
+        },
+    }
     readiness = evaluate_finalization_readiness(form_data, [])
     assert readiness["checks"]["narrativeReviewed"]["ready"] is True
 
 
-def test_finalization_readiness_blocks_unreviewed_narrative():
+def test_finalization_readiness_ignores_legacy_dead_narrative_field():
+    """The legacy `diagnoses.clinicalNarrative` path must never satisfy the
+    gate on its own — only `finalization.clinicalNarrative` counts."""
     form_data = {
         **COMPLETE_FORM_DATA,
-        "diagnoses": {
-            **COMPLETE_FORM_DATA["diagnoses"],
-            "clinicalNarrative": "Patient documented decline.",
-            "clinicalNarrativeReviewed": False,
-        },
+        "diagnoses": {**COMPLETE_FORM_DATA["diagnoses"], "clinicalNarrative": "legacy text that must not count"},
+        "finalization": {**COMPLETE_FORM_DATA["finalization"], "clinicalNarrative": ""},
     }
     readiness = evaluate_finalization_readiness(form_data, [])
-    assert readiness["ready"] is False
     assert readiness["checks"]["narrativeReviewed"]["ready"] is False
 
 

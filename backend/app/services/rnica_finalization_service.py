@@ -117,14 +117,22 @@ def evaluate_finalization_readiness(form_data: dict[str, Any], poc_problems: lis
 
     # --- Layer 2: narrative, LCD baseline, decline baseline, referrals,
     # POC completeness --------------------------------------------------
-    narrative = _get(form_data, "diagnoses", "clinicalNarrative")
-    narrative_reviewed = _get(form_data, "diagnoses", "clinicalNarrativeReviewed") is True
-    narrative_ready = (not _has_text(narrative)) or narrative_reviewed
+    # P3-007: the authoritative narrative field is `finalization.clinicalNarrative`
+    # (matches the frontend's own hard-error at RNICA.jsx, which blocks
+    # attestation when this field is empty). The legacy `diagnoses.clinicalNarrative`
+    # / `diagnoses.clinicalNarrativeReviewed` pair is a dead path that no current
+    # UI action populates, and its presence here caused Lock to fail open
+    # (an always-empty legacy field made `narrative_ready` default to True
+    # regardless of whether a real narrative existed). There is no
+    # "reviewed" field on `finalization` today, so that separate semantic is
+    # dropped: the gate is simply "a clinical narrative has been written."
+    narrative = _get(form_data, "finalization", "clinicalNarrative")
+    narrative_ready = _has_text(narrative)
     checks["narrativeReviewed"] = {
-        "label": "Narrative reviewed",
+        "label": "Clinical narrative documented",
         "ready": narrative_ready,
-        "message": "Clinical narrative documented but not yet reviewed."
-        if not narrative_ready else "Narrative reviewed or not yet documented.",
+        "message": "Clinical narrative is required before attestation."
+        if not narrative_ready else "Clinical narrative documented.",
     }
 
     lcd_baseline = _get(form_data, "diagnoses", "lcdEligibilityNarrative")
