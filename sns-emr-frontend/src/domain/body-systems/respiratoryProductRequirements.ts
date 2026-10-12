@@ -63,6 +63,10 @@ export interface RespiratoryProductAuthorizedValues {
   treatmentActionTime?: string;
   treatmentResponse?: string;
   treatmentResponseStatus?: string;
+  /** FINAL PRODUCT-OWNER DIRECTIVE: documents the patient's observed
+   * clinical response for INITIATED/ALREADY_IN_PLACE. See
+   * respiratoryFieldInventory.ts's RESPIRATORY_CLINICAL_RESPONSE_FIELD. */
+  clinicalResponse?: string;
 
   followUpNeed?: string;
   followUpTimingPlan?: string;
@@ -82,6 +86,10 @@ export interface RespiratoryProductAuthorizedValues {
   oxygenEffectivenessResponse?: string;
 
   coughType?: string;
+  /** Independent finding -- can coexist with Productive or Non-productive coughType. Not a coughType value. */
+  hemoptysisPresent?: boolean;
+  /** Independent thoracic-inspection finding -- not a cough characteristic. */
+  barrelChestPresent?: boolean;
   sputumCharacter?: string;
   sputumAmount?: string;
   sputumColor?: string;
@@ -149,14 +157,15 @@ export function getMissingProductAuthorizedRequirements(
   if (values.comfortFunctionImpact === "UNABLE_TO_ASSESS" && !textFilled(values.comfortFunctionEvidence)) {
     push("respiratory_comfort_function_evidence", "Describe why comfort/function could not be evaluated.");
   }
-  if (
-    values.configuredRequirementResponse &&
-    values.configuredRequirementResponse !== "NOT_APPLICABLE" &&
-    values.configuredRequirementResponse === "FOLLOW_UP_REQUIRED" &&
-    !values.configuredFollowUpStatus
-  ) {
-    push("respiratory_configured_follow_up_status", "Record the configured follow-up status.");
-  }
+  // Hospice-admission simplification (product-owner directive): Configured
+  // Requirement Response / Configured Follow-Up Status were removed from
+  // the admission workflow UI along with the rest of the Treatment
+  // section's secondary fields (Treatment Action Date/Time, Response,
+  // Response Status/Time, Follow-Up Timing Plan/Responsible Clinician, POC
+  // Review Need/Reason/Source Reference — see RespiratoryPanel.tsx's
+  // LEGACY_HIDDEN_FIELD_IDS). No requirement is ever raised for
+  // `respiratory_configured_follow_up_status` now, since the nurse has no
+  // visible control to resolve it.
 
   // --- Section 5: Treatment decision -----------------------------------
   // "Treatment decision applicable" is operationalized as: dyspnea is
@@ -166,19 +175,35 @@ export function getMissingProductAuthorizedRequirements(
   const treatmentApplicable =
     Boolean(values.sobSeverity && values.sobSeverity !== "None") ||
     values.coughType === "Productive" ||
-    values.coughType === "Hemoptysis" ||
+    Boolean(values.hemoptysisPresent) ||
     values.oxygenUse === "YES" ||
     values.respiratorySupportStatus === "IN_USE";
   if (treatmentApplicable && !values.treatmentDecision) {
     push("respiratory_treatment_decision", "Record the treatment decision.");
   }
-  if (values.treatmentDecision === "INITIATED" || values.treatmentDecision === "ALREADY_IN_PLACE") {
-    if (!textFilled(values.treatmentDescription)) {
-      push("respiratory_treatment_description", "Describe the treatment.");
-    }
+  // FINAL PRODUCT-OWNER DIRECTIVE (clinical workflow / data-ownership
+  // correction): the free-text "Describe the treatment" requirement for
+  // INITIATED/ALREADY_IN_PLACE is REMOVED — it let a nurse re-enter
+  // medication/order details (drug, dose, route, frequency) that belong
+  // exclusively to the authoritative Orders/Medications workflow, a data-
+  // ownership defect, not a training issue. Treatment Decision itself
+  // (INITIATED/ALREADY_IN_PLACE/DECLINED/NOT_INDICATED) is unchanged and
+  // is never remapped. In its place, the two values now require the
+  // Clinical Response (patient's observed response only — never an order).
+  if (
+    (values.treatmentDecision === "INITIATED" || values.treatmentDecision === "ALREADY_IN_PLACE") &&
+    !values.clinicalResponse
+  ) {
+    push("respiratory_clinical_response", "Record the clinical response to the current treatment.");
   }
-  if (values.treatmentDecision === "DECLINED" && !textFilled(values.treatmentDeclineReason)) {
-    push("respiratory_treatment_decline_reason", "Record the reason treatment was declined.");
+  // Hospice-admission simplification (product-owner directive): DECLINED
+  // reuses the single canonical Treatment Narrative field
+  // (`treatmentDescription`, presented contextually as "Decline Reason" —
+  // see RespiratoryPanel.tsx's treatmentDescriptionContext()). There is no
+  // longer a separate `respiratory_treatment_decline_reason` field in the
+  // admission workflow.
+  if (values.treatmentDecision === "DECLINED" && !textFilled(values.treatmentDescription)) {
+    push("respiratory_treatment_description", "Record the reason treatment was declined.");
   }
   // NOT_INDICATED reuses the same canonical `treatmentDescription` field,
   // displayed contextually as "Clinical Rationale" (see RespiratoryPanel.tsx's
@@ -191,39 +216,30 @@ export function getMissingProductAuthorizedRequirements(
   if (values.treatmentDecision === "NOT_INDICATED" && treatmentApplicable && !textFilled(values.treatmentDescription)) {
     push("respiratory_treatment_description", "Record the clinical rationale for not indicating Respiratory treatment.");
   }
-  if (values.treatmentDecision && values.treatmentDecision !== "NOT_INDICATED" && !values.treatmentResponseStatus) {
-    push("respiratory_treatment_response_status", "Record the treatment response status.");
-  }
-  if (
-    values.treatmentDecision === "INITIATED" &&
-    values.treatmentResponseStatus !== "PENDING" &&
-    !textFilled(values.treatmentResponse)
-  ) {
-    push("respiratory_treatment_response", "Record the observed/reported treatment response.");
-  }
-  if (
-    values.treatmentDecision === "ALREADY_IN_PLACE" &&
-    (values.treatmentResponseStatus === "OBSERVED" || values.treatmentResponseStatus === "REPORTED") &&
-    !textFilled(values.treatmentResponse)
-  ) {
-    push("respiratory_treatment_response", "Record the current treatment effectiveness.");
-  }
+  // Hospice-admission correction (product-owner directive): Treatment
+  // Response / Response Status / Response Time / Action Time are never
+  // required for "Complete System Review" on the Initial Comprehensive
+  // Assessment, for ANY Treatment Decision value (INITIATED,
+  // ALREADY_IN_PLACE, DECLINED, or NOT_INDICATED). A hospice RN frequently
+  // documents an intervention a family member, caregiver, or facility
+  // already performed before the RN arrived, and cannot know its exact
+  // action time or response — response/effectiveness is routinely
+  // evaluated on a later follow-up visit, not at admission. These fields
+  // remain fully enterable (optional) but must never block completion.
+  // Date fields (e.g. respiratory_treatment_action_date) may remain
+  // required/optional per their own existing rules — unaffected here.
 
   // --- Section 6: Finding-level follow-up / POC review ------------------
+  // Hospice-admission simplification (product-owner directive): Follow-Up
+  // Timing Plan, Follow-Up Responsible Clinician, and POC Review
+  // Need/Reason were removed from the admission workflow UI entirely
+  // (RespiratoryPanel.tsx's LEGACY_HIDDEN_FIELD_IDS) — only whether
+  // follow-up is needed at all is recorded now. Requiring their
+  // sub-fields here would permanently block completion since the nurse
+  // has no visible control to resolve them.
   const findingLevelFollowUpApplicable = treatmentApplicable;
   if (findingLevelFollowUpApplicable && !values.followUpNeed) {
     push("respiratory_follow_up_need", "Record whether Respiratory follow-up is needed.");
-  }
-  if (values.followUpNeed === "NEEDED") {
-    if (!textFilled(values.followUpTimingPlan)) {
-      push("respiratory_follow_up_timing_plan", "Record the follow-up timing/plan.");
-    }
-    if (!textFilled(values.followUpResponsibleClinician)) {
-      push("respiratory_follow_up_responsible_clinician", "Record who is responsible for Respiratory follow-up.");
-    }
-  }
-  if (values.pocReviewNeed === "REVIEW_NEEDED" && !textFilled(values.pocReviewReason)) {
-    push("respiratory_poc_review_reason", "Record why Plan of Care review is needed.");
   }
 
   // --- Section 7: Oxygen -------------------------------------------------
@@ -254,27 +270,19 @@ export function getMissingProductAuthorizedRequirements(
   if (values.spo2MeasurementCondition === "NOT_OBTAINED" && !textFilled(values.spo2NotObtainedReason)) {
     push("respiratory_spo2_not_obtained_reason", "Record why SpO2 was not obtained.");
   }
-  if (values.spo2Value !== undefined) {
-    if (!textFilled(values.oxygenMeasurementDate)) {
-      push("respiratory_oxygen_measurement_date", "Record the SpO2 measurement date.");
-    }
-    if (!textFilled(values.oxygenMeasurementTime)) {
-      push("respiratory_oxygen_measurement_time", "Record the SpO2 measurement time.");
-    }
-  }
-  if (
-    values.spo2MeasurementCondition === "ON_OXYGEN" &&
-    values.spo2Value !== undefined &&
-    !textFilled(values.measuredOxygenFlowOrConcentration)
-  ) {
-    push("respiratory_measured_oxygen_flow_or_concentration", "Record the measured oxygen flow/concentration.");
-  }
-  if (
-    (values.oxygenUse === "YES" || (values.treatmentDecision && values.treatmentDecision !== "NOT_INDICATED")) &&
-    !textFilled(values.oxygenEffectivenessResponse)
-  ) {
-    push("respiratory_oxygen_effectiveness_response", "Record oxygen/treatment effectiveness or response.");
-  }
+  // PRODUCT-OWNER DIRECTIVE ("REMOVE Measured Oxygen Flow / Concentration"):
+  // duplicate charting — the Oxygen Flow Rate documented above IS the flow
+  // SpO2 was measured on. A second free-text re-entry of the same fact is
+  // never required (see RESPIRATORY_MEASURED_OXYGEN_FLOW_OR_CONCENTRATION_FIELD
+  // in respiratoryFieldInventory.ts and LEGACY_HIDDEN_FIELD_IDS in
+  // RespiratoryPanel.tsx).
+  //
+  // PRODUCT-OWNER DIRECTIVE ("REMOVE O2 EFFECTIVENESS / RESPONSE"): SpO2
+  // Value + SpO2 Measurement Condition already serve as the objective
+  // oxygen-treatment outcome measure. A separate subjective
+  // effective/ineffective field is never required (see
+  // RESPIRATORY_OXYGEN_EFFECTIVENESS_RESPONSE_FIELD and
+  // LEGACY_HIDDEN_FIELD_IDS in RespiratoryPanel.tsx).
 
   // --- Section 8: Cough and secretions ------------------------------------
   if (!values.coughType) {
@@ -294,8 +302,8 @@ export function getMissingProductAuthorizedRequirements(
   ) {
     push("respiratory_sputum_other_specification", "Specify the sputum character/color.");
   }
-  const coughRequiresAction = values.coughType === "Productive" || values.coughType === "Hemoptysis";
-  if (values.coughType === "Hemoptysis" && !textFilled(values.coughClinicalSignificance)) {
+  const coughRequiresAction = values.coughType === "Productive" || Boolean(values.hemoptysisPresent);
+  if (values.hemoptysisPresent && !textFilled(values.coughClinicalSignificance)) {
     push("respiratory_cough_clinical_significance", "Record the clinical significance of hemoptysis.");
   }
   if (coughRequiresAction && !values.coughActionDecision) {
@@ -315,17 +323,16 @@ export function getMissingProductAuthorizedRequirements(
   if (values.coughActionDecision === "DECLINED" && !textFilled(values.coughDeclineReason)) {
     push("respiratory_cough_decline_reason", "Record why the cough/secretions action was declined.");
   }
-  if (
-    (values.coughActionDecision === "ACTION_TAKEN" || values.coughActionDecision === "DECLINED") &&
-    (!textFilled(values.coughFollowUpTimingPlan) || !textFilled(values.coughFollowUpResponsibleClinician))
-  ) {
-    if (!textFilled(values.coughFollowUpTimingPlan)) {
-      push("respiratory_cough_follow_up_timing_plan", "Record the cough/secretions follow-up timing/plan.");
-    }
-    if (!textFilled(values.coughFollowUpResponsibleClinician)) {
-      push("respiratory_cough_follow_up_responsible_clinician", "Record who is responsible for cough/secretions follow-up.");
-    }
-  }
+  // PRODUCT-OWNER DIRECTIVE ("FINAL RESPIRATORY USABILITY REVIEW" --
+  // A=Assessment Finding vs B=Future Plan): coughFollowUpTimingPlan /
+  // coughFollowUpResponsibleClinician documented *who will do what, when,
+  // in the future* -- POC's purpose (goals, interventions, follow-up
+  // actions, treatment plans), not RNICA's (assessment, findings,
+  // clinical status, clinical response). Same classification and
+  // disposition as the already-retired respiratory_support_follow_up_plan.
+  // Never required going forward; see RESPIRATORY_COUGH_FOLLOW_UP_* fields
+  // in respiratoryFieldInventory.ts and LEGACY_HIDDEN_FIELD_IDS in
+  // RespiratoryPanel.tsx.
 
   // --- Section 9: Respiratory support and airway --------------------------
   if (!values.respiratorySupportStatus) {

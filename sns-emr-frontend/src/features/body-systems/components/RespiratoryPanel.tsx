@@ -13,7 +13,7 @@
  * an API client, or draft persistence — that remains out of scope per the
  * milestone's "one system at a time" delivery rule.
  */
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Textarea } from "../../../components/ui/textarea";
@@ -32,8 +32,12 @@ import {
   type RespiratoryFieldDefinition,
 } from "../../../domain/body-systems/respiratoryFieldInventory";
 import {
+  mapOxygenDeliveryDeviceToLegacyType,
+  mapOxygenFlowValueToLegacyLitersPerMinute,
+  mapOxygenFrequencyToLegacyDeliveryMode,
   mapOxygenUseToLegacyInUse,
   mapSpo2ConditionToLegacyRoomAir,
+  mapSpo2ValueToLegacySatOnO2,
   mapTreatmentDecisionToLegacy,
   mapVentilatorDurationToLegacy,
 } from "../../../domain/body-systems/respiratoryBackwardCompatibility";
@@ -51,6 +55,14 @@ export interface RespiratoryPanelProps {
    * mirrors the same `locked` concept `renderGenericSection` already
    * respects for every other Body System. */
   readOnly?: boolean;
+  /** The visit date for the RNICA episode this Respiratory assessment
+   * belongs to (ongoing-visit date, or facesheet SOC date for an initial
+   * admission). Hospice visit-based documentation directive: SOB Screening
+   * Date and Comfort/Function Screening Date default to this value instead
+   * of asking the nurse to re-enter a date for an assessment already being
+   * performed during the current documented visit. The nurse may freely
+   * edit/override the default — this is a one-time fill, never enforced. */
+  visitDate?: string;
 }
 
 const INTERVENTION_FIELD_IDS = new Set([
@@ -65,6 +77,8 @@ const INTERVENTION_FIELD_IDS = new Set([
   "respiratory_treatment_response_time",
   "respiratory_treatment_response",
   "respiratory_treatment_response_status",
+  "respiratory_clinical_response",
+  "respiratory_clinical_response_evidence",
 ]);
 const FOLLOW_UP_FIELD_IDS = new Set([
   "respiratory_follow_up_need",
@@ -127,11 +141,30 @@ function setFieldValue(draft: RespiratoryDraft, field: RespiratoryFieldDefinitio
 function applyCanonicalLegacyMapping(
   field: RespiratoryFieldDefinition,
   draft: RespiratoryDraft,
+  visitDate?: string,
 ): RespiratoryDraft {
   switch (field.fieldId) {
     case "respiratory_treatment_decision": {
       const legacy = mapTreatmentDecisionToLegacy(draft.treatmentDecision);
-      return Object.keys(legacy).length > 0 ? { ...draft, ...legacy } : draft;
+      const next = { ...draft, ...legacy };
+      // respiratory_treatment_date ("SOB Treatment Date") is hidden from
+      // the nurse-facing admission workflow (it is Reporting Support
+      // only — its sole consumer is HOPE J2040-B; hospice admission does
+      // not require the nurse to record an exact intervention date, see
+      // hospice-admission Treatment section simplification). Since there
+      // is no longer a nurse-facing control to set it, generate it
+      // automatically — the RNICA visit date when available (RNICA is
+      // visit-centric; see LEGACY_HIDDEN_FIELD_IDS doc comment below),
+      // else today's date as a defensive fallback — the first time the
+      // decision becomes Initiated, and cleared whenever the decision is
+      // anything else, so it can never go stale from a decision the
+      // nurse has since changed or cleared (same correctness concern as
+      // the legacy treatmentInitiated/treatmentDeclined flags above).
+      next.treatmentDate =
+        legacy.treatmentInitiated === true
+          ? next.treatmentDate ?? visitDate ?? new Date().toISOString().slice(0, 10)
+          : undefined;
+      return next;
     }
     case "respiratory_oxygen_use": {
       const inUse = mapOxygenUseToLegacyInUse(draft.oxygenUse);
@@ -140,8 +173,64 @@ function applyCanonicalLegacyMapping(
     }
     case "respiratory_spo2_measurement_condition": {
       const onRoomAir = mapSpo2ConditionToLegacyRoomAir(draft.spo2MeasurementCondition);
-      if (onRoomAir === undefined) return draft;
-      return { ...draft, oxygenTherapy: { ...draft.oxygenTherapy, onRoomAir } };
+      const satOnO2 = mapSpo2ValueToLegacySatOnO2(draft.spo2Value, draft.spo2MeasurementCondition);
+      let next = draft;
+      if (onRoomAir !== undefined) next = { ...next, oxygenTherapy: { ...next.oxygenTherapy, onRoomAir } };
+      if (satOnO2 !== undefined) next = { ...next, oxygenTherapy: { ...next.oxygenTherapy, satOnO2 } };
+      return next;
+    }
+    case "respiratory_spo2_value": {
+      const satOnO2 = mapSpo2ValueToLegacySatOnO2(draft.spo2Value, draft.spo2MeasurementCondition);
+      if (satOnO2 === undefined) return draft;
+      return { ...draft, oxygenTherapy: { ...draft.oxygenTherapy, satOnO2 } };
+    }
+    case "respiratory_oxygen_delivery_device":
+    case "respiratory_oxygen_other_device": {
+      const type = mapOxygenDeliveryDeviceToLegacyType(draft.oxygenTherapy?.deliveryDevice, draft.oxygenTherapy?.otherDevice);
+      let next = type !== undefined ? { ...draft, oxygenTherapy: { ...draft.oxygenTherapy, type } } : draft;
+      // PRODUCT-OWNER DIRECTIVE ("NASAL CANNULA / MASK ... Default: L/min.
+      // Hidden from user."): these two devices always use L/min -- the
+      // unit is auto-derived the moment Delivery Device is set, so the
+      // nurse is never asked to choose it (see OxygenFlowRateField and
+      // the "respiratory_oxygen_flow_unit" branch of
+      // `isFieldCurrentlyRelevant`, which only shows a standalone unit
+      // control when Delivery Device = OTHER). Re-derive litersPerMinute
+      // too, in case Flow Value was already entered before the device was
+      // chosen.
+      const device = draft.oxygenTherapy?.deliveryDevice;
+      if (device === "NASAL_CANNULA" || device === "MASK") {
+        const flowUnit = "L_MIN";
+        const litersPerMinute = mapOxygenFlowValueToLegacyLitersPerMinute(draft.oxygenTherapy?.flowValue, flowUnit);
+        next = {
+          ...next,
+          oxygenTherapy: {
+            ...next.oxygenTherapy,
+            flowUnit,
+            ...(litersPerMinute !== undefined ? { litersPerMinute } : {}),
+          },
+        };
+      }
+      return next;
+    }
+    case "respiratory_oxygen_flow_value":
+    case "respiratory_oxygen_flow_unit": {
+      const litersPerMinute = mapOxygenFlowValueToLegacyLitersPerMinute(draft.oxygenTherapy?.flowValue, draft.oxygenTherapy?.flowUnit);
+      if (litersPerMinute === undefined) return draft;
+      return { ...draft, oxygenTherapy: { ...draft.oxygenTherapy, litersPerMinute } };
+    }
+    case "respiratory_oxygen_frequency": {
+      const deliveryMode = mapOxygenFrequencyToLegacyDeliveryMode(draft.oxygenTherapy?.frequency);
+      let next = deliveryMode !== undefined ? { ...draft, oxygenTherapy: { ...draft.oxygenTherapy, deliveryMode } } : draft;
+      // Ticket 3 (Continuous Hours/Day derivation): Continuous oxygen use is
+      // by definition 24 hours/day — auto-derive and lock it the moment the
+      // schedule becomes Continuous (see the disabled-prop check in the
+      // Oxygen section render below). PRN has no "hours/day" concept at all
+      // (its own detail field is hidden entirely, see
+      // `isFieldCurrentlyRelevant`), so no value is forced for it here.
+      if (draft.oxygenTherapy?.frequency === "CONTINUOUS") {
+        next = { ...next, oxygenTherapy: { ...next.oxygenTherapy, hoursPerDay: "24" } };
+      }
+      return next;
     }
     case "respiratory_ventilator_duration": {
       const legacy = mapVentilatorDurationToLegacy(draft.ventilator?.duration);
@@ -188,6 +277,53 @@ function humanizeOption(option: string): string {
 }
 
 /**
+ * Usability-defect fix (product-owner directive, "L_MIN ... cannot add
+ * the unit, just the flow"): a small set of controlled values are not
+ * plain-English words `humanizeOption`'s underscore-splitting handles
+ * correctly — "L_MIN" word-splits to the clinically-wrong "L Min" rather
+ * than the standard clinical abbreviation "L/min". This is a display-only
+ * override map; the stored/persisted value is always the raw enum
+ * constant (`L_MIN`), never this label.
+ */
+const OPTION_LABEL_OVERRIDES: Record<string, string> = {
+  L_MIN: "L/min",
+};
+
+function optionLabel(option: string): string {
+  return OPTION_LABEL_OVERRIDES[option] ?? humanizeOption(option);
+}
+
+/**
+ * Selected-state contrast fix: a live-screen defect report (and Playwright
+ * computed-style diagnostics) confirmed the Tailwind `bg-rnica-teal` /
+ * `border-rnica-teal` utility classes were being silently overridden by a
+ * higher-specificity rule elsewhere in the app bundle — the "selected"
+ * pill rendered with the exact same background/border as every
+ * unselected sibling, with no color difference at all. Inline styles have
+ * the highest CSS specificity short of `!important` and cannot be
+ * silently shadowed the same way, so the checked/unchecked pill state is
+ * now driven entirely by inline style rather than conditional utility
+ * classes. Also adds a checkmark glyph so the selected option never
+ * depends on color alone (color-blind / low-contrast displays).
+ */
+function pillStateStyle(checked: boolean): CSSProperties {
+  return checked
+    ? {
+        backgroundColor: "var(--sns-teal)",
+        borderColor: "var(--sns-teal)",
+        color: "var(--sns-textInverse)",
+        fontWeight: 700,
+        boxShadow: "0 0 0 1px var(--sns-teal)",
+      }
+    : {
+        backgroundColor: "var(--sns-bg)",
+        borderColor: "var(--sns-border)",
+        color: "var(--sns-white)",
+        fontWeight: 500,
+      };
+}
+
+/**
  * Layout-density pass: short, enumerated dropdowns should be sized to
  * their content, not stretched to the panel's full column width. Fields
  * not listed here fall back to a still-constrained default (never
@@ -226,7 +362,7 @@ function SingleSelectField({
         <SelectContent>
           {field.controlledValues?.map((option) => (
             <SelectItem key={option} value={option}>
-              {option}
+              {optionLabel(option)}
             </SelectItem>
           ))}
         </SelectContent>
@@ -250,26 +386,32 @@ function MultiSelectField({
   return (
     <fieldset className={`flex w-full flex-col gap-1 ${GROUP_CONTAINER_CLASS}`} data-testid={`respiratory-field-${field.fieldId}`}>
       <legend className="px-1 text-xs font-medium text-rnica-textStrong">{field.label}</legend>
-      {/* Per the approved Respiratory production candidate's clinical-UX
-          handoff ("coexisting findings: multi-select checkboxes, not fat
-          pills"): compact plain checkbox labels, wrapped into dense rows,
-          not rounded-pill chips. */}
-      <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+      {/* Entire pill is clickable (no separate checkbox square) — same
+          toggle-button pattern as SegmentedField, but multiple options may
+          be active at once. */}
+      <div className="flex flex-wrap gap-1.5">
         {field.controlledValues?.map((option) => {
           const checked = selected.includes(option);
-          const optionId = `${field.fieldId}-${option}`;
           return (
-            <label key={option} htmlFor={optionId} className="flex items-center gap-1.5 text-[11px] leading-none text-rnica-text">
-              <Checkbox
-                id={optionId}
-                checked={checked}
-                disabled={disabled}
-                onCheckedChange={(next) =>
-                  onChange(next ? [...selected, option] : selected.filter((item) => item !== option))
-                }
-              />
+            <button
+              key={option}
+              type="button"
+              role="checkbox"
+              aria-checked={checked}
+              disabled={disabled}
+              onClick={() =>
+                onChange(checked ? selected.filter((item) => item !== option) : [...selected, option])
+              }
+              style={pillStateStyle(checked)}
+              className="rounded-md border px-2.5 py-1.5 text-[11px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {checked ? (
+                <span aria-hidden="true" className="mr-1">
+                  ✓
+                </span>
+              ) : null}
               {option}
-            </label>
+            </button>
           );
         })}
       </div>
@@ -293,7 +435,7 @@ function SegmentedField({
 }: {
   field: RespiratoryFieldDefinition;
   value: unknown;
-  onChange: (value: string) => void;
+  onChange: (value: string | undefined) => void;
   disabled?: boolean;
 }) {
   const selected = typeof value === "string" ? value : undefined;
@@ -310,14 +452,24 @@ function SegmentedField({
               role="radio"
               aria-checked={checked}
               disabled={disabled}
-              onClick={() => onChange(option)}
-              className={`rounded-md border px-2.5 py-1.5 text-[11px] font-medium leading-none disabled:cursor-not-allowed disabled:opacity-50 ${
-                checked
-                  ? "border-rnica-teal bg-rnica-teal text-rnica-textInverse"
-                  : "border-rnica-border bg-rnica-bg text-rnica-text hover:bg-rnica-hoverSurface"
-              }`}
+              // Clearable segmented control (usability-defect fix,
+              // product-owner directive: "Every segmented choice must
+              // support Selected / Unselected / Changed / Cleared"):
+              // clicking the already-selected option toggles it back to
+              // unselected/null rather than being a one-way, un-undoable
+              // choice. Clicking a different option still changes the
+              // selection normally.
+              onClick={() => onChange(checked ? undefined : option)}
+              style={pillStateStyle(checked)}
+              className="rounded-md border px-2.5 py-1.5 text-[11px] leading-none transition-colors disabled:cursor-not-allowed disabled:opacity-50"
+              title={checked ? "Click again to clear this selection" : undefined}
             >
-              {humanizeOption(option)}
+              {checked ? (
+                <span aria-hidden="true" className="mr-1">
+                  ✓
+                </span>
+              ) : null}
+              {optionLabel(option)}
             </button>
           );
         })}
@@ -367,7 +519,7 @@ function RadioGroupField({
                 onChange={() => onChange(option)}
                 className="h-3.5 w-3.5 accent-[var(--sns-teal)]"
               />
-              {humanizeOption(option)}
+              {optionLabel(option)}
             </label>
           );
         })}
@@ -458,6 +610,57 @@ function NumberField({
         value={typeof value === "number" ? value : ""}
         onChange={(event) => onChange(event.target.value === "" ? undefined : Number(event.target.value))}
       />
+    </div>
+  );
+}
+
+/**
+ * PRODUCT-OWNER DIRECTIVE ("REMOVE FLOW VALUE + FLOW UNIT SPLIT MODEL"):
+ * one clinical fact ("3 L/min") was split across two controls. For Nasal
+ * Cannula / Mask (anything other than OTHER) the unit is auto-derived
+ * (see the "respiratory_oxygen_delivery_device" case in
+ * `applyCanonicalLegacyMapping`) and shown as fixed, non-editable inline
+ * text beside the value -- the nurse enters one number only. OTHER keeps
+ * a standalone Flow Unit dropdown (rendered separately via the normal
+ * field dispatch, since `isFieldCurrentlyRelevant` only makes it relevant
+ * for OTHER) for the rare device that genuinely needs a different unit.
+ */
+function OxygenFlowRateField({
+  field,
+  value,
+  onChange,
+  disabled = false,
+  unit,
+  showUnitInline,
+}: {
+  field: RespiratoryFieldDefinition;
+  value: unknown;
+  onChange: (value: number | undefined) => void;
+  disabled?: boolean;
+  unit?: string;
+  showUnitInline: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1" data-testid={`respiratory-field-${field.fieldId}`}>
+      <FieldLabel htmlFor={field.fieldId}>{field.label}</FieldLabel>
+      <div className="flex items-center gap-1.5">
+        <input
+          id={field.fieldId}
+          type="number"
+          disabled={disabled}
+          className={`h-8 ${NUMBER_WIDTH_CLASS} max-w-full rounded-lg border border-rnica-border bg-rnica-bg px-2 py-1 text-[11px] text-rnica-text focus:outline focus:outline-2 focus:outline-offset-2 focus:outline-rnica-focusRing disabled:cursor-not-allowed disabled:opacity-50`}
+          value={typeof value === "number" ? value : ""}
+          onChange={(event) => onChange(event.target.value === "" ? undefined : Number(event.target.value))}
+        />
+        {showUnitInline && unit && (
+          <span
+            className="text-[11px] text-rnica-muted"
+            data-testid="respiratory-oxygen-flow-rate-unit"
+          >
+            {optionLabel(unit)}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -571,15 +774,20 @@ const SEGMENTED_FIELD_IDS = new Set([
 ]);
 
 /**
- * Treatment Description is reused as a single canonical field across three
- * Treatment Decision contexts (product-owner directive: do not add a
- * second rationale field for NOT_INDICATED). The nurse-facing label and
- * placeholder change by context; the persisted key (`treatmentDescription`)
- * never changes.
+ * Treatment Description is reused as a single canonical field across all
+ * four Treatment Decision contexts, including DECLINED (hospice-admission
+ * simplification, product-owner directive: do not create a separate data
+ * field for every concept — decline reason, clinical rationale, and the
+ * "what was done" narrative all live in this one field). The nurse-facing
+ * label and placeholder change by context; the persisted key
+ * (`treatmentDescription`) never changes.
  */
 function treatmentDescriptionContext(draft: RespiratoryDraft): { label: string; placeholder?: string } {
-  if (draft.treatmentDecision === "ALREADY_IN_PLACE") {
-    return { label: "Current Treatment / Intervention" };
+  if (draft.treatmentDecision === "DECLINED") {
+    return {
+      label: "Decline Reason",
+      placeholder: "Record why the treatment/intervention was declined and by whom.",
+    };
   }
   if (draft.treatmentDecision === "NOT_INDICATED") {
     return {
@@ -587,24 +795,35 @@ function treatmentDescriptionContext(draft: RespiratoryDraft): { label: string; 
       placeholder: "Briefly document why no Respiratory intervention is indicated for the current finding.",
     };
   }
-  return { label: "Treatment / Intervention" };
+  // FINAL PRODUCT-OWNER DIRECTIVE: not reachable for INITIATED/
+  // ALREADY_IN_PLACE — isFieldCurrentlyRelevant() no longer renders this
+  // field's active control for those two values (see
+  // LegacyTreatmentDocumentation for their read-only historical display
+  // instead). This fallback only matters if the field is ever rendered
+  // before treatmentDecision is set.
+  return { label: "Decline Reason / Clinical Rationale" };
 }
+
+const CLINICAL_RESPONSE_EVIDENCE_PLACEHOLDER =
+  "Document the patient's observed response. Medication and treatment-order details belong in Orders.";
 
 function GenericField({
   field,
   draft,
   updateDraft,
   disabled = false,
+  visitDate,
 }: {
   field: RespiratoryFieldDefinition;
   draft: RespiratoryDraft;
   updateDraft: (patch: Partial<RespiratoryDraft>) => void;
   disabled?: boolean;
+  visitDate?: string;
 }) {
   const value = getFieldValue(draft, field);
   const onChange = (next: unknown) => {
     const updated = setFieldValue(draft, field, next);
-    updateDraft(applyCanonicalLegacyMapping(field, updated) as Partial<RespiratoryDraft>);
+    updateDraft(applyCanonicalLegacyMapping(field, updated, visitDate) as Partial<RespiratoryDraft>);
   };
 
   switch (field.responseType) {
@@ -619,10 +838,29 @@ function GenericField({
     case "boolean":
       return <BooleanField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
     case "number":
-      return <NumberField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />;
+      // PRODUCT-OWNER DIRECTIVE ("REMOVE FLOW VALUE + FLOW UNIT SPLIT
+      // MODEL"): Oxygen Flow Rate is rendered as a single composite
+      // control (value + inline unit) instead of the plain NumberField --
+      // see OxygenFlowRateField below.
+      return field.fieldId === "respiratory_oxygen_flow_value" ? (
+        <OxygenFlowRateField
+          field={field}
+          value={value}
+          onChange={(v) => onChange(v)}
+          disabled={disabled}
+          unit={draft.oxygenTherapy?.flowUnit}
+          showUnitInline={draft.oxygenTherapy?.deliveryDevice !== "OTHER"}
+        />
+      ) : (
+        <NumberField field={field} value={value} onChange={(v) => onChange(v)} disabled={disabled} />
+      );
     case "text": {
       const override =
         field.fieldId === "respiratory_treatment_description" ? treatmentDescriptionContext(draft) : undefined;
+      const placeholder =
+        field.fieldId === "respiratory_clinical_response_evidence"
+          ? CLINICAL_RESPONSE_EVIDENCE_PLACEHOLDER
+          : override?.placeholder;
       return (
         <TextField
           field={field}
@@ -630,7 +868,7 @@ function GenericField({
           onChange={(v) => onChange(v)}
           disabled={disabled}
           labelOverride={override?.label}
-          placeholder={override?.placeholder}
+          placeholder={placeholder}
         />
       );
     }
@@ -648,7 +886,6 @@ function GenericField({
 const OXYGEN_DETAIL_FIELD_IDS = new Set([
   "respiratory_oxygen_delivery_type",
   "respiratory_oxygen_liters_per_minute",
-  "respiratory_oxygen_hours_per_day",
   "respiratory_oxygen_delivery_mode",
   "respiratory_oxygen_sat_on_o2",
 ]);
@@ -686,14 +923,36 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
   if (OXYGEN_DETAIL_FIELD_IDS.has(field.fieldId)) {
     return draft.oxygenTherapy?.inUse === true;
   }
+  if (field.fieldId === "respiratory_oxygen_hours_per_day") {
+    // Ticket 3: only relevant once oxygen is actually in use, and never for
+    // PRN (as-needed use has no "hours/day" concept — see the PRN hide
+    // rule in the directive). Continuous keeps it visible but locked to a
+    // derived 24 (see the disabled-prop check on this field's render and
+    // the "respiratory_oxygen_frequency" case in
+    // `applyCanonicalLegacyMapping` above).
+    return draft.oxygenUse === "YES" && draft.oxygenTherapy?.frequency !== "PRN";
+  }
   if (NEW_OXYGEN_DETAIL_FIELD_IDS.has(field.fieldId)) {
     return draft.oxygenUse === "YES";
   }
   if (field.fieldId === "respiratory_oxygen_other_device") {
     return draft.oxygenUse === "YES" && draft.oxygenTherapy?.deliveryDevice === "OTHER";
   }
-  if (field.fieldId === "respiratory_oxygen_flow_value" || field.fieldId === "respiratory_oxygen_flow_unit") {
+  if (field.fieldId === "respiratory_oxygen_flow_value") {
+    // Relabeled "Oxygen Flow Rate" (OxygenFlowRateField) -- the single
+    // nurse-facing flow control, relevant whenever oxygen is in use,
+    // regardless of which device/unit is in effect.
     return draft.oxygenUse === "YES";
+  }
+  if (field.fieldId === "respiratory_oxygen_flow_unit") {
+    // PRODUCT-OWNER DIRECTIVE ("NASAL CANNULA / MASK ... Hidden from
+    // user." / "OTHER ... show advanced unit selection"): a standalone
+    // Flow Unit control is shown only when Delivery Device = OTHER. For
+    // Nasal Cannula / Mask the unit is auto-derived to L/min (see the
+    // "respiratory_oxygen_delivery_device" case in
+    // `applyCanonicalLegacyMapping`) and displayed as fixed inline text
+    // next to Oxygen Flow Rate instead (OxygenFlowRateField).
+    return draft.oxygenUse === "YES" && draft.oxygenTherapy?.deliveryDevice === "OTHER";
   }
   if (field.fieldId === "respiratory_oxygen_unable_to_verify_reason") {
     return draft.oxygenUse === "UNABLE_TO_VERIFY";
@@ -701,12 +960,14 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
   if (field.fieldId === "respiratory_spo2_not_obtained_reason") {
     return draft.spo2MeasurementCondition === "NOT_OBTAINED";
   }
-  if (field.fieldId === "respiratory_measured_oxygen_flow_or_concentration") {
-    return draft.spo2MeasurementCondition === "ON_OXYGEN";
-  }
-  if (field.fieldId === "respiratory_oxygen_measurement_date" || field.fieldId === "respiratory_oxygen_measurement_time") {
-    return draft.spo2Value !== undefined;
-  }
+  // respiratory_oxygen_measurement_date / _time, respiratory_measured_
+  // oxygen_flow_or_concentration, respiratory_oxygen_effectiveness_
+  // response: no longer reachable here -- all four are retired into
+  // LEGACY_HIDDEN_FIELD_IDS (removed from the rendered field arrays
+  // entirely, see that Set's doc comment), not merely conditionally
+  // hidden. Duplicate/redundant oxygen-outcome documentation (product-
+  // owner directives "REMOVE Measured Oxygen Flow / Concentration" and
+  // "REMOVE O2 EFFECTIVENESS / RESPONSE").
   if (VENTILATOR_DETAIL_FIELD_IDS.has(field.fieldId)) {
     // Legacy visibility rule (src/components/RNICA.jsx, "Ventilator /
     // Airway Support" card): these three fields only render once a
@@ -740,10 +1001,10 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
     return draft.sputumCharacter === "OTHER" || draft.sputumColor === "OTHER";
   }
   if (field.fieldId === "respiratory_cough_clinical_significance") {
-    return draft.coughType === "Hemoptysis";
+    return draft.hemoptysisPresent === true;
   }
   if (COUGH_ACTION_FIELD_IDS.has(field.fieldId)) {
-    return draft.coughType === "Productive" || draft.coughType === "Hemoptysis";
+    return draft.coughType === "Productive" || draft.hemoptysisPresent === true;
   }
   if (COUGH_ACTION_TAKEN_FIELD_IDS.has(field.fieldId)) {
     return draft.coughActionDecision === "ACTION_TAKEN";
@@ -758,13 +1019,23 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
     return draft.treatmentDecision === "INITIATED" || draft.treatmentDecision === "ALREADY_IN_PLACE";
   }
   if (field.fieldId === "respiratory_treatment_description") {
-    // Reused contextually as "Clinical Rationale" for NOT_INDICATED (see
-    // treatmentDescriptionContext()) rather than adding a second field.
-    return (
-      draft.treatmentDecision === "INITIATED" ||
-      draft.treatmentDecision === "ALREADY_IN_PLACE" ||
-      draft.treatmentDecision === "NOT_INDICATED"
-    );
+    // FINAL PRODUCT-OWNER DIRECTIVE (clinical workflow / data-ownership
+    // correction): no longer an active control for INITIATED or
+    // ALREADY_IN_PLACE — that was an unrestricted free-text box letting a
+    // nurse re-enter order/medication details that belong exclusively to
+    // the authoritative Orders/Medications workflow. Historical values for
+    // those two decisions are preserved and shown read-only (see
+    // LegacyTreatmentDocumentation below), never through this editable
+    // control. Still active, reused contextually, for DECLINED ("Decline
+    // Reason") and NOT_INDICATED ("Clinical Rationale") — no
+    // medication-order risk exists for either.
+    return draft.treatmentDecision === "DECLINED" || draft.treatmentDecision === "NOT_INDICATED";
+  }
+  if (field.fieldId === "respiratory_clinical_response" || field.fieldId === "respiratory_clinical_response_evidence") {
+    // FINAL PRODUCT-OWNER DIRECTIVE: documents the patient's observed
+    // response for INITIATED/ALREADY_IN_PLACE, replacing the removed
+    // free-text "Describe the treatment" control for those two values.
+    return draft.treatmentDecision === "INITIATED" || draft.treatmentDecision === "ALREADY_IN_PLACE";
   }
   if (field.fieldId === "respiratory_treatment_decline_reason") {
     return draft.treatmentDecision === "DECLINED";
@@ -920,14 +1191,205 @@ const SUPPORT_SECTION_FIELD_IDS = new Set([
  * - respiratory_on_room_air -> superseded by respiratory_spo2_measurement_condition.
  * - respiratory_ventilator_short_term / respiratory_ventilator_long_term ->
  *   superseded by respiratory_ventilator_duration.
+ * - respiratory_oxygen_delivery_type -> superseded by
+ *   respiratory_oxygen_delivery_device.
+ * - respiratory_oxygen_liters_per_minute -> superseded by
+ *   respiratory_oxygen_flow_value / respiratory_oxygen_flow_unit.
+ * - respiratory_oxygen_delivery_mode -> superseded by
+ *   respiratory_oxygen_frequency.
+ * - respiratory_oxygen_sat_on_o2 -> superseded by respiratory_spo2_value
+ *   (read together with respiratory_spo2_measurement_condition).
+ * - respiratory_oxygen_measurement_date / respiratory_oxygen_measurement_time
+ *   -> removed entirely (FINAL PRODUCT-OWNER DIRECTIVE, "REMOVE OXYGEN
+ *   MEASUREMENT DATE AND TIME"). RNICA is visit-based: Visit Date / Time
+ *   In / Time Out already establish the assessment-date context for an
+ *   SpO2 documented during the current visit, so a separate section-level
+ *   measurement date/time is unnecessary and must never be fabricated
+ *   (not copied from Time In, not derived from save/autosave/audit-log
+ *   time). Unlike the four duplicate-concept fields above, these two have
+ *   no canonical replacement to keep in sync — they are simply retired
+ *   from the active workflow. Historical persisted values are preserved
+ *   untouched (no migration, no write path here ever updates them) for
+ *   audit/historical-detail view only; they are never required (see the
+ *   removed blocks in `respiratoryProductRequirements.ts` /
+ *   `respiratory_product_requirements.py`) and never populated going
+ *   forward.
+ * (Ticket 2, "TOO MUCH REDUNDANCY" directive: these four previously
+ * rendered alongside their canonical replacement at the same time because
+ * each pair was gated by a different, independently-settable visibility
+ * flag — the legacy group by `oxygenTherapy.inUse` (mirrored from
+ * `oxygenUse`) and the canonical group by `oxygenUse` directly — so a
+ * record with only the legacy flag populated (common for historical data)
+ * showed just the legacy controls, and a record with both populated
+ * showed both at once, as confirmed live.)
+ *
+ * HOSPICE-ADMISSION SIMPLIFICATION (product-owner directive, "PRODUCT
+ * OWNER CORRECTION"): the Treatment section is deliberately reduced to
+ * exactly Treatment Decision, Treatment Narrative
+ * (`respiratory_treatment_description`, reused contextually for
+ * INITIATED/ALREADY_IN_PLACE/DECLINED/NOT_INDICATED — see
+ * `treatmentDescriptionContext()`), and Follow-Up Needed, because a
+ * hospital-style requirement to record exact intervention/response clock
+ * times and a separate immediate-effectiveness evaluation does not match
+ * real hospice admission practice (home, ALF, Board & Care, Memory Care,
+ * SNF — intervention is frequently already performed by family,
+ * caregiver, or facility staff before the RN arrives, and response is
+ * routinely assessed at a later follow-up visit, not at admission). Each
+ * field below remains fully intact in the draft/stored shape and backend
+ * (so prior admissions that already recorded these values are never lost
+ * or altered) — only its separate visible nurse-facing control is
+ * retired, exactly like the legacy-duplicate controls above. The
+ * corresponding requirement-engine rules in
+ * `respiratoryProductRequirements.ts` / `respiratoryWorkflowRules.ts` were
+ * updated in lockstep so completion never blocks on a field the nurse can
+ * no longer see:
+ * - respiratory_treatment_decline_reason -> folded into the shared
+ *   Treatment Narrative field (DECLINED context).
+ * - respiratory_treatment_action_date / respiratory_treatment_action_time /
+ *   respiratory_treatment_response / respiratory_treatment_response_status /
+ *   respiratory_treatment_response_time -> removed; hospice admission
+ *   never requires exact intervention/response timing or an immediate
+ *   effectiveness evaluation.
+ * - respiratory_follow_up_timing_plan / respiratory_follow_up_responsible_clinician
+ *   -> removed; only whether follow-up is needed is recorded at
+ *   admission.
+ * - respiratory_poc_review_need / respiratory_poc_review_reason /
+ *   respiratory_poc_source_reference -> removed; POC review is handled
+ *   through narrative documentation / follow-up, not a separate control.
+ * - respiratory_configured_requirement_response / respiratory_configured_follow_up_status
+ *   -> removed along with the rest of the Treatment section's secondary
+ *   fields.
+ * - respiratory_treatment_date ("SOB Treatment Date", legacy source
+ *   `respiratory.treatmentDate`) -> removed. This is a *different* field
+ *   from respiratory_treatment_action_date above — an earlier-milestone
+ *   ported field whose sole consumer is HOPE J2040-B report generation
+ *   (`hopeReportMapper.js`); it has zero reference in either requirement
+ *   engine, so it is Reporting-Support-only, not Clinical-Workflow
+ *   (HOPE-vs-clinical field audit). Since there is no longer a
+ *   nurse-facing control for it, `applyCanonicalLegacyMapping` in this
+ *   file auto-generates it (today's date, the first time the decision
+ *   becomes Initiated) so HOPE reporting keeps working without asking
+ *   the nurse for an exact intervention date.
+ * - respiratory_comfort_function_screening_time ("Comfort / Function
+ *   Screening Time") -> removed entirely (not hidden-but-retained, not
+ *   made optional — the field is gone from the nurse workflow). Hospice
+ *   documentation is visit-based: Visit Date/Type/Timestamp already
+ *   establish the clinical time reference, so a separate exact clock
+ *   time for when comfort/functional impact was screened provides no
+ *   additional clinical, regulatory, payer, or patient-safety value. The
+ *   correct question is "was it assessed during this visit", not "at
+ *   what exact minute" — `respiratory_comfort_function_screening_date`
+ *   is kept (date-level tracking remains useful), only the Time field is
+ *   removed. It has zero reference in either requirement engine and zero
+ *   HOPE/reporting consumer, so unlike respiratory_treatment_date above
+ *   it needs no auto-generation replacement — nothing downstream reads
+ *   it.
+ * - respiratory_screening_date ("SOB Screening Date") and
+ *   respiratory_comfort_function_screening_date ("Comfort / Function
+ *   Screening Date") -> removed from the visible workflow (product-owner
+ *   directive, "RNICA is visit-centric... Visit Header = Visit Metadata,
+ *   Body Systems = Clinical Findings... do not mix the two"). The RNICA
+ *   Visit Header (Visit Date/Time In/Time Out, see `formData.visitMeta`
+ *   in RNICA.jsx) is already the source of truth for when the visit —
+ *   and therefore the assessment performed during it — occurred; a nurse
+ *   documenting SOB screening or a Comfort/Function impact during the
+ *   current visit should never be asked to re-enter that same date. Both
+ *   fields are auto-filled from the `visitDate` prop (see the
+ *   `useEffect` in `RespiratoryPanel` below) the first time their
+ *   respective trigger condition becomes true while the date is still
+ *   blank, exactly like `respiratory_treatment_date`'s auto-generation —
+ *   no popup, no visible control, no mandatory override-reason field.
+ *   The one-time-fill is never overwritten, so a date loaded from a
+ *   prior save (including one that genuinely differs from the visit
+ *   date, e.g. a historical/late-documented assessment) is always
+ *   preserved. A true exception (documenting an assessment that
+ *   occurred on another date) is recorded narratively in Respiratory
+ *   Notes rather than through a separate structured date-override
+ *   control, per the same directive.
+ *
+ * PRODUCT-OWNER DIRECTIVE ("REMOVE Measured Oxygen Flow / Concentration" /
+ * "REMOVE O2 EFFECTIVENESS / RESPONSE"): respiratory_measured_oxygen_flow_
+ * or_concentration and respiratory_oxygen_effectiveness_response are
+ * retired for the same reason as the other oxygen sub-fields above --
+ * each duplicated a clinical fact already documented elsewhere in the
+ * same Oxygen section (the current Oxygen Flow Rate, and the objective
+ * SpO2 Value / Measurement Condition pair, respectively). Both fields
+ * remain fully intact in the draft/stored shape and backend; only their
+ * nurse-facing controls are removed, with no migration of historical
+ * values.
+ *
+ * PRODUCT-OWNER DIRECTIVE ("RESPIRATORY SUPPORT FOLLOW-UP PLAN -- JUSTIFY
+ * WHY THIS FIELD EXISTS"): respiratory_support_follow_up_plan is retired.
+ * It was a free-text future-respiratory-intervention narrative -- POC's
+ * purpose (goals, interventions, follow-up actions, treatment plans), not
+ * RNICA's (assessment, findings, clinical status, clinical response). It
+ * was never required by either requirement engine (no `push(...)` exists
+ * for it in respiratoryProductRequirements.ts/.py) and is read by no
+ * downstream consumer (structured_findings.py, rnica_poc_adapter.py, or
+ * hopeReportMapper.js) -- a dead control duplicating content that belongs
+ * on the Plan of Care. `respiratory_support_status` (None / In Use /
+ * Unable To Verify) remains the sole canonical source fact for Findings /
+ * Narrative / HOPE / POC generation; a true follow-up plan is authored on
+ * the POC, not re-collected inside the RNICA. The field remains fully
+ * intact in the draft/stored shape and backend; only its nurse-facing
+ * control is removed, with no migration of historical values.
+ *
+ * PRODUCT-OWNER DIRECTIVE ("FINAL RESPIRATORY USABILITY REVIEW" --
+ * A=Assessment Finding vs B=Future Plan classification):
+ * respiratory_cough_follow_up_timing_plan and
+ * respiratory_cough_follow_up_responsible_clinician are retired, same
+ * reasoning and same disposition as respiratory_follow_up_timing_plan /
+ * respiratory_follow_up_responsible_clinician and
+ * respiratory_support_follow_up_plan above -- "who will do what, when, in
+ * the future" is POC content, not an RNICA assessment finding. Unlike
+ * respiratory_support_follow_up_plan, these two WERE actively required
+ * (whenever coughActionDecision was ACTION_TAKEN or DECLINED); the
+ * requirement pushes have been removed from both
+ * respiratoryProductRequirements.ts and
+ * respiratory_product_requirements.py, not merely hidden here. Neither
+ * field is read by any downstream consumer (structured findings,
+ * narrative, HOPE, or POC generation). The rest of the cough/secretions
+ * workflow (Cough Action Decision, Action Description, Decline Reason,
+ * Response, Action Date/Time) stays -- it documents what was actually
+ * assessed/done *this visit*, the same present-tense category as the
+ * retained Treatment Decision / Clinical Response fields, not a future
+ * plan.
  */
 const LEGACY_HIDDEN_FIELD_IDS = new Set([
   "respiratory_treatment_initiated",
   "respiratory_treatment_declined",
   "respiratory_oxygen_in_use",
   "respiratory_on_room_air",
+  "respiratory_oxygen_delivery_type",
+  "respiratory_oxygen_liters_per_minute",
+  "respiratory_oxygen_delivery_mode",
+  "respiratory_oxygen_sat_on_o2",
+  "respiratory_oxygen_measurement_date",
+  "respiratory_oxygen_measurement_time",
+  "respiratory_measured_oxygen_flow_or_concentration",
+  "respiratory_oxygen_effectiveness_response",
   "respiratory_ventilator_short_term",
   "respiratory_ventilator_long_term",
+  "respiratory_treatment_decline_reason",
+  "respiratory_treatment_action_date",
+  "respiratory_treatment_action_time",
+  "respiratory_treatment_response",
+  "respiratory_treatment_response_status",
+  "respiratory_treatment_response_time",
+  "respiratory_follow_up_timing_plan",
+  "respiratory_follow_up_responsible_clinician",
+  "respiratory_poc_review_need",
+  "respiratory_poc_review_reason",
+  "respiratory_poc_source_reference",
+  "respiratory_configured_requirement_response",
+  "respiratory_configured_follow_up_status",
+  "respiratory_treatment_date",
+  "respiratory_comfort_function_screening_time",
+  "respiratory_screening_date",
+  "respiratory_comfort_function_screening_date",
+  "respiratory_support_follow_up_plan",
+  "respiratory_cough_follow_up_timing_plan",
+  "respiratory_cough_follow_up_responsible_clinician",
 ]);
 
 /**
@@ -1040,7 +1502,7 @@ const SAVE_STATE_MESSAGE: Record<string, string> = {
   conflict: "Save blocked — this assessment changed elsewhere.",
 };
 
-export function RespiratoryPanel({ assessmentId, readOnly = false }: RespiratoryPanelProps) {
+export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: RespiratoryPanelProps) {
   const {
     loadState,
     assessment,
@@ -1054,6 +1516,55 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
     reload,
   } = useRespiratoryAssessment(assessmentId);
   const [notesFocused, setNotesFocused] = useState(false);
+
+  // Hospice visit-based documentation directive: default SOB Screening Date
+  // and Comfort/Function Screening Date to the visit date the first time
+  // each relevant section is engaged (SOB screened, or a Comfort/Function
+  // impact recorded) while its date field is still blank -- mirrors the
+  // legacy RNICA.jsx screening/treatment-date auto-fill precedent. This is a
+  // one-time fill only: once a date is present (default or nurse-entered),
+  // it is never overwritten here, so edits/overrides are always preserved.
+  useEffect(() => {
+    if (!visitDate) return;
+    const patch: Partial<RespiratoryDraft> = {};
+    if (draft.shortnessOfBreathScreened === true && !draft.screeningDate) {
+      patch.screeningDate = visitDate;
+    }
+    if (draft.comfortFunctionImpact && !draft.comfortFunctionScreeningDate) {
+      patch.comfortFunctionScreeningDate = visitDate;
+    }
+    if (Object.keys(patch).length > 0) {
+      updateDraft(patch);
+    }
+  }, [
+    visitDate,
+    draft.shortnessOfBreathScreened,
+    draft.screeningDate,
+    draft.comfortFunctionImpact,
+    draft.comfortFunctionScreeningDate,
+    updateDraft,
+  ]);
+
+  // One-time migration for records saved before the Cough Type model
+  // correction: the retired "Hemoptysis"/"Barrel chest" coughType values
+  // never represented cough productivity in the first place -- they were a
+  // single-select modeling defect that made Hemoptysis and Barrel chest
+  // mutually exclusive with Productive/Non-productive. Migrate them once
+  // into the correct independent fields and clear the invalid coughType
+  // value (not a real productivity response) rather than leaving data the
+  // Cough Type select can no longer represent.
+  useEffect(() => {
+    const legacyCoughType = draft.coughType;
+    if (legacyCoughType !== "Hemoptysis" && legacyCoughType !== "Barrel chest") return;
+    const patch: Partial<RespiratoryDraft> = { coughType: undefined };
+    if (legacyCoughType === "Hemoptysis" && draft.hemoptysisPresent !== true) {
+      patch.hemoptysisPresent = true;
+    }
+    if (legacyCoughType === "Barrel chest" && draft.barrelChestPresent !== true) {
+      patch.barrelChestPresent = true;
+    }
+    updateDraft(patch);
+  }, [draft.coughType, draft.hemoptysisPresent, draft.barrelChestPresent, updateDraft]);
 
   if (loadState === "loading") {
     return (
@@ -1105,10 +1616,13 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
       !FOLLOW_UP_FIELD_IDS.has(field.fieldId),
   );
   const interventionFields = RESPIRATORY_FIELD_INVENTORY.filter(
-    (field) => INTERVENTION_FIELD_IDS.has(field.fieldId) && !LEGACY_HIDDEN_FIELD_IDS.has(field.fieldId),
+    (field) =>
+      INTERVENTION_FIELD_IDS.has(field.fieldId) &&
+      !LEGACY_HIDDEN_FIELD_IDS.has(field.fieldId) &&
+      isFieldCurrentlyRelevant(field, draft),
   );
   const followUpFields = RESPIRATORY_FIELD_INVENTORY.filter((field) => FOLLOW_UP_FIELD_IDS.has(field.fieldId)).filter(
-    (field) => isFieldCurrentlyRelevant(field, draft),
+    (field) => !LEGACY_HIDDEN_FIELD_IDS.has(field.fieldId) && isFieldCurrentlyRelevant(field, draft),
   );
   const relevantDetailFields = detailFields.filter(
     (field) => isFieldCurrentlyRelevant(field, draft) && !LEGACY_HIDDEN_FIELD_IDS.has(field.fieldId),
@@ -1215,7 +1729,7 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
             <h3 className="text-xs font-semibold uppercase text-rnica-muted">Dyspnea, impact &amp; observed breathing</h3>
             <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
               {leftColumnFields.map((field) => (
-                <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+                <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
               ))}
             </div>
           </section>
@@ -1231,10 +1745,29 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
             {(isDyspneaModerateOrSevere(draft) || hasDocumentedIntervention(draft)) && (
               <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
                 {interventionFields.map((field) => (
-                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
                 ))}
               </div>
             )}
+            {/*
+              FINAL PRODUCT-OWNER DIRECTIVE, section 16: historical
+              Treatment/Intervention free text entered for Initiated/
+              Already in Place before this correction is preserved and
+              shown read-only ("Legacy Respiratory Treatment
+              Documentation") — never deleted, never editable through this
+              retired control, and never automatically converted into an
+              order or placed on the medication profile.
+            */}
+            {(draft.treatmentDecision === "INITIATED" || draft.treatmentDecision === "ALREADY_IN_PLACE") &&
+              typeof draft.treatmentDescription === "string" &&
+              draft.treatmentDescription.trim().length > 0 && (
+                <div className="flex flex-col gap-1" data-testid="respiratory-legacy-treatment-documentation">
+                  <FieldLabel>Legacy Respiratory Treatment Documentation (read-only)</FieldLabel>
+                  <p className="max-w-full whitespace-pre-wrap rounded-lg border border-rnica-border bg-rnica-bg px-2 py-1 text-[11px] text-rnica-muted">
+                    {draft.treatmentDescription}
+                  </p>
+                </div>
+              )}
             {/*
               Follow-Up merged visually into the Treatment workflow per
               Density Pass 3 (it is part of the same clinical decision,
@@ -1249,7 +1782,7 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
                 aria-label="Follow-up"
               >
                 {followUpFields.map((field) => (
-                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
                 ))}
               </div>
             )}
@@ -1260,31 +1793,87 @@ export function RespiratoryPanel({ assessmentId, readOnly = false }: Respiratory
             <h3 className="text-xs font-semibold uppercase text-rnica-muted">Oxygen use &amp; measurement</h3>
             <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
               {oxygenFields.map((field) => (
-                <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
+                <GenericField
+                  key={field.fieldId}
+                  field={field}
+                  draft={draft}
+                  updateDraft={updateDraft}
+                  // Ticket 3: Continuous oxygen use is, by definition, 24
+                  // hours/day — the value is auto-derived (see the
+                  // "respiratory_oxygen_frequency" case in
+                  // `applyCanonicalLegacyMapping`) and locked read-only so
+                  // the nurse can never enter a contradictory number.
+                  disabled={
+                    readOnly ||
+                    (field.fieldId === "respiratory_oxygen_hours_per_day" && draft.oxygenTherapy?.frequency === "CONTINUOUS")
+                  }
+                  visitDate={visitDate}
+                />
               ))}
             </div>
           </section>
         </div>
       </div>
 
-      <section className="flex flex-col gap-2" aria-label="Cough and secretions" data-testid="respiratory-cough-section">
-        <h3 className="text-xs font-semibold uppercase text-rnica-muted">Cough &amp; secretions</h3>
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
-          {coughFields.map((field) => (
-            <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
-          ))}
-        </div>
-      </section>
+      {/*
+        RESPIRATORY FINAL UI OPTIMIZATION (product-owner directive --
+        "Place Cough Action and Respiratory Support on same horizontal
+        row" / "Convert Secretions & Respiratory Support into a
+        two-column layout" / "Utilize unused right-column space" /
+        "Minimize vertical scrolling"): Secretions (Cough/Sputum) and
+        Respiratory Support render as a true side-by-side 2-column grid
+        at `lg` (not two stacked full-width rows), the same column split
+        already used for the Dyspnea/Treatment grid above. Progressive
+        disclosure is unchanged -- cough/secretions fields only render
+        for a Productive cough or hemoptysis (sputum fields specifically
+        stay hidden until coughType = Productive, see
+        SPUTUM_CHARACTERISTIC_FIELD_IDS gating above); support-detail
+        fields only render once Respiratory Support Status = In Use. The
+        whole card renders nothing when neither group has anything to
+        show (zero added height). `data-testid`s on the inner groups are
+        preserved for existing test/debugging hooks.
+      */}
+      {(coughFields.length > 0 || supportFields.length > 0) && (
+        <section className="flex flex-col gap-2" aria-label="Secretions and respiratory support" data-testid="respiratory-secretions-support-section">
+          <h3 className="text-xs font-semibold uppercase text-rnica-muted">Secretions &amp; respiratory support</h3>
+          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 lg:grid-cols-2 lg:items-start">
+            {coughFields.length > 0 && (
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5" data-testid="respiratory-cough-section">
+                {coughFields.map((field) => (
+                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
+                ))}
+              </div>
+            )}
+            {supportFields.length > 0 && (
+              <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5" data-testid="respiratory-support-section">
+                {supportFields.map((field) => (
+                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      )}
 
-      <section className="flex flex-col gap-2" aria-label="Respiratory support and airway" data-testid="respiratory-support-section">
-        <h3 className="text-xs font-semibold uppercase text-rnica-muted">Respiratory support &amp; airway</h3>
-        <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
-          {supportFields.map((field) => (
-            <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} />
-          ))}
-        </div>
-      </section>
-
+      {/*
+        RESPIRATORY FINAL UI OPTIMIZATION (product-owner directive --
+        "Justify Respiratory Notes" / "Retire Respiratory Notes if
+        information is already generated through narrative synthesis"):
+        Reviewed and KEPT. Confirmed (grep across
+        clinicalNarrativeBuilder.js, structured_findings.py,
+        rnica_poc_adapter.py, hopeReportMapper.js) that no narrative-
+        synthesis pipeline exists today that reads structured Respiratory
+        fields and reproduces an equivalent free-text sentence --
+        clinicalNarrativeBuilder.js composes a *different*,
+        patient-level summary from sobSeverity/lungSounds and never
+        reads this field. Per RNICA_COMPLETION_MATRIX.md this is the
+        catch-all "RN-only-by-design... free-text narrative / clinical
+        judgment field" for observations that genuinely do not fit any
+        structured control (the same category as the retained Cough
+        Action fields, not a future-plan field) -- retiring it now, with
+        no synthesis feature to replace it, would be a pure data-capture
+        loss, not a duplication removal. Retained.
+      */}
       <div className="flex flex-col gap-1">
         <FieldLabel htmlFor={RESPIRATORY_NOTES_FIELD.fieldId}>{RESPIRATORY_NOTES_FIELD.label}</FieldLabel>
         <Textarea

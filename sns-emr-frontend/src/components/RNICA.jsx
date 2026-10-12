@@ -796,6 +796,7 @@ const INITIAL_FORM = {
     treatmentInitiated: false, treatmentDate: "", treatmentDeclined: false,
     lungSounds: [], respirations: [],
     coughType: "", sputumCharacter: "",
+    hemoptysisPresent: false, barrelChestPresent: false,
     oxygenTherapy: {
       inUse: false, type: "", litersPerMinute: "",
       hoursPerDay: "", satOnO2: "",
@@ -11308,6 +11309,12 @@ export function computeBodySystemFindings(sectionKey, sectionData, extra = {}) {
         const sputum = d.sputumCharacter ? ` — ${d.sputumCharacter}` : "";
         findings.push(`${d.coughType} cough documented${sputum}.`);
       }
+      if (d.hemoptysisPresent) {
+        findings.push("Hemoptysis present.");
+      }
+      if (d.barrelChestPresent) {
+        findings.push("Barrel chest noted on thoracic inspection.");
+      }
       if (d.oxygenTherapy?.inUse) {
         const detail = [d.oxygenTherapy.litersPerMinute && `${d.oxygenTherapy.litersPerMinute} L/min`, d.oxygenTherapy.deliveryMode].filter(Boolean).join(", ");
         findings.push(`Continuous oxygen therapy in use${detail ? ` (${detail})` : ""}.`);
@@ -12739,6 +12746,7 @@ const RESP_HIDEABLE_FIELD_PATHS = [
   "screeningDate", "treatmentInitiated", "treatmentDate",
   "lungSounds", "respirations",
   "coughType", "sputumCharacter",
+  "hemoptysisPresent", "barrelChestPresent",
   "oxygenTherapy.inUse", "oxygenTherapy.type", "oxygenTherapy.litersPerMinute",
   "oxygenTherapy.hoursPerDay", "oxygenTherapy.deliveryMode", "oxygenTherapy.onRoomAir",
   "oxygenTherapy.satOnO2",
@@ -12843,6 +12851,12 @@ function respiratorySummaryLine(d) {
   if (d.coughType) {
     const sputum = d.sputumCharacter ? ` — ${d.sputumCharacter}` : "";
     lines.push({ label: "Cough / Secretions", value: `${d.coughType}${sputum}` });
+  }
+  if (d.hemoptysisPresent) {
+    lines.push({ label: "Hemoptysis", value: "Present" });
+  }
+  if (d.barrelChestPresent) {
+    lines.push({ label: "Barrel Chest", value: "Present" });
   }
   const o2 = d.oxygenTherapy || {};
   if (o2.inUse) {
@@ -16798,8 +16812,16 @@ const SECTION_CONFIGS = {
         { type: "pillGroup", label: "Respiration Pattern", path: "respirations", options: ["Regular", "Normal", "Irregular", "Labored", "Cheyne-Stokes", "Apneic episodes", "Kussmaul", "Agonal", "Tachypnea", "Bradypnea", "Orthopnea"] },
       ]},
       { title: "Cough / Secretions", category: "core", fields: [
-        { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive", "Hemoptysis", "Barrel chest"] },
+        { type: "select", label: "Cough Type", path: "coughType", options: ["None", "Productive", "Non-productive"] },
         { type: "input", label: "Sputum Character", path: "sputumCharacter" },
+        // Split out of Cough Type (clinical data model correction):
+        // Hemoptysis and Barrel chest are independent findings, not
+        // mutually exclusive alternatives to cough productivity -- a
+        // nurse must be able to document e.g. Productive cough +
+        // Hemoptysis, or Non-productive cough + Barrel chest,
+        // simultaneously.
+        { type: "booleanPill", label: "Hemoptysis", path: "hemoptysisPresent" },
+        { type: "booleanPill", label: "Barrel Chest", path: "barrelChestPresent" },
       ]},
       { title: "Oxygen Therapy", category: "treatments", fields: [
         { type: "booleanPill", label: "Oxygen in Use", path: "oxygenTherapy.inUse" },
@@ -18604,6 +18626,16 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [dismissStructuredSignalsBulk, pendingStructuredSignals, selectedStructuredSignalIds]);
 
   const isOngoing = mode === "ongoing";
+  // Hospice visit-based documentation directive: Respiratory's SOB/Comfort-
+  // Function Screening Date fields default to the visit date rather than
+  // asking the nurse to re-enter a date for an assessment already being
+  // performed during the current documented visit. Same source precedence
+  // already used for the legacy respiratory screening/treatment date
+  // auto-fill above (`isOngoing` ? visit date : facesheet SOC date, falling
+  // back to visit date) so both mechanisms agree on "the visit date".
+  const respiratoryVisitDate =
+    (isOngoing ? formData.visitMeta?.visitDate : facesheetData?.service_dates?.soc_date || formData.visitMeta?.visitDate) ||
+    undefined;
   const [assessmentType, setAssessmentType] = useState(
     initialAssessmentType === "update" || initialAssessmentType === "recert" ? initialAssessmentType : "update"
   );
@@ -19550,7 +19582,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             {isDemo
               ? renderDemographics(formData.demographics, updateField, COLORS, styles, "all", assessmentUiProfile)
               : route.formSection === "respiratory"
-                ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} />
+                ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} visitDate={respiratoryVisitDate} />
                 : config && sectionData
                   ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
                   : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
@@ -19573,7 +19605,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     const content = isDemographicsModule
       ? renderDemographics(formData.demographics, updateField, COLORS, styles, route.key, assessmentUiProfile)
       : route.formSection === "respiratory"
-        ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} />
+        ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} visitDate={respiratoryVisitDate} />
         : config && sectionData
           ? renderGenericSection(
               route.formSection,
@@ -19711,7 +19743,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         statusLabel: workflowStatus?.label,
         statusVariant: workflowStatus?.variant,
         content: module.key === "respiratory"
-          ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} />
+          ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} visitDate={respiratoryVisitDate} />
           : config && sectionData
             ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
             : null,

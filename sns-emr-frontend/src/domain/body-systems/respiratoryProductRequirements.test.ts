@@ -53,29 +53,58 @@ describe("respiratoryProductRequirements — treatment decision", () => {
   it("becomes required once dyspnea, productive/hemoptysis cough, oxygen use, or active support is documented", () => {
     expect(fieldIds({ sobSeverity: "Moderate" })).toContain("respiratory_treatment_decision");
     expect(fieldIds({ coughType: "Productive" })).toContain("respiratory_treatment_decision");
-    expect(fieldIds({ coughType: "Hemoptysis" })).toContain("respiratory_treatment_decision");
+    expect(fieldIds({ hemoptysisPresent: true })).toContain("respiratory_treatment_decision");
     expect(fieldIds({ oxygenUse: "YES" })).toContain("respiratory_treatment_decision");
     expect(fieldIds({ respiratorySupportStatus: "IN_USE" })).toContain("respiratory_treatment_decision");
     expect(fieldIds({ sobSeverity: "None" })).not.toContain("respiratory_treatment_decision");
   });
 
-  it("requires treatmentDescription for INITIATED and ALREADY_IN_PLACE, not for DECLINED/NOT_INDICATED", () => {
-    expect(fieldIds({ treatmentDecision: "INITIATED" })).toContain("respiratory_treatment_description");
-    expect(fieldIds({ treatmentDecision: "ALREADY_IN_PLACE" })).toContain("respiratory_treatment_description");
-    expect(fieldIds({ treatmentDecision: "DECLINED" })).not.toContain("respiratory_treatment_description");
-    expect(fieldIds({ treatmentDecision: "NOT_INDICATED" })).not.toContain("respiratory_treatment_description");
+  it("requires clinicalResponse for INITIATED and ALREADY_IN_PLACE (not treatmentDescription)", () => {
+    // FINAL PRODUCT-OWNER DIRECTIVE: the free-text "Treatment /
+    // Intervention" box let a nurse re-enter medication/order details that
+    // belong exclusively to the authoritative Orders/Medications workflow.
+    // It is removed as a requirement for these two decisions and replaced
+    // by Clinical Response to Treatment (the patient's observed response
+    // only — never an order).
+    expect(fieldIds({ treatmentDecision: "INITIATED" })).toContain("respiratory_clinical_response");
+    expect(fieldIds({ treatmentDecision: "ALREADY_IN_PLACE" })).toContain("respiratory_clinical_response");
+    expect(fieldIds({ treatmentDecision: "INITIATED" })).not.toContain("respiratory_treatment_description");
+    expect(fieldIds({ treatmentDecision: "ALREADY_IN_PLACE" })).not.toContain("respiratory_treatment_description");
+    expect(
+      fieldIds({ treatmentDecision: "INITIATED", clinicalResponse: "EFFECTIVE" }),
+    ).not.toContain("respiratory_clinical_response");
   });
 
-  it("requires treatmentDeclineReason only when DECLINED", () => {
-    expect(fieldIds({ treatmentDecision: "DECLINED" })).toContain("respiratory_treatment_decline_reason");
-    expect(fieldIds({ treatmentDecision: "INITIATED" })).not.toContain("respiratory_treatment_decline_reason");
+  // Hospice-admission simplification (product-owner directive): DECLINED
+  // reuses the single canonical Treatment Narrative field
+  // (`treatmentDescription`, presented contextually as "Decline Reason")
+  // instead of a separate `treatmentDeclineReason` field — there is no
+  // longer a separate requirement/field for decline reason.
+  it("requires treatmentDescription (as the Decline Reason) only when DECLINED", () => {
+    expect(fieldIds({ treatmentDecision: "DECLINED" })).toContain("respiratory_treatment_description");
+    expect(fieldIds({ treatmentDecision: "DECLINED", treatmentDescription: "Family declined nebulizer" })).not.toContain(
+      "respiratory_treatment_description",
+    );
   });
 
-  it("never requires treatment-decision detail fields when NOT_INDICATED", () => {
+  it("never requires treatment-decision detail fields when NOT_INDICATED and nothing clinically applicable", () => {
     const missing = fieldIds({ treatmentDecision: "NOT_INDICATED" });
     expect(missing).not.toContain("respiratory_treatment_description");
-    expect(missing).not.toContain("respiratory_treatment_decline_reason");
     expect(missing).not.toContain("respiratory_treatment_response_status");
+  });
+
+  it("hospice workflow correction: never requires Treatment Response, Response Status, Action Time, or Response Time, for any Treatment Decision value", () => {
+    // A hospice RN is frequently documenting a caregiver-, family-, or
+    // facility-administered intervention that occurred before the RN
+    // arrived. Response/effectiveness is routinely assessed on a later
+    // follow-up visit, not at the Initial Comprehensive Assessment.
+    for (const treatmentDecision of ["INITIATED", "ALREADY_IN_PLACE", "DECLINED", "NOT_INDICATED"] as const) {
+      const missing = fieldIds({ treatmentDecision });
+      expect(missing).not.toContain("respiratory_treatment_response_status");
+      expect(missing).not.toContain("respiratory_treatment_response");
+      expect(missing).not.toContain("respiratory_treatment_action_time");
+      expect(missing).not.toContain("respiratory_treatment_response_time");
+    }
   });
 });
 
@@ -119,11 +148,19 @@ describe("respiratoryProductRequirements — oxygen", () => {
     ).toContain("respiratory_oxygen_flow_value");
   });
 
-  it("requires measurement condition, date, and time once an SpO2 value is entered", () => {
+  it("requires measurement condition once an SpO2 value is entered", () => {
     const missing = fieldIds({ spo2Value: 94 });
     expect(missing).toContain("respiratory_spo2_measurement_condition");
-    expect(missing).toContain("respiratory_oxygen_measurement_date");
-    expect(missing).toContain("respiratory_oxygen_measurement_time");
+  });
+
+  // PRODUCT-OWNER DIRECTIVE ("REMOVE OXYGEN MEASUREMENT DATE AND TIME"):
+  // RNICA is visit-based -- Visit Date / Time In / Time Out already supply
+  // the timing context for an SpO2 documented during the current visit, so
+  // these two fields must never be required, regardless of SpO2 value.
+  it("never requires oxygen measurement date/time, even when an SpO2 value is entered", () => {
+    const missing = fieldIds({ spo2Value: 94 });
+    expect(missing).not.toContain("respiratory_oxygen_measurement_date");
+    expect(missing).not.toContain("respiratory_oxygen_measurement_time");
   });
 
   it("requires spo2NotObtainedReason only when condition = NOT_OBTAINED", () => {
@@ -135,13 +172,33 @@ describe("respiratoryProductRequirements — oxygen", () => {
     );
   });
 
-  it("requires measuredOxygenFlowOrConcentration only when measured on oxygen", () => {
+  // PRODUCT-OWNER DIRECTIVE ("REMOVE Measured Oxygen Flow / Concentration"):
+  // duplicate charting -- the Oxygen Flow Rate documented under "Oxygen
+  // use & measurement" IS the flow SpO2 was measured on, so a second
+  // free-text re-entry of the same fact must never be required.
+  it("never requires measuredOxygenFlowOrConcentration, even when measured on oxygen", () => {
     expect(
       fieldIds({ spo2Value: 92, spo2MeasurementCondition: "ON_OXYGEN" }),
-    ).toContain("respiratory_measured_oxygen_flow_or_concentration");
+    ).not.toContain("respiratory_measured_oxygen_flow_or_concentration");
     expect(
       fieldIds({ spo2Value: 92, spo2MeasurementCondition: "ON_ROOM_AIR" }),
     ).not.toContain("respiratory_measured_oxygen_flow_or_concentration");
+  });
+
+  // PRODUCT-OWNER DIRECTIVE ("REMOVE O2 EFFECTIVENESS / RESPONSE"): SpO2
+  // Value + SpO2 Measurement Condition already serve as the objective
+  // oxygen-treatment outcome measure, so a separate subjective
+  // effective/ineffective field must never be required.
+  it("never requires oxygenEffectivenessResponse, even when oxygen is in use or treatment is initiated", () => {
+    expect(
+      fieldIds({
+        oxygenUse: "YES",
+        oxygenTherapy: { deliveryDevice: "NASAL_CANNULA", frequency: "CONTINUOUS", flowUnit: "L_MIN", flowValue: 3 },
+      }),
+    ).not.toContain("respiratory_oxygen_effectiveness_response");
+    expect(fieldIds({ treatmentDecision: "INITIATED" })).not.toContain(
+      "respiratory_oxygen_effectiveness_response",
+    );
   });
 });
 
@@ -157,14 +214,14 @@ describe("respiratoryProductRequirements — cough and secretions", () => {
     expect(fieldIds({ coughType: "Dry" })).not.toContain("respiratory_sputum_amount");
   });
 
-  it("requires coughClinicalSignificance only for Hemoptysis", () => {
-    expect(fieldIds({ coughType: "Hemoptysis" })).toContain("respiratory_cough_clinical_significance");
+  it("requires coughClinicalSignificance only when hemoptysisPresent", () => {
+    expect(fieldIds({ hemoptysisPresent: true })).toContain("respiratory_cough_clinical_significance");
     expect(fieldIds({ coughType: "Productive" })).not.toContain("respiratory_cough_clinical_significance");
   });
 
-  it("requires coughActionDecision for Productive/Hemoptysis only", () => {
+  it("requires coughActionDecision for Productive cough or hemoptysisPresent only", () => {
     expect(fieldIds({ coughType: "Productive" })).toContain("respiratory_cough_action_decision");
-    expect(fieldIds({ coughType: "Hemoptysis" })).toContain("respiratory_cough_action_decision");
+    expect(fieldIds({ hemoptysisPresent: true })).toContain("respiratory_cough_action_decision");
     expect(fieldIds({ coughType: "Dry" })).not.toContain("respiratory_cough_action_decision");
   });
 
@@ -223,17 +280,18 @@ describe("respiratoryProductRequirements — follow-up and POC review", () => {
     expect(fieldIds({})).not.toContain("respiratory_follow_up_need");
   });
 
-  it("requires timing plan and responsible clinician only when follow-up is needed", () => {
+  // Hospice-admission simplification (product-owner directive): Follow-Up
+  // Timing Plan / Responsible Clinician and POC Review Need/Reason were
+  // removed from the admission workflow entirely — only whether follow-up
+  // is needed at all is ever required.
+  it("never requires follow-up timing plan or responsible clinician, even when follow-up is needed", () => {
     const missing = fieldIds({ oxygenUse: "YES", followUpNeed: "NEEDED" });
-    expect(missing).toContain("respiratory_follow_up_timing_plan");
-    expect(missing).toContain("respiratory_follow_up_responsible_clinician");
-    expect(fieldIds({ oxygenUse: "YES", followUpNeed: "NOT_NEEDED" })).not.toContain(
-      "respiratory_follow_up_timing_plan",
-    );
+    expect(missing).not.toContain("respiratory_follow_up_timing_plan");
+    expect(missing).not.toContain("respiratory_follow_up_responsible_clinician");
   });
 
-  it("requires pocReviewReason only when review is needed", () => {
-    expect(fieldIds({ pocReviewNeed: "REVIEW_NEEDED" })).toContain("respiratory_poc_review_reason");
+  it("never requires pocReviewReason, even when review is needed", () => {
+    expect(fieldIds({ pocReviewNeed: "REVIEW_NEEDED" })).not.toContain("respiratory_poc_review_reason");
     expect(fieldIds({ pocReviewNeed: "NOT_NEEDED" })).not.toContain("respiratory_poc_review_reason");
   });
 

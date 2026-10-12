@@ -761,11 +761,16 @@ def test_edema_pitting_is_not_a_registered_concept():
     assert not any(code.startswith("CV_EDEMA_PITTING") for code in CONCEPT_REGISTRY)
 
 
-def test_rnica_sprint_registry_reaches_799_concepts():
+def test_rnica_sprint_registry_reaches_800_concepts():
     # Guards against silent regressions in the sprint total across all
     # 7 sections (Symptom Impact 8, Skin/Wounds 15/32-codes, GU 7,
     # GI 2-new-of-5, Endocrine 3, Nutrition 1-new-of-2,
-    # Respiratory/MSK/Cardio 2-new-of-3).
-    assert len(CONCEPT_REGISTRY) == 799
+    # Respiratory/MSK/Cardio 2-new-of-3), plus +1 for the Respiratory
+    # Cough-model clinical data correction (RESP_THORACIC_BARREL_CHEST --
+    # Barrel chest split out of the coughType single-select into its own
+    # independent thoracic-inspection finding; see RESP_COUGH_HEMOPTYSIS's
+    # sibling edit, which repoints an existing concept rather than adding
+    # a new one).
+    assert len(CONCEPT_REGISTRY) == 800
 
 

@@ -697,7 +697,8 @@ def test_respiratory_structured_fields_save_reload_and_poc_linkage(client, db_se
         "treatmentDate": "2026-08-02",
         "lungSounds": ["Crackles", "Rales"],
         "respirations": ["Tachypnea", "Orthopnea"],
-        "coughType": "Barrel chest",
+        "coughType": "Productive",
+        "barrelChestPresent": True,
         "sputumCharacter": "Thick yellow",
         "oxygenTherapy": {
             "inUse": True, "type": "Nasal cannula", "litersPerMinute": "2",

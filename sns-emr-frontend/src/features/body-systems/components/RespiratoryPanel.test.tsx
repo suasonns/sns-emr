@@ -178,6 +178,350 @@ describe("RespiratoryPanel — field editing", () => {
     expect(option.getAttribute("aria-checked")).toBe("true");
   });
 
+  it("clicking the already-selected Treatment Decision pill clears it back to unselected (hospice-usability clear/undo fix)", async () => {
+    mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+      baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate", treatmentDecision: "INITIATED" } }),
+    );
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    const group = within(screen.getByRole("radiogroup", { name: "Treatment Decision" }));
+    const initiated = group.getByRole("radio", { name: "Initiated" });
+    expect(initiated.getAttribute("aria-checked")).toBe("true");
+
+    fireEvent.click(initiated);
+    expect(initiated.getAttribute("aria-checked")).toBe("false");
+    expect(group.getByRole("radio", { name: "Already In Place" }).getAttribute("aria-checked")).toBe("false");
+    expect(group.getByRole("radio", { name: "Declined" }).getAttribute("aria-checked")).toBe("false");
+    expect(group.getByRole("radio", { name: "Not Indicated" }).getAttribute("aria-checked")).toBe("false");
+  });
+
+  // HOPE field audit: respiratory_treatment_date ("SOB Treatment Date")
+  // feeds only HOPE J2040-B reporting and has no nurse-facing control
+  // (hidden per the hospice-admission Treatment section simplification).
+  // It must be auto-generated when Initiated is selected, and the legacy
+  // treatmentInitiated/treatmentDeclined/treatmentDate values must never
+  // go stale when the nurse changes or clears the Treatment Decision.
+  it("auto-generates a treatment date (and keeps legacy flags in sync) when Treatment Decision is set to Initiated, with no nurse-facing control for it", async () => {
+    mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+      baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate" } }),
+    );
+    mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    expect(screen.queryByTestId("respiratory-field-respiratory_treatment_date")).toBeNull();
+
+    fireEvent.click(within(screen.getByRole("radiogroup", { name: "Treatment Decision" })).getByRole("radio", {
+      name: "Initiated",
+    }));
+    expect(screen.queryByTestId("respiratory-field-respiratory_treatment_date")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("respiratory-save-button"));
+    await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+    const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+    expect(savedData.treatmentInitiated).toBe(true);
+    expect(savedData.treatmentDeclined).toBe(false);
+    expect(typeof savedData.treatmentDate).toBe("string");
+    expect(savedData.treatmentDate.length).toBeGreaterThan(0);
+  });
+
+  it("resets the legacy treatmentInitiated/treatmentDeclined/treatmentDate flags instead of leaving them stale when Treatment Decision is cleared", async () => {
+    mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+      baseAssessment({
+        situation: "new_or_worsening",
+        data: {
+          sobSeverity: "Moderate",
+          treatmentDecision: "INITIATED",
+          treatmentInitiated: true,
+          treatmentDeclined: false,
+          treatmentDate: "2026-01-01",
+        },
+      }),
+    );
+    mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    const initiated = within(screen.getByRole("radiogroup", { name: "Treatment Decision" })).getByRole("radio", {
+      name: "Initiated",
+    });
+    fireEvent.click(initiated); // clears the decision (clear/undo)
+
+    fireEvent.click(screen.getByTestId("respiratory-save-button"));
+    await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+    const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+    expect(savedData.treatmentInitiated).toBeUndefined();
+    expect(savedData.treatmentDeclined).toBeUndefined();
+    expect(savedData.treatmentDate).toBeUndefined();
+  });
+
+  // Hospice-admission simplification (product-owner "PRODUCT OWNER
+  // CORRECTION" directive): the Treatment section must contain exactly
+  // Treatment Decision, Treatment Narrative, Follow-Up Needed, and
+  // Respiratory Notes — Treatment Action Date/Time, Response, Response
+  // Status/Time, Follow-Up Timing Plan/Responsible Clinician, and POC
+  // Review Need/Reason/Source Reference must never render, for ANY
+  // Treatment Decision value, because hospital-style exact-timing and
+  // immediate-effectiveness requirements do not reflect real hospice
+  // admission practice.
+  describe("hospice-admission Treatment section simplification", () => {
+    const hiddenFieldIds = [
+      "respiratory_treatment_action_date",
+      "respiratory_treatment_action_time",
+      "respiratory_treatment_response_time",
+      "respiratory_treatment_response",
+      "respiratory_treatment_response_status",
+      "respiratory_treatment_decline_reason",
+      "respiratory_follow_up_timing_plan",
+      "respiratory_follow_up_responsible_clinician",
+      "respiratory_poc_review_need",
+      "respiratory_poc_review_reason",
+      "respiratory_poc_source_reference",
+      "respiratory_configured_requirement_response",
+      "respiratory_configured_follow_up_status",
+      "respiratory_treatment_date",
+    ];
+
+    it.each(["INITIATED", "ALREADY_IN_PLACE", "DECLINED", "NOT_INDICATED"])(
+      "never renders the removed Treatment/follow-up/POC fields when Treatment Decision = %s",
+      async (treatmentDecision) => {
+        mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+          baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate", treatmentDecision } }),
+        );
+        render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+        await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+        for (const fieldId of hiddenFieldIds) {
+          expect(screen.queryByTestId(`respiratory-field-${fieldId}`)).toBeNull();
+        }
+      },
+    );
+
+    // FINAL PRODUCT-OWNER DIRECTIVE: the free-text "Treatment/Intervention"
+    // box duplicated the authoritative Orders/Medications workflow and is
+    // removed as an active control for Initiated/Already In Place. Those
+    // two values now show Clinical Response to Treatment instead.
+    it("shows Clinical Response (not Treatment Narrative) for INITIATED and ALREADY_IN_PLACE", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate", treatmentDecision: "INITIATED" } }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.getByTestId("respiratory-field-respiratory_treatment_decision")).toBeTruthy();
+      expect(screen.getByTestId("respiratory-field-respiratory_follow_up_need")).toBeTruthy();
+      expect(screen.getByTestId("respiratory-field-respiratory_clinical_response")).toBeTruthy();
+      expect(screen.queryByTestId("respiratory-field-respiratory_treatment_description")).toBeNull();
+    });
+
+    it("keeps Treatment Narrative visible (as Decline Reason/Clinical Rationale) for DECLINED and NOT_INDICATED", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate", treatmentDecision: "DECLINED" } }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.getByTestId("respiratory-field-respiratory_treatment_decision")).toBeTruthy();
+      expect(screen.getByTestId("respiratory-field-respiratory_treatment_description")).toBeTruthy();
+      expect(screen.getByTestId("respiratory-field-respiratory_follow_up_need")).toBeTruthy();
+      expect(screen.queryByTestId("respiratory-field-respiratory_clinical_response")).toBeNull();
+    });
+
+    it("reuses Treatment Narrative as 'Decline Reason' for DECLINED instead of a separate field", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate", treatmentDecision: "DECLINED" } }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.getByRole("textbox", { name: "Decline Reason" })).toBeTruthy();
+    });
+  });
+
+  // FINAL PRODUCT-OWNER DIRECTIVE: data-ownership correction — Respiratory
+  // must not let a nurse re-enter medication/order details that belong
+  // exclusively to the authoritative Orders/Medications workflow.
+  describe("clinical-response data-ownership correction (FINAL PRODUCT-OWNER DIRECTIVE)", () => {
+    it("preserves historical Treatment/Intervention free text read-only for INITIATED/ALREADY_IN_PLACE records predating the correction", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: {
+            sobSeverity: "Moderate",
+            treatmentDecision: "ALREADY_IN_PLACE",
+            treatmentDescription: "Budesonide 0.5 mg BID; Duoneb QID",
+          },
+        }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      const legacyBlock = screen.getByTestId("respiratory-legacy-treatment-documentation");
+      expect(legacyBlock.textContent).toContain("Budesonide 0.5 mg BID; Duoneb QID");
+      // Never editable — no textbox renders this historical value.
+      expect(screen.queryByTestId("respiratory-field-respiratory_treatment_description")).toBeNull();
+    });
+
+    it("does not render the legacy documentation block when there is no historical value", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate", treatmentDecision: "INITIATED" } }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.queryByTestId("respiratory-legacy-treatment-documentation")).toBeNull();
+    });
+
+  });
+
+  // Hospice is visit-based, not minute-by-minute event tracking: Visit
+  // Date/Type/Timestamp already establish the clinical time reference, so
+  // "Comfort / Function Screening Time" is removed entirely. The Date
+  // field is likewise hidden from the nurse workflow (see "visit-date
+  // default-fill" below) — RNICA is visit-centric, so both the Time and
+  // the Date are no longer separate nurse-facing controls.
+  describe("comfort/function screening time removal (visit-based documentation directive)", () => {
+    it("never renders Comfort / Function Screening Time or Date", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { sobSeverity: "Moderate", comfortFunctionImpact: "IMPACT_PRESENT" },
+        }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.queryByTestId("respiratory-field-respiratory_comfort_function_screening_time")).toBeNull();
+      expect(screen.queryByTestId("respiratory-field-respiratory_comfort_function_screening_date")).toBeNull();
+    });
+  });
+
+  // Hospice visit-based documentation directive ("RNICA is visit-centric"):
+  // SOB Screening Date and Comfort/Function Screening Date are hidden from
+  // the nurse workflow entirely (no visible field, no toggle, no override
+  // UI) and silently default to the visit date rather than asking the
+  // nurse to re-enter a date for an assessment already being performed
+  // during the current documented visit. The default is a one-time fill
+  // of a blank field; a date already on the draft (e.g. a historical/
+  // late-documented value) is always preserved. A true exception is
+  // recorded narratively in Respiratory Notes, not via a structured field.
+  describe("visit-date default-fill (hospice visit-based documentation directive)", () => {
+    it("never renders a SOB Screening Date or Comfort / Function Screening Date field", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { shortnessOfBreathScreened: true, comfortFunctionImpact: "IMPACT_PRESENT" },
+        }),
+      );
+      render(
+        <RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} visitDate="2026-03-14" />,
+      );
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.queryByTestId("respiratory-field-respiratory_screening_date")).toBeNull();
+      expect(screen.queryByTestId("respiratory-field-respiratory_comfort_function_screening_date")).toBeNull();
+    });
+
+    it("silently fills the SOB Screening Date from the visit date once SOB has been screened and the date is blank", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({ situation: "new_or_worsening", data: { shortnessOfBreathScreened: true } }),
+      );
+      mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+      render(
+        <RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} visitDate="2026-03-14" />,
+      );
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      fireEvent.click(screen.getByTestId("respiratory-save-button"));
+      await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+      const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+      expect(savedData.screeningDate).toBe("2026-03-14");
+    });
+
+    it("does not overwrite an already-entered SOB Screening Date with the visit date", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { shortnessOfBreathScreened: true, screeningDate: "2026-02-01" },
+        }),
+      );
+      mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+      render(
+        <RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} visitDate="2026-03-14" />,
+      );
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      fireEvent.click(screen.getByTestId("respiratory-save-button"));
+      await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+      const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+      expect(savedData.screeningDate).toBe("2026-02-01");
+    });
+
+    it("silently fills the Comfort / Function Screening Date from the visit date once an impact is recorded and the date is blank", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { sobSeverity: "Moderate", comfortFunctionImpact: "IMPACT_PRESENT" },
+        }),
+      );
+      mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+      render(
+        <RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} visitDate="2026-03-14" />,
+      );
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      fireEvent.click(screen.getByTestId("respiratory-save-button"));
+      await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+      const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+      expect(savedData.comfortFunctionScreeningDate).toBe("2026-03-14");
+    });
+
+    it("leaves both screening dates unset when no visitDate prop is supplied", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { shortnessOfBreathScreened: true, comfortFunctionImpact: "IMPACT_PRESENT" },
+        }),
+      );
+      mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      fireEvent.click(screen.getByTestId("respiratory-save-button"));
+      await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+      const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+      expect(savedData.screeningDate).toBeUndefined();
+      expect(savedData.comfortFunctionScreeningDate).toBeUndefined();
+    });
+  });
+
+  // Hospice admission Treatment simplification + RNICA visit-centricity:
+  // respiratory_treatment_date (HOPE J2040-B reporting-only) now prefers
+  // the RNICA visit date over today's date, since the RN is documenting
+  // during that visit, not necessarily on today's calendar date.
+  describe("treatment date auto-generation uses the visit date when available", () => {
+    it("uses the visitDate prop instead of today's date when Treatment Decision becomes Initiated", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({ situation: "new_or_worsening", data: { sobSeverity: "Moderate" } }),
+      );
+      mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+      render(
+        <RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} visitDate="2026-03-14" />,
+      );
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      fireEvent.click(within(screen.getByRole("radiogroup", { name: "Treatment Decision" })).getByRole("radio", {
+        name: "Initiated",
+      }));
+
+      fireEvent.click(screen.getByTestId("respiratory-save-button"));
+      await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+      const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+      expect(savedData.treatmentDate).toBe("2026-03-14");
+    });
+  });
+
   it("records a free-text notes entry", async () => {
     mocks.getRespiratoryAssessment.mockResolvedValueOnce(baseAssessment());
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);

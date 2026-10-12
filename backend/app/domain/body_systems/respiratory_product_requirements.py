@@ -56,11 +56,15 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
     assessment_context: Optional[str] = data.get("assessmentContext")
     clinical_comparison: Optional[str] = data.get("clinicalComparison")
     cough_type: Optional[str] = data.get("coughType")
+    # Hemoptysis is an independent finding (can coexist with Productive or
+    # Non-productive cough), not a coughType value -- see
+    # respiratoryProductRequirements.ts for the frontend source of truth.
+    hemoptysis_present: bool = bool(data.get("hemoptysisPresent"))
     oxygen_use: Optional[str] = data.get("oxygenUse")
     sob_severity: Optional[str] = data.get("sobSeverity")
     support_status: Optional[str] = data.get("respiratorySupportStatus")
     treatment_decision: Optional[str] = data.get("treatmentDecision")
-    treatment_response_status: Optional[str] = data.get("treatmentResponseStatus")
+    clinical_response: Optional[str] = data.get("clinicalResponse")
     cough_action_decision: Optional[str] = data.get("coughActionDecision")
 
     # --- Section 3: Assessment context & comparison -----------------------
@@ -92,30 +96,39 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
     # --- Section 5: Treatment decision --------------------------------------
     treatment_applicable = bool(
         (sob_severity and sob_severity != "None")
-        or cough_type in ("Productive", "Hemoptysis")
+        or cough_type == "Productive"
+        or hemoptysis_present
         or oxygen_use == "YES"
         or support_status == "IN_USE"
     )
     if treatment_applicable and not treatment_decision:
         push("respiratory_treatment_decision", "Record the treatment decision.")
-    if treatment_decision in ("INITIATED", "ALREADY_IN_PLACE") and not _text_filled(data.get("treatmentDescription")):
-        push("respiratory_treatment_description", "Describe the treatment.")
-    if treatment_decision == "DECLINED" and not _text_filled(data.get("treatmentDeclineReason")):
-        push("respiratory_treatment_decline_reason", "Record the reason treatment was declined.")
-    if treatment_decision and treatment_decision != "NOT_INDICATED" and not treatment_response_status:
-        push("respiratory_treatment_response_status", "Record the treatment response status.")
-    if (
-        treatment_decision == "INITIATED"
-        and treatment_response_status != "PENDING"
-        and not _text_filled(data.get("treatmentResponse"))
-    ):
-        push("respiratory_treatment_response", "Record the observed/reported treatment response.")
-    if (
-        treatment_decision == "ALREADY_IN_PLACE"
-        and treatment_response_status in ("OBSERVED", "REPORTED")
-        and not _text_filled(data.get("treatmentResponse"))
-    ):
-        push("respiratory_treatment_response", "Record the current treatment effectiveness.")
+    # FINAL PRODUCT-OWNER DIRECTIVE (clinical workflow / data-ownership
+    # correction, mirrors respiratoryProductRequirements.ts): the free-text
+    # "Describe the treatment" requirement for INITIATED/ALREADY_IN_PLACE is
+    # REMOVED -- it let a nurse re-enter medication/order details (drug,
+    # dose, route, frequency) that belong exclusively to the authoritative
+    # Orders/Medications workflow. Treatment Decision itself is unchanged
+    # and is never remapped. Clinical Response (patient's observed response
+    # only -- never an order) is required in its place.
+    if treatment_decision in ("INITIATED", "ALREADY_IN_PLACE") and not clinical_response:
+        push("respiratory_clinical_response", "Record the clinical response to the current treatment.")
+    # DECLINED/NOT_INDICATED reuse the single canonical Treatment Narrative
+    # field (`treatmentDescription`, presented contextually as "Decline
+    # Reason" / "Clinical Rationale" -- see RespiratoryPanel.tsx's
+    # treatmentDescriptionContext()); aligned here with the frontend's
+    # canonical key (previously this backend mirror incorrectly checked the
+    # legacy, hidden `treatmentDeclineReason` key for DECLINED).
+    if treatment_decision == "DECLINED" and not _text_filled(data.get("treatmentDescription")):
+        push("respiratory_treatment_description", "Record the reason treatment was declined.")
+    if treatment_decision == "NOT_INDICATED" and treatment_applicable and not _text_filled(data.get("treatmentDescription")):
+        push("respiratory_treatment_description", "Record the clinical rationale for not indicating Respiratory treatment.")
+    # Hospice-admission correction (product-owner directive): Treatment
+    # Response / Response Status / Response Time / Action Time are never
+    # required for "Complete System Review", for ANY Treatment Decision
+    # value -- response/effectiveness is routinely evaluated on a later
+    # follow-up visit, not at admission. These fields remain fully
+    # enterable (optional) but must never block completion.
 
     # --- Section 6: Finding-level follow-up / POC review --------------------
     finding_level_follow_up_applicable = treatment_applicable
@@ -151,21 +164,20 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
         push("respiratory_spo2_measurement_condition", "Record the SpO2 measurement condition.")
     if spo2_measurement_condition == "NOT_OBTAINED" and not _text_filled(data.get("spo2NotObtainedReason")):
         push("respiratory_spo2_not_obtained_reason", "Record why SpO2 was not obtained.")
-    if spo2_value is not None:
-        if not _text_filled(data.get("oxygenMeasurementDate")):
-            push("respiratory_oxygen_measurement_date", "Record the SpO2 measurement date.")
-        if not _text_filled(data.get("oxygenMeasurementTime")):
-            push("respiratory_oxygen_measurement_time", "Record the SpO2 measurement time.")
-    if (
-        spo2_measurement_condition == "ON_OXYGEN"
-        and spo2_value is not None
-        and not _text_filled(data.get("measuredOxygenFlowOrConcentration"))
-    ):
-        push("respiratory_measured_oxygen_flow_or_concentration", "Record the measured oxygen flow/concentration.")
-    if (
-        oxygen_use == "YES" or (treatment_decision and treatment_decision != "NOT_INDICATED")
-    ) and not _text_filled(data.get("oxygenEffectivenessResponse")):
-        push("respiratory_oxygen_effectiveness_response", "Record oxygen/treatment effectiveness or response.")
+    # PRODUCT-OWNER DIRECTIVE ("REMOVE Measured Oxygen Flow / Concentration"):
+    # duplicate charting -- the Oxygen Flow Rate documented above IS the
+    # flow SpO2 was measured on. A second free-text re-entry of the same
+    # fact is never required (see
+    # RESPIRATORY_MEASURED_OXYGEN_FLOW_OR_CONCENTRATION_FIELD in
+    # respiratoryFieldInventory.ts and LEGACY_HIDDEN_FIELD_IDS in
+    # RespiratoryPanel.tsx).
+    #
+    # PRODUCT-OWNER DIRECTIVE ("REMOVE O2 EFFECTIVENESS / RESPONSE"): SpO2
+    # Value + SpO2 Measurement Condition already serve as the objective
+    # oxygen-treatment outcome measure. A separate subjective
+    # effective/ineffective field is never required (see
+    # RESPIRATORY_OXYGEN_EFFECTIVENESS_RESPONSE_FIELD and
+    # LEGACY_HIDDEN_FIELD_IDS in RespiratoryPanel.tsx).
 
     # --- Section 8: Cough and secretions ---------------------------------------
     if not cough_type:
@@ -179,8 +191,8 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
         data.get("sputumOtherSpecification")
     ):
         push("respiratory_sputum_other_specification", "Specify the sputum character/color.")
-    cough_requires_action = cough_type in ("Productive", "Hemoptysis")
-    if cough_type == "Hemoptysis" and not _text_filled(data.get("coughClinicalSignificance")):
+    cough_requires_action = cough_type == "Productive" or hemoptysis_present
+    if hemoptysis_present and not _text_filled(data.get("coughClinicalSignificance")):
         push("respiratory_cough_clinical_significance", "Record the clinical significance of hemoptysis.")
     if cough_requires_action and not cough_action_decision:
         push("respiratory_cough_action_decision", "Record the cough action decision.")
@@ -193,17 +205,16 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
             push("respiratory_cough_action_date_time", "Record when the cough/secretions action occurred.")
     if cough_action_decision == "DECLINED" and not _text_filled(data.get("coughDeclineReason")):
         push("respiratory_cough_decline_reason", "Record why the cough/secretions action was declined.")
-    if cough_action_decision in ("ACTION_TAKEN", "DECLINED") and (
-        not _text_filled(data.get("coughFollowUpTimingPlan"))
-        or not _text_filled(data.get("coughFollowUpResponsibleClinician"))
-    ):
-        if not _text_filled(data.get("coughFollowUpTimingPlan")):
-            push("respiratory_cough_follow_up_timing_plan", "Record the cough/secretions follow-up timing/plan.")
-        if not _text_filled(data.get("coughFollowUpResponsibleClinician")):
-            push(
-                "respiratory_cough_follow_up_responsible_clinician",
-                "Record who is responsible for cough/secretions follow-up.",
-            )
+    # PRODUCT-OWNER DIRECTIVE ("FINAL RESPIRATORY USABILITY REVIEW" --
+    # A=Assessment Finding vs B=Future Plan): coughFollowUpTimingPlan /
+    # coughFollowUpResponsibleClinician documented *who will do what, when,
+    # in the future* -- POC's purpose (goals, interventions, follow-up
+    # actions, treatment plans), not RNICA's (assessment, findings,
+    # clinical status, clinical response). Same classification and
+    # disposition as the already-retired respiratory_support_follow_up_plan.
+    # Never required going forward; see RESPIRATORY_COUGH_FOLLOW_UP_*
+    # fields in respiratoryFieldInventory.ts and LEGACY_HIDDEN_FIELD_IDS in
+    # RespiratoryPanel.tsx.
 
     # --- Section 9: Respiratory support and airway ----------------------------
     if not support_status:

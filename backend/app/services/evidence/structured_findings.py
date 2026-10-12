@@ -246,8 +246,14 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "RESP_DYSPNEA_PURSED_LIP_BREATHING": ConceptMapping("RESP_DYSPNEA_PURSED_LIP_BREATHING", "respiratory", "Pursed-lip breathing", (_fw("exertionLevel", "Pursed-lip breathing"),)),
     "RESP_COUGH_PRODUCTIVE": ConceptMapping("RESP_COUGH_PRODUCTIVE", "respiratory", "Productive cough", (_fw("coughType", "Productive"),)),
     "RESP_COUGH_NON_PRODUCTIVE": ConceptMapping("RESP_COUGH_NON_PRODUCTIVE", "respiratory", "Non-productive cough", (_fw("coughType", "Non-productive"),)),
-    "RESP_COUGH_HEMOPTYSIS": ConceptMapping("RESP_COUGH_HEMOPTYSIS", "respiratory", "Hemoptysis", (_fw("coughType", "Hemoptysis"),)),
+    # Hemoptysis is an independent finding, not a cough-productivity value --
+    # it can coexist with Productive or Non-productive cough. Writes to its
+    # own `hemoptysisPresent` flag instead of overwriting `coughType`.
+    "RESP_COUGH_HEMOPTYSIS": ConceptMapping("RESP_COUGH_HEMOPTYSIS", "respiratory", "Hemoptysis", (_fw("hemoptysisPresent", True),)),
     "RESP_COUGH_NONE": ConceptMapping("RESP_COUGH_NONE", "respiratory", "Cough explicitly denied", (_fw("coughType", "None"),)),
+    # Barrel chest is a thoracic-inspection finding (chronic hyperinflation),
+    # not a cough characteristic -- independent of coughType/hemoptysis.
+    "RESP_THORACIC_BARREL_CHEST": ConceptMapping("RESP_THORACIC_BARREL_CHEST", "respiratory", "Barrel chest", (_fw("barrelChestPresent", True),)),
     "RESP_LUNG_SOUNDS_CLEAR": ConceptMapping("RESP_LUNG_SOUNDS_CLEAR", "respiratory", "Lungs clear", (_fw("lungSounds", "Clear", op="multi_add"),)),
     "RESP_LUNG_SOUNDS_CRACKLES": ConceptMapping("RESP_LUNG_SOUNDS_CRACKLES", "respiratory", "Crackles", (_fw("lungSounds", "Crackles", op="multi_add"),)),
     "RESP_LUNG_SOUNDS_WHEEZES": ConceptMapping("RESP_LUNG_SOUNDS_WHEEZES", "respiratory", "Wheezes", (_fw("lungSounds", "Wheezes", op="multi_add"),)),

@@ -61,12 +61,18 @@ describe("Body Systems — Respiratory situation requirement satisfaction", () =
     expect(declinedTreatmentAlsoSatisfiesIntervention).toContain("intervention_or_response");
   });
 
-  it("canonical Treatment Decision also satisfies intervention_or_response once its applicable evidence is complete", () => {
-    const enumAloneIsNotEnough = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+  it("canonical Treatment Decision satisfies intervention_or_response from the decision alone (hospice workflow correction: Response is never required at admission)", () => {
+    const initiatedEnumAlone = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
       clinicalStatusChange: "Declining",
       treatmentDecision: "INITIATED",
     });
-    expect(enumAloneIsNotEnough).not.toContain("intervention_or_response");
+    expect(initiatedEnumAlone).toContain("intervention_or_response");
+
+    const alreadyInPlaceEnumAlone = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
+      clinicalStatusChange: "Declining",
+      treatmentDecision: "ALREADY_IN_PLACE",
+    });
+    expect(alreadyInPlaceEnumAlone).toContain("intervention_or_response");
 
     const initiatedWithResponse = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
       clinicalStatusChange: "Declining",
@@ -86,7 +92,7 @@ describe("Body Systems — Respiratory situation requirement satisfaction", () =
     const declinedWithCompleteDisposition = getSatisfiedRespiratoryRequirementKeys("new_or_worsening", {
       clinicalStatusChange: "Declining",
       treatmentDecision: "DECLINED",
-      treatmentDeclineReason: "Patient declined further intervention.",
+      treatmentDescription: "Patient declined further intervention.",
       followUpNeed: "NOT_NEEDED",
     });
     expect(declinedWithCompleteDisposition).toContain("intervention_or_response");

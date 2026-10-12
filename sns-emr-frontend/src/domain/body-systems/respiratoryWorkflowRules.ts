@@ -79,6 +79,10 @@ export interface RespiratoryAssessmentValues {
   lungSounds?: readonly string[];
   respirations?: readonly string[];
   coughType?: string;
+  /** Independent finding -- can coexist with Productive or Non-productive coughType. Not a coughType value. */
+  hemoptysisPresent?: boolean;
+  /** Independent thoracic-inspection finding -- not a cough characteristic. */
+  barrelChestPresent?: boolean;
   sputumCharacter?: string;
   oxygenTherapy?: RespiratoryOxygenTherapyValues;
   ventilator?: RespiratoryVentilatorValues;
@@ -105,6 +109,10 @@ export interface RespiratoryAssessmentValues {
   treatmentResponseTime?: string;
   treatmentResponse?: string;
   treatmentResponseStatus?: string;
+  /** FINAL PRODUCT-OWNER DIRECTIVE: patient's observed clinical response
+   * for INITIATED/ALREADY_IN_PLACE. Never an order/medication detail. */
+  clinicalResponse?: string;
+  clinicalResponseEvidence?: string;
   followUpNeed?: string;
   followUpTimingPlan?: string;
   followUpResponsibleClinician?: string;
@@ -156,6 +164,7 @@ function toProductAuthorizedValues(values: RespiratoryAssessmentValues): Respira
     treatmentActionTime: values.treatmentActionTime,
     treatmentResponse: values.treatmentResponse,
     treatmentResponseStatus: values.treatmentResponseStatus,
+    clinicalResponse: values.clinicalResponse,
     followUpNeed: values.followUpNeed,
     followUpTimingPlan: values.followUpTimingPlan,
     followUpResponsibleClinician: values.followUpResponsibleClinician,
@@ -242,6 +251,8 @@ function hasAnyCurrentFindingFieldPopulated(values: RespiratoryAssessmentValues)
       // record coughType = "None" without that choice itself flipping the
       // derived situation away from `no_current_concern`.
       (values.coughType && values.coughType !== "None") ||
+      values.hemoptysisPresent ||
+      values.barrelChestPresent ||
       values.sputumCharacter ||
       values.oxygenTherapy?.inUse ||
       values.ventilator?.shortTermVentilator ||
@@ -253,33 +264,22 @@ function hasDocumentedIntervention(values: RespiratoryAssessmentValues): boolean
   return values.treatmentDecision === "INITIATED" || values.treatmentDecision === "ALREADY_IN_PLACE";
 }
 
-function hasDocumentedResponse(values: RespiratoryAssessmentValues): boolean {
-  if (!hasDocumentedIntervention(values)) {
-    return false;
-  }
-  if (!values.treatmentResponseStatus) {
-    return false;
-  }
-  if (values.treatmentResponseStatus === "PENDING") {
-    return true;
-  }
-  return textFilled(values.treatmentResponse);
-}
-
 function hasDocumentedDeclineDisposition(values: RespiratoryAssessmentValues): boolean {
   if (values.treatmentDecision !== "DECLINED") {
     return false;
   }
-  if (!textFilled(values.treatmentDeclineReason)) {
+  // Hospice-admission simplification (product-owner directive): DECLINED
+  // reuses the single canonical Treatment Narrative field
+  // (`treatmentDescription`, presented contextually as "Decline Reason" —
+  // see RespiratoryPanel.tsx's treatmentDescriptionContext()) instead of a
+  // separate `treatmentDeclineReason` field, and no longer requires
+  // Follow-Up Timing Plan / Follow-Up Responsible Clinician sub-fields
+  // (those were removed from the admission workflow entirely). Only
+  // Follow-Up Need itself must be recorded.
+  if (!textFilled(values.treatmentDescription)) {
     return false;
   }
-  if (!values.followUpNeed) {
-    return false;
-  }
-  if (values.followUpNeed === "NEEDED") {
-    return textFilled(values.followUpTimingPlan) && textFilled(values.followUpResponsibleClinician);
-  }
-  return true;
+  return Boolean(values.followUpNeed);
 }
 
 function hasDocumentedNotIndicatedDisposition(values: RespiratoryAssessmentValues): boolean {
@@ -288,12 +288,22 @@ function hasDocumentedNotIndicatedDisposition(values: RespiratoryAssessmentValue
 
 /**
  * Canonical Treatment Decision counterpart of the legacy-only check below.
- * Per the product-owner-authorized semantics:
- * - INITIATED/ALREADY_IN_PLACE counts as documented intervention only once
- *   its applicable response evidence is also present (an enum selection
- *   alone is not a complete intervention);
+ * Per the product-owner-authorized hospice-admission semantics (hospice
+ * workflow correction):
+ * - INITIATED/ALREADY_IN_PLACE counts as a documented intervention from the
+ *   decision itself (the separate `respiratoryProductRequirements.ts`
+ *   engine independently still requires the Treatment/Intervention
+ *   description text). Treatment Response, Response Status, Action Time,
+ *   and Response Time are NEVER required to reach this disposition — a
+ *   hospice RN is frequently documenting a caregiver-, family-, or
+ *   facility-administered intervention that occurred before the RN
+ *   arrived and cannot know its exact timing or effectiveness; response is
+ *   routinely assessed on a later follow-up visit, not at admission;
  * - DECLINED counts as a documented disposition (not an intervention) once
- *   the decline reason and applicable follow-up are complete;
+ *   the decline reason (the shared Treatment Narrative field) and
+ *   Follow-Up Need are recorded. Follow-Up Timing Plan / Responsible
+ *   Clinician sub-fields are never required — they were removed from the
+ *   admission workflow (product-owner hospice-admission simplification);
  * - NOT_INDICATED counts as a documented disposition (not an intervention
  *   or response) from the selection alone — there is no repository-backed
  *   rationale field for this value yet, so a rationale cannot be required
@@ -301,7 +311,7 @@ function hasDocumentedNotIndicatedDisposition(values: RespiratoryAssessmentValue
  */
 function hasCompleteTreatmentDisposition(values: RespiratoryAssessmentValues): boolean {
   return (
-    (hasDocumentedIntervention(values) && hasDocumentedResponse(values)) ||
+    hasDocumentedIntervention(values) ||
     hasDocumentedDeclineDisposition(values) ||
     hasDocumentedNotIndicatedDisposition(values)
   );

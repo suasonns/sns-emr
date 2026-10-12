@@ -105,12 +105,18 @@ describe("mapTreatmentDecisionToLegacy", () => {
     });
   });
 
-  it("does not fabricate a legacy value for ALREADY_IN_PLACE", () => {
-    expect(mapTreatmentDecisionToLegacy("ALREADY_IN_PLACE")).toEqual({});
+  it("maps ALREADY_IN_PLACE to both legacy booleans false (not initiated during this assessment, but not left stale either)", () => {
+    expect(mapTreatmentDecisionToLegacy("ALREADY_IN_PLACE")).toEqual({
+      treatmentInitiated: false,
+      treatmentDeclined: false,
+    });
   });
 
-  it("does not fabricate a legacy value for an undefined decision", () => {
-    expect(mapTreatmentDecisionToLegacy(undefined)).toEqual({});
+  it("resets both legacy booleans to undefined when the decision is cleared, so a stale prior selection cannot linger (HOPE J2040 correctness)", () => {
+    expect(mapTreatmentDecisionToLegacy(undefined)).toEqual({
+      treatmentInitiated: undefined,
+      treatmentDeclined: undefined,
+    });
   });
 });
 

@@ -23,9 +23,15 @@
  *    canonical value, so the legacy keys remain populated for historical/
  *    audit continuity once their separate nurse-facing control is
  *    retired. These only set a legacy value where the specification
- *    defines a deterministic mapping; an ambiguous canonical value (e.g.
- *    `ALREADY_IN_PLACE`, `UNABLE_TO_VERIFY`, `NOT_OBTAINED`) leaves the
- *    legacy key untouched rather than fabricating one.
+ *    defines a deterministic mapping; a canonical value with no legacy
+ *    equivalent (e.g. `UNABLE_TO_VERIFY`, `NOT_OBTAINED`) leaves the legacy
+ *    key untouched rather than fabricating one. `mapTreatmentDecisionToLegacy`
+ *    is the one exception that is written as a *total* function (every
+ *    decision, including `ALREADY_IN_PLACE` and cleared/unselected, returns
+ *    explicit values): the legacy `treatmentInitiated`/`treatmentDeclined`
+ *    pair also feeds HOPE J2040 reporting, so a stale value left over from
+ *    a previously-selected decision is a correctness bug, not a harmless
+ *    gap — see `mapTreatmentDecisionToLegacy` for the per-case rationale.
  */
 
 export interface RespiratoryLegacyTreatmentValues {
@@ -128,10 +134,11 @@ export function deriveSpo2MeasurementConditionDisplay(
  * derivations above). Applied whenever the nurse sets a canonical field
  * going forward, so the legacy compatibility keys stay populated for
  * historical/audit continuity without requiring a second, separate nurse-
- * facing control. Deterministic only where the specification says so; an
- * ambiguous/non-mapping canonical value (e.g. `ALREADY_IN_PLACE`,
- * `UNABLE_TO_VERIFY`, `NOT_OBTAINED`) leaves the corresponding legacy key
- * untouched rather than fabricating a value for it.
+ * facing control. Total: every decision value, including `ALREADY_IN_PLACE`
+ * and cleared/unselected, returns explicit legacy values rather than
+ * leaving the previous selection's legacy flags untouched — this pair also
+ * feeds HOPE J2040 reporting, so a stale leftover value is a correctness
+ * bug (see per-case comments below).
  */
 export function mapTreatmentDecisionToLegacy(
   decision: string | undefined,
@@ -143,11 +150,20 @@ export function mapTreatmentDecisionToLegacy(
       return { treatmentInitiated: false, treatmentDeclined: true };
     case "NOT_INDICATED":
       return { treatmentInitiated: false, treatmentDeclined: false };
-    // ALREADY_IN_PLACE: do not fabricate `treatmentInitiated` — the legacy
-    // field means "initiated during this assessment", which an existing,
-    // already-in-place treatment is not.
+    case "ALREADY_IN_PLACE":
+      // An existing treatment was not initiated *during this assessment* —
+      // this is an explicit, accurate `false`, not a fabricated guess, so
+      // it must still be written (otherwise a prior INITIATED/DECLINED
+      // selection that the nurse later changes to ALREADY_IN_PLACE would
+      // leave a stale legacy/HOPE-feeding flag behind).
+      return { treatmentInitiated: false, treatmentDeclined: false };
     default:
-      return {};
+      // Treatment Decision cleared/unselected (hospice-usability clear/undo
+      // control): reset the derived legacy flags to unset rather than
+      // leaving behind whatever value a previously-selected decision wrote,
+      // which would otherwise let HOPE J2040 reporting and historical/audit
+      // consumers see a decision the nurse no longer has selected.
+      return { treatmentInitiated: undefined, treatmentDeclined: undefined };
   }
 }
 
@@ -171,4 +187,67 @@ export function mapVentilatorDurationToLegacy(
   if (duration === "SHORT_TERM") return { shortTermVentilator: true, longTermVentilator: false };
   if (duration === "LONG_TERM") return { shortTermVentilator: false, longTermVentilator: true };
   return {};
+}
+
+/**
+ * Oxygen-field consolidation (product-owner "TOO MUCH REDUNDANCY" /
+ * Ticket 2 directive): `respiratory_oxygen_delivery_type`,
+ * `respiratory_oxygen_liters_per_minute`, `respiratory_oxygen_delivery_mode`,
+ * and `respiratory_oxygen_sat_on_o2` are legacy-only compatibility keys now
+ * superseded by `oxygenTherapy.deliveryDevice`, `oxygenTherapy.flowValue`/
+ * `flowUnit`, `oxygenTherapy.frequency`, and top-level `spo2Value`
+ * respectively — a nurse was previously shown both the legacy and
+ * canonical control for the same concept at once. These WRITE mappings
+ * keep the legacy keys populated for historical/audit continuity now that
+ * their separate nurse-facing controls are retired (see
+ * `RespiratoryPanel.tsx`'s `LEGACY_HIDDEN_FIELD_IDS`), mirroring the
+ * existing mappings above. None fabricate a value with no deterministic
+ * legacy equivalent.
+ */
+export function mapOxygenDeliveryDeviceToLegacyType(
+  device: string | undefined,
+  otherDevice: string | undefined,
+): string | undefined {
+  switch (device) {
+    case "NASAL_CANNULA":
+      return "Nasal cannula";
+    case "MASK":
+      // The legacy vocabulary distinguishes several mask types the
+      // canonical field intentionally collapsed into one "Mask" choice;
+      // "Simple mask" is the closest generic equivalent, never a guess at
+      // which specific legacy mask type was meant.
+      return "Simple mask";
+    case "OTHER":
+      return otherDevice || undefined;
+    default:
+      // UNABLE_TO_VERIFY / unset: no deterministic legacy device.
+      return undefined;
+  }
+}
+
+export function mapOxygenFlowValueToLegacyLitersPerMinute(
+  flowValue: number | undefined,
+  flowUnit: string | undefined,
+): number | undefined {
+  // Only an L/min-labeled flow value has a direct legacy equivalent; never
+  // fabricate a unit conversion for any other/unset flow unit.
+  return flowUnit === "L_MIN" ? flowValue : undefined;
+}
+
+export function mapOxygenFrequencyToLegacyDeliveryMode(frequency: string | undefined): string | undefined {
+  if (frequency === "CONTINUOUS") return "Continuous";
+  if (frequency === "PRN") return "PRN";
+  // SCHEDULED / OTHER: the legacy field only ever supported Continuous/PRN;
+  // do not force either onto a value it never represented.
+  return undefined;
+}
+
+export function mapSpo2ValueToLegacySatOnO2(
+  spo2Value: number | undefined,
+  condition: string | undefined,
+): number | undefined {
+  // The legacy field specifically meant "SpO2 while on oxygen" — only
+  // mirror the canonical SpO2 Value when the canonical condition confirms
+  // that same clinical context.
+  return condition === "ON_OXYGEN" ? spo2Value : undefined;
 }

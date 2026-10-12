@@ -97,6 +97,8 @@ def _has_any_current_finding_field(data: dict[str, Any]) -> bool:
         # not an entered finding -- mirrors respiratoryWorkflowRules.ts's
         # hasAnyCurrentFindingFieldPopulated, kept in lockstep with it.
         or (cough_type and cough_type != "None")
+        or data.get("hemoptysisPresent")
+        or data.get("barrelChestPresent")
         or data.get("sputumCharacter")
         or (isinstance(oxygen, dict) and oxygen.get("inUse"))
         or (isinstance(ventilator, dict) and ventilator.get("shortTermVentilator"))

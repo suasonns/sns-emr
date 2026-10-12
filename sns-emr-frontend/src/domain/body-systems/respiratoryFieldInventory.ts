@@ -199,6 +199,14 @@ export const RESPIRATORY_SCREENING_DATE_FIELD: RespiratoryFieldDefinition = {
   legacySource: "respiratory.screeningDate",
   responseType: "date",
   nullable: true,
+  notes:
+    "Hidden from the nurse-facing workflow (RespiratoryPanel.tsx LEGACY_HIDDEN_FIELD_IDS) per the " +
+    "RNICA-is-visit-centric directive: the RNICA Visit Header (Visit Date/Time In/Time Out) is the " +
+    "source of truth for when the visit occurred, and SOB screening performed during that visit does " +
+    "not need its own re-entered date. Auto-filled once (from the `visitDate` prop) the first time SOB " +
+    "has been screened while this date is still blank; never overwritten afterward, so a genuinely " +
+    "different historical/late-documented date is always preserved. An exception is documented " +
+    "narratively in Respiratory Notes, not through a separate structured override control.",
 };
 
 export const RESPIRATORY_TREATMENT_DATE_FIELD: RespiratoryFieldDefinition = {
@@ -209,7 +217,17 @@ export const RESPIRATORY_TREATMENT_DATE_FIELD: RespiratoryFieldDefinition = {
   legacySource: "respiratory.treatmentDate",
   responseType: "date",
   nullable: true,
+  notes:
+    "Reporting Support only, not Clinical Workflow (HOPE-vs-clinical field audit): its sole consumer is " +
+    "HOPE J2040-B report generation (src/intake/hopeReportMapper.js); zero reference in either requirement " +
+    "engine (respiratoryProductRequirements.ts / respiratoryWorkflowRules.ts). Hidden from the nurse-facing " +
+    "admission workflow (RespiratoryPanel.tsx LEGACY_HIDDEN_FIELD_IDS) per the hospice-admission Treatment " +
+    "section simplification directive — hospice admission never requires the nurse to record an exact " +
+    "intervention date. Auto-generated instead (the RNICA visit date when available, else today's date as " +
+    "a defensive fallback, set once when Treatment Decision first becomes Initiated, cleared whenever the " +
+    "decision is anything else) so HOPE reporting keeps working without a separate nurse-facing control.",
 };
+
 
 export const RESPIRATORY_EXERTION_LEVEL_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_exertion_level",
@@ -272,8 +290,39 @@ export const RESPIRATORY_COUGH_TYPE_FIELD: RespiratoryFieldDefinition = {
   ownerFactKey: "cough",
   legacySource: "respiratory.coughType",
   responseType: "single_select",
-  controlledValues: ["None", "Productive", "Non-productive", "Hemoptysis", "Barrel chest"],
+  controlledValues: ["None", "Productive", "Non-productive"],
   nullable: true,
+  notes:
+    "Corrected per clinical data model review: Hemoptysis and Barrel chest were removed as mutually-exclusive " +
+    "options (a cough cannot be both Productive and Hemoptysis under a single-select model, and Barrel chest is " +
+    "not a cough characteristic at all). See RESPIRATORY_HEMOPTYSIS_PRESENT_FIELD and " +
+    "RESPIRATORY_BARREL_CHEST_PRESENT_FIELD below.",
+};
+
+export const RESPIRATORY_HEMOPTYSIS_PRESENT_FIELD: RespiratoryFieldDefinition = {
+  fieldId: "respiratory_hemoptysis_present",
+  label: "Hemoptysis",
+  owner: "respiratory",
+  ownerFactKey: "cough",
+  legacySource: "respiratory.hemoptysisPresent",
+  responseType: "boolean",
+  nullable: true,
+  notes:
+    "Independent finding, split out of the legacy coughType single-select. Hemoptysis (blood-tinged/bloody " +
+    "sputum) can coexist with Productive or Non-productive cough and must be documentable alongside either.",
+};
+
+export const RESPIRATORY_BARREL_CHEST_PRESENT_FIELD: RespiratoryFieldDefinition = {
+  fieldId: "respiratory_barrel_chest_present",
+  label: "Barrel Chest",
+  owner: "respiratory",
+  ownerFactKey: "thoracic_inspection",
+  legacySource: "respiratory.barrelChestPresent",
+  responseType: "boolean",
+  nullable: true,
+  notes:
+    "Independent thoracic-inspection finding (chronic hyperinflation), split out of the legacy coughType " +
+    "single-select. Not a cough characteristic; coexists freely with any coughType/hemoptysis value.",
 };
 
 export const RESPIRATORY_SPUTUM_CHARACTER_FIELD: RespiratoryFieldDefinition = {
@@ -555,6 +604,15 @@ export const RESPIRATORY_COMFORT_FUNCTION_SCREENING_DATE_FIELD: RespiratoryField
   legacySource: "respiratory.comfortFunctionScreeningDate",
   responseType: "date",
   nullable: true,
+  notes:
+    "Hidden from the nurse-facing workflow (RespiratoryPanel.tsx LEGACY_HIDDEN_FIELD_IDS) per the " +
+    "RNICA-is-visit-centric directive: the RNICA Visit Header (Visit Date/Time In/Time Out) is the " +
+    "source of truth for when the visit occurred, and a Comfort/Function impact screened during that " +
+    "visit does not need its own re-entered date. Auto-filled once (from the `visitDate` prop) the first " +
+    "time a Comfort/Function impact is recorded while this date is still blank; never overwritten " +
+    "afterward, so a genuinely different historical/late-documented date is always preserved. An " +
+    "exception is documented narratively in Respiratory Notes, not through a separate structured " +
+    "override control.",
 };
 
 export const RESPIRATORY_COMFORT_FUNCTION_SCREENING_TIME_FIELD: RespiratoryFieldDefinition = {
@@ -565,6 +623,13 @@ export const RESPIRATORY_COMFORT_FUNCTION_SCREENING_TIME_FIELD: RespiratoryField
   legacySource: "respiratory.comfortFunctionScreeningTime",
   responseType: "time",
   nullable: true,
+  notes:
+    "Removed entirely from the nurse-facing admission workflow (RespiratoryPanel.tsx LEGACY_HIDDEN_FIELD_IDS), " +
+    "not merely hidden-and-retained and not made optional. Hospice documentation is visit-based: Visit " +
+    "Date/Type/Timestamp already supply the clinical time reference, so a separate exact-clock-time field for " +
+    "when comfort/functional impact was screened has no additional clinical, regulatory, payer, or " +
+    "patient-safety value. The question is whether it was assessed during the visit, not at what exact " +
+    "minute. respiratory_comfort_function_screening_date is kept (date-level tracking remains useful).",
 };
 
 export const RESPIRATORY_CONFIGURED_REQUIREMENT_RESPONSE_FIELD: RespiratoryFieldDefinition = {
@@ -576,7 +641,8 @@ export const RESPIRATORY_CONFIGURED_REQUIREMENT_RESPONSE_FIELD: RespiratoryField
   responseType: "single_select",
   controlledValues: ["NOT_APPLICABLE", "REVIEWED_NO_ADDITIONAL_ACTION", "FOLLOW_UP_REQUIRED", "UNABLE_TO_DETERMINE"],
   nullable: true,
-  notes: "Nurse-facing only; never displays HOPE/CMS item codes. Product-owner-authorized field (spec section 4).",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive): removed along with the rest of the Treatment section's secondary fields. Nurse-facing only; never displays HOPE/CMS item codes. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_CONFIGURED_FOLLOW_UP_STATUS_FIELD: RespiratoryFieldDefinition = {
@@ -588,7 +654,8 @@ export const RESPIRATORY_CONFIGURED_FOLLOW_UP_STATUS_FIELD: RespiratoryFieldDefi
   responseType: "single_select",
   controlledValues: ["NOT_APPLICABLE", "NOT_STARTED", "PLANNED", "IN_PROGRESS", "COMPLETED", "UNABLE_TO_COMPLETE"],
   nullable: true,
-  notes: "Required when the configured requirement produces follow-up. Must not be inferred from dyspnea severity.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive): removed along with the rest of the Treatment section's secondary fields. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_TREATMENT_DECISION_FIELD: RespiratoryFieldDefinition = {
@@ -612,7 +679,42 @@ export const RESPIRATORY_TREATMENT_DESCRIPTION_FIELD: RespiratoryFieldDefinition
   legacySource: "respiratory.treatmentDescription",
   responseType: "text",
   nullable: true,
-  notes: "Required for INITIATED and ALREADY_IN_PLACE.",
+  notes:
+    "FINAL PRODUCT-OWNER DIRECTIVE (clinical workflow / data-ownership correction): this field is no longer an active control for INITIATED or ALREADY_IN_PLACE. It was an unrestricted free-text box that let a nurse re-enter authoritative order/medication details (drug, dose, route, frequency) that belong exclusively to the Orders/Medications workflow — not a training issue, a data-ownership defect. It remains active ONLY for DECLINED ('Decline Reason') and NOT_INDICATED ('Clinical Rationale'), where no medication-order risk exists (see RespiratoryPanel.tsx's treatmentDescriptionContext() and isFieldCurrentlyRelevant()). Historical INITIATED/ALREADY_IN_PLACE values already stored in this field are preserved read-only and displayed as 'Legacy Respiratory Treatment Documentation' — never deleted, never auto-converted into an order, never editable going forward in those two contexts.",
+};
+
+export const RESPIRATORY_CLINICAL_RESPONSE_FIELD: RespiratoryFieldDefinition = {
+  fieldId: "respiratory_clinical_response",
+  label: "Clinical Response to Treatment",
+  owner: "respiratory",
+  ownerFactKey: "respiratory_exertion_tolerance",
+  legacySource: "respiratory.clinicalResponse",
+  responseType: "single_select",
+  controlledValues: [
+    "EFFECTIVE",
+    "PARTIALLY_EFFECTIVE",
+    "INEFFECTIVE",
+    "NO_CHANGE",
+    "WORSENING",
+    "NOT_YET_EVALUATED",
+    "UNABLE_TO_ASSESS",
+    "NOT_APPLICABLE",
+  ],
+  nullable: true,
+  notes:
+    "FINAL PRODUCT-OWNER DIRECTIVE: documents the patient's observed clinical response during the visit for INITIATED or ALREADY_IN_PLACE. It records the patient's response only — it never creates, modifies, or references an order. Required when Treatment Decision is INITIATED or ALREADY_IN_PLACE (replaces the removed free-text 'Describe the treatment' requirement for those two values).",
+};
+
+export const RESPIRATORY_CLINICAL_RESPONSE_EVIDENCE_FIELD: RespiratoryFieldDefinition = {
+  fieldId: "respiratory_clinical_response_evidence",
+  label: "Clinical Response Evidence",
+  owner: "respiratory",
+  ownerFactKey: "respiratory_exertion_tolerance",
+  legacySource: "respiratory.clinicalResponseEvidence",
+  responseType: "text",
+  nullable: true,
+  notes:
+    "FINAL PRODUCT-OWNER DIRECTIVE: optional. Allowed content is the patient's observed response only (change in dyspnea, respiratory effort, SpO2, cough, secretions, patient-reported relief, observed adverse response, or reason the response could not be evaluated). UI help text (mandatory, must not be edited): \"Document the patient's observed response. Medication and treatment-order details belong in Orders.\" Never a medication name, dose, route, frequency, or prescription instruction.",
 };
 
 export const RESPIRATORY_TREATMENT_DECLINE_REASON_FIELD: RespiratoryFieldDefinition = {
@@ -623,7 +725,8 @@ export const RESPIRATORY_TREATMENT_DECLINE_REASON_FIELD: RespiratoryFieldDefinit
   legacySource: "respiratory.treatmentDeclineReason",
   responseType: "text",
   nullable: true,
-  notes: "Required for DECLINED.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive: 'do not create a separate data field for every concept'). DECLINED now reuses the single canonical respiratory_treatment_description field (presented contextually as 'Decline Reason') instead of this separate control. This field/legacySource remains intact for backward compatibility/audit only; it is never rendered and never required.",
 };
 
 export const RESPIRATORY_TREATMENT_ACTION_DATE_FIELD: RespiratoryFieldDefinition = {
@@ -634,6 +737,8 @@ export const RESPIRATORY_TREATMENT_ACTION_DATE_FIELD: RespiratoryFieldDefinition
   legacySource: "respiratory.treatmentActionDate",
   responseType: "date",
   nullable: true,
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive): exact intervention timing is not a hospice-admission requirement, since a caregiver, family member, or facility frequently performs the intervention before the RN arrives. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_TREATMENT_ACTION_TIME_FIELD: RespiratoryFieldDefinition = {
@@ -644,6 +749,8 @@ export const RESPIRATORY_TREATMENT_ACTION_TIME_FIELD: RespiratoryFieldDefinition
   legacySource: "respiratory.treatmentActionTime",
   responseType: "time",
   nullable: true,
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive). A hospice RN frequently documents a caregiver-, family-, or facility-administered intervention performed before the RN arrived and cannot know its exact clock time. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_TREATMENT_RESPONSE_TIME_FIELD: RespiratoryFieldDefinition = {
@@ -654,6 +761,8 @@ export const RESPIRATORY_TREATMENT_RESPONSE_TIME_FIELD: RespiratoryFieldDefiniti
   legacySource: "respiratory.treatmentResponseTime",
   responseType: "time",
   nullable: true,
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive). Treatment response/effectiveness is routinely evaluated on a later follow-up visit, not at the Initial Comprehensive Assessment. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_TREATMENT_RESPONSE_FIELD: RespiratoryFieldDefinition = {
@@ -664,7 +773,8 @@ export const RESPIRATORY_TREATMENT_RESPONSE_FIELD: RespiratoryFieldDefinition = 
   legacySource: "respiratory.treatmentResponse",
   responseType: "text",
   nullable: true,
-  notes: "Required for INITIATED unless response is pending; required for ALREADY_IN_PLACE when effectiveness is currently assessed.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive). Response is typically documented on a later follow-up visit rather than at the Initial Comprehensive Assessment. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_TREATMENT_RESPONSE_STATUS_FIELD: RespiratoryFieldDefinition = {
@@ -676,7 +786,8 @@ export const RESPIRATORY_TREATMENT_RESPONSE_STATUS_FIELD: RespiratoryFieldDefini
   responseType: "single_select",
   controlledValues: ["OBSERVED", "REPORTED", "PENDING", "NOT_APPLICABLE", "UNABLE_TO_ASSESS"],
   nullable: true,
-  notes: "Required whenever a treatment decision is applicable.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive). Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_FOLLOW_UP_NEED_FIELD: RespiratoryFieldDefinition = {
@@ -699,7 +810,8 @@ export const RESPIRATORY_FOLLOW_UP_TIMING_PLAN_FIELD: RespiratoryFieldDefinition
   legacySource: "respiratory.followUpTimingPlan",
   responseType: "text",
   nullable: true,
-  notes: "Required when followUpNeed = NEEDED.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive): only whether follow-up is needed is recorded at admission. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_FOLLOW_UP_RESPONSIBLE_CLINICIAN_FIELD: RespiratoryFieldDefinition = {
@@ -710,7 +822,8 @@ export const RESPIRATORY_FOLLOW_UP_RESPONSIBLE_CLINICIAN_FIELD: RespiratoryField
   legacySource: "respiratory.followUpResponsibleClinician",
   responseType: "text",
   nullable: true,
-  notes: "Required when followUpNeed = NEEDED.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive): only whether follow-up is needed is recorded at admission. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_POC_REVIEW_NEED_FIELD: RespiratoryFieldDefinition = {
@@ -723,7 +836,7 @@ export const RESPIRATORY_POC_REVIEW_NEED_FIELD: RespiratoryFieldDefinition = {
   controlledValues: ["REVIEW_NEEDED", "NO_REVIEW_NEEDED"],
   nullable: true,
   notes:
-    "Required when a clinically significant Respiratory finding or intervention may affect the Plan of Care. Does not automatically modify the POC.",
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive): POC review is handled through narrative documentation/follow-up rather than a separate control. Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_POC_REVIEW_REASON_FIELD: RespiratoryFieldDefinition = {
@@ -734,7 +847,8 @@ export const RESPIRATORY_POC_REVIEW_REASON_FIELD: RespiratoryFieldDefinition = {
   legacySource: "respiratory.pocReviewReason",
   responseType: "text",
   nullable: true,
-  notes: "Required when pocReviewNeed = REVIEW_NEEDED.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive). Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
 
 export const RESPIRATORY_POC_SOURCE_REFERENCE_FIELD: RespiratoryFieldDefinition = {
@@ -745,8 +859,10 @@ export const RESPIRATORY_POC_SOURCE_REFERENCE_FIELD: RespiratoryFieldDefinition 
   legacySource: "respiratory.pocSourceReference",
   responseType: "text",
   nullable: true,
-  notes: "Optional; references an existing POC source/issue/intervention only. Does not create or modify the POC.",
+  notes:
+    "Hidden from the admission workflow UI (hospice-admission simplification, product-owner directive). Retained in the data/legacySource shape for backward compatibility/audit only; never rendered and never required.",
 };
+
 
 export const RESPIRATORY_OXYGEN_USE_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_oxygen_use",
@@ -796,7 +912,13 @@ export const RESPIRATORY_OXYGEN_OTHER_DEVICE_FIELD: RespiratoryFieldDefinition =
 
 export const RESPIRATORY_OXYGEN_FLOW_VALUE_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_oxygen_flow_value",
-  label: "Flow Value",
+  // PRODUCT-OWNER DIRECTIVE ("REMOVE FLOW VALUE + FLOW UNIT SPLIT MODEL"):
+  // one clinical fact ("3 L/min") was split across two controls. Relabeled
+  // "Oxygen Flow Rate" and rendered (RespiratoryPanel.tsx) as a single
+  // composite control with the unit shown inline beside the value, not a
+  // second dropdown. The underlying storage (this field + flowUnit below)
+  // is unchanged -- no schema change, only the presentation layer.
+  label: "Oxygen Flow Rate",
   owner: "respiratory",
   ownerFactKey: "oxygen_use",
   legacySource: "respiratory.oxygenTherapy.flowValue",
@@ -814,6 +936,13 @@ export const RESPIRATORY_OXYGEN_FLOW_UNIT_FIELD: RespiratoryFieldDefinition = {
   responseType: "single_select",
   controlledValues: ["L_MIN", "OTHER"],
   nullable: true,
+  // PRODUCT-OWNER DIRECTIVE: Nasal Cannula and Mask always use L/min --
+  // the unit is auto-derived the moment Delivery Device is set (see the
+  // "respiratory_oxygen_delivery_device" case in
+  // `applyCanonicalLegacyMapping`, RespiratoryPanel.tsx) and shown only as
+  // inline, non-editable text beside Oxygen Flow Rate. This standalone
+  // control is rendered only when Delivery Device = OTHER, for the rare
+  // case a device genuinely uses a different measurement unit.
   notes: "No hidden clinical default; set only when the user enters a value through a field explicitly labeled L/min.",
 };
 
@@ -864,6 +993,15 @@ export const RESPIRATORY_SPO2_NOT_OBTAINED_REASON_FIELD: RespiratoryFieldDefinit
   notes: "Required when spo2MeasurementCondition = NOT_OBTAINED.",
 };
 
+// PRODUCT-OWNER DIRECTIVE ("REMOVE FLOW VALUE + FLOW UNIT SPLIT MODEL" /
+// "REMOVE Measured Oxygen Flow / Concentration"): duplicate charting --
+// the Oxygen Flow Rate already documented under "Oxygen use &
+// measurement" IS the flow SpO2 was measured on; a second free-text
+// re-entry of the same fact adds no clinical value. Retired entirely
+// from the active workflow (RespiratoryPanel.tsx LEGACY_HIDDEN_FIELD_IDS,
+// same pattern as Oxygen Measurement Date/Time) -- never required, never
+// shown, never populated going forward. Historical persisted values are
+// preserved untouched (no migration).
 export const RESPIRATORY_MEASURED_OXYGEN_FLOW_OR_CONCENTRATION_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_measured_oxygen_flow_or_concentration",
   label: "Measured Oxygen Flow / Concentration",
@@ -872,7 +1010,7 @@ export const RESPIRATORY_MEASURED_OXYGEN_FLOW_OR_CONCENTRATION_FIELD: Respirator
   legacySource: "respiratory.measuredOxygenFlowOrConcentration",
   responseType: "text",
   nullable: true,
-  notes: "Required when SpO2 is documented on oxygen and the active therapy is measurable. No example-string defaults.",
+  notes: "Retired from the active workflow -- the documented Oxygen Flow Rate is the single source of truth for the flow SpO2 was measured on. Never required.",
 };
 
 export const RESPIRATORY_OXYGEN_MEASUREMENT_DATE_FIELD: RespiratoryFieldDefinition = {
@@ -897,6 +1035,17 @@ export const RESPIRATORY_OXYGEN_MEASUREMENT_TIME_FIELD: RespiratoryFieldDefiniti
   notes: "Required when an SpO2 value is documented.",
 };
 
+// PRODUCT-OWNER DIRECTIVE ("REMOVE O2 EFFECTIVENESS / RESPONSE"): SpO2
+// Value + SpO2 Measurement Condition already serve as the objective,
+// primary oxygen-treatment outcome measure -- a second subjective
+// "effective/ineffective" field invites contradictory charting (e.g.
+// SpO2 82% + "Effective") with no clinical value added. Retired entirely
+// from the active workflow (RespiratoryPanel.tsx LEGACY_HIDDEN_FIELD_IDS,
+// same pattern as the other retired oxygen sub-fields) -- never
+// required, never shown, never populated going forward. Clinically
+// significant qualitative observations belong in Clinical Response /
+// Respiratory Notes, not a dedicated oxygen-effectiveness control.
+// Historical persisted values are preserved untouched (no migration).
 export const RESPIRATORY_OXYGEN_EFFECTIVENESS_RESPONSE_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_oxygen_effectiveness_response",
   label: "Oxygen Effectiveness / Response",
@@ -905,7 +1054,7 @@ export const RESPIRATORY_OXYGEN_EFFECTIVENESS_RESPONSE_FIELD: RespiratoryFieldDe
   legacySource: "respiratory.oxygenEffectivenessResponse",
   responseType: "text",
   nullable: true,
-  notes: "Required when oxygen use or a treatment response is currently assessed. Must not infer effectiveness from SpO2 alone.",
+  notes: "Retired from the active workflow -- SpO2 Value + SpO2 Measurement Condition are the single source of truth for oxygen-treatment outcome. Never required.",
 };
 
 export const RESPIRATORY_SPUTUM_AMOUNT_FIELD: RespiratoryFieldDefinition = {
@@ -1010,6 +1159,16 @@ export const RESPIRATORY_COUGH_ACTION_DATE_TIME_FIELD: RespiratoryFieldDefinitio
   notes: "Required when an action occurred during the current assessment.",
 };
 
+// Retired (product-owner directive, "FINAL RESPIRATORY USABILITY REVIEW" --
+// A=Assessment Finding vs B=Future Plan classification): these two fields
+// documented *who will do what, when, in the future* for cough/secretions
+// follow-up -- POC's purpose (goals, interventions, follow-up actions,
+// treatment plans, discipline responsibilities), not RNICA's (assessment,
+// findings, clinical status, clinical response). No downstream consumer
+// (structured findings, narrative, HOPE, or POC generation) ever reads
+// either field -- same disposition as the already-retired
+// respiratory_support_follow_up_plan. See `LEGACY_HIDDEN_FIELD_IDS` in
+// RespiratoryPanel.tsx. Never required going forward.
 export const RESPIRATORY_COUGH_FOLLOW_UP_TIMING_PLAN_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_cough_follow_up_timing_plan",
   label: "Cough Follow-Up Timing / Plan",
@@ -1018,7 +1177,7 @@ export const RESPIRATORY_COUGH_FOLLOW_UP_TIMING_PLAN_FIELD: RespiratoryFieldDefi
   legacySource: "respiratory.coughFollowUpTimingPlan",
   responseType: "text",
   nullable: true,
-  notes: "Required when cough follow-up is needed.",
+  notes: "Retired: future-planning content belongs on the Plan of Care, not RNICA. Never required.",
 };
 
 export const RESPIRATORY_COUGH_FOLLOW_UP_RESPONSIBLE_CLINICIAN_FIELD: RespiratoryFieldDefinition = {
@@ -1029,7 +1188,7 @@ export const RESPIRATORY_COUGH_FOLLOW_UP_RESPONSIBLE_CLINICIAN_FIELD: Respirator
   legacySource: "respiratory.coughFollowUpResponsibleClinician",
   responseType: "text",
   nullable: true,
-  notes: "Required when cough follow-up is needed.",
+  notes: "Retired: future-planning content belongs on the Plan of Care, not RNICA. Never required.",
 };
 
 export const RESPIRATORY_SUPPORT_STATUS_FIELD: RespiratoryFieldDefinition = {
@@ -1130,7 +1289,19 @@ export const RESPIRATORY_SUPPORT_FOLLOW_UP_PLAN_FIELD: RespiratoryFieldDefinitio
   legacySource: "respiratory.respiratorySupportFollowUpPlan",
   responseType: "text",
   nullable: true,
-  notes: "Required when a support concern, limitation, or unresolved finding exists.",
+  // Retired (product-owner directive, "RESPIRATORY SUPPORT FOLLOW-UP
+  // PLAN — JUSTIFY WHY THIS FIELD EXISTS"): this was a free-text future-
+  // intervention narrative -- POC's purpose (goals, interventions,
+  // follow-up actions, treatment plans), not RNICA's (assessment,
+  // findings, clinical status, clinical response). It was never required
+  // by either requirement engine and is read by no downstream consumer
+  // (structured findings, narrative, HOPE, or POC generation) -- a dead
+  // nurse-facing control duplicating content that belongs on the Plan of
+  // Care. `respiratory_support_status` (None/In Use/Unable To Verify)
+  // remains the sole canonical source fact for Findings/Narrative/HOPE/
+  // POC generation; a true follow-up plan is authored on the POC. See
+  // `LEGACY_HIDDEN_FIELD_IDS` in RespiratoryPanel.tsx. Never required.
+  notes: "Retired: superseded by respiratory_support_status; a respiratory support follow-up plan belongs on the Plan of Care, not RNICA. Never required.",
 };
 
 export const RESPIRATORY_SUPPORT_UNABLE_TO_VERIFY_REASON_FIELD: RespiratoryFieldDefinition = {
@@ -1180,6 +1351,8 @@ export const RESPIRATORY_FIELD_INVENTORY: readonly RespiratoryFieldDefinition[] 
   RESPIRATORY_TREATMENT_RESPONSE_TIME_FIELD,
   RESPIRATORY_TREATMENT_RESPONSE_FIELD,
   RESPIRATORY_TREATMENT_RESPONSE_STATUS_FIELD,
+  RESPIRATORY_CLINICAL_RESPONSE_FIELD,
+  RESPIRATORY_CLINICAL_RESPONSE_EVIDENCE_FIELD,
   RESPIRATORY_FOLLOW_UP_NEED_FIELD,
   RESPIRATORY_FOLLOW_UP_TIMING_PLAN_FIELD,
   RESPIRATORY_FOLLOW_UP_RESPONSIBLE_CLINICIAN_FIELD,
@@ -1187,6 +1360,8 @@ export const RESPIRATORY_FIELD_INVENTORY: readonly RespiratoryFieldDefinition[] 
   RESPIRATORY_POC_REVIEW_REASON_FIELD,
   RESPIRATORY_POC_SOURCE_REFERENCE_FIELD,
   RESPIRATORY_COUGH_TYPE_FIELD,
+  RESPIRATORY_HEMOPTYSIS_PRESENT_FIELD,
+  RESPIRATORY_BARREL_CHEST_PRESENT_FIELD,
   RESPIRATORY_SPUTUM_CHARACTER_FIELD,
   RESPIRATORY_SPUTUM_AMOUNT_FIELD,
   RESPIRATORY_SPUTUM_COLOR_FIELD,

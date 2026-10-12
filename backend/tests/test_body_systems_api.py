@@ -227,6 +227,7 @@ class TestSaveRespiratoryDraft:
                     **_BASE_ALWAYS_REQUIRED_RESPIRATORY_FIELDS,
                     "treatmentDecision": "INITIATED",
                     "treatmentDescription": "Bronchodilator administered per order.",
+                    "clinicalResponse": "EFFECTIVE",
                     "treatmentResponseStatus": "PENDING",
                     "followUpNeed": "NOT_INDICATED",
                     "oxygenEffectivenessResponse": "Patient reports improved breathing after treatment.",

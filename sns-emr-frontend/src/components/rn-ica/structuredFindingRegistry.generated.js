@@ -262,11 +262,15 @@ export const CONCEPT_REGISTRY = {
   },
   RESP_COUGH_HEMOPTYSIS: {
     section: "respiratory",
-    writes: [{ path: "coughType", value: "Hemoptysis", op: "set", section: null }],
+    writes: [{ path: "hemoptysisPresent", value: true, op: "set", section: null }],
   },
   RESP_COUGH_NONE: {
     section: "respiratory",
     writes: [{ path: "coughType", value: "None", op: "set", section: null }],
+  },
+  RESP_THORACIC_BARREL_CHEST: {
+    section: "respiratory",
+    writes: [{ path: "barrelChestPresent", value: true, op: "set", section: null }],
   },
   RESP_LUNG_SOUNDS_CLEAR: {
     section: "respiratory",
