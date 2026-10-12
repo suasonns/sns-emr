@@ -124,6 +124,12 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     setupFiles: "./src/test/setupTests.js",
+    // Playwright e2e specs live under e2e/ and import @playwright/test's
+    // own `test`/`expect` (a browser-driving API, not a jsdom-compatible
+    // unit test) -- vitest's default include pattern would otherwise try
+    // to load and run them too. They are exercised exclusively via
+    // `npm run test:e2e` (playwright.config.ts), never via `npm run test`.
+    exclude: ["**/node_modules/**", "**/dist/**", "e2e/**"],
   },
   resolve: {
     preserveSymlinks: true,

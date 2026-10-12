@@ -9,6 +9,8 @@
     "verify:imports": "node scripts/verify-vite-build.mjs",
     "lint": "eslint .",
     "test": "vitest run",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
     "preview": "vite preview",
     "start": "serve -s dist -l 8080",
     "export:rnica-schema": "node scripts/export-rnica-schema.mjs"

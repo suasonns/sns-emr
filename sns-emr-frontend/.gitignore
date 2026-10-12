@@ -12,6 +12,7 @@ dist
 dist-ssr
 test-results/
 playwright-report/
+e2e/.auth/
 *.local
 
 # Editor directories and files
