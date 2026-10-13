@@ -19,6 +19,8 @@ import { Checkbox } from "../../../components/ui/checkbox";
 import { Textarea } from "../../../components/ui/textarea";
 import { Button } from "../../../components/ui/button";
 import { Alert, AlertDescription } from "../../../components/ui/alert";
+import { DocumentationCoverage } from "../../../components/ui/documentation-coverage";
+import { computeRespiratoryDocumentationCoverage } from "../../../domain/body-systems/respiratoryDocumentationCoverage";
 import {
   RESPIRATORY_NO_CURRENT_CONCERN_FIELD,
   RESPIRATORY_UNABLE_TO_ASSESS_FIELD,
@@ -217,6 +219,27 @@ function applyCanonicalLegacyMapping(
       const litersPerMinute = mapOxygenFlowValueToLegacyLitersPerMinute(draft.oxygenTherapy?.flowValue, draft.oxygenTherapy?.flowUnit);
       if (litersPerMinute === undefined) return draft;
       return { ...draft, oxygenTherapy: { ...draft.oxygenTherapy, litersPerMinute } };
+    }
+    case "respiratory_assessment_context": {
+      // PRODUCT-OWNER DIRECTIVE ("One clinical fact. One nurse action. One
+      // source of truth. Assessment Context is canonical."): the two
+      // pre-Contract-v2 boolean declarations (RESPIRATORY_NO_CURRENT_CONCERN_FIELD /
+      // RESPIRATORY_UNABLE_TO_ASSESS_FIELD) duplicated Assessment Context's
+      // own controlled values. They are retired as independent nurse-facing
+      // controls (no longer rendered) and become derived compatibility
+      // values, kept in sync here so `deriveRespiratorySituation`
+      // (respiratoryWorkflowRules.ts) and any historical/legacy reader
+      // continue to see a consistent value without requiring a second
+      // documentation action. Required mapping (verbatim from the
+      // authorizing directive):
+      //   CURRENT_CONCERNS_ASSESSED      -> noCurrentConcern=false, unableToAssess=false
+      //   NO_CURRENT_RESPIRATORY_CONCERN -> noCurrentConcern=true,  unableToAssess=false
+      //   UNABLE_TO_FULLY_ASSESS         -> noCurrentConcern=false, unableToAssess=true
+      return {
+        ...draft,
+        respiratoryNoCurrentConcern: draft.assessmentContext === "NO_CURRENT_RESPIRATORY_CONCERN",
+        respiratoryUnableToAssess: draft.assessmentContext === "UNABLE_TO_FULLY_ASSESS",
+      };
     }
     case "respiratory_oxygen_frequency": {
       const deliveryMode = mapOxygenFrequencyToLegacyDeliveryMode(draft.oxygenTherapy?.frequency);
@@ -1437,107 +1460,18 @@ const LEGACY_HIDDEN_FIELD_IDS = new Set([
   "respiratory_comfort_function_evidence",
 ]);
 
-/**
- * Collapses a verbose "Record the ..." unresolved-requirement sentence
- * into a short clinical-domain label for the collapsed banner view. Pure
- * keyword matching over the existing message text — no change to the
- * underlying requirement engine, message wording, or completion logic.
- * Falls back to the original message (truncated) if no domain matches, so
- * nothing is ever silently dropped.
- */
-const DOMAIN_LABEL_RULES: Array<[RegExp, string]> = [
-  [/assessment context/i, "Context"],
-  [/comparison/i, "Comparison"],
-  [/oxygen/i, "Oxygen"],
-  [/sputum/i, "Sputum"],
-  [/cough/i, "Cough Action"],
-  [/respiratory support|ventilator|tracheostomy|airway/i, "Support"],
-  [/follow-?up/i, "Follow-Up"],
-  [/poc review/i, "POC Review"],
-  [/treatment/i, "Treatment"],
-  [/lung sound/i, "Lung Sounds"],
-  [/(respiration|breathing) pattern/i, "Pattern"],
-  [/comfort|function/i, "Comfort"],
-  [/shortness of breath|dyspnea|sob/i, "Dyspnea"],
-];
-
-function deriveDomainLabel(message: string): string {
-  for (const [pattern, label] of DOMAIN_LABEL_RULES) {
-    if (pattern.test(message)) return label;
-  }
-  return message.length > 24 ? `${message.slice(0, 24)}…` : message;
-}
-
-/**
- * Documentation Coverage: a single, top-positioned, actionable summary of
- * what's unresolved. Per the density-optimization pass, the default view
- * is a compact collapsed row (count + deduplicated domain pills); the
- * original full "Record the ..." sentences remain available on demand via
- * "Show details" rather than always consuming vertical space.
- */
-function DocumentationCoverageBanner({ blockingMessages }: { blockingMessages: string[] }) {
-  const [expanded, setExpanded] = useState(false);
-
-  if (blockingMessages.length === 0) {
-    return (
-      <section
-        className="flex items-center gap-2 rounded-lg border border-rnica-tealSoftBorder bg-rnica-tealSoftBg px-3 py-1.5"
-        aria-label="Documentation coverage"
-        data-testid="respiratory-completion-blockers"
-      >
-        <span className="text-xs font-medium text-rnica-textStrong">Documentation coverage complete — no unresolved items.</span>
-      </section>
-    );
-  }
-
-  const domainCounts = new Map<string, number>();
-  for (const message of blockingMessages) {
-    const label = deriveDomainLabel(message);
-    domainCounts.set(label, (domainCounts.get(label) ?? 0) + 1);
-  }
-
-  return (
-    <section
-      className="flex flex-col gap-1 rounded-lg border border-rnica-border bg-rnica-bg px-2.5 py-1"
-      aria-label="Documentation coverage"
-      data-testid="respiratory-completion-blockers"
-    >
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <h3 className="text-xs font-semibold uppercase text-rnica-muted">
-          Documentation coverage — {blockingMessages.length} unresolved
-        </h3>
-        <button
-          type="button"
-          onClick={() => setExpanded((prev) => !prev)}
-          className="text-[11px] font-medium text-rnica-teal underline-offset-2 hover:underline"
-          aria-expanded={expanded}
-        >
-          {expanded ? "Hide details" : "Show details"}
-        </button>
-      </div>
-      <ul className="flex flex-wrap gap-1">
-        {Array.from(domainCounts.entries()).map(([label, count]) => (
-          <li
-            key={label}
-            className="rounded-full border border-rnica-borderWarning bg-rnica-warningBg px-2 py-0.5 text-[11px] leading-tight text-rnica-text"
-          >
-            {label}
-            {count > 1 ? ` (${count})` : ""}
-          </li>
-        ))}
-      </ul>
-      {expanded && (
-        <ul className="flex flex-col gap-0 border-t border-rnica-border pt-0.5">
-          {blockingMessages.map((message) => (
-            <li key={message} className="text-[11px] leading-tight text-rnica-text">
-              {message}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
+// PRODUCT-OWNER DIRECTIVE ("RESPIRATORY DOCUMENTATION COVERAGE -- ADR-004
+// MIGRATION"): the legacy collapsed "Documentation coverage — N
+// unresolved" banner (`MESSAGE_LABELS` / `deriveDomainLabel` /
+// `DocumentationCoverageBanner`) predated ADR-004 and behaved as a
+// Missing-Documentation Tracker only. It has been replaced by the shared
+// `<DocumentationCoverage>` component (documented/unresolved inventory,
+// matching the Neurological reference pattern) plus the separate "Legacy
+// Respiratory Workflow Alerts" section rendered below, driven by
+// `computeRespiratoryDocumentationCoverage()` and
+// `completion.legacySituationMessages` respectively. See
+// `respiratoryDocumentationCoverage.ts` and
+// `docs/architecture/decision-records/ADR-004-sns-documentation-coverage.md`.
 
 const SAVE_STATE_MESSAGE: Record<string, string> = {
   idle: "",
@@ -1677,6 +1611,10 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
   const coughFields = relevantDetailFields.filter((field) => COUGH_SECTION_FIELD_IDS.has(field.fieldId));
   const supportFields = relevantDetailFields.filter((field) => SUPPORT_SECTION_FIELD_IDS.has(field.fieldId));
   const clinicalStatusField = relevantDetailFields.find((field) => field.fieldId === "respiratory_clinical_status_change");
+  // ADR-004 Documentation Coverage -- a pure, read-only inventory of what
+  // has/hasn't been documented, independent of (and never gating) the
+  // legacy situation engine's "Complete System Review" validation below.
+  const respiratoryCoverageItems = computeRespiratoryDocumentationCoverage(draft);
 
   return (
     // Approved Respiratory production candidate: clinical-thought-order
@@ -1687,7 +1625,36 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
     // Respiratory Support as full-width workflows below. Stacks to one
     // column below `lg`.
     <div data-testid="respiratory-panel" className="flex flex-col gap-2 p-2.5">
-      <DocumentationCoverageBanner blockingMessages={completion.complete ? [] : completion.blockingMessages} />
+      <DocumentationCoverage
+        title="Respiratory Documentation Coverage"
+        items={respiratoryCoverageItems}
+        data-testid="respiratory-documentation-coverage"
+      />
+      {/* PRODUCT-OWNER DIRECTIVE ("LEGACY SITUATION ENGINE"): the five
+          legacy situation/requirement-key messages are validation-
+          aggregate concepts (current_confirmation, current_finding_or_
+          change, intervention_or_response, reason, and the "no situation
+          yet" message), not individually-documented fields with a
+          sourceFieldKeys mapping -- they must not contaminate ADR-004
+          Coverage above. Shown here, separately, pending an explicit
+          field-ownership decision. Still gates "Complete System Review"
+          via `completion.complete` exactly as before. */}
+      {!completion.complete && completion.legacySituationMessages.length > 0 && (
+        <section
+          className="flex flex-col gap-0.5 rounded-lg border border-rnica-borderWarning bg-rnica-warningBg px-3 py-1.5"
+          aria-label="Legacy Respiratory Workflow Alerts"
+          data-testid="respiratory-legacy-workflow-alerts"
+        >
+          <h3 className="text-xs font-semibold uppercase text-rnica-muted">Legacy Respiratory Workflow Alerts</h3>
+          <ul className="flex flex-col gap-0">
+            {completion.legacySituationMessages.map((message) => (
+              <li key={message} className="text-[11px] leading-tight text-rnica-text">
+                ⚠ {message}
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       {/*
         Assessment context: Contract v2's two explicit, non-gating
@@ -1695,18 +1662,6 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
         grouped as one compact top row (not a gate other fields wait on).
       */}
       <section className="flex flex-wrap items-center gap-3" aria-label="Assessment context" data-testid="respiratory-context-row">
-        <BooleanField
-          field={RESPIRATORY_NO_CURRENT_CONCERN_FIELD}
-          value={draft.respiratoryNoCurrentConcern}
-          onChange={(value) => updateDraft({ respiratoryNoCurrentConcern: value })}
-          disabled={readOnly}
-        />
-        <BooleanField
-          field={RESPIRATORY_UNABLE_TO_ASSESS_FIELD}
-          value={draft.respiratoryUnableToAssess}
-          onChange={(value) => updateDraft({ respiratoryUnableToAssess: value })}
-          disabled={readOnly}
-        />
         {clinicalStatusField && (
           <SingleSelectField
             field={clinicalStatusField}
@@ -1725,7 +1680,15 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
         <RadioGroupField
           field={RESPIRATORY_ASSESSMENT_CONTEXT_FIELD}
           value={draft.assessmentContext}
-          onChange={(value) => updateDraft({ assessmentContext: value as RespiratoryDraft["assessmentContext"] })}
+          onChange={(value) =>
+            updateDraft(
+              applyCanonicalLegacyMapping(
+                RESPIRATORY_ASSESSMENT_CONTEXT_FIELD,
+                { ...draft, assessmentContext: value as RespiratoryDraft["assessmentContext"] },
+                visitDate,
+              ) as Partial<RespiratoryDraft>,
+            )
+          }
           disabled={readOnly}
         />
         <RadioGroupField

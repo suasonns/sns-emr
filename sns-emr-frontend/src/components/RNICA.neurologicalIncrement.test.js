@@ -6,6 +6,8 @@ import {
   deriveNeurologicalOverview,
   computeNeurologicalSystemStatus,
   computeNeurologicalDocumentationCoverage,
+  deriveSymptomImpactFromForm,
+  computeNeurologicalOverviewSynthesis,
 } from "./RNICA.jsx";
 
 // Bounded Compatibility Increment (2026-09-28) regression coverage.
@@ -160,12 +162,14 @@ describe("computeNeurologicalNarrative - Sleep Pattern display adapter", () => {
 describe("computeNeurologicalDocumentationCoverage", () => {
   it("reports every domain missing when nothing has been documented", () => {
     const coverage = computeNeurologicalDocumentationCoverage({});
-    expect(coverage).toHaveLength(7);
+    expect(coverage).toHaveLength(9);
     expect(coverage.every((item) => item.complete === false)).toBe(true);
     expect(coverage.map((item) => item.label)).toEqual([
       "Consciousness",
       "Orientation",
       "Communication",
+      "Hearing",
+      "Vision",
       "Behavioral Findings",
       "Sleep",
       "Comparison",
@@ -178,6 +182,8 @@ describe("computeNeurologicalDocumentationCoverage", () => {
       consciousness: "Awake",
       orientation: { time: true, place: true, person: true, situation: true },
       communication: "Normal",
+      hearing: "Adequate",
+      vision: "Adequate",
       symptomsDemeanor: ["Anxiety", "Agitation"],
       sleepRest: { sleepPattern: "Insomnia" },
       clinicalStatusChange: "New or Worsening Concern",
@@ -361,6 +367,416 @@ describe("Neurological Phase 1 acceptance scenarios", () => {
 describe("computeNeurologicalSystemStatus", () => {
   it("is the same computation as deriveNeurologicalOverview (isolated, not duplicated)", () => {
     expect(computeNeurologicalSystemStatus).toBe(deriveNeurologicalOverview);
+  });
+});
+
+// PRODUCT OWNER DIRECTIVE (2026-10-12) "Complete Neurological
+// Documentation Coverage" -- Section 10 required test suites A-F.
+describe("Documentation Coverage -- Hearing (Section 10.A)", () => {
+  it("Adequate", () => {
+    const item = computeNeurologicalDocumentationCoverage({ hearing: "Adequate" }).find((i) => i.key === "hearing");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Adequate");
+    expect(item.unresolvedHint).toBeNull();
+  });
+
+  it("Impaired", () => {
+    const item = computeNeurologicalDocumentationCoverage({ hearing: "Impaired" }).find((i) => i.key === "hearing");
+    expect(item.value).toBe("Impaired");
+  });
+
+  it("Deaf", () => {
+    const item = computeNeurologicalDocumentationCoverage({ hearing: "Deaf" }).find((i) => i.key === "hearing");
+    expect(item.value).toBe("Deaf");
+  });
+
+  it("Unable to assess", () => {
+    const item = computeNeurologicalDocumentationCoverage({ hearing: "Unable to assess" }).find((i) => i.key === "hearing");
+    expect(item.value).toBe("Unable to assess");
+  });
+
+  it("unanswered -- shows the exact unresolved hint, not a generic 'Incomplete'", () => {
+    const item = computeNeurologicalDocumentationCoverage({}).find((i) => i.key === "hearing");
+    expect(item.complete).toBe(false);
+    expect(item.value).toBeNull();
+    expect(item.unresolvedHint).toBe("Select hearing status");
+  });
+});
+
+describe("Documentation Coverage -- Vision (Section 10.B)", () => {
+  it("Adequate", () => {
+    const item = computeNeurologicalDocumentationCoverage({ vision: "Adequate" }).find((i) => i.key === "vision");
+    expect(item.value).toBe("Adequate");
+  });
+
+  it("Impaired", () => {
+    const item = computeNeurologicalDocumentationCoverage({ vision: "Impaired" }).find((i) => i.key === "vision");
+    expect(item.value).toBe("Impaired");
+  });
+
+  it("Blind", () => {
+    const item = computeNeurologicalDocumentationCoverage({ vision: "Blind" }).find((i) => i.key === "vision");
+    expect(item.value).toBe("Blind");
+  });
+
+  it("Unable to assess", () => {
+    const item = computeNeurologicalDocumentationCoverage({ vision: "Unable to assess" }).find((i) => i.key === "vision");
+    expect(item.value).toBe("Unable to assess");
+  });
+
+  it("unanswered -- exact unresolved hint", () => {
+    const item = computeNeurologicalDocumentationCoverage({}).find((i) => i.key === "vision");
+    expect(item.complete).toBe(false);
+    expect(item.unresolvedHint).toBe("Select vision status");
+  });
+});
+
+describe("Documentation Coverage -- Communication independence (Section 10.C)", () => {
+  it("Communication answered while Hearing is blank leaves Hearing unresolved", () => {
+    const coverage = computeNeurologicalDocumentationCoverage({ communication: "Normal" });
+    expect(coverage.find((i) => i.key === "communication").complete).toBe(true);
+    const hearing = coverage.find((i) => i.key === "hearing");
+    expect(hearing.complete).toBe(false);
+    expect(hearing.unresolvedHint).toBe("Select hearing status");
+  });
+
+  it("Communication answered while Vision is blank leaves Vision unresolved", () => {
+    const coverage = computeNeurologicalDocumentationCoverage({ communication: "Normal" });
+    expect(coverage.find((i) => i.key === "communication").complete).toBe(true);
+    const vision = coverage.find((i) => i.key === "vision");
+    expect(vision.complete).toBe(false);
+    expect(vision.unresolvedHint).toBe("Select vision status");
+  });
+
+  it("Hearing and Vision both answered while Communication is blank leaves Communication unresolved", () => {
+    const coverage = computeNeurologicalDocumentationCoverage({ hearing: "Adequate", vision: "Adequate" });
+    expect(coverage.find((i) => i.key === "communication").complete).toBe(false);
+    expect(coverage.find((i) => i.key === "hearing").complete).toBe(true);
+    expect(coverage.find((i) => i.key === "vision").complete).toBe(true);
+  });
+});
+
+describe("Documentation Coverage -- Behavioral Findings (Section 10.D)", () => {
+  it("Anxiety, Agitation, Depressed (existing demeanor list, unchanged)", () => {
+    const item = computeNeurologicalDocumentationCoverage({ symptomsDemeanor: ["Anxiety", "Agitation", "Depressed"] }).find(
+      (i) => i.key === "behavioral",
+    );
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Anxiety, Agitation, Depressed");
+  });
+
+  it("Delirium only", () => {
+    const item = computeNeurologicalDocumentationCoverage({ delirium: true }).find((i) => i.key === "behavioral");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Delirium");
+  });
+
+  it("Seizure History only", () => {
+    const item = computeNeurologicalDocumentationCoverage({ seizureHistory: true }).find((i) => i.key === "behavioral");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Seizure History");
+  });
+
+  it("Delirium plus behavioral list -- appended, not absorbed", () => {
+    const item = computeNeurologicalDocumentationCoverage({ symptomsDemeanor: ["Anxiety"], delirium: true }).find(
+      (i) => i.key === "behavioral",
+    );
+    expect(item.value).toBe("Anxiety, Delirium");
+  });
+
+  it("Seizure History plus active Seizure demeanor -- both display, with exact distinct labels", () => {
+    const item = computeNeurologicalDocumentationCoverage({ symptomsDemeanor: ["Seizure"], seizureHistory: true }).find(
+      (i) => i.key === "behavioral",
+    );
+    expect(item.value).toBe("Seizure, Seizure History");
+  });
+
+  it("no behavioral documentation -- unresolved, not a false-positive complete", () => {
+    const item = computeNeurologicalDocumentationCoverage({}).find((i) => i.key === "behavioral");
+    expect(item.complete).toBe(false);
+    expect(item.unresolvedHint).toBe("Select behavioral / demeanor findings");
+  });
+
+  it("delirium: false alone is not treated as an affirmative documented finding", () => {
+    const item = computeNeurologicalDocumentationCoverage({ delirium: false, seizureHistory: false }).find(
+      (i) => i.key === "behavioral",
+    );
+    expect(item.complete).toBe(false);
+  });
+});
+
+describe("Documentation Coverage -- Sleep / Responsiveness (Section 10.E)", () => {
+  it("sleep pattern only", () => {
+    const item = computeNeurologicalDocumentationCoverage({ sleepRest: { sleepPattern: "Insomnia" } }).find(
+      (i) => i.key === "sleep",
+    );
+    expect(item.value).toBe("Insomnia");
+  });
+
+  it("responsiveness only", () => {
+    const item = computeNeurologicalDocumentationCoverage({ sleepRest: { responsiveness: "Easily Aroused" } }).find(
+      (i) => i.key === "sleep",
+    );
+    expect(item.value).toBe("Easily Aroused");
+  });
+
+  it("both sleep pattern and responsiveness documented -- no longer suppressed by first-match-wins", () => {
+    const item = computeNeurologicalDocumentationCoverage({
+      sleepRest: { sleepPattern: "Insomnia", responsiveness: "Easily Aroused" },
+    }).find((i) => i.key === "sleep");
+    expect(item.value).toBe("Insomnia; Easily Aroused");
+  });
+
+  it("change since prior only", () => {
+    const item = computeNeurologicalDocumentationCoverage({ sleepRest: { changeSincePrior: "Increased Somnolence" } }).find(
+      (i) => i.key === "sleep",
+    );
+    expect(item.value).toBe("Increased Somnolence");
+  });
+
+  it("all three documented -- stable order: sleep pattern, responsiveness, change since prior", () => {
+    const item = computeNeurologicalDocumentationCoverage({
+      sleepRest: { sleepPattern: "Insomnia", responsiveness: "Easily Aroused", changeSincePrior: "Increased Somnolence" },
+    }).find((i) => i.key === "sleep");
+    expect(item.value).toBe("Insomnia; Easily Aroused; Increased Somnolence");
+  });
+});
+
+describe("Documentation Coverage -- Anxiety / Agitation continue to appear (Sections 10.D / 13.7-8)", () => {
+  it("Anxiety continues to appear in Coverage", () => {
+    const item = computeNeurologicalDocumentationCoverage({ symptomsDemeanor: ["Anxiety"] }).find((i) => i.key === "behavioral");
+    expect(item.value).toContain("Anxiety");
+  });
+
+  it("Agitation continues to appear in Coverage", () => {
+    const item = computeNeurologicalDocumentationCoverage({ symptomsDemeanor: ["Agitation"] }).find((i) => i.key === "behavioral");
+    expect(item.value).toContain("Agitation");
+  });
+});
+
+// Section 10.F -- Anxiety / Agitation downstream HOPE J2051C/H derivation.
+// These tests exercise `deriveSymptomImpactFromForm`, the extracted pure
+// function the component's useEffect now calls (byte-identical logic to
+// the prior inline version -- see the function's own doc comment). They
+// verify EXISTING behavior; they do not approve or change presence-only
+// impact coding (that remains a separately tracked HOPE audit item).
+describe("deriveSymptomImpactFromForm -- Anxiety / Agitation HOPE derivation (Section 10.F)", () => {
+  it("selecting Anxiety sets symptomImpact.anxiety to the existing code '1' (HOPE J2051C = Slight)", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Anxiety"] } });
+    expect(derived.anxiety).toBe("1");
+  });
+
+  it("deselecting Anxiety clears it back to '0'", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: [] } });
+    expect(derived.anxiety).toBe("0");
+  });
+
+  it("selecting Agitation sets symptomImpact.agitation to the existing code '1' (HOPE J2051H = Slight)", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Agitation"] } });
+    expect(derived.agitation).toBe("1");
+  });
+
+  it("deselecting Agitation clears it back to '0'", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: [] } });
+    expect(derived.agitation).toBe("0");
+  });
+
+  it("save and reload preserve behavior -- re-deriving from a reloaded (round-tripped) formData shape is identical", () => {
+    const stored = { neurological: { symptomsDemeanor: ["Anxiety", "Agitation"] } };
+    const reloaded = JSON.parse(JSON.stringify(stored));
+    expect(deriveSymptomImpactFromForm(stored)).toEqual(deriveSymptomImpactFromForm(reloaded));
+    expect(deriveSymptomImpactFromForm(reloaded).anxiety).toBe("1");
+    expect(deriveSymptomImpactFromForm(reloaded).agitation).toBe("1");
+  });
+
+  it("other demeanor selections do not affect anxiety/agitation codes", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Depressed", "Restless"] } });
+    expect(derived.anxiety).toBe("0");
+    expect(derived.agitation).toBe("0");
+  });
+});
+
+// SNS PRODUCT-OWNER CORRECTION (2026-10-13) "Redesign Neurological
+// Overview As A Concise Clinical Synthesis" -- acceptance tests for
+// computeNeurologicalOverviewSynthesis, the concise banner replacing the
+// duplicated Clinical Story sentence above the Neurological Overview
+// card. Documentation Coverage and computeNeurologicalNarrative (Clinical
+// Story) are untouched and keep their own existing test coverage above;
+// these tests cover only the new synthesis function.
+describe("computeNeurologicalOverviewSynthesis", () => {
+  it("current example -- status line, sleep, behavioral+sensory, comparison, documentation gap", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      consciousness: "Awake",
+      orientation: { person: true, place: true, time: true, situation: true },
+      communication: "Normal",
+      hearing: undefined,
+      vision: "Adequate",
+      symptomsDemeanor: ["Anxiety", "Agitation", "Depressed"],
+      sleepRest: { sleepPattern: "Insomnia", responsiveness: "Easily Aroused" },
+      sensoryDeficits: ["Numbness"],
+      clinicalStatusChange: "Initial Assessment",
+      psychiatricHistoryType: ["None"],
+    });
+    expect(synthesis).toBe(
+      "Awake and oriented x4 with intact communication. Insomnia with easy arousability documented. " +
+        "Anxiety, agitation, depression, and numbness are present. " +
+        "This is the initial neurological assessment; no prior comparison is available. " +
+        "Hearing remains undocumented.",
+    );
+  });
+
+  it("no-concern example -- all normal findings and complete Coverage collapse into one sentence", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      consciousness: "Awake",
+      orientation: { person: true, place: true, time: true, situation: true },
+      communication: "Normal",
+      hearing: "Adequate",
+      vision: "Adequate",
+    });
+    expect(synthesis).toBe(
+      "Awake and oriented x4 with no current communication, behavioral, sleep, hearing, vision, or sensory concern documented.",
+    );
+  });
+
+  it("unable-to-assess example -- states only the inability and reason, no normal findings invented", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      neuroOverview: "Unable to Assess",
+      neuroUnableToAssessReason: "Patient declined",
+    });
+    expect(synthesis).toBe("Neurological status could not be fully assessed during this visit. Reason: Patient declined.");
+  });
+
+  it("new-or-worsening example -- comparison leads, ahead of the status line, per priority rule #1", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      consciousness: "Awake",
+      orientation: { person: true },
+      delirium: true,
+      communication: "Impaired",
+      hearing: "Adequate",
+      vision: "Adequate",
+      clinicalStatusChange: "New or Worsening Concern",
+    });
+    expect(synthesis).toBe(
+      "New or worsening neurological concern is documented, with delirium and impaired communication. " +
+        "The patient is awake and oriented to person.",
+    );
+  });
+
+  it("each of the 7 comparison states resolves to a documented, non-blank comparison sentence", () => {
+    const states = [
+      "Initial Assessment",
+      "No Significant Change",
+      "Improved",
+      "Gradual Decline",
+      "New or Worsening Concern",
+      "Fluctuating",
+      "Unable to Compare",
+    ];
+    states.forEach((clinicalStatusChange) => {
+      const synthesis = computeNeurologicalOverviewSynthesis({ consciousness: "Awake", clinicalStatusChange });
+      expect(synthesis.length).toBeGreaterThan(0);
+    });
+  });
+
+  it("altered consciousness with nothing else assessable states that orientation/communication could not be assessed", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      consciousness: "Minimally Responsive",
+      hearing: "Adequate",
+      vision: "Adequate",
+    });
+    expect(synthesis).toBe("Minimally Responsive; orientation and communication could not be assessed.");
+  });
+
+  it("partial orientation renders the specific oriented-to list, not Oriented x4", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      consciousness: "Lethargic",
+      orientation: { person: true, place: true },
+      communication: "Impaired",
+      hearing: "Adequate",
+      vision: "Adequate",
+    });
+    expect(synthesis).toBe("Lethargic and oriented to person and place, with impaired communication.");
+  });
+
+  it("impaired communication alone (no consciousness/orientation documented)", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({ communication: "Impaired", hearing: "Adequate", vision: "Adequate" });
+    expect(synthesis).toBe("Impaired communication.");
+  });
+
+  it("delirium alone is a single Key Findings sentence", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({ delirium: true, hearing: "Adequate", vision: "Adequate" });
+    expect(synthesis).toBe("Delirium is present.");
+  });
+
+  it("active seizure (symptomsDemeanor includes Seizure) is distinct from seizure history", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      symptomsDemeanor: ["Seizure"],
+      hearing: "Adequate",
+      vision: "Adequate",
+    });
+    expect(synthesis).toBe("Active seizure activity is present.");
+  });
+
+  it("seizure history only (boolean) renders distinctly from an active seizure finding", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({ seizureHistory: true, hearing: "Adequate", vision: "Adequate" });
+    expect(synthesis).toBe("A history of seizures is present.");
+  });
+
+  it("sleep pattern plus responsiveness combine into one sentence", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      sleepRest: { sleepPattern: "Hypersomnia", responsiveness: "Somnolent" },
+      hearing: "Adequate",
+      vision: "Adequate",
+    });
+    expect(synthesis).toBe("Hypersomnia with somnolence documented.");
+  });
+
+  it("a lone sensory deficit is its own Key Findings sentence", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({
+      sensoryDeficits: ["Tingling"],
+      hearing: "Adequate",
+      vision: "Adequate",
+    });
+    expect(synthesis).toBe("Tingling is present.");
+  });
+
+  it("hearing unresolved alone produces a singular Documentation Gap sentence", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({ consciousness: "Awake", vision: "Adequate" });
+    expect(synthesis).toBe("Awake. Hearing remains undocumented.");
+  });
+
+  it("multiple unresolved items (hearing and vision) join with 'and' and use plural 'remain'", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({ consciousness: "Awake" });
+    expect(synthesis).toBe("Awake. Hearing and vision remain undocumented.");
+  });
+
+  it("documentation gap is omitted once hearing and vision are both answered, even if abnormal", () => {
+    const synthesis = computeNeurologicalOverviewSynthesis({ hearing: "Impaired", vision: "Impaired" });
+    expect(synthesis).not.toMatch(/undocumented/);
+  });
+
+  it("does not fabricate a Clinical Story/Overview duplicate -- output differs from computeNeurologicalNarrative for a mixed record", () => {
+    const record = {
+      consciousness: "Awake",
+      orientation: { person: true, place: true, time: true, situation: true },
+      communication: "Normal",
+      symptomsDemeanor: ["Anxiety"],
+      clinicalStatusChange: "No Significant Change",
+    };
+    const synthesis = computeNeurologicalOverviewSynthesis(record);
+    const story = computeNeurologicalNarrative(record);
+    expect(synthesis).not.toBe(story);
+  });
+
+  it("save/reload determinism -- identical input always produces an identical synthesis", () => {
+    const input = {
+      consciousness: "Awake",
+      symptomsDemeanor: ["Anxiety"],
+      sleepRest: { sleepPattern: "Insomnia", responsiveness: "Easily Aroused" },
+      clinicalStatusChange: "Improved",
+    };
+    const reloaded = JSON.parse(JSON.stringify(input));
+    expect(computeNeurologicalOverviewSynthesis(input)).toBe(computeNeurologicalOverviewSynthesis(reloaded));
   });
 });
 

@@ -498,6 +498,21 @@ export interface RespiratoryReviewCompletionResult {
   situation: AssessmentSituation | null;
   /** Field IDs (from `respiratoryFieldInventory.ts`) for every unresolved product-owner-authorized requirement — for field-level highlighting in the panel. */
   missingProductAuthorizedFieldIds: string[];
+  /**
+   * The subset of `blockingMessages` produced by the legacy
+   * situation/requirement-key engine (`BLOCKING_MESSAGE_BY_REQUIREMENT_KEY`
+   * and the "no situation yet" message), as opposed to the product-
+   * authorized-requirement messages (`getMissingProductAuthorizedRequirements`).
+   * ADR-004 Documentation Coverage must not display these — they are
+   * workflow/validation-aggregate concepts (e.g. "intervention or
+   * response documented"), not individually-documented fields with a
+   * `sourceFieldKeys` mapping. Product-owner directive: surface them in a
+   * separate "Legacy Respiratory Workflow Alerts" section instead,
+   * pending an explicit field-ownership decision. Still included in
+   * `blockingMessages` and still gates `complete`/`completeReview` exactly
+   * as before — this field only exposes the subset for UI separation.
+   */
+  legacySituationMessages: string[];
 }
 
 const BLOCKING_MESSAGE_BY_REQUIREMENT_KEY: Record<string, string> = {
@@ -524,19 +539,22 @@ export function getRespiratoryReviewCompletion(values: RespiratoryAssessmentValu
 
   const situation = deriveRespiratorySituation(values);
   if (!situation) {
+    const noSituationMessage =
+      "Enter at least one respiratory finding, or explicitly record \"No current respiratory concern\" / \"Unable to fully assess\".";
     return {
       complete: false,
       situation: null,
-      blockingMessages: [
-        "Enter at least one respiratory finding, or explicitly record \"No current respiratory concern\" / \"Unable to fully assess\".",
-        ...productAuthorizedMessages,
-      ],
+      blockingMessages: [noSituationMessage, ...productAuthorizedMessages],
       missingProductAuthorizedFieldIds: productAuthorizedFieldIds,
+      legacySituationMessages: [noSituationMessage],
     };
   }
   const satisfiedKeys = getSatisfiedRespiratoryRequirementKeys(situation, values);
   const missingKeys = getMissingSituationRequirements(situation, satisfiedKeys).filter(
     (key) => !isRespiratoryRequirementNotVerified(key),
+  );
+  const legacySituationMessages = missingKeys.map(
+    (key) => BLOCKING_MESSAGE_BY_REQUIREMENT_KEY[key] ?? `Missing requirement: ${key}`,
   );
   return {
     // Product-owner-authorized gaps now block completion (UI controls
@@ -546,10 +564,8 @@ export function getRespiratoryReviewCompletion(values: RespiratoryAssessmentValu
     // decision.
     complete: missingKeys.length === 0 && productAuthorizedGaps.length === 0,
     situation,
-    blockingMessages: [
-      ...missingKeys.map((key) => BLOCKING_MESSAGE_BY_REQUIREMENT_KEY[key] ?? `Missing requirement: ${key}`),
-      ...productAuthorizedMessages,
-    ],
+    blockingMessages: [...legacySituationMessages, ...productAuthorizedMessages],
     missingProductAuthorizedFieldIds: productAuthorizedFieldIds,
+    legacySituationMessages,
   };
 }

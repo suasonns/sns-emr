@@ -97,12 +97,18 @@ export const RESPIRATORY_OVERVIEW_FIELD: RespiratoryFieldDefinition = {
 };
 
 /**
- * Explicit, non-gating "no current concern" declaration. Unlike the legacy
- * overview selector, this does not have to be answered before other fields
- * are visible/editable — all current-evidence fields are always rendered.
- * It exists because Contract v2 requires an explicit nurse action (not a
- * blank default) to record "reviewed, no current respiratory concern";
- * leaving every field blank must never be silently treated as normal.
+ * HISTORICAL/DERIVED COMPATIBILITY VALUE. Was briefly an independent,
+ * non-gating "no current concern" declaration during the initial Contract
+ * v2 port. Product Owner directive "One clinical fact. One nurse action.
+ * One source of truth. Assessment Context is canonical." (2026-10-12)
+ * retired this as a user-facing control: it duplicated
+ * `RESPIRATORY_ASSESSMENT_CONTEXT_FIELD`'s own `NO_CURRENT_RESPIRATORY_CONCERN`
+ * value, requiring the same clinical fact to be documented twice. No
+ * longer rendered in the Contract v2 panel; kept only as a derived,
+ * always-in-sync compatibility value (see `applyCanonicalLegacyMapping` in
+ * RespiratoryPanel.tsx, case "respiratory_assessment_context") so
+ * `deriveRespiratorySituation` (respiratoryWorkflowRules.ts) and any
+ * historical reader continue to see a consistent value.
  */
 export const RESPIRATORY_NO_CURRENT_CONCERN_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_no_current_concern",
@@ -112,14 +118,22 @@ export const RESPIRATORY_NO_CURRENT_CONCERN_FIELD: RespiratoryFieldDefinition = 
   legacySource: "respiratory.respiratoryNoCurrentConcern",
   responseType: "boolean",
   nullable: true,
-  notes: "Explicit nurse declaration only; does not gate rendering or requiredness of any other field.",
+  notes: "HISTORICAL/DERIVED. No longer an independent nurse action; automatically kept in sync with RESPIRATORY_ASSESSMENT_CONTEXT_FIELD. Not rendered as its own control in the Contract v2 panel.",
 };
 
 /**
- * Explicit, non-gating "unable to fully assess" toggle. Opens the
- * Assessment Limitation fields (reason / other) below it without hiding or
- * disabling any current-evidence field — a nurse may document both partial
- * current findings AND a limitation for the remaining scope.
+ * HISTORICAL/DERIVED COMPATIBILITY VALUE. Was briefly an independent,
+ * non-gating "unable to fully assess" toggle during the initial Contract
+ * v2 port. Product Owner directive "One clinical fact. One nurse action.
+ * One source of truth. Assessment Context is canonical." (2026-10-12)
+ * retired this as a user-facing control: it duplicated
+ * `RESPIRATORY_ASSESSMENT_CONTEXT_FIELD`'s own `UNABLE_TO_FULLY_ASSESS`
+ * value. No longer rendered in the Contract v2 panel; kept only as a
+ * derived, always-in-sync compatibility value (see
+ * `applyCanonicalLegacyMapping` in RespiratoryPanel.tsx, case
+ * "respiratory_assessment_context"). The Assessment Limitation section
+ * (reason/other) still opens correctly because it reads this derived
+ * value.
  */
 export const RESPIRATORY_UNABLE_TO_ASSESS_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_unable_to_assess",
@@ -129,7 +143,7 @@ export const RESPIRATORY_UNABLE_TO_ASSESS_FIELD: RespiratoryFieldDefinition = {
   legacySource: "respiratory.respiratoryUnableToAssess",
   responseType: "boolean",
   nullable: true,
-  notes: "Explicit limitation toggle; reveals (does not require) the limitation reason fields. Never hides current-evidence fields.",
+  notes: "HISTORICAL/DERIVED. No longer an independent nurse action; automatically kept in sync with RESPIRATORY_ASSESSMENT_CONTEXT_FIELD. Still read to reveal the Assessment Limitation section.",
 };
 
 export const RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD: RespiratoryFieldDefinition = {

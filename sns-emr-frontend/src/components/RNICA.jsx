@@ -65,6 +65,7 @@ import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Card as ShadcnCard, CardHeader as ShadcnCardHeader, CardTitle as ShadcnCardTitle, CardContent as ShadcnCardContent } from "./ui/card";
 import { Badge as ShadcnBadge } from "./ui/badge";
+import { DocumentationCoverage } from "./ui/documentation-coverage";
 import { Progress as ShadcnProgress } from "./ui/progress";
 import { Accordion, AccordionItem, AccordionTrigger, AccordionContent } from "./ui/accordion";
 import { Input as ShadcnInput } from "./ui/input";
@@ -12217,19 +12218,63 @@ const NEUROLOGICAL_COVERAGE_ITEMS = [
     summarize: (d) => (["Normal", "Clear"].includes(d.communication) ? "No Current Concern" : d.communication),
     unresolvedHint: "Select communication status",
   },
+  // PRODUCT OWNER DIRECTIVE (2026-10-12) "Complete Neurological
+  // Documentation Coverage" -- Hearing and Vision are independently
+  // documented Neuro fields (their own segmented controls, their own
+  // unresolved state) and must remain separate Coverage items from
+  // Communication, each with its own unresolved hint, so one answered
+  // field can never hide another unanswered field. Display the
+  // clinician's actual documented value verbatim (no "No Current
+  // Concern" substitution here -- that normalization is specific to the
+  // `communication` field's own Normal/Clear wording and is not reused
+  // for Hearing/Vision per the corrected directive).
+  {
+    key: "hearing",
+    label: "Hearing",
+    sourceFieldKeys: ["hearing"],
+    check: (d) => Boolean(d.hearing),
+    summarize: (d) => d.hearing,
+    unresolvedHint: "Select hearing status",
+  },
+  {
+    key: "vision",
+    label: "Vision",
+    sourceFieldKeys: ["vision"],
+    check: (d) => Boolean(d.vision),
+    summarize: (d) => d.vision,
+    unresolvedHint: "Select vision status",
+  },
+  // PRODUCT OWNER DIRECTIVE (2026-10-12) -- Delirium and Seizure History
+  // are separate booleanPill fields (not part of `symptomsDemeanor`) but
+  // are conceptually the same "behavioral/demeanor findings" item, so
+  // they extend this item's sourceFieldKeys/check/summarize rather than
+  // becoming new Coverage items. `delirium`/`seizureHistory` are only
+  // ever appended to the displayed list when explicitly `true` -- a
+  // `false`/unset boolean is never treated as an affirmative documented
+  // finding, matching the directive's "do not treat false as an
+  // affirmative clinician response" rule. "Seizure History" (this
+  // boolean) and the separate "Seizure" demeanor pill (an active/current
+  // finding) are displayed as exactly what was documented and are never
+  // merged into one label.
   {
     key: "behavioral",
     label: "Behavioral Findings",
-    sourceFieldKeys: ["symptomsDemeanor", "behavioralStatus"],
-    check: (d) => Boolean((d.symptomsDemeanor || []).length > 0 || d.behavioralStatus),
+    sourceFieldKeys: ["symptomsDemeanor", "behavioralStatus", "delirium", "seizureHistory"],
+    check: (d) => Boolean((d.symptomsDemeanor || []).length > 0 || d.behavioralStatus || d.delirium || d.seizureHistory),
     summarize: (d) => {
       const demeanor = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
-      if (demeanor.length > 0) return demeanor.join(", ");
+      const extras = [d.delirium && "Delirium", d.seizureHistory && "Seizure History"].filter(Boolean);
+      const findings = [...demeanor, ...extras];
+      if (findings.length > 0) return findings.join(", ");
       if ((d.symptomsDemeanor || []).includes("Peaceful")) return "Peaceful";
       return d.behavioralStatus || "";
     },
     unresolvedHint: "Select behavioral / demeanor findings",
   },
+  // PRODUCT OWNER DIRECTIVE (2026-10-12) -- fix first-match-wins
+  // suppression: display every documented Sleep / Responsiveness
+  // sub-value, in the stable order Sleep Pattern, Responsiveness, Change
+  // Since Prior, instead of showing only the first populated field.
   {
     key: "sleep",
     label: "Sleep",
@@ -12240,9 +12285,12 @@ const NEUROLOGICAL_COVERAGE_ITEMS = [
     },
     summarize: (d) => {
       const s = d.sleepRest || {};
-      if (s.changeSincePrior) return s.changeSincePrior;
-      if (s.sleepPattern) return s.sleepPattern === "Normal" ? "Usual Sleep Pattern" : s.sleepPattern;
-      return s.responsiveness || "";
+      const parts = [
+        s.sleepPattern && (s.sleepPattern === "Normal" ? "Usual Sleep Pattern" : s.sleepPattern),
+        s.responsiveness,
+        s.changeSincePrior,
+      ].filter(Boolean);
+      return parts.join("; ");
     },
     unresolvedHint: "Document sleep pattern, responsiveness, or change since prior assessment",
   },
@@ -12266,6 +12314,34 @@ const NEUROLOGICAL_COVERAGE_ITEMS = [
     unresolvedHint: "Select psychiatric history",
   },
 ];
+
+// PRODUCT OWNER DIRECTIVE (2026-10-12) "Complete Neurological
+// Documentation Coverage" Section 10.F -- extracted, pure, exported form
+// of the HOPE J2051 A-H Symptom Impact derivation that previously lived
+// only inline inside the component's `useEffect` below, so it can be
+// unit-tested directly. This is a behavior-preserving refactor only: the
+// returned object and every field's derivation rule (severityMap, the
+// presence-only "1"/"0" read for anxiety/agitation from
+// `symptomsDemeanor`) are byte-for-byte identical to the prior inline
+// logic -- no HOPE mapping, severity semantics, or output value changes.
+export function deriveSymptomImpactFromForm(formData = {}) {
+  const severityMap = { None: "0", Mild: "1", Moderate: "2", Severe: "3" };
+  const painSeverity = formData.pain?.painSeverityCategory;
+  const demeanor = formData.neurological?.symptomsDemeanor || [];
+  // symptomsDemeanor is a presence checklist, not a graded scale -- its
+  // absence is read as "0 - None reported" so the summary never shows a
+  // stale severity after the checkbox is unchecked.
+  return {
+    pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : "",
+    shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity] ?? "",
+    anxiety: demeanor.includes("Anxiety") ? "1" : "0",
+    nausea: severityMap[formData.gastrointestinal?.nausea] ?? "",
+    vomiting: severityMap[formData.gastrointestinal?.vomiting] ?? "",
+    diarrhea: severityMap[formData.gastrointestinal?.diarrhea] ?? "",
+    constipation: severityMap[formData.gastrointestinal?.constipation] ?? "",
+    agitation: demeanor.includes("Agitation") ? "1" : "0",
+  };
+}
 
 export function computeNeurologicalDocumentationCoverage(d = {}) {
   // SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Documentation Coverage As
@@ -12305,6 +12381,233 @@ export function computeNeurologicalDocumentationCoverage(d = {}) {
     unresolvedHint: item.check(d) ? null : item.unresolvedHint,
     sourceFieldKeys: item.sourceFieldKeys,
   }));
+}
+
+function neuroJoinWithAnd(items) {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function neuroCapitalize(s) {
+  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+}
+
+// SNS PRODUCT-OWNER CORRECTION (2026-10-13) "Redesign Neurological
+// Overview As A Concise Clinical Synthesis" -- Documentation Coverage
+// ("what is documented / what is missing?") and Clinical Story ("what did
+// the discipline document verbatim?", see computeNeurologicalNarrative
+// above) both already exist and both stay exactly as they are. This is
+// the third, distinct thing the directive asks for: a short clinical
+// SYNTHESIS of the already-documented fields (never copying Coverage's
+// inventory format, never re-deriving a new finding), used only as the
+// single banner line above the Neurological Overview card. It reads the
+// same fields computeNeurologicalNarrative does, but composes them into
+// at most four parts -- STATUS LINE, KEY FINDINGS, COMPARISON,
+// DOCUMENTATION GAP -- per the directive's exact structure and priority
+// rules, instead of one clause per field.
+const NEURO_RESPONSIVENESS_NOUN = {
+  "Easily Aroused": "easy arousability",
+  Somnolent: "somnolence",
+  "Difficult To Arouse": "difficulty arousing",
+  "Minimally Responsive": "minimal responsiveness",
+  Unresponsive: "unresponsiveness",
+  "Unable to assess": "responsiveness that could not be assessed",
+};
+
+const NEURO_BEHAVIORAL_NOUN = {
+  Anxiety: "anxiety",
+  Agitation: "agitation",
+  Depressed: "depression",
+  Confused: "confusion",
+  Angry: "anger",
+  Restless: "restlessness",
+  Seizure: "active seizure activity",
+  Combative: "combativeness",
+  Sundowning: "sundowning",
+  "Tremors / twitching": "tremors/twitching",
+  Other: "other behavioral findings",
+};
+
+const NEURO_SENSORY_NOUN = {
+  Numbness: "numbness",
+  Tingling: "tingling",
+  "Decreased sensation": "decreased sensation",
+  "Phantom pain": "phantom pain",
+};
+
+// Overview-specific comparison wording -- intentionally distinct strings
+// from NEURO_OVERALL_CHANGE_NARRATIVE (that map feeds the Clinical Story
+// clause above and its own passing tests are untouched); this map only
+// feeds the new synthesis sentence per the directive's own example
+// wording ("This is the initial neurological assessment; no prior
+// comparison is available.").
+const NEURO_OVERVIEW_COMPARISON_TEXT = {
+  "Initial Assessment": "This is the initial neurological assessment; no prior comparison is available.",
+  "No Significant Change": "No significant neurological change from the prior assessment.",
+  Improved: "Neurological status has improved from the prior assessment.",
+  "Gradual Decline": "Neurological findings show gradual decline from the prior assessment.",
+  "New or Worsening Concern": "New or worsening neurological concern is documented.",
+  Fluctuating: "Neurological status has been fluctuating since the prior assessment.",
+  "Unable to Compare": "Comparison to the prior neurological assessment is unavailable.",
+};
+
+// PRODUCT_OWNER_REVIEW_PENDING (2026-10-13) "Remove The Neuro-Only
+// Derived Overview / Freeze Body-System Presentation Changes" -- the
+// Product Owner found the rendered paragraph produced by this function
+// not approved as rendered (it visually competed with Documentation
+// Coverage and duplicated already-documented fields) and ordered its
+// single render call site (the `NeurologicalPanel` `header` prop in
+// RNICA.jsx) removed. This function is intentionally PRESERVED, UNUSED,
+// and UNCALLED pending Product Owner review of cross-system Summary
+// redesign options (see the historical-Summary audit / Option A/B/C
+// preview deliverable). Do not call this from Documentation Coverage,
+// Structured Findings, POC, HOPE, Patient Story, or IDG. Do not delete
+// it and do not expand an equivalent paragraph to any other Body System
+// without a superseding directive.
+export function computeNeurologicalOverviewSynthesis(d = {}) {
+  if (d.neuroOverview === "Unable to Assess") {
+    const reason = d.neuroUnableToAssessReason === "Other" && d.neuroUnableToAssessOther
+      ? d.neuroUnableToAssessOther
+      : d.neuroUnableToAssessReason;
+    return reason
+      ? `Neurological status could not be fully assessed during this visit. Reason: ${reason}.`
+      : "Neurological status could not be fully assessed during this visit.";
+  }
+
+  const consciousnessCanonical = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
+  const consciousnessDisplay = NEURO_CONSCIOUSNESS_DISPLAY[consciousnessCanonical] || consciousnessCanonical;
+
+  const o = d.orientation || {};
+  const orientationDocumented = Boolean(o.disoriented || o.person || o.place || o.time || o.situation);
+  let orientationPhrase = null;
+  if (o.disoriented) {
+    orientationPhrase = "disoriented";
+  } else if (orientationDocumented) {
+    const orientedTo = [o.person && "person", o.place && "place", o.time && "time", o.situation && "situation"].filter(Boolean);
+    orientationPhrase = orientedTo.length === 4 ? "oriented x4" : `oriented to ${neuroJoinWithAnd(orientedTo)}`;
+  }
+
+  const communicationDocumented = Boolean(d.communication);
+  const communicationNormal = ["Normal", "Clear"].includes(d.communication);
+  const communicationPhrase = communicationDocumented
+    ? (communicationNormal ? "intact communication" : "impaired communication")
+    : null;
+
+  // -- STATUS LINE --
+  let statusAnchor = consciousnessDisplay || "";
+  if (orientationPhrase) statusAnchor += statusAnchor ? ` and ${orientationPhrase}` : neuroCapitalize(orientationPhrase);
+  let statusLine = "";
+  if (consciousnessDisplay && !orientationDocumented && !communicationDocumented && consciousnessCanonical !== "Alert") {
+    statusLine = `${consciousnessDisplay}; orientation and communication could not be assessed.`;
+  } else if (statusAnchor || communicationPhrase) {
+    let line = statusAnchor;
+    if (communicationPhrase) {
+      line += line
+        ? (communicationNormal ? ` with ${communicationPhrase}` : `, with ${communicationPhrase}`)
+        : neuroCapitalize(communicationPhrase);
+    }
+    statusLine = line ? `${line}.` : "";
+  }
+
+  // -- KEY FINDINGS --
+  const sleep = d.sleepRest || {};
+  const sleepPatternAbnormal = Boolean(sleep.sleepPattern) && sleep.sleepPattern !== "Normal";
+  const responsivenessNoun = sleep.responsiveness ? NEURO_RESPONSIVENESS_NOUN[sleep.responsiveness] : null;
+  const responsivenessAbnormal = Boolean(responsivenessNoun) && sleep.responsiveness !== "Easily Aroused";
+  let sleepSentence = "";
+  if (sleepPatternAbnormal && responsivenessNoun) {
+    sleepSentence = `${sleep.sleepPattern} with ${responsivenessNoun} documented.`;
+  } else if (sleepPatternAbnormal) {
+    sleepSentence = `${sleep.sleepPattern} sleep pattern documented.`;
+  } else if (responsivenessAbnormal) {
+    sleepSentence = `${neuroCapitalize(responsivenessNoun)} documented.`;
+  }
+
+  const presenceItems = [];
+  if (d.delirium === true) presenceItems.push("delirium");
+  const demeanor = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+  demeanor.forEach((s) => presenceItems.push(NEURO_BEHAVIORAL_NOUN[s] || s.toLowerCase()));
+  if (d.seizureHistory === true) presenceItems.push("a history of seizures");
+  (d.sensoryDeficits || []).filter(Boolean).forEach((s) => presenceItems.push(NEURO_SENSORY_NOUN[s] || s.toLowerCase()));
+  let presenceSentence = "";
+  if (presenceItems.length === 1) {
+    presenceSentence = `${neuroCapitalize(presenceItems[0])} is present.`;
+  } else if (presenceItems.length > 1) {
+    presenceSentence = `${neuroCapitalize(neuroJoinWithAnd(presenceItems))} are present.`;
+  }
+
+  const hearingAbnormal = Boolean(d.hearing) && d.hearing !== "Adequate" && d.hearing !== "Unable to assess";
+  const visionAbnormal = Boolean(d.vision) && d.vision !== "Adequate" && d.vision !== "Unable to assess";
+  const sensoryImpairments = [];
+  if (hearingAbnormal) sensoryImpairments.push(`hearing ${d.hearing.toLowerCase()}`);
+  if (visionAbnormal) sensoryImpairments.push(`vision ${d.vision.toLowerCase()}`);
+  const sensoryImpairmentSentence = sensoryImpairments.length > 0
+    ? `${neuroCapitalize(neuroJoinWithAnd(sensoryImpairments))} documented.`
+    : "";
+
+  const psychHistory = (d.psychiatricHistoryType || []).filter((p) => p && p !== "None");
+  const psychiatricSentence = psychHistory.length > 0 ? `Psychiatric history: ${psychHistory.join(", ")}.` : "";
+
+  const findingSentences = [sleepSentence, presenceSentence, sensoryImpairmentSentence, psychiatricSentence].filter(Boolean);
+
+  // -- COMPARISON --
+  const comparisonSentence = d.clinicalStatusChange && NEURO_OVERVIEW_COMPARISON_TEXT[d.clinicalStatusChange]
+    ? NEURO_OVERVIEW_COMPARISON_TEXT[d.clinicalStatusChange]
+    : "";
+
+  // -- DOCUMENTATION GAP -- only Hearing/Vision (every other field either
+  // already has a "could not be assessed" fallback in the Status Line, or
+  // simply produces no Key Findings clause when blank -- per the
+  // directive, Documentation Gap restates Coverage's own unresolved
+  // items, it does not re-list every blank field in the form).
+  const coverage = NEUROLOGICAL_COVERAGE_ITEMS.filter((item) => ["hearing", "vision"].includes(item.key));
+  const gapLabels = coverage.filter((item) => !item.check(d)).map((item) => item.label.toLowerCase());
+  const gapSentence = gapLabels.length > 0
+    ? `${neuroCapitalize(neuroJoinWithAnd(gapLabels))} remain${gapLabels.length === 1 ? "s" : ""} undocumented.`
+    : "";
+
+  // -- PRIORITY RULE #1 OVERRIDE -- "New or worsening neurological
+  // change" outranks every other priority, including the Status Line's
+  // own anchors, so it leads the synthesis instead of following it.
+  if (d.clinicalStatusChange === "New or Worsening Concern") {
+    const leadItems = [...presenceItems];
+    if (communicationPhrase && !communicationNormal) leadItems.push("impaired communication");
+    const lead = leadItems.length > 0
+      ? `New or worsening neurological concern is documented, with ${neuroJoinWithAnd(leadItems)}.`
+      : "New or worsening neurological concern is documented.";
+    const rest = [];
+    if (statusAnchor) rest.push(`The patient is ${statusAnchor.charAt(0).toLowerCase()}${statusAnchor.slice(1)}.`);
+    if (sleepSentence) rest.push(sleepSentence);
+    if (sensoryImpairmentSentence) rest.push(sensoryImpairmentSentence);
+    if (psychiatricSentence) rest.push(psychiatricSentence);
+    if (gapSentence) rest.push(gapSentence);
+    return [lead, ...rest].filter(Boolean).join(" ");
+  }
+
+  // -- NO-CONCERN COLLAPSE -- every finding category is blank/normal and
+  // Hearing/Vision are both actually answered (not merely unmentioned),
+  // so the directive's single combined "no concern" sentence replaces the
+  // bare anchor instead of leaving the synthesis looking incomplete. Only
+  // applies when consciousness itself is normal (or undocumented) -- an
+  // altered consciousness with nothing else assessable must keep stating
+  // that explicitly (handled above as its own Status Line sentence), not
+  // be papered over with a reassuring "no concern" sentence.
+  const consciousnessAltered = Boolean(consciousnessDisplay) && consciousnessCanonical !== "Alert";
+  if (
+    statusAnchor &&
+    !consciousnessAltered &&
+    findingSentences.length === 0 &&
+    !comparisonSentence &&
+    gapLabels.length === 0 &&
+    (!communicationDocumented || communicationNormal)
+  ) {
+    return `${statusAnchor} with no current communication, behavioral, sleep, hearing, vision, or sensory concern documented.`;
+  }
+
+  const sentences = [statusLine, ...findingSentences, comparisonSentence, gapSentence].filter(Boolean);
+  return sentences.join(" ");
 }
 
 // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 -- honest,
@@ -12857,7 +13160,16 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
     };
   }
   if (sectionKey === "neurological") {
-    const narrative = computeNeurologicalNarrative(sectionData || {});
+    // SNS PRODUCT-OWNER CORRECTION (2026-10-13) "Redesign Neurological
+    // Overview As A Concise Clinical Synthesis" -- this banner previously
+    // called computeNeurologicalNarrative (the discipline Clinical Story
+    // generator), which produced the exact same sentence a second time
+    // inside the Neurological Overview card below it. It now calls
+    // computeNeurologicalOverviewSynthesis, a distinct, concise 4-part
+    // synthesis (see that function's own comment); computeNeurologicalNarrative
+    // itself is untouched and keeps its own passing tests -- it simply
+    // stops being called from this presentation path.
+    const synthesis = computeNeurologicalOverviewSynthesis(sectionData || {});
     // OWNER DIRECTIVE (2026-10-06) "System-Wide Body-System
     // Simplification" -- duplicate-status correction. `requiresFollowUp`
     // previously mirrored `primaryIssues.length > 0`, the exact same
@@ -12871,7 +13183,7 @@ export function computeBodySystemSummary(sectionKey, sectionData, extra = {}) {
     // listed in `primaryIssues` for context, but nothing currently
     // actionable) instead of always being redundant with each other.
     return {
-      status: narrative || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
+      status: synthesis || (primaryIssues.length > 0 ? "Findings Present" : "No Significant Findings Documented"),
       primaryIssues,
       requiresFollowUp: neurologicalHasActionablePocFinding(sectionData || {}),
     };
@@ -14600,60 +14912,28 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // Overview is system behavior, not a nurse finding, and must not
         // be presented as one).
         if (sectionKey === "neurological" && card.title === "Neurological Overview") {
-          // SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Preserve Discipline
-          // Clinical Stories" -- supersedes the immediately prior
-          // "Ownership Boundaries" comment's conclusion that Clinical
-          // Story must never render inside a Body System card. The
-          // correction clarifies three distinct concepts: Documentation
-          // Coverage ("what is missing?"), the per-discipline Clinical
-          // Story ("what did this discipline document this encounter?"),
-          // and the future cross-discipline Patient Story ("what is the
-          // combined narrative?"). Neurological is a discipline-owned
-          // (RN) body-system assessment, so its own deterministic
-          // Clinical Story belongs here -- only the FUTURE aggregation
-          // into Patient Story/IDG is out of scope for Body Systems, not
-          // the discipline-level story itself. `computeNeurologicalNarrative`
-          // was never deleted; this merely gives its existing output an
-          // explicit, labeled, read-only presentation next to Documentation
-          // Coverage, instead of it being visible only as the always-on
-          // summary banner above this card. Deterministic, already-
-          // documented-only output -- no new nurse input, no AI call, no
-          // synthesis across disciplines.
+          // SNS PRODUCT-OWNER CORRECTION (2026-10-13) "Redesign
+          // Neurological Overview As A Concise Clinical Synthesis" --
+          // supersedes the prior "Preserve Discipline Clinical Stories"
+          // correction's decision to render a Clinical Story paragraph
+          // here. The Neurological card was found to show the same
+          // documentation three times (the Overview synthesis banner
+          // above this card, Documentation Coverage below, and this
+          // Clinical Story paragraph repeating the same sentence a third
+          // time). Clinical Story is a real, useful concept elsewhere and
+          // is not deleted -- computeNeurologicalNarrative, its own
+          // exported function and its own passing tests, is untouched --
+          // this card simply stops calling it. Documentation Coverage
+          // (the inventory of what is/isn't documented) is unaffected.
           const coverage = computeNeurologicalDocumentationCoverage(cardData);
-          const clinicalStory = computeNeurologicalNarrative(cardData);
           cardSummary = (
             <div className="rnica-bodysystem-workspace__card-summary">
               {coverage.length > 0 && (
-                <div className="rnica-documentation-coverage" data-testid="neurological-documentation-coverage">
-                  <span className="rnica-documentation-coverage__label">Documentation Coverage</span>
-                  {coverage.map((item) => (
-                    <span
-                      key={item.key}
-                      className={
-                        "rnica-documentation-coverage__item " +
-                        (item.complete ? "rnica-documentation-coverage__item--complete" : "rnica-documentation-coverage__item--missing")
-                      }
-                    >
-                      <span className="rnica-documentation-coverage__item-label">{item.label}</span>
-                      {/* SNS PRODUCT-OWNER CORRECTION (2026-10-12) -- a
-                          completed item shows its concise documented value
-                          ("✓ Awake"); an incomplete item shows the exact
-                          unresolved requirement ("⚠ Select comparison to
-                          prior assessment"), never the generic, non-
-                          actionable word "Incomplete"/"Missing". */}
-                      <span className="rnica-documentation-coverage__item-value">
-                        {item.complete ? "✓ " : "⚠ "}
-                        {item.complete ? item.value : item.unresolvedHint}
-                      </span>
-                    </span>
-                  ))}
-                </div>
-              )}
-              {clinicalStory && (
-                <p className="rnica-clinical-story" data-testid="neurological-clinical-story">
-                  <span className="rnica-clinical-story__label">Clinical Story</span>
-                  {clinicalStory}
-                </p>
+                <DocumentationCoverage
+                  title="Neurological Documentation Coverage"
+                  items={coverage}
+                  data-testid="neurological-documentation-coverage"
+                />
               )}
             </div>
           );
@@ -15924,7 +16204,21 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   ) : null;
   const neurologicalPanelContent = useNeurologicalPanel ? (
     <NeurologicalPanel
-      header={bodySystemShellHeader}
+      // PRODUCT OWNER DIRECTIVE (2026-10-13) "Remove The Neuro-Only
+      // Derived Overview / Freeze Body-System Presentation Changes" --
+      // the rendered prose paragraph above Neurological Documentation
+      // Coverage (previously `bodySystemShellHeader`, sourced from
+      // `bodySystemSummary.status` -> `computeNeurologicalOverviewSynthesis`)
+      // is not approved as rendered: it visually competed with
+      // Documentation Coverage and duplicated already-documented fields.
+      // `header` is intentionally `null` until a cross-system Summary
+      // redesign is reviewed and approved -- see
+      // `computeNeurologicalOverviewSynthesis` (marked
+      // PRODUCT_OWNER_REVIEW_PENDING) for the preserved, now-unused
+      // derivation. `bodySystemSummary`/`bodySystemShellHeader` themselves
+      // are untouched (still used by Cardiovascular's `BodySystemShell`,
+      // which this directive explicitly freezes/does not touch).
+      header={null}
       cardsByTitle={cardsByTitle}
       changeSincePrior={neuroChangeSincePrior}
       pocAction={bodySystemShellPoc}
@@ -19776,22 +20070,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   //   G. Constipation      <- Gastrointestinal: constipation (None-Severe)
   //   H. Agitation         <- Neuro/Mental Status: symptomsDemeanor checklist
   useEffect(() => {
-    const severityMap = { None: "0", Mild: "1", Moderate: "2", Severe: "3" };
-    const painSeverity = formData.pain?.painSeverityCategory;
-    const demeanor = formData.neurological?.symptomsDemeanor || [];
-    // symptomsDemeanor is a presence checklist, not a graded scale -- its
-    // absence is read as "0 - None reported" so the summary never shows a
-    // stale severity after the checkbox is unchecked.
-    const derived = {
-      pain: ["0", "1", "2", "3"].includes(String(painSeverity)) ? String(painSeverity) : "",
-      shortnessOfBreath: severityMap[formData.respiratory?.sobSeverity] ?? "",
-      anxiety: demeanor.includes("Anxiety") ? "1" : "0",
-      nausea: severityMap[formData.gastrointestinal?.nausea] ?? "",
-      vomiting: severityMap[formData.gastrointestinal?.vomiting] ?? "",
-      diarrhea: severityMap[formData.gastrointestinal?.diarrhea] ?? "",
-      constipation: severityMap[formData.gastrointestinal?.constipation] ?? "",
-      agitation: demeanor.includes("Agitation") ? "1" : "0",
-    };
+    const derived = deriveSymptomImpactFromForm(formData);
 
     setFormData((prev) => {
       const current = prev.symptomImpact || {};

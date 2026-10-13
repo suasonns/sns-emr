@@ -131,8 +131,7 @@ describe("RespiratoryPanel — assessment limitation is explicit and non-gating"
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
     expect(screen.queryByTestId("respiratory-limitation-section")).toBeNull();
-    const toggle = within(screen.getByTestId("respiratory-field-respiratory_unable_to_assess")).getByRole("checkbox");
-    fireEvent.click(toggle);
+    selectExclusive("Assessment Context", "Unable To Fully Assess");
 
     expect(screen.getByTestId("respiratory-limitation-section")).toBeTruthy();
     expect(screen.getByRole("combobox", { name: "Reason Unable to Assess" })).toBeTruthy();
@@ -144,12 +143,74 @@ describe("RespiratoryPanel — assessment limitation is explicit and non-gating"
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
-    fireEvent.click(within(screen.getByTestId("respiratory-field-respiratory_unable_to_assess")).getByRole("checkbox"));
+    selectExclusive("Assessment Context", "Unable To Fully Assess");
     expect(screen.queryByRole("textbox", { name: "Other Reason (if selected above)" })).toBeNull();
 
     selectSingle("Reason Unable to Assess", "Other");
 
     expect(screen.getByRole("textbox", { name: "Other Reason (if selected above)" })).toBeTruthy();
+  });
+});
+
+// Product Owner directive ("One clinical fact. One nurse action. One
+// source of truth. Assessment Context is canonical.", 2026-10-12): the
+// legacy respiratory_no_current_concern / respiratory_unable_to_assess
+// checkboxes duplicated Assessment Context's own controlled values and
+// are retired as independent nurse-facing controls; they become derived
+// compatibility values kept in sync with Assessment Context.
+describe("RespiratoryPanel — Assessment Context is the sole source of truth (no duplicate declarations)", () => {
+  beforeEach(() => {
+    mocks.getRespiratoryAssessment.mockResolvedValueOnce(baseAssessment());
+  });
+
+  it("never renders the retired 'No current respiratory concern' / 'Unable to fully assess' checkboxes as standalone controls", async () => {
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    expect(screen.queryByTestId("respiratory-field-respiratory_no_current_concern")).toBeNull();
+    expect(screen.queryByTestId("respiratory-field-respiratory_unable_to_assess")).toBeNull();
+  });
+
+  it("derives the legacy respiratoryNoCurrentConcern/respiratoryUnableToAssess compatibility keys from the Assessment Context selection on save", async () => {
+    mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    selectExclusive("Assessment Context", "No Current Respiratory Concern");
+    fireEvent.click(screen.getByTestId("respiratory-save-button"));
+
+    await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+    const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+    expect(savedData.respiratoryNoCurrentConcern).toBe(true);
+    expect(savedData.respiratoryUnableToAssess).toBe(false);
+  });
+
+  it("derives respiratoryUnableToAssess=true and clears respiratoryNoCurrentConcern when Assessment Context is Unable To Fully Assess", async () => {
+    mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    selectExclusive("Assessment Context", "Unable To Fully Assess");
+    fireEvent.click(screen.getByTestId("respiratory-save-button"));
+
+    await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+    const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+    expect(savedData.respiratoryUnableToAssess).toBe(true);
+    expect(savedData.respiratoryNoCurrentConcern).toBe(false);
+  });
+
+  it("derives both legacy flags false when Assessment Context is Current Concerns Assessed", async () => {
+    mocks.saveRespiratoryDraft.mockResolvedValueOnce(baseAssessment({ version: 2 }));
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    selectExclusive("Assessment Context", "Current Concerns Assessed");
+    fireEvent.click(screen.getByTestId("respiratory-save-button"));
+
+    await waitFor(() => expect(mocks.saveRespiratoryDraft).toHaveBeenCalled());
+    const savedData = mocks.saveRespiratoryDraft.mock.calls[0][1].data;
+    expect(savedData.respiratoryNoCurrentConcern).toBe(false);
+    expect(savedData.respiratoryUnableToAssess).toBe(false);
   });
 });
 
@@ -659,7 +720,11 @@ describe("RespiratoryPanel — Complete system review is explicit and blocking-v
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
-    expect(screen.getByTestId("respiratory-completion-blockers")).toBeTruthy();
+    // ADR-004: the legacy single "completion blockers" banner is replaced
+    // by the Documentation Coverage inventory plus a separate Legacy
+    // Respiratory Workflow Alerts section -- both still gate completion.
+    expect(screen.getByTestId("respiratory-documentation-coverage")).toBeTruthy();
+    expect(screen.getByTestId("respiratory-legacy-workflow-alerts")).toBeTruthy();
     const completeButton = screen.getByTestId("respiratory-complete-review-button") as HTMLButtonElement;
     expect(completeButton.disabled).toBe(true);
     expect(mocks.saveRespiratoryDraft).not.toHaveBeenCalled();
@@ -673,7 +738,6 @@ describe("RespiratoryPanel — Complete system review is explicit and blocking-v
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
-    fireEvent.click(within(screen.getByTestId("respiratory-field-respiratory_no_current_concern")).getByRole("checkbox"));
     selectExclusive("Assessment Context", "No Current Respiratory Concern");
     selectExclusive("Comparison to Prior", "Comparison Unavailable");
     selectExclusive("Oxygen Use", "No");
@@ -712,13 +776,16 @@ describe("RespiratoryPanel — Complete system review is explicit and blocking-v
     render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
     await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
 
-    fireEvent.click(within(screen.getByTestId("respiratory-field-respiratory_unable_to_assess")).getByRole("checkbox"));
+    selectExclusive("Assessment Context", "Unable To Fully Assess");
     selectSingle("Reason Unable to Assess", "Patient unresponsive");
-    selectExclusive("Assessment Context", "No Current Respiratory Concern");
     selectExclusive("Comparison to Prior", "Comparison Unavailable");
     selectExclusive("Oxygen Use", "No");
     selectExclusive("Cough Type", "None");
     selectExclusive("Respiratory Support Status", "None");
+    // Assessment Context = Unable To Fully Assess also requires Comfort /
+    // Functional Impact (respiratoryProductRequirements.ts), independent
+    // of this test's own "missing unable-to-assess reason" scenario.
+    selectExclusive("Comfort / Functional Impact", "Unable To Assess");
 
     fireEvent.click(screen.getByTestId("respiratory-complete-review-button"));
 
