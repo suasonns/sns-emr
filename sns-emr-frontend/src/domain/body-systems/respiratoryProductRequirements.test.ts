@@ -33,14 +33,21 @@ describe("respiratoryProductRequirements — comfort/function", () => {
     );
   });
 
-  it("requires comfortFunctionEvidence when impact is present or unable-to-assess, not otherwise", () => {
+  // PRODUCT-OWNER DECISION ("Permanent Retirement Enforcement" / "Two
+  // Authorized Removal States"): Comfort / Function Evidence is
+  // RETIRED_FROM_ACTIVE_WORKFLOW (docs/governance/SNS_RETIRED_FEATURES.json,
+  // id "respiratory.comfortFunctionEvidence"). It must never again be
+  // pushed as a requirement, regardless of comfortFunctionImpact value.
+  it("never requires comfortFunctionEvidence (retired from active workflow)", () => {
     expect(fieldIds({ comfortFunctionImpact: "NO_IMPACT" })).not.toContain("respiratory_comfort_function_evidence");
-    expect(fieldIds({ comfortFunctionImpact: "IMPACT_PRESENT" })).toContain("respiratory_comfort_function_evidence");
-    expect(fieldIds({ comfortFunctionImpact: "UNABLE_TO_ASSESS" })).toContain(
+    expect(fieldIds({ comfortFunctionImpact: "IMPACT_PRESENT" })).not.toContain(
+      "respiratory_comfort_function_evidence",
+    );
+    expect(fieldIds({ comfortFunctionImpact: "UNABLE_TO_ASSESS" })).not.toContain(
       "respiratory_comfort_function_evidence",
     );
     expect(
-      fieldIds({ comfortFunctionImpact: "IMPACT_PRESENT", comfortFunctionEvidence: "Reports distress on exertion" }),
+      fieldIds({ comfortFunctionImpact: "IMPACT_PRESENT", comfortFunctionEvidence: undefined }),
     ).not.toContain("respiratory_comfort_function_evidence");
   });
 });
@@ -219,23 +226,21 @@ describe("respiratoryProductRequirements — cough and secretions", () => {
     expect(fieldIds({ coughType: "Productive" })).not.toContain("respiratory_cough_clinical_significance");
   });
 
-  it("requires coughActionDecision for Productive cough or hemoptysisPresent only", () => {
-    expect(fieldIds({ coughType: "Productive" })).toContain("respiratory_cough_action_decision");
-    expect(fieldIds({ hemoptysisPresent: true })).toContain("respiratory_cough_action_decision");
-    expect(fieldIds({ coughType: "Dry" })).not.toContain("respiratory_cough_action_decision");
-  });
-
-  it("requires action description/response/datetime only when ACTION_TAKEN", () => {
-    const missing = fieldIds({ coughType: "Productive", coughActionDecision: "ACTION_TAKEN" });
-    expect(missing).toContain("respiratory_cough_action_description");
-    expect(missing).toContain("respiratory_cough_response");
-    expect(missing).toContain("respiratory_cough_action_date_time");
-  });
-
-  it("requires coughDeclineReason only when DECLINED", () => {
-    expect(fieldIds({ coughType: "Productive", coughActionDecision: "DECLINED" })).toContain(
-      "respiratory_cough_decline_reason",
-    );
+  // PRODUCT-OWNER DIRECTIVE ("ALIGN RESPIRATORY TREATMENT AND SFV LOGIC
+  // WITH THE APPROVED HOPE/SFV GUIDE", Section 8): Cough Action
+  // Decision/Description/Response/Date-Time/Decline-Reason never feed
+  // J2030/J2040/J2051B/SFV, and a consumer audit found no other reader
+  // of these fields -- they are never completion blockers.
+  it("never requires coughActionDecision/description/response/date-time/decline-reason, regardless of cough findings", () => {
+    expect(fieldIds({ coughType: "Productive" })).not.toContain("respiratory_cough_action_decision");
+    expect(fieldIds({ hemoptysisPresent: true })).not.toContain("respiratory_cough_action_decision");
+    const withAction = fieldIds({ coughType: "Productive", coughActionDecision: "ACTION_TAKEN" });
+    expect(withAction).not.toContain("respiratory_cough_action_description");
+    expect(withAction).not.toContain("respiratory_cough_response");
+    expect(withAction).not.toContain("respiratory_cough_action_date_time");
+    expect(
+      fieldIds({ coughType: "Productive", coughActionDecision: "DECLINED" }),
+    ).not.toContain("respiratory_cough_decline_reason");
   });
 });
 

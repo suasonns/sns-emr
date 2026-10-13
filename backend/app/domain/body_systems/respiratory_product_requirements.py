@@ -65,7 +65,6 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
     support_status: Optional[str] = data.get("respiratorySupportStatus")
     treatment_decision: Optional[str] = data.get("treatmentDecision")
     clinical_response: Optional[str] = data.get("clinicalResponse")
-    cough_action_decision: Optional[str] = data.get("coughActionDecision")
 
     # --- Section 3: Assessment context & comparison -----------------------
     if not assessment_context:
@@ -80,10 +79,12 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
     comfort_function_impact: Optional[str] = data.get("comfortFunctionImpact")
     if requires_comfort_function and not comfort_function_impact:
         push("respiratory_comfort_function_impact", "Record the comfort/functional impact.")
-    if comfort_function_impact == "IMPACT_PRESENT" and not _text_filled(data.get("comfortFunctionEvidence")):
-        push("respiratory_comfort_function_evidence", "Describe the comfort/function evidence.")
-    if comfort_function_impact == "UNABLE_TO_ASSESS" and not _text_filled(data.get("comfortFunctionEvidence")):
-        push("respiratory_comfort_function_evidence", "Describe why comfort/function could not be evaluated.")
+    # PRODUCT-OWNER DECISION ("Permanent Retirement Enforcement"): Comfort /
+    # Function Evidence free text is retired from the active Respiratory
+    # workflow (see docs/governance/SNS_RETIRED_FEATURES.json, id
+    # "respiratory.comfortFunctionEvidence"). No HOPE/SFV, structured-
+    # finding, Clinical Story, or POC consumer exists; the requirement
+    # pushes are permanently removed here and in respiratoryProductRequirements.ts.
     configured_requirement_response: Optional[str] = data.get("configuredRequirementResponse")
     if (
         configured_requirement_response
@@ -191,20 +192,21 @@ def get_missing_product_authorized_requirements(data: dict[str, Any]) -> list[tu
         data.get("sputumOtherSpecification")
     ):
         push("respiratory_sputum_other_specification", "Specify the sputum character/color.")
-    cough_requires_action = cough_type == "Productive" or hemoptysis_present
     if hemoptysis_present and not _text_filled(data.get("coughClinicalSignificance")):
         push("respiratory_cough_clinical_significance", "Record the clinical significance of hemoptysis.")
-    if cough_requires_action and not cough_action_decision:
-        push("respiratory_cough_action_decision", "Record the cough action decision.")
-    if cough_action_decision == "ACTION_TAKEN":
-        if not _text_filled(data.get("coughActionDescription")):
-            push("respiratory_cough_action_description", "Describe the action taken for cough/secretions.")
-        if not _text_filled(data.get("coughResponse")):
-            push("respiratory_cough_response", "Record the response to the cough/secretions action.")
-        if not _text_filled(data.get("coughActionDateTime")):
-            push("respiratory_cough_action_date_time", "Record when the cough/secretions action occurred.")
-    if cough_action_decision == "DECLINED" and not _text_filled(data.get("coughDeclineReason")):
-        push("respiratory_cough_decline_reason", "Record why the cough/secretions action was declined.")
+    # PRODUCT-OWNER DIRECTIVE ("ALIGN RESPIRATORY TREATMENT AND SFV LOGIC
+    # WITH THE APPROVED HOPE/SFV GUIDE", Section 8 -- Cough Action
+    # disposition): the Cough Action Decision/Description/Response/
+    # Date-Time quad never feeds J2030, J2040, J2051B, or the SFV trigger
+    # (verified separately -- SOB screening/treatment/impact are sourced
+    # exclusively from sobSeverity/shortnessOfBreathScreened/
+    # treatmentInitiated/treatmentDecision), and a repository-wide
+    # consumer audit found no narrative, structured-finding, POC, or
+    # HOPE-export reader of these four fields; their only consumer was
+    # this requirement engine's own completion-blocker logic. Per the
+    # directive's conditional rule, they are no longer required for
+    # "Complete System Review" (mirrors respiratoryProductRequirements.ts).
+    # The fields and any previously-stored values are unchanged.
     # PRODUCT-OWNER DIRECTIVE ("FINAL RESPIRATORY USABILITY REVIEW" --
     # A=Assessment Finding vs B=Future Plan): coughFollowUpTimingPlan /
     # coughFollowUpResponsibleClinician documented *who will do what, when,

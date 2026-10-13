@@ -1348,12 +1348,42 @@ const SUPPORT_SECTION_FIELD_IDS = new Set([
  * respiratoryProductRequirements.ts and
  * respiratory_product_requirements.py, not merely hidden here. Neither
  * field is read by any downstream consumer (structured findings,
- * narrative, HOPE, or POC generation). The rest of the cough/secretions
- * workflow (Cough Action Decision, Action Description, Decline Reason,
- * Response, Action Date/Time) stays -- it documents what was actually
- * assessed/done *this visit*, the same present-tense category as the
- * retained Treatment Decision / Clinical Response fields, not a future
- * plan.
+ * narrative, HOPE, or POC generation).
+ *
+ * PRODUCT-OWNER DIRECTIVE ("ALIGN RESPIRATORY TREATMENT AND SFV LOGIC WITH
+ * THE APPROVED HOPE/SFV GUIDE", Section 8 -- Cough Action disposition,
+ * supersedes the "stays required" note formerly here): Cough Action
+ * Decision/Action Description/Decline Reason/Response/Action Date-Time
+ * remain nurse-facing, present-tense findings (what was actually
+ * assessed/done *this visit*, not a future plan) -- they are NOT retired
+ * or hidden -- but a repository-wide consumer audit confirmed none of
+ * J2030 (SOB screening), J2040 (SOB treatment), J2051B (SOB impact/SFV
+ * trigger), or any narrative/structured-finding/POC generator reads them;
+ * their only consumer was this requirement engine's own completion-
+ * blocker logic. The requirement pushes for
+ * respiratory_cough_action_decision/_description/_response/
+ * _date_time/_decline_reason have been removed from both
+ * respiratoryProductRequirements.ts and respiratory_product_requirements.py.
+ *
+ * PRODUCT-OWNER DECISION ("What unique business purpose remains after
+ * Treatment Decision / Clinical Response / Follow-Up Need already exist
+ * for SOB?"): with no HOPE, SFV, POC, structured-finding, or narrative
+ * ownership, Cough Action Decision/Description/Response/Date-Time/Decline
+ * Reason are retired from the active Respiratory UI (moved into
+ * LEGACY_HIDDEN_FIELD_IDS below), not merely unblocked. SOB's own
+ * Treatment Decision / Clinical Response / Follow-Up Need fields already
+ * cover the same "was an intervention done, and how did it respond"
+ * ground for the symptom that actually drives HOPE/SFV -- a second,
+ * cough-specific action/response/date-time workflow duplicated that
+ * without feeding any downstream consumer. The underlying fields,
+ * contract-v2 definitions, and backend columns are NOT removed; any
+ * previously-stored values are preserved and unaffected -- this only
+ * removes the nurse-facing controls, per the standing "preserve
+ * historical values, do not remove underlying fields until migration and
+ * compatibility review" constraint. `respiratory_cough_type` (Productive/
+ * Non-productive) and the sputum/hemoptysis findings remain fully active
+ * -- those are the actual Respiratory assessment findings; only the
+ * cough-specific intervention/response/date-time sub-workflow is retired.
  */
 const LEGACY_HIDDEN_FIELD_IDS = new Set([
   "respiratory_treatment_initiated",
@@ -1390,6 +1420,21 @@ const LEGACY_HIDDEN_FIELD_IDS = new Set([
   "respiratory_support_follow_up_plan",
   "respiratory_cough_follow_up_timing_plan",
   "respiratory_cough_follow_up_responsible_clinician",
+  "respiratory_cough_action_decision",
+  "respiratory_cough_action_description",
+  "respiratory_cough_response",
+  "respiratory_cough_action_date_time",
+  "respiratory_cough_decline_reason",
+  // PRODUCT-OWNER DECISION ("Permanent Retirement Enforcement" / "Two
+  // Authorized Removal States"): Comfort / Function Evidence is
+  // RETIRED_FROM_ACTIVE_WORKFLOW -- no HOPE/SFV, structured-finding,
+  // Clinical Story, or POC consumer exists; the only consumer was its own
+  // completion rule (circular validation). See
+  // docs/governance/SNS_RETIRED_FEATURES.json, id
+  // "respiratory.comfortFunctionEvidence". Historical values remain
+  // readable; this control must never reappear on new assessments without
+  // a new explicit Product Owner decision.
+  "respiratory_comfort_function_evidence",
 ]);
 
 /**

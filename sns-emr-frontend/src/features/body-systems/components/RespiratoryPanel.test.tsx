@@ -397,6 +397,71 @@ describe("RespiratoryPanel — field editing", () => {
     });
   });
 
+  // PRODUCT-OWNER DECISION ("What unique business purpose remains after
+  // Treatment Decision / Clinical Response / Follow-Up Need already exist
+  // for SOB?"): Cough Action Decision/Description/Response/Date-Time/
+  // Decline Reason have no HOPE, SFV, POC, structured-finding, or
+  // narrative ownership and duplicate SOB's own intervention/response
+  // fields, so they're retired from the active Respiratory UI entirely —
+  // for both a Productive cough and a Declined action, none of the five
+  // controls render, while Cough Type and the sputum/hemoptysis findings
+  // (the actual assessment findings) remain visible.
+  describe("cough action retirement (no HOPE/SFV/POC/structured-finding/narrative ownership)", () => {
+    it("never renders Cough Action Decision, Description, Response, or Date/Time for a productive cough", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { coughType: "Productive", coughActionDecision: "ACTION_TAKEN" },
+        }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.queryByTestId("respiratory-field-respiratory_cough_action_decision")).toBeNull();
+      expect(screen.queryByTestId("respiratory-field-respiratory_cough_action_description")).toBeNull();
+      expect(screen.queryByTestId("respiratory-field-respiratory_cough_response")).toBeNull();
+      expect(screen.queryByTestId("respiratory-field-respiratory_cough_action_date_time")).toBeNull();
+      // Cough Type remains an active, visible assessment finding.
+      expect(screen.getByTestId("respiratory-field-respiratory_cough_type")).toBeTruthy();
+    });
+
+    it("never renders Cough Decline Reason even when a decision was previously declined", async () => {
+      mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+        baseAssessment({
+          situation: "new_or_worsening",
+          data: { coughType: "Productive", coughActionDecision: "DECLINED" },
+        }),
+      );
+      render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+      await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+      expect(screen.queryByTestId("respiratory-field-respiratory_cough_decline_reason")).toBeNull();
+    });
+  });
+
+  // PRODUCT-OWNER DECISION ("Permanent Retirement Enforcement" / "Two
+  // Authorized Removal States"): Comfort / Function Evidence is
+  // RETIRED_FROM_ACTIVE_WORKFLOW (docs/governance/SNS_RETIRED_FEATURES.json,
+  // id "respiratory.comfortFunctionEvidence"). It must never render, even
+  // when comfortFunctionImpact is a value ("Impact Present" /
+  // "Unable to Assess") that previously triggered the free-text follow-up.
+  it("never renders Comfort / Function Evidence regardless of Comfort / Functional Impact value", async () => {
+    mocks.getRespiratoryAssessment.mockResolvedValueOnce(
+      baseAssessment({
+        situation: "new_or_worsening",
+        data: { assessmentContext: "CURRENT_CONCERNS_ASSESSED", comfortFunctionImpact: "IMPACT_PRESENT" },
+      }),
+    );
+    render(<RespiratoryPanel patientId={TEST_PATIENT_ID} assessmentId={TEST_ASSESSMENT_ID} />);
+    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
+
+    expect(screen.queryByTestId("respiratory-field-respiratory_comfort_function_evidence")).toBeNull();
+    // Comfort / Functional Impact remains an active, visible finding.
+    expect(screen.getByTestId("respiratory-field-respiratory_comfort_function_impact")).toBeTruthy();
+    // Documentation Coverage must never surface a Comfort Evidence gap.
+    expect(screen.queryByText(/Comfort Evidence/i)).toBeNull();
+  });
+
   // Hospice visit-based documentation directive ("RNICA is visit-centric"):
   // SOB Screening Date and Comfort/Function Screening Date are hidden from
   // the nurse workflow entirely (no visible field, no toggle, no override

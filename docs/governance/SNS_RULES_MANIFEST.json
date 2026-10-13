@@ -98,6 +98,11 @@
       "name": "RNICA navigation specification",
       "path": "docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md",
       "requiredWhen": "RNICA navigation work"
+    },
+    {
+      "name": "Reversible Retired Feature Pool",
+      "path": "docs/governance/SNS_RETIRED_FEATURES.json",
+      "requiredWhen": "Any Body System or RNICA implementation work that touches an owning section, requirements, validation, Documentation Coverage, completion logic, finalization, persistence, Clinical Story, structured findings, HOPE, POC, or historical compatibility -- read before touching any field to confirm it is not RETIRED_FROM_ACTIVE_WORKFLOW or DEFERRED_FROM_ACTIVE_WORKFLOW; never reactivate a registered item without a new written Product Owner directive containing the literal phrase 'REACTIVATE: [featureId or exact clinician label]'"
     }
   ]
 }

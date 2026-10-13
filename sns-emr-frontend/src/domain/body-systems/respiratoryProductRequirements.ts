@@ -151,12 +151,16 @@ export function getMissingProductAuthorizedRequirements(
   if (requiresComfortFunction && !values.comfortFunctionImpact) {
     push("respiratory_comfort_function_impact", "Record the comfort/functional impact.");
   }
-  if (values.comfortFunctionImpact === "IMPACT_PRESENT" && !textFilled(values.comfortFunctionEvidence)) {
-    push("respiratory_comfort_function_evidence", "Describe the comfort/function evidence.");
-  }
-  if (values.comfortFunctionImpact === "UNABLE_TO_ASSESS" && !textFilled(values.comfortFunctionEvidence)) {
-    push("respiratory_comfort_function_evidence", "Describe why comfort/function could not be evaluated.");
-  }
+  // PRODUCT-OWNER DECISION ("Permanent Retirement Enforcement"): Comfort /
+  // Function Evidence free text is retired from the active Respiratory
+  // workflow (see docs/governance/SNS_RETIRED_FEATURES.json,
+  // id "respiratory.comfortFunctionEvidence"). Audit found no HOPE/SFV,
+  // structured-finding, Clinical Story, or POC consumer -- only this
+  // completion rule itself consumed the field, which is circular
+  // validation. The requirement pushes below are permanently removed;
+  // `comfortFunctionEvidence` must never again gate completion, Save
+  // Draft, or finalization. Historical values remain readable but must
+  // not be copied forward or re-required.
   // Hospice-admission simplification (product-owner directive): Configured
   // Requirement Response / Configured Follow-Up Status were removed from
   // the admission workflow UI along with the rest of the Treatment
@@ -302,27 +306,25 @@ export function getMissingProductAuthorizedRequirements(
   ) {
     push("respiratory_sputum_other_specification", "Specify the sputum character/color.");
   }
-  const coughRequiresAction = values.coughType === "Productive" || Boolean(values.hemoptysisPresent);
   if (values.hemoptysisPresent && !textFilled(values.coughClinicalSignificance)) {
     push("respiratory_cough_clinical_significance", "Record the clinical significance of hemoptysis.");
   }
-  if (coughRequiresAction && !values.coughActionDecision) {
-    push("respiratory_cough_action_decision", "Record the cough action decision.");
-  }
-  if (values.coughActionDecision === "ACTION_TAKEN") {
-    if (!textFilled(values.coughActionDescription)) {
-      push("respiratory_cough_action_description", "Describe the action taken for cough/secretions.");
-    }
-    if (!textFilled(values.coughResponse)) {
-      push("respiratory_cough_response", "Record the response to the cough/secretions action.");
-    }
-    if (!textFilled(values.coughActionDateTime)) {
-      push("respiratory_cough_action_date_time", "Record when the cough/secretions action occurred.");
-    }
-  }
-  if (values.coughActionDecision === "DECLINED" && !textFilled(values.coughDeclineReason)) {
-    push("respiratory_cough_decline_reason", "Record why the cough/secretions action was declined.");
-  }
+  // PRODUCT-OWNER DIRECTIVE ("ALIGN RESPIRATORY TREATMENT AND SFV LOGIC
+  // WITH THE APPROVED HOPE/SFV GUIDE", Section 8 -- Cough Action
+  // disposition): the Cough Action Decision/Description/Response/
+  // Date-Time quad never feeds J2030, J2040, J2051B, or the SFV trigger
+  // (HOPE's shortness-of-breath screening/treatment/impact items are
+  // sourced exclusively from `sobSeverity`/`shortnessOfBreathScreened`/
+  // `treatmentInitiated`/`treatmentDecision`, verified separately), and a
+  // repository-wide consumer audit found no narrative, structured-
+  // finding, POC, or HOPE-export reader of these four fields -- their
+  // only consumer was this requirement engine's own completion-blocker
+  // logic. Per the directive's conditional rule ("if no verified non-HOPE
+  // consumer remains, remove the cough-driven completion blockers"), they
+  // are no longer required for "Complete System Review". The fields
+  // themselves, and any previously-stored values, are unchanged and
+  // remain fully enterable -- this only stops them from blocking
+  // completion of the Respiratory review.
   // PRODUCT-OWNER DIRECTIVE ("FINAL RESPIRATORY USABILITY REVIEW" --
   // A=Assessment Finding vs B=Future Plan): coughFollowUpTimingPlan /
   // coughFollowUpResponsibleClinician documented *who will do what, when,
