@@ -5,6 +5,7 @@
 | [ADR-001](ADR-001-rnica-baseline.md) | RNICA Baseline | Accepted |
 | [ADR-002](ADR-002-alembic-stabilization.md) | Alembic Stabilization | Accepted |
 | [ADR-003](ADR-003-branch-protection-policy.md) | Branch Protection Policy | Accepted |
+| [ADR-004](ADR-004-sns-documentation-coverage.md) | SNS Documentation Coverage | Approved |
 
 See also: `docs/architecture/adr/` for the pre-existing architecture ADR
 series (evidence traceability, structured findings, etc.). This

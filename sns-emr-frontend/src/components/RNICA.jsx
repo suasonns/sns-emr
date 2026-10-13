@@ -56,6 +56,10 @@ import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations
 // rn-ica/BodySystemShell.jsx for the enforced 7-slot canonical order and
 // rn-ica/GeneratedReviewOfSystems.jsx for the read-only 2-system summary.
 import { BodySystemShell, BodySystemShellHeader } from "./rn-ica/BodySystemShell";
+// PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1 --
+// dedicated Respiratory-style compact panel for Neurological only (see
+// its own file docstring for scope/data-binding guarantees).
+import { NeurologicalPanel } from "./rn-ica/NeurologicalPanel";
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./ui/select";
 import { Checkbox } from "./ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
@@ -187,6 +191,7 @@ import MedicationNameInput from "./MedicationNameInput";
 import Icd10DiagnosisInput from "./Icd10DiagnosisInput";
 import VisitRecorderCard from "./VisitRecorderCard";
 import RNICACommandWorkspace from "./rn-ica/RNICACommandWorkspace";
+import { CARE_LEVEL_OPTIONS, REASON_FOR_VISIT_OPTIONS } from "./rn-ica/visitMetaOptions";
 // getRnicaColors/getRnicaStyles live in ../theme/clinicalDesign — the single shared
 // design system used by every clinical page (RNICA, CHHA, MSW ICA, SC ICA, ...).
 // Re-exported here for backward compatibility with existing imports of this module.
@@ -403,17 +408,6 @@ const DEFAULT_VISIT_DISCIPLINES = [
 ];
 
 // ─── Visit meta options (logistics/payroll tracking, shared across all ICA/visit forms) ───
-const CARE_LEVEL_OPTIONS = ["Routine Care", "General Inpatient", "Continuous Care", "Respite Care"];
-const REASON_FOR_VISIT_OPTIONS = [
-  "Initial Comprehensive Assessment",
-  "Recertification",
-  "Follow-up / Routine Visit",
-  "Update/Revision",
-  "Bereavement Support",
-  "Crisis Intervention",
-  "Discharge/Transfer",
-  "Other",
-];
 const CHHA_REASON_FOR_VISIT_OPTIONS = ["Follow-up", "Routine", "CC"];
 
 // ════════════════════════════════════════════════════════════════
@@ -1182,6 +1176,29 @@ const INITIAL_FORM = {
   },
 };
 
+// Visit Header defaults for a BRAND-NEW (never-saved) RNICA draft. Per
+// owner directive, the Visit Header must function as a real nurse
+// workflow -- not sit blank waiting for manual entry of values the system
+// already knows (today's date, right now, the clinician who is opening the
+// assessment). Only the three fields a nurse would otherwise have to type
+// in before doing anything else are defaulted here; Reason for Visit,
+// Discipline, and Care Level already have correct static defaults in
+// INITIAL_FORM. This never runs for an assessment that already has saved
+// data -- see the two call sites below, both of which only use this on the
+// "no existing draft found" path.
+function buildInitialRnicaForm() {
+  const blank = JSON.parse(JSON.stringify(INITIAL_FORM));
+  const now = new Date();
+  const pad = (n) => String(n).padStart(2, "0");
+  const currentUser = getCurrentUser();
+  const staffName = currentUser?.full_name || currentUser?.name || "";
+  blank.visitMeta.visitDate = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  blank.visitMeta.timeIn = `${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  blank.visitMeta.enteredBy = staffName;
+  blank.visitMeta.staffAssigned = staffName;
+  return blank;
+}
+
 function normalizeLoadedRnicaFormData(loadedFormData) {
   return {
     ...loadedFormData,
@@ -1196,12 +1213,80 @@ function normalizeLoadedRnicaFormData(loadedFormData) {
 // 3. API SERVICE — 4 Backend Endpoints
 // ════════════════════════════════════════════════════════════════
 
+// RNICA VISIT HEADER LINKAGE (Phase 1)
+// ---------------------------------------------------------------------------
+// The RN Initial Comprehensive Assessment has historically had NO link to
+// the authoritative Visit entity (see POST /visits/ -> create_visit(),
+// the same engine VisitNotes.jsx's "Add New Visit" card and this file's
+// own CHHAVisitNoteCard already use). This cache ensures exactly ONE Visit
+// is minted per patient's initial RN ICA -- never a second, RNICA-specific
+// shadow Visit system, and never a duplicate Visit on every autosave.
+// Keyed by patientId; holds the in-flight/settled creation promise so
+// concurrent saves (e.g. a fast double-click, or two autosave timers
+// racing) can't mint two Visits for the same initial assessment.
+const _rnicaVisitIdPromises = new Map();
+
+function _rnicaVisitScheduleType(visitKind) {
+  const normalized = String(visitKind || "").trim().toLowerCase();
+  if (normalized === "unscheduled") return "UNSCHEDULED";
+  if (normalized === "scheduled") return "SCHEDULED";
+  return null;
+}
+
+function _rnicaVisitDatetime(visitMeta) {
+  const visitDate = visitMeta?.visitDate;
+  if (!visitDate) return null;
+  const timeIn = visitMeta?.timeIn;
+  return timeIn ? `${visitDate}T${timeIn}` : visitDate;
+}
+
+/**
+ * Ensures the current patient's RN Initial Comprehensive Assessment has an
+ * authoritative Visit (visit_type=RN, form_type=INITIAL_ICA) and returns
+ * its id. Never called for "update"/"recert" subtype saves -- those are a
+ * distinct ongoing-visit workflow, not this one-time admission document,
+ * and are intentionally out of scope here. Failures are swallowed (a
+ * Visit-Header linkage problem must never block the RN from saving their
+ * clinical documentation) -- the assessment is simply saved without a
+ * visit_id, and the next save attempt will retry.
+ */
+async function ensureRnicaVisitId(patientId, formData) {
+  if (!patientId) return null;
+  if (!_rnicaVisitIdPromises.has(patientId)) {
+    const visitMeta = formData?.visitMeta || {};
+    const promise = createVisitNote({
+      patient_id: patientId,
+      visit_type: "RN",
+      service_type: "SN",
+      form_type: "INITIAL_ICA",
+      level_of_care: visitMeta.careLevel || null,
+      visit_schedule_type: _rnicaVisitScheduleType(visitMeta.visitKind),
+      visit_datetime: _rnicaVisitDatetime(visitMeta),
+    })
+      .then((result) => result?.visit_id || null)
+      .catch((error) => {
+        console.error("RNICA Visit Header linkage: failed to create the authoritative Visit", error);
+        _rnicaVisitIdPromises.delete(patientId);
+        return null;
+      });
+    _rnicaVisitIdPromises.set(patientId, promise);
+  }
+  return _rnicaVisitIdPromises.get(patientId);
+}
+
 // Delegates to the shared client so requests carry the auth token.
 const api = {
-  saveRNICAAssessment: (patientId, formData, assessmentSubtype) =>
-    saveRnicaAssessmentOffline(
-      assessmentSubtype ? { patientId, formData, assessmentSubtype } : { patientId, formData }
-    ),
+  saveRNICAAssessment: async (patientId, formData, assessmentSubtype) => {
+    // Only the true initial-assessment create (no subtype) mints the
+    // RNICA Visit Header -- "update"/"recert" subtype saves document an
+    // ongoing RN visit, a separate workflow not covered by this phase.
+    const visitId = assessmentSubtype ? null : await ensureRnicaVisitId(patientId, formData);
+    return saveRnicaAssessmentOffline(
+      assessmentSubtype
+        ? { patientId, formData, assessmentSubtype }
+        : { patientId, formData, ...(visitId ? { visitId } : {}) }
+    );
+  },
   getRNICAAssessment: (assessmentId) => getRnicaAssessment(assessmentId),
   getRNICAAssessmentByPatient: (patientId, assessmentSubtype = undefined) =>
     assessmentSubtype
@@ -1343,13 +1428,18 @@ function validateRNICA(formData, mode = "ica", assessmentType = undefined) {
       warnings["performanceStatus"] = "HOPE M1190: At least PPS or KPS required";
     }
 
-    // GitHub Directive (2026-10-04) "BIMS/HOPE compliance correction" --
-    // this is an SNS-internal cognitive screen, not a HOPE item (N0500 is
-    // the official HOPE Scheduled-Opioid item). See cognitiveScreen in
-    // INITIAL_FORM.neurological and computeSnsCognitiveScreen.
-    if (!formData.neurological.cognitiveScreen.repetition) {
-      warnings["neurological.cognitiveScreen.repetition"] = "SNS Cognitive Screen: Word Repetition response required";
-    }
+    // PRODUCT OWNER DECISION (2026-10-12) "SNS Cognitive Screen Removal
+    // from Neuro Workflow" -- this warning previously required
+    // `cognitiveScreen.repetition`, but that field's card is no longer
+    // rendered anywhere in the Neurological workflow (see
+    // `NeurologicalPanel.jsx`), so the warning could never be resolved by
+    // any UI action. SNS Cognitive Screen was already confirmed not
+    // CMS/HOPE/eligibility/RNICA-completion/narrative/POC required (see
+    // `computeSnsCognitiveScreen` and the removed-card history above), so
+    // this is not a HOPE/CMS requirement being dropped -- only an
+    // internal, non-required warning that no longer has a reachable
+    // trigger. Already-entered historical data and the calculation
+    // function are untouched.
 
     // Imminent Death ? J0050
     if (!formData.imminentDeath.appearsThreeDaysOrLess) {
@@ -4990,7 +5080,7 @@ function SkinTreatmentSummary({ assessmentId, patientId, styles, COLORS }) {
 // renders a small "POC Review Suggested" indicator instead of silently
 // changing the button's own label -- the clinician still explicitly
 // clicks Add; nothing is auto-created.
-function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS, canAdd = true, suggestedFinding = false }) {
+function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLORS, canAdd = true, suggestedFinding = false, inline = false }) {
   const [showAdd, setShowAdd] = useState(false);
   const [showList, setShowList] = useState(false);
   const [problems, setProblems] = useState(null);
@@ -5083,8 +5173,24 @@ function PocSectionControls({ assessmentId, sectionKey, cardTitle, styles, COLOR
 
   if (!assessmentId) return null;
 
+  // OWNER DIRECTIVE (2026-10-11) "Body System Density Pass" item #1 --
+  // `inline` (opt-in, default false so the standalone/bottom-of-shell
+  // usage is byte-for-byte unchanged) drops the dashed top border/margin
+  // that made sense as a section-ending divider but wastes space when
+  // this component instead sits inside a card's title row. While expanded
+  // (an add-form, a problem list, or an edit row is open) the whole block
+  // forces itself onto its own full-width line below the title via
+  // `flexBasis: "100%"` -- the surrounding title row already opts into
+  // `flexWrap: wrap` (see Card component) specifically to support this.
+  const isExpanded = showAdd || showList || editingRuleKey;
+  const rootStyle = inline
+    ? (isExpanded
+        ? { flexBasis: "100%", width: "100%", marginTop: 8 }
+        : { display: "inline-flex" })
+    : { marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` };
+
   return (
-    <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+    <div style={rootStyle}>
       {suggestedFinding && canAdd && !hasProblems && (
         <p style={{ margin: "0 0 6px", fontSize: 11, fontWeight: 700, color: COLORS.orange || "#b45309" }}>
           POC Review Suggested
@@ -10748,7 +10854,7 @@ function SfvStatusCard({ patientId, onNavigateToSection, onSyncCompletionStatus,
   );
 }
 
-function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false, fullWidthWhenExpanded = false, compact = false, summary = null }) {
+function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, defaultCollapsed = false, bare = false, importance = null, fullWidth = false, fullWidthWhenExpanded = false, compact = false, summary = null, headerAction = null }) {
   const { mode: themeMode } = useThemeMode();
   const COLORS = useMemo(() => getRnicaColors(themeMode), [themeMode]);
   const styles = useMemo(() => getRnicaStyles(COLORS), [COLORS]);
@@ -10765,11 +10871,29 @@ function Card({ title, children, hopeCode, sfv, cms, id, collapsible = false, de
       {hopeCode && <HopeTag code={hopeCode} />}
       {sfv && <SfvTag />}
       {cms && <CmsTag label={cms} />}
+      {/* OWNER DIRECTIVE (2026-10-11) "Body System Density Pass" item #1 --
+          an optional per-card header action (e.g. the "+ Add to POC"
+          trigger) rendered inline in the title row instead of as a
+          separate full-width block below the card's fields, recovering
+          the vertical space that block previously consumed on every card.
+          Pushed to the far right via marginLeft:auto; stopPropagation
+          keeps a click on it from toggling a collapsible card's
+          expand/collapse state. Opt-in only -- no caller is forced to
+          pass this, so every other card's title row is unchanged. */}
+      {headerAction && (
+        <span
+          className="rnica-form-card__title-action"
+          style={{ marginLeft: "auto", flexShrink: 0 }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {headerAction}
+        </span>
+      )}
     </>
   );
   const titleRowProps = {
     className: "rnica-form-card__title",
-    style: { ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8, cursor: collapsible ? "pointer" : undefined },
+    style: { ...styles.cardTitle, display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", cursor: collapsible ? "pointer" : undefined },
     onClick: collapsible ? () => setCollapsed((c) => !c) : undefined,
     role: collapsible ? "button" : undefined,
     tabIndex: collapsible ? 0 : undefined,
@@ -11968,29 +12092,239 @@ export function neurologicalHasActionablePocFinding(d) {
   return false;
 }
 
+// PRODUCT OWNER DIRECTIVE (2026-10-12) "Neurological Overview --
+// System Derived, Read Only" -- Overview is a SUMMARY of what the nurse
+// already documented (Consciousness, Orientation, Cognition,
+// Communication, Sleep, Behavior, Anxiety, Agitation, Sensory,
+// Psychiatric findings), not an independent nurse decision. The only
+// value that still requires a direct, explicit clinician action is
+// "Unable to Assess" (patient unresponsive/declined/interrupted -- by
+// definition no findings exist yet to summarize, so nothing can be
+// derived; everything else is preserved as a real stored flag exactly
+// as before). The other three values are computed fresh every time from
+// data that is already being entered for its own clinical reason, reusing
+// the same `neurologicalHasActionablePocFinding` proxy already trusted
+// for the POC button and the auto-collapse rule below -- no new field,
+// no new question, no new button.
+export function deriveNeurologicalOverview(d = {}) {
+  if (d.neuroOverview === "Unable to Assess") return "Unable to Assess";
+  if (neurologicalHasActionablePocFinding(d)) return "New/Worsening Neurological Findings";
+  if (d.clinicalStatusChange && d.clinicalStatusChange !== "Initial Assessment") {
+    // A prior assessment exists for comparison and nothing concerning
+    // was found against it.
+    return "Existing Neurological Findings Stable";
+  }
+  // No actionable finding and no prior to compare against (first
+  // assessment, or nothing documented yet) -- the correct default state,
+  // not an "unanswered question."
+  return "No Current Neurological Concern";
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-10-12) "Body-System Documentation
+// Coverage Standard / Demote Overview From Primary UI" -- this is the
+// SAME computation as `deriveNeurologicalOverview` above (never
+// duplicated, never changed), exposed under a system-oriented name so
+// call sites that consume it purely for presentation/behavior control
+// (card visibility, field visibility, auto-collapse) read as what they
+// actually are: SYSTEM BEHAVIOR, not nursing documentation. It must
+// never be presented to the clinician as a documented finding, never
+// overwrite the nurse's own `clinicalStatusChange` answer, and must not
+// become a future Patient Story/discipline-story source (Documentation
+// Coverage and Structured Findings are the only approved sources for
+// that). `deriveNeurologicalOverview` itself is left in place and still
+// exported for existing direct test coverage of the underlying rule --
+// this is an additive alias, not a rename, to avoid any behavior or
+// test churn.
+export const computeNeurologicalSystemStatus = deriveNeurologicalOverview;
+
+// PRODUCT OWNER DIRECTIVE (2026-10-12) "Body Systems Platform Architecture
+// -- Ownership Boundaries" -- Body Systems (Neurological, Cardiovascular,
+// Respiratory, GI, GU, Skin, Musculoskeletal, ...) own Findings /
+// Documentation Coverage / Structured Findings ONLY; Clinical Story
+// ("what is the patient's story?") is Patient Story's responsibility, not
+// rendered per Body System. Neurological is the field-testing pilot for
+// the Documentation Coverage element ("what is missing?"), proven first
+// in Respiratory. Every item here reads a field the nurse already
+// documents for its own clinical reason elsewhere in this card set -- no
+// new question, field, schema, or migration is introduced. "Complete"
+// means the nurse made an explicit choice (including an explicit
+// "None"/no-change answer); an item is only reported "missing" when
+// nothing at all has been selected yet. Returns [] for "Unable to Assess"
+// -- there are no findings to have coverage over when the assessment
+// itself could not be completed (mirrors the same early-return already
+// used by computeNeurologicalNarrative above).
+//
+// PRODUCT OWNER DIRECTIVE (2026-10-12) "Body-System Documentation
+// Coverage Standard" -- each item also carries an optional `summarize`
+// that returns the concise, already-documented value to display next to
+// the completion mark (e.g. "Awake", "Oriented x4"). This is read-only
+// formatting of existing stored values -- it reuses the exact display
+// mappings already trusted elsewhere in this file (consciousness alias/
+// display map, sleep change/pattern text, communication no-concern
+// wording) so Coverage never invents a label the rest of the UI doesn't
+// already use. `summarize` is only ever called when `check` is true; it
+// must never be used to backfill or infer a value for a missing item.
+//
+// SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Documentation Coverage As A
+// Source-Linked Discipline Findings Inventory" -- each item also carries
+// `unresolvedHint`: the exact requirement to show when `check` is false
+// (e.g. "Select comparison to prior assessment"), so an incomplete item
+// never renders the generic, non-actionable word "Incomplete". Per the
+// same directive's "Documentation Coverage item contract", the fuller
+// conceptual shape (sourceType, reportingParty, documentedBy, discipline,
+// encounterId, documentedAt) is intentionally NOT populated here: this
+// record shape captures only the in-memory assessment draft -- no
+// authenticated-user/encounter/source-of-report metadata is available at
+// this layer today, and none is fabricated. `sourceFieldKeys` is included
+// below because it is derivable from this same array without inventing
+// anything; the remaining contract fields are a documented gap, not a
+// silent omission -- see the Phase 1 response's "Coverage source fields"
+// item.
+const NEUROLOGICAL_COVERAGE_ITEMS = [
+  {
+    key: "consciousness",
+    label: "Consciousness",
+    sourceFieldKeys: ["consciousness"],
+    check: (d) => Boolean(d.consciousness),
+    summarize: (d) => {
+      const canonical = NEURO_CONSCIOUSNESS_ALIASES[d.consciousness] || d.consciousness;
+      return NEURO_CONSCIOUSNESS_DISPLAY[canonical] || canonical;
+    },
+    unresolvedHint: "Select level of consciousness",
+  },
+  {
+    key: "orientation",
+    label: "Orientation",
+    sourceFieldKeys: ["orientation.disoriented", "orientation.person", "orientation.place", "orientation.time", "orientation.situation"],
+    check: (d) => {
+      const o = d.orientation || {};
+      return Boolean(o.disoriented || o.person || o.place || o.time || o.situation);
+    },
+    summarize: (d) => {
+      const o = d.orientation || {};
+      if (o.disoriented) return "Disoriented";
+      const orientedTo = [o.person && "person", o.place && "place", o.time && "time", o.situation && "situation"].filter(Boolean);
+      if (orientedTo.length === 4) return "Oriented x4";
+      return `Oriented to ${orientedTo.join(", ")}`;
+    },
+    unresolvedHint: "Assess orientation to person, place, time, and situation",
+  },
+  {
+    key: "communication",
+    label: "Communication",
+    sourceFieldKeys: ["communication"],
+    check: (d) => Boolean(d.communication),
+    summarize: (d) => (["Normal", "Clear"].includes(d.communication) ? "No Current Concern" : d.communication),
+    unresolvedHint: "Select communication status",
+  },
+  {
+    key: "behavioral",
+    label: "Behavioral Findings",
+    sourceFieldKeys: ["symptomsDemeanor", "behavioralStatus"],
+    check: (d) => Boolean((d.symptomsDemeanor || []).length > 0 || d.behavioralStatus),
+    summarize: (d) => {
+      const demeanor = (d.symptomsDemeanor || []).filter((s) => s && s !== "Peaceful");
+      if (demeanor.length > 0) return demeanor.join(", ");
+      if ((d.symptomsDemeanor || []).includes("Peaceful")) return "Peaceful";
+      return d.behavioralStatus || "";
+    },
+    unresolvedHint: "Select behavioral / demeanor findings",
+  },
+  {
+    key: "sleep",
+    label: "Sleep",
+    sourceFieldKeys: ["sleepRest.sleepPattern", "sleepRest.responsiveness", "sleepRest.changeSincePrior"],
+    check: (d) => {
+      const s = d.sleepRest || {};
+      return Boolean(s.sleepPattern || s.responsiveness || s.changeSincePrior);
+    },
+    summarize: (d) => {
+      const s = d.sleepRest || {};
+      if (s.changeSincePrior) return s.changeSincePrior;
+      if (s.sleepPattern) return s.sleepPattern === "Normal" ? "Usual Sleep Pattern" : s.sleepPattern;
+      return s.responsiveness || "";
+    },
+    unresolvedHint: "Document sleep pattern, responsiveness, or change since prior assessment",
+  },
+  // "Initial Assessment" is itself an explicit, documented answer (there
+  // is no prior to compare against yet) -- only a blank value counts as
+  // missing.
+  {
+    key: "comparison",
+    label: "Comparison",
+    sourceFieldKeys: ["clinicalStatusChange"],
+    check: (d) => Boolean(d.clinicalStatusChange),
+    summarize: (d) => d.clinicalStatusChange,
+    unresolvedHint: "Select comparison to prior assessment",
+  },
+  {
+    key: "psychiatricHistory",
+    label: "Psychiatric History",
+    sourceFieldKeys: ["psychiatricHistoryType"],
+    check: (d) => Boolean((d.psychiatricHistoryType || []).length > 0),
+    summarize: (d) => (d.psychiatricHistoryType || []).join(", "),
+    unresolvedHint: "Select psychiatric history",
+  },
+];
+
+export function computeNeurologicalDocumentationCoverage(d = {}) {
+  // SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Documentation Coverage As
+  // A Source-Linked Discipline Findings Inventory" Test D -- "Unable to
+  // Assess" is itself a documented state, not an absence of coverage.
+  // Return the existing documented reason (already captured on
+  // `neuroUnableToAssessReason`/`neuroUnableToAssessOther` -- see
+  // computeNeurologicalNarrative above for the identical reason-resolution
+  // logic) instead of an empty array, and generate no normal per-item
+  // findings, since none were or could be assessed.
+  if (d.neuroOverview === "Unable to Assess") {
+    const reason = d.neuroUnableToAssessReason === "Other" && d.neuroUnableToAssessOther
+      ? d.neuroUnableToAssessOther
+      : d.neuroUnableToAssessReason;
+    return [
+      {
+        key: "unableToAssess",
+        label: "Neurological Assessment",
+        complete: true,
+        value: reason ? `Unable to Assess — ${reason}` : "Unable to Assess",
+        sourceFieldKeys: ["neuroOverview", "neuroUnableToAssessReason", "neuroUnableToAssessOther"],
+        unresolvedHint: null,
+      },
+    ];
+  }
+  return NEUROLOGICAL_COVERAGE_ITEMS.map((item) => ({
+    key: item.key,
+    label: item.label,
+    complete: item.check(d),
+    // PRODUCT OWNER DIRECTIVE (2026-10-12) -- "Missing values are not
+    // displayed as normal": `value` is only ever populated when the item
+    // is actually complete; an incomplete item carries no fabricated
+    // value for the UI to accidentally render as a finding.
+    value: item.check(d) ? item.summarize(d) : null,
+    // SNS PRODUCT-OWNER CORRECTION (2026-10-12) -- the exact unresolved
+    // requirement, shown instead of the value when `complete` is false.
+    unresolvedHint: item.check(d) ? null : item.unresolvedHint,
+    sourceFieldKeys: item.sourceFieldKeys,
+  }));
+}
+
 // Bounded Compatibility Increment (2026-09-28) Section 5/AC-03 -- honest,
 // bounded workflow status for the Neurological accordion badge. Does NOT
 // attempt full "applicable required item" completeness validation (that
 // would require the official HOPE validation engine explicitly deferred
-// in Section 17/19) -- it only distinguishes the states this bounded
-// pass can actually determine: unset vs. Unable-to-Assess vs. "something
-// beyond the Overview answer itself has been documented."
+// in Section 17/19). Updated 2026-10-12 for the Overview-derivation
+// directive above: "Unable to Assess" is still the one real, explicit
+// clinician action; everything else collapses to a simple
+// not-started-vs-documented distinction since Overview itself is no
+// longer a separate nurse decision to wait on.
 export function computeNeurologicalWorkflowStatus(d) {
-  const overview = d.neuroOverview;
-  if (!overview) {
-    return hasAnyDocumentedValue(d)
-      ? { code: "in_progress", label: "In Progress", variant: "neutral" }
-      : { code: "not_started", label: "Not Started", variant: "neutral" };
-  }
-  if (overview === "Unable to Assess") {
+  if (d.neuroOverview === "Unable to Assess") {
     // An incomplete assessment always needs follow-up -- never "reviewed",
     // regardless of whether the controlled reason itself is filled in yet.
     return { code: "review_required", label: "Review Required", variant: "warning" };
   }
-  const { neuroOverview: _o, ...rest } = d;
-  return hasAnyDocumentedValue(rest)
+  return hasAnyDocumentedValue(d)
     ? { code: "ready_for_review", label: "Ready for Review", variant: "success" }
-    : { code: "in_progress", label: "In Progress", variant: "neutral" };
+    : { code: "not_started", label: "Not Started", variant: "neutral" };
 }
 
 // OWNER DIRECTIVE (2026-10-06) "Neurological Usability Review" -- stable
@@ -12010,7 +12344,11 @@ export function computeNeurologicalWorkflowStatus(d) {
 // excluded -- that path still needs the full detail visible to document
 // why.
 export function neuroShouldAutoCollapseDetail(d = {}) {
-  if (!["No Current Neurological Concern", "Existing Neurological Findings Stable"].includes(d.neuroOverview)) return false;
+  // 2026-10-12: driven by the internal system status now, not a
+  // nurse-picked Overview value (see computeNeurologicalSystemStatus
+  // above). System behavior only -- never presented as a nurse finding.
+  const overview = computeNeurologicalSystemStatus(d);
+  if (!["No Current Neurological Concern", "Existing Neurological Findings Stable"].includes(overview)) return false;
   if (neurologicalHasActionablePocFinding(d)) return false;
   const cognitive = computeSnsCognitiveScreen(d.cognitiveScreen);
   if (cognitive.completionStatus === "COMPLETE" && cognitive.interpretation?.reviewRecommended) return false;
@@ -13137,7 +13475,7 @@ function GastrointestinalFindingsReviewSummary({ data, onEdit }) {
   );
 }
 
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}, neuroCognitiveScreenOpen = false, setNeuroCognitiveScreenOpen = () => {}) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
   const resolvedCards = uiProfile.hideSpiritualHopeFields && sectionKey === "spiritual"
@@ -13278,21 +13616,22 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           return null;
         }
 
-        // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
-        // the audit confirmed the normal-patient path required ~22 visible
-        // decisions against a 5-10 target. Everything below the new
-        // "Neurological Overview" card is now gated on that single
-        // up-front triage answer; nothing is removed, renamed, or
-        // reinterpreted -- cards simply don't render until they're
-        // relevant to the path the nurse selected.
+        // PRODUCT OWNER DIRECTIVE (2026-10-12) "Neurological Overview --
+        // System Derived, Read Only" -- supersedes the original GitHub
+        // Directive (2026-09-28) "Neurological Overview Gate" below.
+        // Overview is no longer an up-front nurse decision that must be
+        // answered before anything else renders (that created a blank
+        // first screen -- the opposite of fast documentation). The
+        // reduced/fast-path card set is now simply the default state;
+        // the internal system status (computeNeurologicalSystemStatus)
+        // decides it the same way the nurse's own answer used to, so
+        // cards still only earn their place on screen once something
+        // relevant to document actually exists. Only the real, explicit
+        // clinician action ("Unable to Assess") still fully suppresses
+        // the rest of the section -- the reason control lives on the
+        // Overview card itself.
         if (sectionKey === "neurological" && card.title !== "Neurological Overview") {
-          const overview = data.neuroOverview;
-          // Before the gate is answered, show ONLY the Overview card --
-          // this is the single biggest lever for cutting the initial
-          // decision count.
-          if (!overview) return null;
-          // "Unable to Assess": the reason control lives on the Overview
-          // card itself; nothing else applies.
+          const overview = computeNeurologicalSystemStatus(data);
           if (overview === "Unable to Assess") return null;
           if (overview === "No Current Neurological Concern") {
             // Path 1 (fastest): Consciousness, Orientation, Sleep/
@@ -14135,6 +14474,33 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "neurological" && card.title === "SNS Cognitive Screen") {
           const cognitive = computeNeurologicalCognitiveSummary(cardData);
           const screenFields = card.fields.filter((f) => f.type === "select");
+          // PRODUCT OWNER DIRECTIVE (2026-10-12) "Cognitive Screen Default
+          // Visibility Audit" -- audited against all 6 consumers (CMS,
+          // HOPE, RNICA completion, eligibility, narrative, POC): none
+          // require it. "A hospice RN admission is not a neuropsychological
+          // evaluation." Hidden entirely (zero footprint, not merely
+          // collapsed) until real data already exists on this record or
+          // the nurse explicitly opts in -- never for every patient by
+          // default. Already-documented or in-progress screens (PARTIAL)
+          // always render normally; nothing already entered is ever hidden.
+          const cognitiveScreenHasData = cognitive && cognitive.screen.completionStatus !== "NOT_STARTED";
+          if (!cognitiveScreenHasData && !neuroCognitiveScreenOpen) {
+            return (
+              <button
+                key={`${ci}-neuro-cognitive-trigger`}
+                type="button"
+                onClick={() => setNeuroCognitiveScreenOpen(true)}
+                className="rnica-bodysystem-workspace__optional-trigger"
+                style={{
+                  fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6,
+                  border: `1px dashed ${COLORS.border}`, background: "transparent",
+                  color: COLORS.teal, cursor: "pointer", textAlign: "left", width: "fit-content",
+                }}
+              >
+                + Add Cognitive Screen (optional)
+              </button>
+            );
+          }
           const reviewStatusLabel = !cognitive || cognitive.screen.completionStatus === "NOT_STARTED"
             ? "Not Started"
             : cognitive.screen.completionStatus === "PARTIAL"
@@ -14154,17 +14520,27 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                   : `Score ${cognitive.screen.rawScore} of ${cognitive.screen.maxScore}${cognitive.screen.interpretation ? ` · ${cognitive.screen.interpretation.label}` : ""} · ${reviewStatusLabel === "Review Recommended" ? "Review recommended" : "No review needed"}`}
             </p>
           );
-          // OWNER DIRECTIVE (2026-10-06) "Neurological Usability Review" --
-          // collapse the three select fields behind the headerSummary line
-          // whenever the patient is documented stable with no actionable
-          // finding (see `neuroShouldAutoCollapseDetail`); New/Worsening,
-          // an actionable finding, or an incomplete/review-recommended
-          // screen all force it back open. The nurse's own chevron click
-          // remains fully reversible either way. `key` forces a clean
-          // remount when this flag flips (same pattern as Cardiovascular's
-          // `cvPath1PreservedCard` below) so a stale collapsed state never
-          // lingers after the Overview answer changes.
-          const neuroCognitiveDetailCollapsed = neuroShouldAutoCollapseDetail(cardData);
+          // PRODUCT OWNER REVIEW (2026-10-12) "Visual Density Pass"
+          // Directive 4 "Further visually demote SNS Cognitive Screen" --
+          // supersedes the narrower 2026-10-06 rule below (which only
+          // auto-collapsed a stable/no-finding screen). Confirmed not
+          // required by CMS, HOPE, RNICA completion, eligibility,
+          // narrative, or POC -- so it always collapses behind the
+          // headerSummary line once ANY data exists, regardless of
+          // review-recommended/incomplete state, same treatment already
+          // given to Psychiatric History/Sleep (low-priority, collapsed-
+          // by-default cards). Capability is unchanged -- the nurse's own
+          // chevron click remains fully reversible. If the nurse just
+          // opted in via the trigger above with nothing documented yet,
+          // the detail must start expanded (there is nothing to summarize).
+          //
+          // (Prior rule, 2026-10-06 "Neurological Usability Review":
+          // collapse only when stable per `neuroShouldAutoCollapseDetail`
+          // -- New/Worsening or review-recommended forced it open. That
+          // finer-grained behavior is still available via
+          // `neuroShouldAutoCollapseDetail` for any future card that
+          // needs it; it's simply no longer gating THIS card.)
+          const neuroCognitiveDetailCollapsed = cognitiveScreenHasData;
           return (
             <Card
               key={neuroCognitiveDetailCollapsed ? `${ci}-neuro-collapsed` : ci}
@@ -14211,6 +14587,77 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // other card, matching the existing "no empty placeholder" rule
         // used elsewhere in this file.
         let cardSummary = null;
+        // SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Documentation
+        // Coverage As A Source-Linked Discipline Findings Inventory" --
+        // supersedes the prior "Neurological Overview -- System Derived,
+        // Read Only" comment's "Unable to Assess" exception: Documentation
+        // Coverage now reports "Unable to Assess" as a documented state
+        // itself (see computeNeurologicalDocumentationCoverage above), and
+        // computeNeurologicalNarrative already produces a Clinical Story
+        // sentence for that state, so both render normally instead of the
+        // whole card summary going blank. The legacy derived "Neurological
+        // Summary: [status]" line is removed entirely (Test item #10 --
+        // Overview is system behavior, not a nurse finding, and must not
+        // be presented as one).
+        if (sectionKey === "neurological" && card.title === "Neurological Overview") {
+          // SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Preserve Discipline
+          // Clinical Stories" -- supersedes the immediately prior
+          // "Ownership Boundaries" comment's conclusion that Clinical
+          // Story must never render inside a Body System card. The
+          // correction clarifies three distinct concepts: Documentation
+          // Coverage ("what is missing?"), the per-discipline Clinical
+          // Story ("what did this discipline document this encounter?"),
+          // and the future cross-discipline Patient Story ("what is the
+          // combined narrative?"). Neurological is a discipline-owned
+          // (RN) body-system assessment, so its own deterministic
+          // Clinical Story belongs here -- only the FUTURE aggregation
+          // into Patient Story/IDG is out of scope for Body Systems, not
+          // the discipline-level story itself. `computeNeurologicalNarrative`
+          // was never deleted; this merely gives its existing output an
+          // explicit, labeled, read-only presentation next to Documentation
+          // Coverage, instead of it being visible only as the always-on
+          // summary banner above this card. Deterministic, already-
+          // documented-only output -- no new nurse input, no AI call, no
+          // synthesis across disciplines.
+          const coverage = computeNeurologicalDocumentationCoverage(cardData);
+          const clinicalStory = computeNeurologicalNarrative(cardData);
+          cardSummary = (
+            <div className="rnica-bodysystem-workspace__card-summary">
+              {coverage.length > 0 && (
+                <div className="rnica-documentation-coverage" data-testid="neurological-documentation-coverage">
+                  <span className="rnica-documentation-coverage__label">Documentation Coverage</span>
+                  {coverage.map((item) => (
+                    <span
+                      key={item.key}
+                      className={
+                        "rnica-documentation-coverage__item " +
+                        (item.complete ? "rnica-documentation-coverage__item--complete" : "rnica-documentation-coverage__item--missing")
+                      }
+                    >
+                      <span className="rnica-documentation-coverage__item-label">{item.label}</span>
+                      {/* SNS PRODUCT-OWNER CORRECTION (2026-10-12) -- a
+                          completed item shows its concise documented value
+                          ("✓ Awake"); an incomplete item shows the exact
+                          unresolved requirement ("⚠ Select comparison to
+                          prior assessment"), never the generic, non-
+                          actionable word "Incomplete"/"Missing". */}
+                      <span className="rnica-documentation-coverage__item-value">
+                        {item.complete ? "✓ " : "⚠ "}
+                        {item.complete ? item.value : item.unresolvedHint}
+                      </span>
+                    </span>
+                  ))}
+                </div>
+              )}
+              {clinicalStory && (
+                <p className="rnica-clinical-story" data-testid="neurological-clinical-story">
+                  <span className="rnica-clinical-story__label">Clinical Story</span>
+                  {clinicalStory}
+                </p>
+              )}
+            </div>
+          );
+        }
         if (sectionKey === "neurological" && card.title === "Cognitive / Behavioral Findings") {
           const demeanor = (cardData.symptomsDemeanor || []).filter((s) => s !== "Peaceful");
           const parts = [];
@@ -14247,18 +14694,36 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         }
         // OWNER DIRECTIVE (2026-10-06) "Neurological Usability Review" --
         // Hearing/Vision/Sensory Deficits/Sensory Aids are detail fields,
-        // not the headline Communication status, so this whole card
-        // auto-collapses behind a one-line summary under the exact same
+        // not the headline Communication status, so these cards
+        // auto-collapse behind a one-line summary under the exact same
         // `neuroShouldAutoCollapseDetail` rule as SNS Cognitive Screen
         // above -- never when New/Worsening is selected, an actionable
         // finding already exists, or the nurse manually expands it.
-        const neuroCommSensoryCollapsed = sectionKey === "neurological" && card.title === "Communication and Sensory" && neuroShouldAutoCollapseDetail(data);
+        //
+        // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1
+        // -- the former single "Communication and Sensory" card title is
+        // now split into "Communication / Hearing / Vision" and "Sensory
+        // Deficits / Sensory Aids" (see SECTION_CONFIGS.neurological);
+        // both titles get their own appropriately-worded one-line
+        // summary instead of the one shared summary the merged card used
+        // to show. Same underlying fields/paths/values/collapse rule.
+        const neuroCommSensoryCollapsed = sectionKey === "neurological" && card.title === "Communication / Hearing / Vision" && neuroShouldAutoCollapseDetail(data);
         if (neuroCommSensoryCollapsed) {
           const commStable = !data.communication || ["Normal", "Clear"].includes(data.communication);
           cardSummary = (
             <p className="rnica-bodysystem-workspace__card-summary">
               {commStable ? "Communication clear. " : `Communication: ${data.communication}. `}
-              No sensory concern currently flagged. Click to review or document.
+              Click to review or document.
+            </p>
+          );
+        }
+        const neuroSensoryCollapsed = sectionKey === "neurological" && card.title === "Sensory Deficits / Sensory Aids" && neuroShouldAutoCollapseDetail(data);
+        if (neuroSensoryCollapsed) {
+          const hasSensoryFindings = (data.sensoryDeficits || []).length > 0 || (data.sensoryAids || []).length > 0;
+          cardSummary = (
+            <p className="rnica-bodysystem-workspace__card-summary">
+              {hasSensoryFindings ? "Sensory deficits/aids documented. " : "No sensory concern currently flagged. "}
+              Click to review or document.
             </p>
           );
         }
@@ -14271,6 +14736,27 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // collapsed-copy flag is needed here (unlike Cardiovascular's
         // cvPath1PreservedCard above, which Respiratory no longer
         // mirrors).
+        // OWNER DIRECTIVE (density pass) "Add To POC Into Header" -- this
+        // used to render as a separate dashed-border block below the
+        // field grid (see the old trailing-child render, now removed).
+        // Computing the same element here and passing it as `headerAction`
+        // lets `Card` place it inline in the title row when collapsed, or
+        // drop it onto its own full-width line only while the add-form/
+        // list is open (see Card's `headerAction` support). Same gating
+        // condition as before, so visibility/behavior is unchanged --
+        // only placement moved.
+        const pocControlsElement = !isBodySystemPilotCard && POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields
+          ? (
+            <PocSectionControls
+              assessmentId={assessmentId}
+              sectionKey={cardDataSection}
+              cardTitle={card.title}
+              styles={styles}
+              COLORS={COLORS}
+              inline
+            />
+          )
+          : null;
         return (
           <Card
             // Card only reads `defaultCollapsed` into its internal
@@ -14286,7 +14772,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             // longer has an equivalent flag -- its five clinical cards
             // simply hide outright instead of rendering a collapsed
             // duplicate; see the card-level hide guard above.)
-            key={cvPath1PreservedCard ? `${ci}-cv-preserved` : neuroCommSensoryCollapsed ? `${ci}-neuro-comm-collapsed` : ci}
+            key={cvPath1PreservedCard ? `${ci}-cv-preserved` : neuroCommSensoryCollapsed ? `${ci}-neuro-comm-collapsed` : neuroSensoryCollapsed ? `${ci}-neuro-sensory-collapsed` : ci}
             id={card.id}
             title={card.title}
             hopeCode={card.hopeCode}
@@ -14296,6 +14782,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             importance={card.importance}
             fullWidth={Boolean(card.fullWidth)}
             summary={cardSummary}
+            headerAction={pocControlsElement}
             // [Pain density pass -- 2026-10] Pain-only card-chrome
             // compaction (tighter header/content padding). Scoped by
             // sectionKey so every other module's cards are unaffected.
@@ -14307,8 +14794,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
             // collapsed by default" requirement was silently not applying.
             // The bare-card render branch already respects
             // collapsible/collapsed correctly; only this gate was wrong.
-            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard || neuroCommSensoryCollapsed}
-            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard || neuroCommSensoryCollapsed}
+            collapsible={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard || neuroCommSensoryCollapsed || neuroSensoryCollapsed}
+            defaultCollapsed={(isPainNumericToolCard || isPainLocationCard || isPainCharacteristicsCard || isPainHistoryCard) || card.collapsedByDefault || cvPath1PreservedCard || neuroCommSensoryCollapsed || neuroSensoryCollapsed}
           >
             {isPainNumericToolCard && (
               <NumericPainScale
@@ -14570,7 +15057,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // and preserve all existing stored data/paths/HOPE mappings.
               if (sectionKey === "neurological") {
                 const motorPresent = cardData.motorStatus === "Present" || (cardData.motorStatus === undefined && cardData.motorDeficit === true);
-                const motorDetailVisible = cardData.neuroOverview !== "No Current Neurological Concern" || cardData.motorBalanceStatus === "Findings Present";
+                const motorDetailVisible = computeNeurologicalSystemStatus(cardData) !== "No Current Neurological Concern" || cardData.motorBalanceStatus === "Findings Present";
                 if (["affectedSide", "deficitType"].includes(field.path) && !(motorPresent && motorDetailVisible)) {
                   return null;
                 }
@@ -14596,26 +15083,23 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 return null;
               }
               if (sectionKey === "neurological") {
-                // The Overview gate's whole purpose: on the fastest path
-                // (patient has no current neurological concern), the
-                // "advanced" detail fields below don't earn their place on
-                // screen unless something actually turns out abnormal --
-                // they stay fully intact in stored data and reappear
-                // immediately if the nurse switches Overview to Stable or
-                // New/Worsening, or if the underlying value itself already
-                // indicates a concern (never hides a documented abnormal
-                // finding).
-                const neuroNormalPathActive = cardData.neuroOverview === "No Current Neurological Concern";
-                const sleepAbnormal = (cardData.sleepRest?.sleepPattern && cardData.sleepRest.sleepPattern !== "Normal")
-                  || (cardData.sleepRest?.responsiveness && cardData.sleepRest.responsiveness !== "Easily Aroused")
-                  || (cardData.sleepRest?.changeSincePrior && cardData.sleepRest.changeSincePrior !== "No Change");
-                const advancedSleepFields = ["sleepRest.changeSincePrior", "sleepRest.sleepTrendKnown", "sleepRest.nighttimeSymptoms", "sleepRest.sleepAids", "sleepRest.effectOnComfort", "sleepRest.response", "sleepRest.restfulness", "sleepRest.notes"];
-                if (advancedSleepFields.includes(field.path) && neuroNormalPathActive && !sleepAbnormal) {
-                  return null;
-                }
-                if (["hearing", "vision", "sensoryDeficits", "sensoryAids"].includes(field.path) && neuroNormalPathActive) {
-                  return null;
-                }
+                // PRODUCT OWNER DIRECTIVE (2026-10-12) "Neurological
+                // Overview -- System Derived, Read Only" -- Overview is no
+                // longer a nurse-clickable control, so a nurse can no
+                // longer manually switch it to "Stable"/"New/Worsening"
+                // just to unlock Hearing/Vision/Sensory/advanced-Sleep
+                // fields that have no independent trigger field of their
+                // own (unlike Behavioral/Motor below, which are unlocked
+                // by their own `behavioralStatus`/`motorBalanceStatus`
+                // select regardless of Overview). Hard-hiding them here
+                // would have made them permanently undocumentable on the
+                // default/no-concern path. They are no longer hidden --
+                // density is preserved entirely by each card's own
+                // existing collapse-to-summary behavior
+                // (`neuroShouldAutoCollapseDetail`, collapsedByDefault),
+                // not by blocking entry outright. No field/path/value/HOPE
+                // mapping removed.
+                const neuroNormalPathActive = computeNeurologicalSystemStatus(cardData) === "No Current Neurological Concern";
                 // New gate fields (`behavioralStatus`/`motorBalanceStatus`)
                 // only exist to keep the fast path fast -- they're hidden
                 // once the nurse is off that path, where the full detail
@@ -14909,6 +15393,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               const CV_PULSE_DIMENSION_PATHS = new Set(["pulseRhythm", "pulseRate", "pulseStrength"]);
               const value = sectionKey === "neurological" && fieldForRender.path === "motorStatus" && cardData.motorStatus === undefined && cardData.motorDeficit === true
                 ? "Present"
+                // PRODUCT OWNER DIRECTIVE (2026-10-12) "Neurological
+                // Overview -- System Derived, Read Only" -- `neuroOverview`
+                // itself now only ever stores "Unable to Assess" or is
+                // unset; this field is rendered as a Yes/No toggle (see
+                // the schema entry above), so map the stored value to
+                // "Yes"/"No" for display instead of showing the raw
+                // string (or nothing) to the nurse.
+                : sectionKey === "neurological" && fieldForRender.path === "neuroOverview"
+                ? (cardData.neuroOverview === "Unable to Assess" ? "Yes" : "No")
                 : sectionKey === "cardiovascular" && CV_PULSE_DIMENSION_PATHS.has(fieldForRender.path)
                 ? resolvePulseDimensionDisplay(cardData, fieldForRender.path)
                 : sectionKey === "cardiovascular" && fieldForRender.path === "bpStatus"
@@ -14917,6 +15410,19 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 ? resolveOrthostaticFindingDisplay(cardData)
                 : getNestedValue(cardData, fieldForRender.path);
               const onChange = (v) => {
+                // PRODUCT OWNER DIRECTIVE (2026-10-12) "Neurological
+                // Overview -- System Derived, Read Only" -- the Yes/No
+                // toggle above writes the real stored flag directly
+                // (`neuroOverview` holds either the literal "Unable to
+                // Assess" string or nothing at all; every other value is
+                // computed on read by `deriveNeurologicalOverview`, never
+                // persisted). This intercepts before the generic
+                // `update(...)` call below so "No"/"Yes" are never written
+                // to storage verbatim.
+                if (sectionKey === "neurological" && fieldForRender.path === "neuroOverview") {
+                  u("neuroOverview", v === "Yes" ? "Unable to Assess" : undefined);
+                  return;
+                }
                 update(cardDataSection, fieldForRender.path, v);
                 // [Control Conflict Report #1] Orientation vs. Disoriented
                 // are mutually exclusive findings, not independent
@@ -15299,15 +15805,6 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               return <div key={fi} {...cvFieldAttr} style={fieldSpan === "full" ? styles.fieldSpanFull : { gridColumn: `span ${fieldSpan}` }}>{rendered}</div>;
             }))}
             </div>
-            {!isBodySystemPilotCard && POC_ENABLED_SECTIONS.has(cardDataSection) && card.fields && (
-              <PocSectionControls
-                assessmentId={assessmentId}
-                sectionKey={cardDataSection}
-                cardTitle={card.title}
-                styles={styles}
-                COLORS={COLORS}
-              />
-            )}
           </Card>
         );
   });
@@ -15347,21 +15844,30 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
     : null;
 
   // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2
-  // -- Neurological and Cardiovascular now assemble into the shared
-  // BodySystemShell (rn-ica/BodySystemShell.jsx) instead of the generic
-  // category-grouped layout + large Summary card above. Respiratory,
-  // Infection, Gastrointestinal, Nutrition, Endocrine, Genitourinary,
+  // -- Cardiovascular assembles into the shared BodySystemShell
+  // (rn-ica/BodySystemShell.jsx) instead of the generic category-grouped
+  // layout + large Summary card above. Respiratory, Infection,
+  // Gastrointestinal, Nutrition, Endocrine, Genitourinary,
   // Musculoskeletal, and Skin are NOT touched by this flag -- they keep
   // using `bodySystemGroupedContent` + the Summary banner below, byte-for-
   // byte unchanged.
   //
+  // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1 --
+  // Neurological no longer uses the shared `BodySystemShell` (that shell
+  // enforces one fixed 7-slot vertical sequence shared with
+  // Cardiovascular, which can't express the specific Row 1-6 two-column
+  // pairing the owner asked for). Neurological now renders through its
+  // own dedicated `NeurologicalPanel` component instead -- this is scoped
+  // to Neurological only; Cardiovascular's `BodySystemShell` usage below
+  // is completely untouched.
+  //
   // Reuses the exact same already-rendered `cardsContent` entries (same
   // field components, same gating, same collapse/expand mechanisms, same
-  // POC triggers) -- only re-buckets them by card title into the shell's
-  // 7 fixed slots instead of the category-grouped boxes. No field, path,
-  // option, or stored-value change.
-  const useBodySystemShell = isBodySystemWorkspace && (sectionKey === "neurological" || sectionKey === "cardiovascular");
-  const cardsByTitle = useBodySystemShell
+  // POC triggers) -- only re-buckets them by card title into the target
+  // layout's slots. No field, path, option, or stored-value change.
+  const useBodySystemShell = isBodySystemWorkspace && sectionKey === "cardiovascular";
+  const useNeurologicalPanel = isBodySystemWorkspace && sectionKey === "neurological";
+  const cardsByTitle = (useBodySystemShell || useNeurologicalPanel)
     ? resolvedCards.reduce((acc, card, ci) => {
         acc[card.title] = cardsContent[ci];
         return acc;
@@ -15396,42 +15902,35 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         : null)}
     />
   ) : null;
-  const bodySystemShellContent = !useBodySystemShell ? null : sectionKey === "neurological" ? (
-    <BodySystemShell
+  // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" -- the Overall
+  // Change Since Prior Assessment control. Relocated out of the
+  // now-removed Summary banner (Pass 2 Duplicate-Removal Map: "Overall
+  // Change Since Prior Assessment") into Row 1 of the new
+  // `NeurologicalPanel`, paired with "Neurological Overview". Same
+  // `clinicalStatusChange` path, same `NEURO_OVERALL_CHANGE_OPTIONS`, same
+  // `u()` write as before (previously inside the shared shell's
+  // `changeSincePrior` slot) -- writer/reader audit found no second/
+  // conflicting path for this concept, only a relocated single control.
+  const neuroChangeSincePrior = useNeurologicalPanel ? (
+    <div className="rnica-bodysystem-shell__change-since-prior">
+      <FormSegmented
+        label="Overall Change Since Prior Assessment"
+        value={data.clinicalStatusChange}
+        onChange={(v) => u("clinicalStatusChange", v)}
+        options={NEURO_OVERALL_CHANGE_OPTIONS}
+        compact
+      />
+    </div>
+  ) : null;
+  const neurologicalPanelContent = useNeurologicalPanel ? (
+    <NeurologicalPanel
       header={bodySystemShellHeader}
-      assessmentState={cardsByTitle["Neurological Overview"]}
-      essentialFindings={[
-        cardsByTitle["Consciousness"],
-        cardsByTitle["Orientation"],
-        cardsByTitle["SNS Cognitive Screen"],
-      ].filter(Boolean)}
-      // Relocated out of the now-removed Summary banner (Pass 2 Duplicate-
-      // Removal Map: "Overall Change Since Prior Assessment") into its own
-      // canonical Change Since Prior slot. Same `clinicalStatusChange`
-      // path, same `NEURO_OVERALL_CHANGE_OPTIONS`, same `u()` write --
-      // writer/reader audit found no second/conflicting path for this
-      // concept, only a misplaced single control.
-      changeSincePrior={
-        <div className="rnica-bodysystem-shell__change-since-prior">
-          <FormSegmented
-            label="Overall Change Since Prior Assessment"
-            value={data.clinicalStatusChange}
-            onChange={(v) => u("clinicalStatusChange", v)}
-            options={NEURO_OVERALL_CHANGE_OPTIONS}
-            compact
-          />
-        </div>
-      }
-      triggeredDetail={[
-        cardsByTitle["Sleep / Responsiveness"],
-        cardsByTitle["Communication and Sensory"],
-        cardsByTitle["Cognitive / Behavioral Findings"],
-        cardsByTitle["Psychiatric History"],
-      ].filter(Boolean)}
-      notes={cardsByTitle["Notes"]}
+      cardsByTitle={cardsByTitle}
+      changeSincePrior={neuroChangeSincePrior}
       pocAction={bodySystemShellPoc}
     />
-  ) : (
+  ) : null;
+  const bodySystemShellContent = !useBodySystemShell ? null : (
     <BodySystemShell
       header={bodySystemShellHeader}
       assessmentState={cardsByTitle["Cardiovascular Overview"]}
@@ -15474,8 +15973,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // field, path, or behavior change.
         <ShadcnCard className="rnica-bodysystem-workspace" data-section={sectionKey} {...(sectionKey === "cardiovascular" ? { "data-cv-overview": data.cardiovascularOverview || "none" } : null)}>
           <ShadcnCardContent className="rnica-bodysystem-workspace__content">
-            {useBodySystemShell ? bodySystemShellContent : null}
-            {bodySystemSummary && !useBodySystemShell && (
+            {useBodySystemShell ? bodySystemShellContent : useNeurologicalPanel ? neurologicalPanelContent : null}
+            {bodySystemSummary && !useBodySystemShell && !useNeurologicalPanel && (
               <div
                 // OWNER DIRECTIVE (2026-10-04) "Neurological Hierarchy
                 // Pass" item #1 -- Neurological's Summary must read as the
@@ -15518,8 +16017,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
                 )}
               </div>
             )}
-            {!useBodySystemShell && bodySystemGroupedContent}
-            {!useBodySystemShell && bodySystemShellPoc}
+            {!useBodySystemShell && !useNeurologicalPanel && bodySystemGroupedContent}
+            {!useBodySystemShell && !useNeurologicalPanel && bodySystemShellPoc}
           </ShadcnCardContent>
         </ShadcnCard>
       ) : (
@@ -16096,7 +16595,10 @@ const SECTION_CONFIGS = {
 
   neurological: {
     title: "Neurological / Mental / Sensory",
-    subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, SNS Cognitive Screen",
+    // PRODUCT OWNER DECISION (2026-10-12) "SNS Cognitive Screen Removal
+    // from Neuro Workflow" -- "SNS Cognitive Screen" removed from this
+    // subtitle; the tool no longer renders anywhere in this section.
+    subtitle: "Consciousness, orientation, sleep/responsiveness, communication, cognition, behavior",
     cards: [
       // OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization"
       // item #1 -- required order: Consciousness / Orientation /
@@ -16166,31 +16668,32 @@ const SECTION_CONFIGS = {
         ],
       },
       {
+        // PRODUCT OWNER DIRECTIVE (2026-10-12) "Neurological Overview --
+        // System Derived, Read Only" -- supersedes the original GitHub
+        // Directive (2026-09-28) "Neurological Overview Gate" comment
+        // below. The nurse no longer picks Overview's value; it is now a
+        // computed summary (see `deriveNeurologicalOverview` and the
+        // `cardSummary` block above) derived from Consciousness,
+        // Orientation, Cognition, Communication, Sleep, Behavior, Anxiety,
+        // Agitation, and Sensory findings the nurse documents elsewhere on
+        // this screen. The ONE value that cannot be derived -- "Unable to
+        // Assess" (no findings exist to summarize when true) -- remains a
+        // real, explicit, stored clinician action via the single Yes/No
+        // toggle below (still written to the same `neuroOverview` path;
+        // no schema change, no migration). Same path/value/HOPE mapping
+        // as before for every existing consumer (narrative, POC, workflow
+        // status, auto-collapse, the card-visibility gate).
+        //
         // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
-        // this single up-front triage question determines everything
-        // else that renders below it (see the card-level guard next to
-        // `resolvedCards.map`, which keys off `card.title`, not array
-        // position). High-importance, no longer full-width: OWNER
-        // DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
-        // #1 moved it into the 3rd column of the Consciousness/
-        // Orientation/Neurological Overview row (CSS override forces an
-        // exact 3-column grid for this section's "core" category bucket)
-        // instead of its own full-width row, so a nurse sees all three
-        // "status" cards simultaneously without dead horizontal space.
-        // The gate's render-loop guard is unaffected by this reorder --
-        // it still hides every other Neurological card until this
-        // question is answered, exactly as before; only this card's own
-        // screen position/width changed. New path (`neuroOverview`) -- no
-        // existing field/value is touched.
+        // this card still anchors the Consciousness/Orientation row (see
+        // the card-level guard next to `resolvedCards.map`, which keys off
+        // `card.title`, not array position) and still sits in the 3rd
+        // column of that row (OWNER DIRECTIVE 2026-10-04 "Neurological
+        // Density Optimization" item #1).
         title: "Neurological Overview", category: "core", importance: "high", fields: [
           {
-            type: "segmented", label: "Neurological Overview", path: "neuroOverview",
-            options: [
-              "No Current Neurological Concern",
-              "Existing Neurological Findings Stable",
-              "New/Worsening Neurological Findings",
-              "Unable to Assess",
-            ],
+            type: "segmented", label: "Unable to Assess This Visit?", path: "neuroOverview",
+            options: ["No", "Yes"],
           },
           // Path 4 -- require a controlled reason instead of silently
           // skipping the whole system (same pattern as Pain's
@@ -16244,7 +16747,31 @@ const SECTION_CONFIGS = {
         // Cognitive Screen"` render intercept -- `collapsible` is no
         // longer passed, and the old second score banner beneath the
         // fields was deleted so the score/status appears exactly once).
-        title: "SNS Cognitive Screen", category: "core", importance: "medium", fullWidth: true, fields: [
+        // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1
+        // "Reorganize, not reduce" -- `fullWidth: true` removed so this
+        // card can sit as a half-width row in the new dedicated
+        // `NeurologicalPanel` layout (see below). This is a pure
+        // presentation flag consumed only by the Card component's own
+        // CSS class (`rnica-bodysystem-workspace__group--full`) -- no
+        // field, path, option, value, HOPE mapping, or narrative/findings
+        // consumer is touched.
+        //
+        // PRODUCT OWNER DECISION (2026-10-12) "Cognitive Screen
+        // De-Prioritization" -- supersedes the "Visual Priority Reorder"
+        // note below (paired with Sleep/Responsiveness). This card no
+        // longer shares a two-column row with anything: it is rendered
+        // in its own full-width, explicitly labeled "Optional Screening
+        // Tools" section, below every primary finding AND below Sleep/
+        // Responsiveness -- the lowest position in the visual stack. See
+        // `NeurologicalPanel.jsx` for the authoritative layout.
+        //
+        // PRODUCT OWNER REVIEW (2026-10-12) "Visual Priority Reorder" --
+        // this card is no longer paired with "Communication / Hearing /
+        // Vision" in Row 3. because clinical relevance/comfort/safety/
+        // care-planning impact outrank the mere existence of this
+        // optional, non-CMS/HOPE/RNICA/eligibility/narrative/POC-required
+        // screening tool.
+        title: "SNS Cognitive Screen", category: "core", importance: "medium", fields: [
           { type: "select", label: "Word Repetition", path: "cognitiveScreen.repetition", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One word" }, { value: "2", label: "2 — Two words" }, { value: "3", label: "3 — Three words" }] },
           { type: "select", label: "Word Recall", path: "cognitiveScreen.recall", fieldSpan: 2, options: [{ value: "0", label: "0 — None" }, { value: "1", label: "1 — One" }, { value: "2", label: "2 — Two" }, { value: "3", label: "3 — Three" }] },
           { type: "select", label: "Temporal Orientation", path: "cognitiveScreen.temporalOrientation", fieldSpan: 2, options: [{ value: "0", label: "0 — None correct" }, { value: "1", label: "1 — Year correct" }, { value: "2", label: "2 — Month correct" }, { value: "3", label: "3 — Day of week correct" }] },
@@ -16319,21 +16846,44 @@ const SECTION_CONFIGS = {
         // "BIMS/HOPE compliance correction" directive; reading order is
         // otherwise unchanged (Overview/Consciousness/Orientation/SNS
         // Cognitive Screen/Cognitive Summary/Overall Change first).
-        title: "Sleep / Responsiveness", category: "core", importance: "high", fullWidth: true, collapsedByDefault: true, fields: [
+        // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1
+        // "Reorganize, not reduce" -- `fullWidth: true` removed so this
+        // card could sit as a half-width row in the dedicated
+        // `NeurologicalPanel` layout. Presentation flag only -- see note
+        // on SNS Cognitive Screen above; same guarantee applies here.
+        // (Superseded below: it is full-width again, just via the
+        // Panel's own layout, not this schema flag.)
+        //
+        // PRODUCT OWNER DECISION (2026-10-12) "Cognitive Screen
+        // De-Prioritization" Directive 1 -- supersedes the prior "Visual
+        // Priority Reorder" pairing note (paired with "SNS Cognitive
+        // Screen"). This card is no longer paired with anything: "do not
+        // split Sleep content across separate rows... one clinical
+        // thought, one visual block" -- it now renders as its own
+        // full-width block in `NeurologicalPanel.jsx`, directly after the
+        // primary two-column findings and before the demoted Cognitive
+        // Screen section. See `NeurologicalPanel.jsx` for the
+        // authoritative layout.
+        title: "Sleep / Responsiveness", category: "core", importance: "high", collapsedByDefault: true, fields: [
+          // PRODUCT OWNER REVIEW (2026-10-12) "Visual Density Pass"
+          // Directive 3 "Sleep content must be consolidated" -- supersedes
+          // the pairing/order note below: Sleep Pattern, Average Sleep
+          // Hours, Nighttime Symptoms, Restfulness, Sleep Aids/Comfort
+          // Measures, and Sleep Notes are now grouped as one contiguous
+          // block (one clinical thought, not split across distant areas);
+          // Responsiveness, Current Effect on Comfort, Change Since Prior
+          // Visit, and the free-text comment follow as their own
+          // contiguous block. Same card ("Sleep / Responsiveness" stays
+          // one title/card, still paired with SNS Cognitive Screen per the
+          // Row reorder above) -- field order only, no path/value/HOPE/
+          // narrative/POC consumer touched.
+          //
           // OWNER DIRECTIVE (2026-10-04) "Density Optimization Pass" items
           // #1-3 -- a dedicated 2-column grid (CSS override, same pattern
           // as Communication and Sensory's narrowed track) with explicit
           // fieldSpan: 1 on every paired field below, so each pair always
           // lands on the same row regardless of viewport width instead of
-          // relying on auto-fit heuristics. Pair order is the literal
-          // directive order (Sleep Pattern/Can Sleep Be Estimated,
-          // Responsiveness/Current Effect, Night Symptoms/Restfulness,
-          // Sleep Aids/Additional Comment); Sleep Notes is relocated
-          // directly under the first pair ("closer to Sleep Pattern")
-          // instead of being the last field in the card. Change Since
-          // Prior Visit and Average Sleep Hours (not named in any required
-          // pair) are paired with each other so no field is left to claim
-          // a half-empty row on its own. Same paths/options/values --
+          // relying on auto-fit heuristics. Same paths/options/values --
           // order and span only, no data migrated.
           { type: "segmented", label: "Sleep Pattern", path: "sleepRest.sleepPattern", fieldSpan: 1, options: [{ value: "Normal", label: "Usual / No Significant Concern" }, "Increased Sleeping", "Excessive Sleeping", "Fragmented Sleep", "Insomnia", "Unable to assess"] },
           // GitHub Directive (2026-09-28) "Neurological Review -- Major
@@ -16342,6 +16892,12 @@ const SECTION_CONFIGS = {
           // rather than a meta-question about whether a trend is known;
           // same path/options, label only, so no data is affected.
           { type: "segmented", label: "Can Sleep Be Estimated?", path: "sleepRest.sleepTrendKnown", fieldSpan: 1, options: ["Yes", "No", "Unable to Determine"] },
+          { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number", fieldSpan: 1 },
+          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", fieldSpan: 1, options: ["Adequate", "Inadequate", "Unable to Determine"] },
+          { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", fieldSpan: 1, options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
+          // Section 17 rename: "Interventions" reframed as comfort measures
+          // (hospice language) -- same path/values, label only.
+          { type: "pillGroup", label: "Sleep Aids / Current Comfort Measures", path: "sleepRest.sleepAids", fieldSpan: 1, options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
           { type: "textarea", label: "Sleep Notes", path: "sleepRest.notes", rows: 1, fieldSpan: "full" },
           { type: "segmented", label: "Responsiveness", path: "sleepRest.responsiveness", fieldSpan: 1, options: ["Easily Aroused", { value: "Somnolent", label: "Somnolence" }, "Difficult To Arouse", "Minimally Responsive", "Unresponsive", "Unable to assess"] },
           // Section 18 -- replaced the free-text "Response to Interventions"
@@ -16353,29 +16909,27 @@ const SECTION_CONFIGS = {
           // comment for any nurse who needs to add nuance.
           { type: "segmented", label: "Current Effect on Comfort or Rest", path: "sleepRest.effectOnComfort", fieldSpan: 1, options: ["Helpful", "Partially Helpful", "Not Helpful", "Unable to Determine"] },
           { type: "segmented", label: "Change Since Prior Visit", path: "sleepRest.changeSincePrior", fieldSpan: 1, options: ["No Change", "Sleeping More", "Increased Somnolence", "More Difficult To Arouse", "New Unresponsiveness"] },
-          { type: "input", label: "Average Sleep Hours / 24 Hours", path: "sleepRest.averageSleepHours", inputType: "number", fieldSpan: 1 },
-          { type: "pillGroup", label: "Nighttime Symptoms", path: "sleepRest.nighttimeSymptoms", fieldSpan: 1, options: ["Pain", "Dyspnea", "Restlessness", "Confusion", "Anxiety", "Nausea", "None"] },
-          { type: "segmented", label: "Restfulness", path: "sleepRest.restfulness", fieldSpan: 1, options: ["Adequate", "Inadequate", "Unable to Determine"] },
-          // Section 17 rename: "Interventions" reframed as comfort measures
-          // (hospice language) -- same path/values, label only.
-          { type: "pillGroup", label: "Sleep Aids / Current Comfort Measures", path: "sleepRest.sleepAids", fieldSpan: 1, options: ["Medication", "Positioning", "White noise", "Warm milk/tea", "Other"] },
           { type: "input", label: "Additional Comment (if needed)", path: "sleepRest.response", fieldSpan: 1 },
         ],
       },
       {
-        // OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction"
-        // item #3 -- "Communication and Sensory" now shares a two-column
-        // row with "Cognitive / Behavioral Findings" (see that card
-        // immediately below) instead of taking the full workspace width
-        // by itself. `fullWidth` removed: both cards are the only two
-        // members of the "symptoms" category bucket in this section, so
-        // the existing neuro-wide `auto-fit, minmax(220px, 1fr)` bucket
-        // grid (see RNICACommandWorkspace.css) now naturally splits them
-        // into two equal columns on desktop/tablet and stacks them on
-        // mobile (<700px), with no new CSS required. Category stays
-        // "symptoms" so it still renders in the required bucket position
-        // (after Sleep/Responsiveness).
-        title: "Communication and Sensory", category: "symptoms", importance: "medium", fields: [
+        // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1
+        // "Reorganize, not reduce" -- the former single "Communication
+        // and Sensory" card was split into two titled cards so the new
+        // dedicated `NeurologicalPanel` layout (below) could place
+        // Communication/Hearing/Vision and Sensory Deficits/Sensory Aids
+        // independently. This is a pure card-title/grouping split -- every
+        // field below keeps its exact same `path`, `options`, `fieldSpan`,
+        // and value shape as the prior single card; no data is migrated,
+        // no HOPE/narrative/findings consumer is touched.
+        //
+        // PRODUCT OWNER REVIEW (2026-10-12) "Visual Priority Reorder" --
+        // now paired with "Cognitive / Behavioral Findings" (Anxiety,
+        // Agitation, and other comfort/safety-relevant findings), not
+        // "SNS Cognitive Screen" -- clinical relevance outranks whether a
+        // screening tool happens to exist. See `NeurologicalPanel.jsx`
+        // for the authoritative row order.
+        title: "Communication / Hearing / Vision", category: "symptoms", importance: "medium", fields: [
           // Finding #5: progressive disclosure -- Normal/Impaired first,
           // detail (Aphasia/Slurred speech/Unable/Other) revealed only when
           // Impaired. Same field/path/values as before; no data migrated.
@@ -16396,6 +16950,19 @@ const SECTION_CONFIGS = {
           // the value itself is never deleted or rewritten.
           { type: "segmented", label: "Hearing", path: "hearing", fieldSpan: 2, options: ["Adequate", "Impaired", "Deaf", "Unable to assess"] },
           { type: "segmented", label: "Vision", path: "vision", fieldSpan: 2, options: ["Adequate", "Impaired", "Blind", "Unable to assess"] },
+        ],
+      },
+      {
+        // PRODUCT-OWNER DIRECTIVE "NEURO-BASELINE-2026-10-12-V1" Phase 1
+        // -- Sensory Deficits/Sensory Aids split out of the former
+        // "Communication and Sensory" card (see note above).
+        //
+        // PRODUCT OWNER REVIEW (2026-10-12) "Visual Priority Reorder" --
+        // now paired with "Psychiatric History", not "Sleep /
+        // Responsiveness" and not "Communication/Hearing/Vision". Same
+        // paths/options as before -- grouping/title only. See
+        // `NeurologicalPanel.jsx` for the authoritative row order.
+        title: "Sensory Deficits / Sensory Aids", category: "symptoms", importance: "medium", fields: [
           { type: "pillGroup", label: "Sensory Deficits", path: "sensoryDeficits", fieldSpan: 3, options: ["Numbness", "Tingling", "Decreased sensation", "Phantom pain"] },
           // Section 16 -- clarified labels (display only, via {value,label}
           // so stored values "Glasses"/"Hearing aids" are unchanged) since
@@ -16439,7 +17006,25 @@ const SECTION_CONFIGS = {
         // collapsed state is still scannable instead of a blank title row.
         // No field, path, option, or value removed -- only default
         // visibility of the detail fields changed.
-        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", collapsedByDefault: true, fields: [
+        //
+        // PRODUCT OWNER REVIEW (2026-10-12) "Visual Priority Reorder" --
+        // supersedes "beside Communication and Sensory" above: this card
+        // (Anxiety, Agitation, Confusion, Delirium, Sundowning, Combative
+        // behavior, Depression, Restlessness, Seizure History) is
+        // promoted to pair with "Communication / Hearing / Vision" instead
+        // of "SNS Cognitive Screen", positioned directly beneath
+        // Consciousness/Orientation per the owner's clinical-relevance-
+        // over-tool-existence principle. See `NeurologicalPanel.jsx` for
+        // the authoritative row order.
+        //
+        // PRODUCT OWNER DECISION (2026-10-12) "SNS Cognitive Screen
+        // Removal from Neuro Workflow" -- `collapsedByDefault` removed.
+        // These fields (Anxiety, Agitation, Confusion, Delirium,
+        // Sundowning, Combative, Depression, Restlessness, Seizure
+        // History) are higher-value hospice findings than SNS Cognitive
+        // Screen and must be visible/expanded by default, not hidden
+        // behind a click. No field/path/option/value changed.
+        title: "Cognitive / Behavioral Findings", category: "symptoms", importance: "medium", fields: [
           // GitHub Directive (2026-09-28) "Neurological Overview Gate" --
           // fast-path replacement for the full detail below. New path;
           // only rendered/relevant when Neurological Overview = "No
@@ -18030,6 +18615,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       return next;
     });
   };
+  // PRODUCT OWNER DIRECTIVE (2026-10-12) "Cognitive Screen Default
+  // Visibility Audit" -- confirmed not required by CMS, HOPE, RNICA
+  // completion (soft `warnings` entry only, never `errors`), eligibility
+  // (owned by Diagnosis & LCD), narrative (silent when NOT_STARTED -- see
+  // computeNeurologicalNarrative), or POC (absent from
+  // neurologicalHasActionablePocFinding). A hospice admission is not a
+  // neuropsych evaluation, so the screen is hidden entirely (zero
+  // footprint, not just collapsed) until either real data already exists
+  // or the nurse explicitly opts in via "+ Add Cognitive Screen". UI-only
+  // transient state -- never persisted, no schema change.
+  const [neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen] = useState(false);
   // `forceOpen: true` is used when navigation is jumping to a *child* field
   // inside a section (the section must stay open to reveal that field).
   // Otherwise, re-selecting a section that's already open collapses it —
@@ -18818,16 +19414,34 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   }, [resolvedPatientId, patientId]);
 
   // Visit meta — seed discipline/staff/care level for logistics + payroll tracking.
+  // Every field here is a self-heal: it only ever fills a currently-blank
+  // value (never overwrites something the nurse already entered), EXCEPT
+  // Discipline, which is unconditionally forced to "RN" every time this
+  // runs. Discipline identifies the clinical role performing THIS
+  // assessment, not the logged-in account's system role -- some records
+  // created before this rule existed were saved with the logged-in
+  // account's role (e.g. "DPCS_ADMINISTRATOR") stamped into an RN clinical
+  // record. Forcing it here (rather than `prev.visitMeta.discipline ||
+  // "RN"`) self-heals those already-saved bad values on every load, not
+  // just brand-new assessments, since every RNICA is by definition an RN
+  // Initial Comprehensive Assessment.
   useEffect(() => {
     const currentUser = getCurrentUser();
+    const now = new Date();
+    const todayIso = now.toISOString().slice(0, 10);
+    const nowHm = now.toTimeString().slice(0, 5);
     setFormData((prev) => ({
       ...prev,
       visitMeta: {
         ...prev.visitMeta,
-        discipline: currentUser?.role || prev.visitMeta.discipline || "RN",
+        discipline: "RN",
         enteredBy: prev.visitMeta.enteredBy || currentUser?.full_name || "",
         staffAssigned: prev.visitMeta.staffAssigned || currentUser?.full_name || "",
         careLevel: prev.visitMeta.careLevel || patientSummary?.patient?.acuity_state || "",
+        visitDate: prev.visitMeta.visitDate || todayIso,
+        timeIn: prev.visitMeta.timeIn || nowHm,
+        typeOfVisit: prev.visitMeta.typeOfVisit || "In-Person",
+        visitKind: prev.visitMeta.visitKind || "Scheduled",
       },
     }));
   }, [patientSummary]);
@@ -19036,7 +19650,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       setAssessmentId(null);
       setLocked(false);
       setLockedAt(null);
-      const blankForm = JSON.parse(JSON.stringify(INITIAL_FORM));
+      const blankForm = buildInitialRnicaForm();
       setFormData(changeOfConditionContext ? { ...blankForm, changeOfConditionContext } : blankForm);
       setIntelligence(null);
       setIntelligenceError("");
@@ -19063,7 +19677,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           setAssessmentId(null);
           setLocked(false);
           setLockedAt(null);
-          setFormData(JSON.parse(JSON.stringify(INITIAL_FORM)));
+          setFormData(buildInitialRnicaForm());
           setIntelligence(null);
           setIntelligenceError("");
           setStructuredFieldProvenance([]);
@@ -19201,6 +19815,29 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     formData.gastrointestinal?.diarrhea,
     formData.gastrointestinal?.constipation,
   ]);
+
+  // Visit Header duration -- derived, not typed. Per owner directive
+  // ("Duration calculated", not a free-text field), the nurse enters Time
+  // In / Time Out only; Duration is always the computed difference between
+  // them (same-day visit assumption -- if Time Out is earlier than Time
+  // In, the visit is treated as crossing midnight). Formatted as "Xh Ym" to
+  // match the field's pre-existing placeholder/format.
+  useEffect(() => {
+    const timeIn = formData.visitMeta?.timeIn;
+    const timeOut = formData.visitMeta?.timeOut;
+    if (!timeIn || !timeOut) return;
+    const [inH, inM] = timeIn.split(":").map(Number);
+    const [outH, outM] = timeOut.split(":").map(Number);
+    if ([inH, inM, outH, outM].some((n) => Number.isNaN(n))) return;
+    let minutes = (outH * 60 + outM) - (inH * 60 + inM);
+    if (minutes < 0) minutes += 24 * 60; // crossed midnight
+    const hours = Math.floor(minutes / 60);
+    const mins = minutes % 60;
+    const computed = `${hours}h ${mins}m`;
+    if (formData.visitMeta?.duration !== computed) {
+      updateField("visitMeta", "duration", computed);
+    }
+  }, [formData.visitMeta?.timeIn, formData.visitMeta?.timeOut]);
 
   // Owner directive (2026-10-03) "Comprehensive Pain Assessment Date
   // auto-population" -- Rules 1-4: the comprehensive pain assessment date
@@ -19584,7 +20221,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               : route.formSection === "respiratory"
                 ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} visitDate={respiratoryVisitDate} />
                 : config && sectionData
-                  ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile)
+                  ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen)
                   : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
@@ -19622,6 +20259,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               true,
               onNavigateToSection,
               assessmentUiProfile,
+              neuroCognitiveScreenOpen,
+              setNeuroCognitiveScreenOpen,
             )
           : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
@@ -19745,11 +20384,11 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         content: module.key === "respiratory"
           ? <RespiratoryPanel patientId={patientId} assessmentId={assessmentId} readOnly={locked} visitDate={respiratoryVisitDate} />
           : config && sectionData
-            ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile)
+            ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen)
             : null,
       };
     }).filter(Boolean);
-  }, [routes, formData, sidebarConfigItems, COLORS, styles, patientId, assessmentId, locked, onNavigateToSection, assessmentUiProfile]);
+  }, [routes, formData, sidebarConfigItems, COLORS, styles, patientId, assessmentId, locked, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen]);
 
   // Structured Findings — a deterministic, plain-language restatement of
   // ALREADY-DOCUMENTED body-system fields only (owner directive: "only
@@ -19954,6 +20593,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               availabilityOfAssistance: formData.livingSituation?.availabilityOfAssistance || "",
             },
           }}
+          visitMeta={formData.visitMeta}
           routes={commandRoutes}
           formSections={Object.keys(formData)}
           activeSection={activeSection}
@@ -20052,7 +20692,6 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           onLock={handleLock}
           onPrevious={goPrev}
           onNext={goNext}
-          onExitPilot={onExitWorkspacePilot}
           canLock={Boolean(assessmentId)}
         />
       </QualifyingHopeTimepointContext.Provider>
@@ -20154,7 +20793,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
             )}
             <FormInput label="Time In" type="time" value={formData.visitMeta.timeIn} onChange={(v) => updateField("visitMeta", "timeIn", v)} />
             <FormInput label="Time Out" type="time" value={formData.visitMeta.timeOut} onChange={(v) => updateField("visitMeta", "timeOut", v)} />
-            <FormInput label="Duration (h:m)" value={formData.visitMeta.duration} onChange={(v) => updateField("visitMeta", "duration", v)} placeholder="1h 15m" />
+            <div style={styles.formGroup}>
+              <label style={styles.label}>Duration (h:m)</label>
+              <input value={formData.visitMeta.duration} readOnly placeholder="Calculated from Time In/Out" style={{ ...styles.input, background: COLORS.bg }} />
+            </div>
             <FormInput label="Entered By" value={formData.visitMeta.enteredBy} onChange={(v) => updateField("visitMeta", "enteredBy", v)} />
             <FormInput label="Staff Assigned" value={formData.visitMeta.staffAssigned} onChange={(v) => updateField("visitMeta", "staffAssigned", v)} />
             <div style={styles.formGroup}>
@@ -20812,8 +21454,17 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       {/* Spacer so page content isn't hidden behind the fixed footer below */}
       <div style={styles.footerSpacer} />
 
-      {/* ── Footer ── */}
-      <div style={styles.footer}>
+      {/* ── Footer ──
+          Owner directive ("RECURRING DEFECT"): internal identifiers
+          (assessmentId/visitId/patientId/UUIDs) must never be rendered as
+          visible clinician-facing text -- only in APIs, audit logs, or
+          support/diagnostic tooling. `data-assessment-id` keeps the
+          identifier available to support staff and devtools (right-click
+          → Inspect) without ever painting it on screen. See
+          `src/__tests__/noUuidInClinicalUi.test.js` for the regression
+          guard that fails the build if a raw id/uuid is reintroduced as
+          visible text in this file or its sibling clinician-facing files. */}
+      <div style={styles.footer} data-assessment-id={assessmentId || undefined}>
         <div style={{ display: "flex", gap: 8 }}>
           <button style={styles.btnSecondary} onClick={goPrev} disabled={activeSection === routes[0]?.key}>
             &larr; Previous
@@ -20840,9 +21491,8 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           )}
         </div>
         <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          {assessmentId && (
-            <span style={{ fontSize: 12, color: COLORS.gray }}>ID: {assessmentId}</span>
-          )}
+          {/* Raw assessmentId intentionally not rendered here -- see
+              `data-assessment-id` on the footer container above. */}
           {locked && lockedAt && (
             <span style={{ fontSize: 12, color: COLORS.gray }}>
               Signed: {new Date(lockedAt).toLocaleString()}
@@ -20867,6 +21517,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         onClose={() => setActionCenterOpen(false)}
         assessmentId={assessmentId}
         sourceSection={activeSection}
+        patientName={patientSummary?.patient?.full_name || (resolvedPatientId ? "Loading patient..." : "No patient selected")}
         styles={styles}
         COLORS={COLORS}
       />

@@ -1528,6 +1528,78 @@
   line-height: 1.35;
 }
 
+/* PRODUCT OWNER DIRECTIVE (2026-10-12) "Body Systems Platform Standard --
+   Documentation Coverage / Clinical Story" -- Neurological field-testing
+   pilot. Intentionally plain/low-chrome (badges + one paragraph), same
+   visual tier as the existing one-line card summary above -- this is not
+   a new design system, just two more derived-summary lines. */
+.rnica-documentation-coverage {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  margin: 0.3rem 0 0;
+}
+.rnica-documentation-coverage__label {
+  font-size: var(--rnica-helper-size, 0.7rem);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sns-muted);
+}
+.rnica-documentation-coverage__item {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.05rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: 10px;
+  border: 1px solid var(--sns-border);
+  font-size: var(--rnica-helper-size, 0.7rem);
+  line-height: 1.3;
+}
+.rnica-documentation-coverage__item-label {
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 0.62rem;
+  color: var(--sns-muted);
+}
+.rnica-documentation-coverage__item-value {
+  font-weight: 500;
+}
+.rnica-documentation-coverage__item--complete {
+  color: var(--sns-teal);
+  border-color: var(--sns-teal);
+}
+.rnica-documentation-coverage__item--missing {
+  color: var(--sns-orange);
+  border-color: var(--sns-orange);
+}
+/* SNS PRODUCT-OWNER CORRECTION (2026-10-12) "Preserve Discipline Clinical
+   Stories" -- neutral, reusable discipline-story presentation class.
+   Deliberately distinct from `.rnica-bodysystem-summary__status` (the
+   always-on top-of-accordion banner, which independently renders the
+   same `computeNeurologicalNarrative` output for every system) -- that
+   class lives at the section-banner level and is not reusable inside a
+   single card's summary slot. This class is the one other Body Systems
+   can reuse for their own in-card Clinical Story presentation without
+   duplicating styling. */
+.rnica-clinical-story {
+  margin: 0.3rem 0 0;
+  font-size: var(--cw-meta-size, 0.78rem);
+  line-height: 1.35;
+  color: var(--sns-text, inherit);
+}
+.rnica-clinical-story__label {
+  display: block;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  color: var(--sns-muted);
+  font-size: var(--rnica-helper-size, 0.7rem);
+}
+
 /* OWNER DIRECTIVE (2026-10-04) "Neurological Density Pass" -- "focus on
    density, not redesign" (goal: ~25-35% less Neuro page height, same
    workflow/data model). Every rule below is scoped to
@@ -1538,20 +1610,24 @@
    Cognitive Summary, Overall Change, Communication and Sensory, Additional
    Cognitive Observations (textarea rows reduced in the schema above),
    Psychiatric History (already collapsed by default), Nurse Observation. */
-.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group__cards {
-  /* 260px -> 220px min track so more sub-sections share a row at any given
-     width instead of each claiming a full row. */
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-}
-.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group__heading {
-  margin: 0 0 4px;
-  padding-bottom: 3px;
-}
+/* PRODUCT OWNER REVIEW (2026-10-12) "Visual Density Pass" Directive 1 --
+   `.rnica-bodysystem-group__cards`/`.rnica-bodysystem-group__heading` and
+   the later `[data-category="core"/"symptoms"]` overrides below were
+   retired here: `NeurologicalPanel` (the dedicated Respiratory-style
+   layout, see NeurologicalPanel.jsx) renders Neuro entirely outside the
+   category-grouped `bodySystemGroupedContent` path those selectors
+   targeted (confirmed in RNICA.jsx: that path is gated
+   `!useNeurologicalPanel`, which is always false for this section), so
+   they had zero effect on the live DOM and were only adding confusing,
+   unreachable rules. The rules actually in effect for the Panel's
+   rendered cards are the ones below (`.rnica-bodysystem-workspace__fields`
+   and the per-`data-card-title` overrides) plus NeurologicalPanel.jsx's
+   own Tailwind row/column gaps.
+   Further tightened here: 160px -> 140px min track, 6px 8px -> 4px 6px
+   gap -- more fields visible per row/without scrolling, same fields. */
 .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-workspace__fields {
-  /* 200px -> 160px min track; tighter row/column gap. */
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 6px 8px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 4px 6px;
 }
 /* Note: the former [data-card-title="Overall Change Since Prior
    Assessment"] rule was removed -- that card no longer exists (item #4,
@@ -1569,74 +1645,33 @@
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 14px;
 }
-/* Communication and Sensory (Communication/Hearing/Vision/Sensory Deficits/
-   Sensory Aids merged card) is the tallest sub-section in the section -- an
-   even narrower per-field track here lets its short segmented controls
-   share a row instead of each forcing its own. */
-.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Communication and Sensory"] .rnica-bodysystem-workspace__fields {
-  /* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #3
-     -- this card is no longer `fullWidth: true`; it now shares a
-     two-column row with "Cognitive / Behavioral Findings" (see
-     RNICA.jsx), so its own content area is roughly half of what it used
-     to be. A narrower track here (vs. the 160px used elsewhere in Neuro)
-     still gives enough implicit columns for 2-3 fields to share a row at
-     that reduced width instead of each claiming the full column by
-     itself. */
+/* Communication / Hearing / Vision and Sensory Deficits / Sensory Aids --
+   each now sits half-width in its own NeurologicalPanel row (paired with
+   Cognitive/Behavioral Findings and Psychiatric History respectively).
+   PRODUCT OWNER REVIEW (2026-10-12) "Visual Density Pass" Directive 1 --
+   retargeted from the single pre-split "Communication and Sensory" card
+   (that title no longer exists; the orphaned selector matched nothing)
+   onto both of today's actual card titles, so the narrower per-field
+   track that was always intended for this half-width content actually
+   applies again. */
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Communication / Hearing / Vision"] .rnica-bodysystem-workspace__fields,
+.rnica-bodysystem-workspace[data-section="neurological"] [data-card-title="Sensory Deficits / Sensory Aids"] .rnica-bodysystem-workspace__fields {
   grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
-  gap: 6px 10px;
-}
-/* "Summary" banner (the prominent Neuro-only variant) -- same content,
-   tighter chrome. */
-.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-summary--prominent {
-  padding: 0.55rem 0.85rem;
+  gap: 4px 8px;
 }
 /* OWNER DIRECTIVE (2026-10-04) "Neurological Density Optimization" item
-   #1 -- "Reorganize top neuro findings into a true 3-column layout:
-   Consciousness / Orientation / Neurological Overview". These three cards
-   are the only members of the "core" category bucket now that SNS
-   Cognitive Screen (item #2) is `fullWidth` (escapes this track via
-   `.rnica-bodysystem-workspace__group--full`'s `grid-column: 1 / -1`, so
-   it still spans the full row beneath this one unaffected by the fixed
-   column count). A guaranteed `repeat(3, ...)` (instead of the
-   auto-fit/minmax heuristic above, which could pack 2, 3, or 4 cards per
-   row depending on viewport width) is the only way to make these three
-   specific *cards* -- not fields within one card -- reliably share one
-   row with no dead horizontal space (item #8), matching the
-   already-established per-card-title override technique used for Sleep/
-   Responsiveness and Communication and Sensory above, but scoped one
-   level up at the category-group container via the existing
-   `data-category` attribute (added 2026-10-04, see
-   `bodySystemGroupedContent` in RNICA.jsx) instead of `data-card-title`. */
-.rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-}
-/* OWNER DIRECTIVE (2026-10-04) "Final Neuro Cleanup" -- supersedes the
-   "Final Neuro Layout Change" item #4/#6 2/3+1/3 `nth-child` split that
-   used to live here. Motor/Balance has been removed from Neuro (see
-   RNICA.jsx), so SNS Cognitive Screen no longer shares row 2 with
-   anything; it is now `fullWidth: true` in the schema and gets its own
-   full-width row via the existing `.rnica-bodysystem-workspace__group--full`
-   rule (grid-column: 1 / -1), the same mechanism already used by Sleep/
-   Responsiveness. The fixed-position `nth-child(4)`/`nth-child(5)`
-   overrides and their companion tablet breakpoint are no longer needed
-   and have been removed -- they were schema-order-dependent and would
-   have mistargeted the "core" bucket's new 4th card (SNS Cognitive
-   Screen, already full-width) now that Motor/Balance no longer occupies
-   that bucket.
-   OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #3 --
-   "Cognitive / Behavioral Findings" has since moved out of this "core"
-   bucket entirely; it now pairs with "Communication and Sensory" in the
-   "symptoms" bucket instead (see the plain `.rnica-bodysystem-group__cards`
-   auto-fit rule above, which splits that two-card bucket into two equal
-   columns on desktop/tablet with no card-specific override needed). The
-   "core" bucket is back down to 4 cards: Consciousness, Orientation,
-   Neurological Overview (3 equal columns), then SNS Cognitive Screen
-   (full-width row beneath them). */
-/* The SNS Cognitive Screen card's own 3 fields (Word Repetition/Recall/
-   Temporal Orientation) get a dedicated fixed 3-column track (vs. the
-   generic auto-fit 160px minmax used elsewhere in Neuro) so they reliably
-   sit on one line at this card's full desktop width, instead of possibly
-   wrapping to 2+1 depending on exact pixel width. */
+   #1 and the subsequent "Final Neuro Cleanup" `[data-category="core"]`/
+   `[data-category="symptoms"]` card-bucket overrides that used to follow
+   here were retired in the same Directive-1 cleanup noted above --
+   `bodySystemGroupedContent` (the category-grouped rendering those
+   selectors targeted) never renders for Neuro once `NeurologicalPanel` is
+   in use, so those rules had no live effect; the Panel's own row pairing
+   in NeurologicalPanel.jsx is now the single source of truth for Neuro
+   card layout. The SNS Cognitive Screen card's own 3 fields (Word
+   Repetition/Recall/Temporal Orientation) still get a dedicated fixed
+   3-column track below (vs. the generic auto-fit 140px minmax used
+   elsewhere in Neuro) so they reliably sit on one line at this card's
+   half-panel-row width, instead of possibly wrapping to 2+1. */
 .rnica-bodysystem-workspace[data-section="neurological"] .rnica-cognitive-screen__fields {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 6px 10px;
@@ -1645,23 +1680,6 @@
 @media (max-width: 700px) {
   .rnica-bodysystem-workspace__fields,
   .rnica-bodysystem-group__cards {
-    grid-template-columns: 1fr;
-  }
-  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="core"] .rnica-bodysystem-group__cards {
-    grid-template-columns: 1fr;
-  }
-  /* OWNER DIRECTIVE (2026-10-04) "Final Neuro Layout Correction" item #7
-     -- "Mobile: Stack controls vertically... do not create horizontal
-     scrolling." Without this explicit `[data-category="symptoms"]`
-     override, the "symptoms" bucket (Communication and Sensory +
-     Cognitive / Behavioral Findings) stayed on its non-media-query
-     auto-fit two-column rule even below 700px: that rule's selector
-     (`[data-section="neurological"] .rnica-bodysystem-group__cards`) is
-     MORE specific than the generic unscoped `.rnica-bodysystem-group__cards
-     { grid-template-columns: 1fr }` rule above, and CSS specificity -- not
-     media-query nesting -- decides the winner. Mirrors the equivalent
-     "core" category override immediately above. */
-  .rnica-bodysystem-workspace[data-section="neurological"] .rnica-bodysystem-group[data-category="symptoms"] .rnica-bodysystem-group__cards {
     grid-template-columns: 1fr;
   }
   .rnica-bodysystem-workspace[data-section="neurological"] .rnica-cognitive-screen__fields {
