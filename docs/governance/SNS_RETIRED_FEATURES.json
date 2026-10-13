@@ -260,6 +260,43 @@
       "implementationNotes": "Hidden via LEGACY_HIDDEN_FIELD_IDS in RespiratoryPanel.tsx."
     },
     {
+      "featureId": "respiratory.coughActionFollowUp",
+      "clinicianLabel": "Cough Action Follow-Up (Timing Plan / Responsible Clinician)",
+      "owningSection": "Respiratory",
+      "status": "RETIRED_FROM_ACTIVE_WORKFLOW",
+      "retirementDecision": "Do not display, require, derive, or restore",
+      "retirementReason": "A=Assessment Finding vs B=Future Plan classification: \"who will do what, when, in the future\" is Plan of Care content, not an RNICA present-tense assessment finding -- same disposition as respiratory_follow_up_timing_plan/_responsible_clinician and respiratory_support_follow_up_plan. Unlike those two, these fields WERE actively required (whenever Cough Action Decision was ACTION_TAKEN or DECLINED); the requirement pushes have been removed from both requirement engines, not merely hidden. No downstream consumer (structured findings, narrative, HOPE, or POC generation) reads either field. Formally registered per Product Owner directive \"Retire Cough Action Workflow / Retain Cough Assessment Findings\" (2026-10-12), which explicitly calls out \"Any Cough Action Follow-Up field\" for registry inclusion; the code-level retirement itself predates this directive (commit 4e376f3a, \"Respiratory Reference Model checkpoint\").",
+      "retirementDate": "2026-10-12",
+      "decisionSource": "Product Owner directive \"Final Respiratory Usability Review\" (A=Assessment Finding vs B=Future Plan classification; code-level retirement) and \"Retire Cough Action Workflow / Retain Cough Assessment Findings\" (2026-10-12; formal registry entry)",
+      "lastActiveCommit": null,
+      "retirementCommit": "4e376f3a0e70c4b78c44d5df66f0843040f5b5bc",
+      "formerFileLocations": [
+        "sns-emr-frontend/src/features/body-systems/components/RespiratoryPanel.tsx",
+        "sns-emr-frontend/src/domain/body-systems/respiratoryProductRequirements.ts",
+        "backend/app/domain/body_systems/respiratory_product_requirements.py"
+      ],
+      "formerPersistedKeys": ["respiratory_cough_follow_up_timing_plan", "respiratory_cough_follow_up_responsible_clinician"],
+      "formerConsumers": [
+        "Verified NONE: no structured-finding, narrative, HOPE, or POC generator reads either field.",
+        "Only consumer was this feature's own completion-requirement engine (requirement pushes now removed)."
+      ],
+      "historicalDataPolicy": "Preserve for historical read-only compatibility; underlying field/contract-v2 definitions and backend columns not removed.",
+      "forbiddenActiveUses": ["active UI", "Documentation Coverage", "completion requirement", "finalization blocker", "keyboard tab order", "new-record defaults", "auto-population"],
+      "replacementFeature": "Plan of Care (goals, interventions, follow-up actions, treatment plans) -- same disposition as respiratory_support_follow_up_plan",
+      "fieldValidationTrigger": null,
+      "reactivationRequirements": [
+        "new written Product Owner authorization containing the literal phrase REACTIVATE: respiratory.coughActionFollowUp (or exact clinician label)",
+        "documented current use case distinct from Plan of Care follow-up/action planning",
+        "consumer inventory",
+        "targeted tests",
+        "browser verification",
+        "dedicated reactivation commit"
+      ],
+      "reactivationHistory": [],
+      "enforcementTests": ["sns-emr-frontend/src/domain/body-systems/respiratoryProductRequirements.test.ts", "sns-emr-frontend/src/features/body-systems/components/RespiratoryPanel.test.tsx"],
+      "implementationNotes": "Hidden via LEGACY_HIDDEN_FIELD_IDS in RespiratoryPanel.tsx; requirement pushes removed from respiratoryProductRequirements.ts / respiratory_product_requirements.py."
+    },
+    {
       "featureId": "respiratory.oxygenMeasurementDate",
       "clinicianLabel": "Oxygen Measurement Date",
       "owningSection": "Respiratory",
