@@ -24,6 +24,8 @@ import GppMaybeOutlinedIcon from "@mui/icons-material/GppMaybeOutlined";
 import TrendingDownOutlinedIcon from "@mui/icons-material/TrendingDownOutlined";
 import AccountBalanceWalletOutlinedIcon from "@mui/icons-material/AccountBalanceWalletOutlined";
 import ApartmentOutlinedIcon from "@mui/icons-material/ApartmentOutlined";
+import WarningAmberOutlinedIcon from "@mui/icons-material/WarningAmberOutlined";
+import TuneOutlinedIcon from "@mui/icons-material/TuneOutlined";
 import SettingsOutlinedIcon from "@mui/icons-material/SettingsOutlined";
 
 import { logout } from "../../api/auth";
@@ -53,6 +55,8 @@ const NAV_ITEMS = [
   { label: "Aging Report", path: "/billing/aging-report", icon: TrendingDownOutlinedIcon },
   { label: "Credit Balance Report", path: "/billing/credit-balance-report", icon: AccountBalanceWalletOutlinedIcon },
   { label: "Facility Collections", path: "/billing/facility-collections", icon: ApartmentOutlinedIcon },
+  { label: "Alert Inbox", path: "/billing/alerts", icon: WarningAmberOutlinedIcon },
+  { label: "Alert Thresholds", path: "/billing/alert-thresholds", icon: TuneOutlinedIcon },
   { label: "Reports", path: "/billing/reports", icon: BarChartOutlinedIcon },
   { label: "Settings", path: "/billing/settings", icon: SettingsOutlinedIcon },
 ];

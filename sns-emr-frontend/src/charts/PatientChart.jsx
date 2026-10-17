@@ -16,7 +16,7 @@ import PhysicianOrdersBoard from './PhysicianOrdersBoard';
 import CertificationsBoard from './CertificationsBoard';
 import F2FBoard from './F2FBoard';
 import VisitNoteBoard from '../components/VisitNotes';
-import { fetchAssessmentHistory, fetchPatientSummary } from '../api/patientCharts';
+import { fetchAssessmentHistory, fetchPatientSummary, fetchPatientAiSummary } from '../api/patientCharts';
 import { fetchFacesheet } from '../api/facesheet';
 import { listMedications } from '../api/medications';
 import { getActivePatientId, setActivePatientId } from '../utils/activePatient';
@@ -58,6 +58,9 @@ const PatientChart = () => {
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [assessmentHistorySelection, setAssessmentHistorySelection] = useState(null);
+  const [aiSummary, setAiSummary] = useState(null);
+  const [aiSummaryLoading, setAiSummaryLoading] = useState(false);
+  const [aiSummaryError, setAiSummaryError] = useState('');
   const [compactNavigation, setCompactNavigation] = useState(() => window.matchMedia('(max-width: 1200px)').matches);
   const [navigationOpen, setNavigationOpen] = useState(false);
   const navigationDialogRef = useRef(null);
@@ -396,6 +399,102 @@ const PatientChart = () => {
             )}
           </div>
         </div>
+      </div>
+    );
+  };
+
+  const generateAiSummary = () => {
+    if (!resolvedPatientId) return;
+    setAiSummaryLoading(true);
+    setAiSummaryError('');
+    fetchPatientAiSummary(resolvedPatientId)
+      .then((data) => setAiSummary(data))
+      .catch(() => setAiSummaryError('Unable to generate the AI summary right now. Please try again.'))
+      .finally(() => setAiSummaryLoading(false));
+  };
+
+  const AiSummaryBoard = () => {
+    const renderList = (title, items) => (
+      <div style={{ ...boardCard, minHeight: 120 }}>
+        <div style={boardHeader}>{title}</div>
+        {items && items.length > 0 ? (
+          <div style={{ display: 'grid', gap: 7 }}>
+            {items.map((item, index) => (
+              <div key={`${title}-${index}`} style={{ display: 'flex', gap: 8, alignItems: 'flex-start', color: colors.text, fontSize: 12.5, lineHeight: 1.4 }}>
+                <span style={{ width: 8, height: 8, borderRadius: 999, backgroundColor: colors.accent, display: 'inline-block', marginTop: 6 }} />
+                <span>{item}</span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div style={{ color: colors.muted, fontSize: 12.5 }}>Nothing to show for this section.</div>
+        )}
+      </div>
+    );
+
+    return (
+      <div style={{ flex: 1, backgroundColor: colors.bg, padding: 12, overflowY: 'auto', fontFamily: "'Inter', sans-serif" }}>
+        <div style={{ ...boardCard, marginBottom: 10, borderLeft: `3px solid ${colors.accent}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginBottom: 10, flexWrap: 'wrap' }}>
+            <div>
+              <div style={{ color: colors.muted, fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 3 }}>AI Patient Summary</div>
+              <div style={{ color: colors.text, fontSize: 15, fontWeight: 600 }}>
+                A quick, discussion-ready overview generated from this patient's current chart data.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={generateAiSummary}
+              disabled={aiSummaryLoading}
+              style={{
+                background: colors.accent, color: '#ffffff', border: 'none', borderRadius: 8,
+                padding: '9px 14px', fontSize: 13, fontWeight: 700, cursor: aiSummaryLoading ? 'default' : 'pointer',
+                opacity: aiSummaryLoading ? 0.7 : 1, whiteSpace: 'nowrap',
+              }}
+            >
+              {aiSummaryLoading ? 'Generating…' : aiSummary ? 'Regenerate summary' : 'Generate summary'}
+            </button>
+          </div>
+          {aiSummaryError && (
+            <div style={{ color: '#d64d57', fontSize: 12.5, marginTop: 4 }}>{aiSummaryError}</div>
+          )}
+          {!aiSummary && !aiSummaryLoading && !aiSummaryError && (
+            <div style={{ color: colors.muted, fontSize: 12.5, marginTop: 4 }}>
+              Click "Generate summary" to produce an AI overview of this patient's diagnosis, benefit period, recent
+              activity, open tasks, and open billing alerts.
+            </div>
+          )}
+        </div>
+
+        {aiSummary && (
+          <>
+            <div style={{ ...boardCard, marginBottom: 10 }}>
+              <div style={boardHeader}>Hospice Clinical Picture</div>
+              <div
+                style={{
+                  color: colors.muted, fontSize: 11, fontStyle: 'italic', lineHeight: 1.4,
+                  marginBottom: 8, padding: '6px 8px', borderRadius: 6,
+                  backgroundColor: mode === 'light' ? '#f9edd7' : '#f59e0b15', border: `1px solid ${colors.border}`,
+                }}
+              >
+                AI Generated Summary. Review source documentation before making clinical, operational, or billing decisions.
+              </div>
+              <div style={{ color: colors.text, fontSize: 13, lineHeight: 1.5 }}>{aiSummary.hospice_clinical_picture}</div>
+              <div style={{ color: colors.muted, fontSize: 10.5, marginTop: 8 }}>
+                {aiSummary.ai_generated ? `AI-generated (${aiSummary.model || 'model unavailable'})` : 'Generated from current chart data'}
+                {aiSummary.generated_at ? ` • ${new Date(aiSummary.generated_at).toLocaleString()}` : ''}
+              </div>
+            </div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 10 }}>
+              {renderList('Primary Hospice Drivers', aiSummary.primary_hospice_drivers)}
+              {renderList('Evidence of Decline', aiSummary.evidence_of_decline)}
+              {renderList('Major Comorbidities', aiSummary.major_comorbidities)}
+              {renderList('Recent Clinical Events', aiSummary.recent_clinical_events)}
+              {renderList('Clinical Risks', aiSummary.clinical_risks)}
+              {renderList('Open Operational Concerns', aiSummary.open_operational_concerns)}
+            </div>
+          </>
+        )}
       </div>
     );
   };
@@ -750,6 +849,8 @@ const PatientChart = () => {
         return <PatientFacesheet patientId={resolvedPatientId} />;
       case 'care-overview':
         return <CareOverviewBoard />;
+      case 'ai-summary':
+        return <AiSummaryBoard />;
       case 'consent':
         return <ConsentNotifications patient={intakePatient} />;
       case 'staff-assignment':

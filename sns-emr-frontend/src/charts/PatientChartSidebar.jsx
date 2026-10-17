@@ -35,6 +35,7 @@ const getColors = (mode) => mode === 'light' ? {
 const navSections = [
   { label: 'Facesheet', key: 'facesheet', children: [] },
   { label: 'Care Overview', key: 'care-overview', children: [] },
+  { label: 'AI Summary', key: 'ai-summary', children: [] },
   { label: 'Intake & Admission', key: 'intake', children: [
     { label: 'Consent & Notifications', key: 'consent' },
     { label: 'Chart Completion Checklist', key: 'chart-checklist' },

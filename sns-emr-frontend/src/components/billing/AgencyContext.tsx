@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { fetchBillableAgencies, type BillableAgency } from "../../api/dashboard";
+import { getCurrentUser } from "../../api/session";
 
 type AgencyContextValue = {
   agencies: BillableAgency[];
@@ -36,6 +37,20 @@ export function AgencyProvider({ children }: { children: ReactNode }) {
         setAgencies(list);
         setSelectedAgencyId((current) => {
           if (current && list.some((a) => a.tenant_id === current)) return current;
+          // The agencies list returned here is the full client-agency
+          // roster (see backend GET /billing/agencies), which is not
+          // necessarily scoped to what this billing account is actually
+          // authorized to view -- an internal (non-external-provider)
+          // billing user can only ever view their own tenant's data
+          // (see resolve_authorized_tenant_ids_for_scope's plain-tenant
+          // fallback). Prefer the logged-in user's own tenant when it's
+          // present in the roster so single-tenant billing staff default
+          // to a tenant they're actually authorized for, instead of
+          // silently landing on an arbitrary (often unauthorized) agency.
+          const ownTenantId = getCurrentUser()?.tenant_id;
+          if (ownTenantId && list.some((a) => a.tenant_id === ownTenantId)) {
+            return ownTenantId;
+          }
           return list[0]?.tenant_id ?? "";
         });
       })
