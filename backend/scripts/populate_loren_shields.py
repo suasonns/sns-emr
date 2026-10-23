@@ -142,8 +142,6 @@ def build_form_data():
                 "phone": "",
                 "healthStatus": "Fair",
                 "anxietyLevel": "None",
-                "ableToAdministerMeds": "No",
-                "willingToProvideCare": "N/A - facility staff",
                 "pcgConcerns": (
                     "No PCG. Patient's POA (Letha Harrison) incapacitated after vehicular "
                     "accident/brain surgery and unable to make decisions. Estranged daughter "
@@ -156,8 +154,6 @@ def build_form_data():
                     "emotionalReadiness": "",
                     "availabilityForCare": "",
                     "trainingNeeds": ["Hospice", "Disease process", "Medication", "Advance directive"],
-                    "willingnessScore": "",
-                    "capabilityScore": "",
                     "supportSystemAdequacy": "Limited",
                     "evaluationNotes": "",
                 },
@@ -387,11 +383,6 @@ def build_form_data():
             "romLimitations": ["Right knee"],
             "gait": "Non-ambulatory", "assistiveDevices": ["Wheelchair", "Hospital bed with full rails"],
             "fallHistory": {"fallsLast90Days": "Yes - history of falls over past 2 months", "fallInjuries": ""},
-            "mobility": {
-                "ambulatoryStatus": "Non-ambulatory - chair-bound, relies on wheelchair",
-                "endurance": "Maximum assist due to fatigue and generalized weakness",
-                "transferAbility": "Maximum assist",
-            },
             "adl": {
                 "bathing": "3 - Maximal/Complete dependence",
                 "dressing": "3 - Maximal/Complete dependence",

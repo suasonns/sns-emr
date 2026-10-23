@@ -66,20 +66,21 @@ describe("respiratoryProductRequirements — treatment decision", () => {
     expect(fieldIds({ sobSeverity: "None" })).not.toContain("respiratory_treatment_decision");
   });
 
-  it("requires clinicalResponse for INITIATED and ALREADY_IN_PLACE (not treatmentDescription)", () => {
-    // FINAL PRODUCT-OWNER DIRECTIVE: the free-text "Treatment /
-    // Intervention" box let a nurse re-enter medication/order details that
-    // belong exclusively to the authoritative Orders/Medications workflow.
-    // It is removed as a requirement for these two decisions and replaced
-    // by Clinical Response to Treatment (the patient's observed response
-    // only — never an order).
-    expect(fieldIds({ treatmentDecision: "INITIATED" })).toContain("respiratory_clinical_response");
-    expect(fieldIds({ treatmentDecision: "ALREADY_IN_PLACE" })).toContain("respiratory_clinical_response");
+  it("no longer requires a treatment-response field for INITIATED and ALREADY_IN_PLACE", () => {
+    // FINAL PRODUCT-OWNER DIRECTIVE (Respiratory Field Redundancy Review):
+    // Clinical Response to Treatment was removed — a free-text/narrative
+    // field duplicating information already captured in structured
+    // Respiratory data, with no demonstrated downstream use (no Finding,
+    // validation, POC, or report depended on it). The free-text "Treatment
+    // / Intervention" box was already removed as a requirement for these
+    // two decisions for the same data-ownership reason (medication/order
+    // details belong exclusively to the Orders/Medications workflow).
+    // Treatment Decision itself remains required/unchanged; neither
+    // decision value triggers a further required field here.
+    expect(fieldIds({ treatmentDecision: "INITIATED" })).not.toContain("respiratory_clinical_response");
+    expect(fieldIds({ treatmentDecision: "ALREADY_IN_PLACE" })).not.toContain("respiratory_clinical_response");
     expect(fieldIds({ treatmentDecision: "INITIATED" })).not.toContain("respiratory_treatment_description");
     expect(fieldIds({ treatmentDecision: "ALREADY_IN_PLACE" })).not.toContain("respiratory_treatment_description");
-    expect(
-      fieldIds({ treatmentDecision: "INITIATED", clinicalResponse: "EFFECTIVE" }),
-    ).not.toContain("respiratory_clinical_response");
   });
 
   // Hospice-admission simplification (product-owner directive): DECLINED

@@ -435,6 +435,116 @@
       "implementationNotes": "Hidden via LEGACY_HIDDEN_FIELD_IDS in RespiratoryPanel.tsx."
     },
     {
+      "featureId": "respiratory.noCurrentConcernBoolean",
+      "clinicianLabel": "No current respiratory concern (checkbox)",
+      "owningSection": "Respiratory",
+      "status": "RETIRED_FROM_ACTIVE_WORKFLOW",
+      "retirementDecision": "Do not render as an independent nurse-facing control; retain only as a derived compatibility value",
+      "retirementReason": "Duplicated respiratory_assessment_context's own NO_CURRENT_RESPIRATORY_CONCERN controlled value, requiring the same clinical fact (\"no current respiratory concern\") to be documented twice by two unlinked controls. Product Owner principle: \"One clinical fact. One nurse action. One source of truth.\"",
+      "retirementDate": "2026-10-12",
+      "decisionSource": "Product Owner directive \"One clinical fact. One nurse action. One source of truth. Assessment Context is canonical.\" (respiratoryNoCurrentConcern vs. assessmentContext duplication analysis and consolidation decision)",
+      "lastActiveCommit": null,
+      "retirementCommit": null,
+      "formerFileLocations": [
+        "sns-emr-frontend/src/features/body-systems/components/RespiratoryPanel.tsx",
+        "sns-emr-frontend/src/domain/body-systems/respiratoryFieldInventory.ts (RESPIRATORY_NO_CURRENT_CONCERN_FIELD definition, left in place for historical-shape compatibility and as the derived compatibility value's definition)"
+      ],
+      "formerPersistedKeys": ["respiratory_no_current_concern", "respiratoryNoCurrentConcern"],
+      "formerConsumers": ["respiratoryWorkflowRules.ts (deriveRespiratorySituation) -- continues to be fed a correct, always-in-sync derived value; no behavior change for that consumer."],
+      "historicalDataPolicy": "Preserve for historical read-only compatibility; legacySource respiratory.respiratoryNoCurrentConcern remains in the persisted shape. Going forward the value is derived (never independently nurse-set) via applyCanonicalLegacyMapping whenever respiratory_assessment_context changes, so it always stays consistent with the canonical field. Historical pre-consolidation values are never deleted, migrated, or reinterpreted.",
+      "forbiddenActiveUses": ["active UI as an independently-clickable control", "Documentation Coverage (represented only via Assessment Context)", "keyboard tab order"],
+      "replacementFeature": "respiratory_assessment_context (RESPIRATORY_ASSESSMENT_CONTEXT_FIELD), value NO_CURRENT_RESPIRATORY_CONCERN",
+      "fieldValidationTrigger": null,
+      "reactivationRequirements": [
+        "new written Product Owner authorization containing the literal phrase REACTIVATE: respiratory.noCurrentConcernBoolean (or exact clinician label)",
+        "documented current use case distinct from respiratory_assessment_context",
+        "consumer inventory",
+        "targeted tests",
+        "browser verification",
+        "dedicated reactivation commit"
+      ],
+      "reactivationHistory": [],
+      "enforcementTests": [
+        "sns-emr-frontend/src/features/body-systems/components/RespiratoryPanel.test.tsx"
+      ],
+      "implementationNotes": "Checkbox render removed from the \"Assessment context\" row in RespiratoryPanel.tsx; applyCanonicalLegacyMapping gained a \"respiratory_assessment_context\" case that derives this value on every Assessment Context change. deriveRespiratorySituation (respiratoryWorkflowRules.ts) is unchanged -- it still reads this field, which is now always correct because it is derived rather than independently nurse-set."
+    },
+    {
+      "featureId": "respiratory.unableToAssessBoolean",
+      "clinicianLabel": "Unable to fully assess respiratory system (checkbox)",
+      "owningSection": "Respiratory",
+      "status": "RETIRED_FROM_ACTIVE_WORKFLOW",
+      "retirementDecision": "Do not render as an independent nurse-facing control; retain only as a derived compatibility value",
+      "retirementReason": "Duplicated respiratory_assessment_context's own UNABLE_TO_FULLY_ASSESS controlled value, requiring the same clinical fact to be documented twice by two unlinked controls. Same disposition as respiratory.noCurrentConcernBoolean, applied symmetrically per explicit Product Owner confirmation (\"CONSOLIDATE BOTH DUPLICATE BOOLEAN FIELDS\").",
+      "retirementDate": "2026-10-12",
+      "decisionSource": "Product Owner directive \"One clinical fact. One nurse action. One source of truth. Assessment Context is canonical.\" (respiratoryNoCurrentConcern vs. assessmentContext duplication analysis and consolidation decision)",
+      "lastActiveCommit": null,
+      "retirementCommit": null,
+      "formerFileLocations": [
+        "sns-emr-frontend/src/features/body-systems/components/RespiratoryPanel.tsx",
+        "sns-emr-frontend/src/domain/body-systems/respiratoryFieldInventory.ts (RESPIRATORY_UNABLE_TO_ASSESS_FIELD definition, left in place for historical-shape compatibility and as the derived compatibility value's definition)"
+      ],
+      "formerPersistedKeys": ["respiratory_unable_to_assess", "respiratoryUnableToAssess"],
+      "formerConsumers": [
+        "respiratoryWorkflowRules.ts (deriveRespiratorySituation) -- continues to be fed a correct, always-in-sync derived value; no behavior change.",
+        "RespiratoryPanel.tsx isUnableToAssess (opens the Assessment Limitation reason/other fields) -- unchanged; still reads this field, now always consistent with Assessment Context."
+      ],
+      "historicalDataPolicy": "Preserve for historical read-only compatibility; legacySource respiratory.respiratoryUnableToAssess remains in the persisted shape. Going forward the value is derived (never independently nurse-set) via applyCanonicalLegacyMapping whenever respiratory_assessment_context changes. Historical pre-consolidation values are never deleted, migrated, or reinterpreted.",
+      "forbiddenActiveUses": ["active UI as an independently-clickable control", "Documentation Coverage (represented only via Assessment Context)", "keyboard tab order"],
+      "replacementFeature": "respiratory_assessment_context (RESPIRATORY_ASSESSMENT_CONTEXT_FIELD), value UNABLE_TO_FULLY_ASSESS",
+      "fieldValidationTrigger": null,
+      "reactivationRequirements": [
+        "new written Product Owner authorization containing the literal phrase REACTIVATE: respiratory.unableToAssessBoolean (or exact clinician label)",
+        "documented current use case distinct from respiratory_assessment_context",
+        "consumer inventory",
+        "targeted tests",
+        "browser verification",
+        "dedicated reactivation commit"
+      ],
+      "reactivationHistory": [],
+      "enforcementTests": [
+        "sns-emr-frontend/src/features/body-systems/components/RespiratoryPanel.test.tsx"
+      ],
+      "implementationNotes": "Checkbox render removed from the \"Assessment context\" row in RespiratoryPanel.tsx; applyCanonicalLegacyMapping gained a \"respiratory_assessment_context\" case that derives this value on every Assessment Context change. The Assessment Limitation section still opens correctly because isUnableToAssess reads this (now derived) value."
+    },
+    {
+      "featureId": "cardiovascular.cardiacDyspnea",
+      "clinicianLabel": "Dyspnea Attributed to Cardiac Condition",
+      "owningSection": "Cardiovascular",
+      "status": "RETIRED_FROM_ACTIVE_WORKFLOW",
+      "retirementDecision": "Remove the RN-facing checkbox and its guidance note from active UI; do not replace with another RN-facing question",
+      "retirementReason": "Product Owner \"Cardiovascular Subjective Review\" classified Cardiovascular's fields as Subjective Symptoms (kept: Chest Pain, Fatigue, Dizziness, Syncope -- patient-reported, contribute to safety/fall risk/symptom burden/POC/hospice documentation) versus Subjective Clinical Attribution (removed). This field asked the RN to attribute an already-documented dyspnea (owned by Respiratory's sobSeverity) to a cardiac cause -- a clinical interpretation, not an RN-observable or RN-measurable finding, and not a reported symptom itself. Review findings: no HOPE dependency (absent from structured_findings.py's concept-mapping registry and docs/compliance/hope/), no AI-reasoning consumer found; it fed only Cardiovascular's own cardiovascularHasActionablePocFinding (POC trigger) and computeCardiovascularNarrative (narrative clause).",
+      "retirementDate": "2026-10-13",
+      "decisionSource": "Product Owner directive \"Cardiovascular Subjective Review\" (KEEP Chest Pain/Fatigue/Dizziness/Syncope as symptom-burden fields; REMOVE CANDIDATE Dyspnea Attributed to Cardiac Condition; \"Do not replace it with another RN-facing question\"; \"NO ADDITIONAL REMOVALS during this review phase\")",
+      "lastActiveCommit": null,
+      "retirementCommit": null,
+      "formerFileLocations": [
+        "sns-emr-frontend/src/components/RNICA.jsx (SECTION_CONFIGS \"Cardiovascular Symptoms\" card checkbox/note fields, the \"full\" column-group paths list, the render-loop resolveCardiacDyspneaGate visibility guard, and the resolveCardiacDyspneaGate function itself)"
+      ],
+      "formerPersistedKeys": ["cardiacDyspnea"],
+      "formerConsumers": [
+        "cardiovascularHasActionablePocFinding (RNICA.jsx) -- continues to read a legacy `cardiacDyspnea === true` value directly (no longer via the retired gate) so a pre-retirement record keeps contributing to the POC-actionable determination it always did.",
+        "computeCardiovascularNarrative (RNICA.jsx) -- continues to emit the \"Dyspnea attributed to cardiac condition.\" clause for a legacy `true` value, for the same historical-compatibility reason."
+      ],
+      "historicalDataPolicy": "Preserve for historical read-only compatibility; the `cardiacDyspnea: false` default-data key and any previously-saved `true` value are never deleted, migrated, or reinterpreted. cardiovascularHasActionablePocFinding and computeCardiovascularNarrative continue to read the raw legacy value directly so historical POC/narrative behavior is unchanged for existing records; only the active RN-facing checkbox, its guidance note, and the resolveCardiacDyspneaGate visibility gate are removed.",
+      "forbiddenActiveUses": ["active UI as an independently-clickable control", "guidance-note render", "Documentation Coverage", "keyboard tab order", "any new derived/automatic replacement question put to the RN"],
+      "replacementFeature": null,
+      "fieldValidationTrigger": null,
+      "reactivationRequirements": [
+        "new written Product Owner authorization containing the literal phrase REACTIVATE: cardiovascular.cardiacDyspnea (or exact clinician label)",
+        "documented current use case distinct from the retired cardiac-cause-attribution checkbox (e.g. a redesigned derived/correlation-based approach per the directive's \"use diagnosis/history correlation, provider diagnosis, or summary logic\" guidance, not a new RN-facing question)",
+        "consumer inventory",
+        "targeted tests",
+        "browser verification",
+        "dedicated reactivation commit"
+      ],
+      "reactivationHistory": [],
+      "enforcementTests": [
+        "sns-emr-frontend/src/components/RNICA.cardiovascularIncrement.test.js"
+      ],
+      "implementationNotes": "Checkbox (`{ type: \"checkbox\", label: \"Dyspnea Attributed to Cardiac Condition\", path: \"cardiacDyspnea\" }`) and its `cardiacDyspneaGuidanceNote` companion removed from the \"Cardiovascular Symptoms\" SECTION_CONFIGS card; both paths removed from the \"full\" column-group paths list. The render-loop's resolveCardiacDyspneaGate-based visibility guard removed (the sibling heartFailurePresent/heartFailureType guard in the same `if (sectionKey === \"cardiovascular\")` block is untouched). resolveCardiacDyspneaGate function removed entirely (no remaining caller after the render-loop guard removal); its former test describe block (`RNICA.cardiovascularIncrement.test.js`) replaced with a single assertion confirming the export no longer exists."
+    },
+    {
       "featureId": "neurological.snsCognitiveScreen",
       "clinicianLabel": "SNS Cognitive Screen",
       "owningSection": "Neurological",

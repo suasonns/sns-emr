@@ -29,13 +29,20 @@ describe("computeNeurologicalWorkflowStatus", () => {
     expect(status.code).toBe("ready_for_review");
   });
 
-  it("never reports Reviewed/Ready for Unable to Assess, even with a complete reason", () => {
+  // PRODUCT OWNER DIRECTIVE (2026-10-13) "Remove The Standalone
+  // Neurological 'Unable To Assess This Visit?' Gate -- No Replacement"
+  // -- retired the global Unable-to-Assess gate entirely (no
+  // `neuroOverview`/`neuroAssessmentContext` override exists anymore); a
+  // stale legacy `neuroOverview`/`neuroUnableToAssessReason` value on a
+  // historical record is now just inert documented data like any other
+  // field, computed through the normal path.
+  it("reports Ready for Review for a legacy record carrying a stale Unable-to-Assess value and nothing else", () => {
     const status = computeNeurologicalWorkflowStatus({
       neuroOverview: "Unable to Assess",
       neuroUnableToAssessReason: "Patient unresponsive",
     });
-    expect(status.code).toBe("review_required");
-    expect(status.variant).toBe("warning");
+    expect(status.code).toBe("ready_for_review");
+    expect(status.variant).toBe("success");
   });
 
   it("reports Ready for Review once a non-Unable-to-Assess path has documented findings", () => {
@@ -64,8 +71,15 @@ describe("computeNeurologicalWorkflowStatus", () => {
 // clinician action (pass-through); every other value is computed fresh
 // from already-documented findings, never a separate nurse choice.
 describe("deriveNeurologicalOverview", () => {
-  it("passes through the explicit Unable to Assess flag regardless of any other data", () => {
-    expect(deriveNeurologicalOverview({ neuroOverview: "Unable to Assess", communication: "Impaired" })).toBe("Unable to Assess");
+  // PRODUCT OWNER DIRECTIVE (2026-10-13) "Remove The Standalone
+  // Neurological 'Unable To Assess This Visit?' Gate -- No Replacement"
+  // -- the gate (and its briefly-proposed 3-option "Assessment Context"
+  // replacement) is retired entirely. A stored `neuroOverview` value,
+  // including a legacy "Unable to Assess" record, is never read back by
+  // this function anymore -- the summary is always derived fresh from
+  // documented findings.
+  it("derives from documented findings even when a legacy Unable to Assess value is also present", () => {
+    expect(deriveNeurologicalOverview({ neuroOverview: "Unable to Assess", communication: "Impaired" })).toBe("New/Worsening Neurological Findings");
   });
 
   it("defaults to No Current Neurological Concern when nothing is documented", () => {
@@ -124,17 +138,22 @@ describe("neurologicalHasActionablePocFinding", () => {
   });
 });
 
-describe("computeNeurologicalNarrative - Unable to Assess wording", () => {
-  it("renders exactly the two approved sentences with no unrelated clinical clauses", () => {
+// PRODUCT OWNER DIRECTIVE (2026-10-13) "Remove The Standalone
+// Neurological 'Unable To Assess This Visit?' Gate -- No Replacement" --
+// the gate (and its briefly-proposed 3-option "Assessment Context"
+// replacement) retired entirely. A legacy `neuroOverview: "Unable to
+// Assess"` value on a historical record is now inert; the narrative
+// always renders from whatever findings are actually documented.
+describe("computeNeurologicalNarrative - legacy Unable to Assess value is inert", () => {
+  it("renders from documented findings, ignoring a stale legacy Unable to Assess value", () => {
     const narrative = computeNeurologicalNarrative({
       neuroOverview: "Unable to Assess",
       neuroUnableToAssessReason: "Patient unable to participate",
       communication: "Impaired",
       motorStatus: "Present",
     });
-    expect(narrative).toBe("Neurological assessment unable to complete. Reason: Patient unable to participate.");
-    expect(narrative).not.toMatch(/Communication/);
-    expect(narrative).not.toMatch(/Motor/);
+    expect(narrative).toContain("Communication");
+    expect(narrative).toContain("Motor");
   });
 });
 
@@ -162,7 +181,7 @@ describe("computeNeurologicalNarrative - Sleep Pattern display adapter", () => {
 describe("computeNeurologicalDocumentationCoverage", () => {
   it("reports every domain missing when nothing has been documented", () => {
     const coverage = computeNeurologicalDocumentationCoverage({});
-    expect(coverage).toHaveLength(9);
+    expect(coverage).toHaveLength(11);
     expect(coverage.every((item) => item.complete === false)).toBe(true);
     expect(coverage.map((item) => item.label)).toEqual([
       "Consciousness",
@@ -174,6 +193,8 @@ describe("computeNeurologicalDocumentationCoverage", () => {
       "Sleep",
       "Comparison",
       "Psychiatric History",
+      "Motor Deficit",
+      "Speech / Language",
     ]);
   });
 
@@ -185,9 +206,17 @@ describe("computeNeurologicalDocumentationCoverage", () => {
       hearing: "Adequate",
       vision: "Adequate",
       symptomsDemeanor: ["Anxiety", "Agitation"],
+      // PRODUCT OWNER CORRECTION (2026-10-21) "Neurological Layout and
+      // HOPE Anxiety/Agitation Impact" Section 12 -- Anxiety/Agitation
+      // Impact are now their own applicable-when-selected Coverage
+      // items; a "fully documented" fixture must answer them too.
+      anxietyImpact: "Mild",
+      agitationImpact: "Mild",
       sleepRest: { sleepPattern: "Insomnia" },
       clinicalStatusChange: "New or Worsening Concern",
       psychiatricHistoryType: ["None"],
+      motorDeficitPresent: "No",
+      speechLanguageImpairmentPresent: "No",
     });
     expect(coverage.every((item) => item.complete === true)).toBe(true);
   });
@@ -210,14 +239,17 @@ describe("computeNeurologicalDocumentationCoverage", () => {
     expect(psych.complete).toBe(true);
   });
 
-  it("reports Unable to Assess as a documented state with its reason, not an empty coverage list", () => {
+  // PRODUCT OWNER DIRECTIVE (2026-10-13) "Remove The Standalone
+  // Neurological 'Unable To Assess This Visit?' Gate -- No Replacement"
+  // -- the single-item Coverage override for this value is retired; a
+  // legacy `neuroOverview`/`neuroUnableToAssessReason` value is inert
+  // and Coverage always reports the full finding-level item list.
+  it("reports the full item-level Coverage list even for a legacy record carrying a stale Unable to Assess value", () => {
     const coverage = computeNeurologicalDocumentationCoverage({
       neuroOverview: "Unable to Assess",
       neuroUnableToAssessReason: "Patient declined",
     });
-    expect(coverage).toHaveLength(1);
-    expect(coverage[0].complete).toBe(true);
-    expect(coverage[0].value).toBe("Unable to Assess — Patient declined");
+    expect(coverage).toHaveLength(11);
   });
 });
 
@@ -252,12 +284,12 @@ describe("computeNeurologicalNarrative - required scenario coverage", () => {
     expect(narrative).toContain("Sensory deficits: Numbness.");
   });
 
-  it("E. Unable to Assess states the documented inability/reason only, no normal findings invented", () => {
+  it("E. a legacy Unable to Assess value is inert -- narrative still derives from whatever findings are documented", () => {
     const narrative = computeNeurologicalNarrative({
       neuroOverview: "Unable to Assess",
       neuroUnableToAssessReason: "Patient declined",
     });
-    expect(narrative).toBe("Neurological assessment unable to complete. Reason: Patient declined.");
+    expect(narrative).not.toMatch(/unable to complete/i);
   });
 
   it("F. missing comparison -- narrative does not assert improvement, stability, or decline", () => {
@@ -306,14 +338,14 @@ describe("Neurological Phase 1 acceptance scenarios", () => {
     expect(comparison.unresolvedHint).toBe("Select comparison to prior assessment");
   });
 
-  it("D. Unable to Assess -- Coverage displays Unable to Assess and the documented reason, no normal findings generated", () => {
+  it("D. a legacy Unable to Assess value is inert -- Coverage reports the documented findings normally", () => {
     const coverage = computeNeurologicalDocumentationCoverage({
       neuroOverview: "Unable to Assess",
       neuroUnableToAssessReason: "Patient unresponsive",
       communication: "Impaired",
     });
-    expect(coverage).toHaveLength(1);
-    expect(coverage[0].value).toBe("Unable to Assess — Patient unresponsive");
+    expect(coverage).toHaveLength(11);
+    expect(coverage.find((item) => item.key === "communication").value).toBe("Impaired");
   });
 
   it("E. comparison -- Coverage shows the nurse-documented value; internal system status does not overwrite it", () => {
@@ -554,15 +586,27 @@ describe("Documentation Coverage -- Anxiety / Agitation continue to appear (Sect
   });
 });
 
-// Section 10.F -- Anxiety / Agitation downstream HOPE J2051C/H derivation.
-// These tests exercise `deriveSymptomImpactFromForm`, the extracted pure
-// function the component's useEffect now calls (byte-identical logic to
-// the prior inline version -- see the function's own doc comment). They
-// verify EXISTING behavior; they do not approve or change presence-only
-// impact coding (that remains a separately tracked HOPE audit item).
-describe("deriveSymptomImpactFromForm -- Anxiety / Agitation HOPE derivation (Section 10.F)", () => {
-  it("selecting Anxiety sets symptomImpact.anxiety to the existing code '1' (HOPE J2051C = Slight)", () => {
+// PRODUCT OWNER CORRECTION (2026-10-21) "Neurological Layout and HOPE
+// Anxiety/Agitation Impact" -- supersedes "Section 10.F" below: the
+// presence-only "0"/"1" derivation these tests previously approved as
+// "EXISTING behavior ... not approve[d] or change[d]" was the exact HOPE
+// J2051C/H compliance gap the owner's audit flagged (a symptom could
+// never reach Moderate/Severe, so SFV could never trigger from Anxiety/
+// Agitation alone). `deriveSymptomImpactFromForm` now reads the real
+// conditional `anxietyImpact`/`agitationImpact` "Impact over past 2 days"
+// responses (see `deriveNeuroImpact`); these tests are updated to assert
+// the corrected, approved behavior instead of the retired gap. Selecting
+// the symptom alone (no Impact answer yet) now correctly derives ""
+// (incomplete, not a fabricated "1") -- see RNICA.neuroHopeImpact.test.jsx
+// for the full Impact-mapping coverage.
+describe("deriveSymptomImpactFromForm -- Anxiety / Agitation HOPE derivation (Section 10.F, corrected 2026-10-21)", () => {
+  it("selecting Anxiety alone (no Impact answered yet) derives '' -- not a fabricated code", () => {
     const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Anxiety"] } });
+    expect(derived.anxiety).toBe("");
+  });
+
+  it("selecting Anxiety with Impact answered 'Mild' derives the real HOPE code '1'", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Anxiety"], anxietyImpact: "Mild" } });
     expect(derived.anxiety).toBe("1");
   });
 
@@ -571,8 +615,13 @@ describe("deriveSymptomImpactFromForm -- Anxiety / Agitation HOPE derivation (Se
     expect(derived.anxiety).toBe("0");
   });
 
-  it("selecting Agitation sets symptomImpact.agitation to the existing code '1' (HOPE J2051H = Slight)", () => {
+  it("selecting Agitation alone (no Impact answered yet) derives '' -- not a fabricated code", () => {
     const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Agitation"] } });
+    expect(derived.agitation).toBe("");
+  });
+
+  it("selecting Agitation with Impact answered 'Mild' derives the real HOPE code '1'", () => {
+    const derived = deriveSymptomImpactFromForm({ neurological: { symptomsDemeanor: ["Agitation"], agitationImpact: "Mild" } });
     expect(derived.agitation).toBe("1");
   });
 
@@ -582,7 +631,7 @@ describe("deriveSymptomImpactFromForm -- Anxiety / Agitation HOPE derivation (Se
   });
 
   it("save and reload preserve behavior -- re-deriving from a reloaded (round-tripped) formData shape is identical", () => {
-    const stored = { neurological: { symptomsDemeanor: ["Anxiety", "Agitation"] } };
+    const stored = { neurological: { symptomsDemeanor: ["Anxiety", "Agitation"], anxietyImpact: "Mild", agitationImpact: "Mild" } };
     const reloaded = JSON.parse(JSON.stringify(stored));
     expect(deriveSymptomImpactFromForm(stored)).toEqual(deriveSymptomImpactFromForm(reloaded));
     expect(deriveSymptomImpactFromForm(reloaded).anxiety).toBe("1");
@@ -638,12 +687,12 @@ describe("computeNeurologicalOverviewSynthesis", () => {
     );
   });
 
-  it("unable-to-assess example -- states only the inability and reason, no normal findings invented", () => {
+  it("a legacy Unable to Assess value is inert -- synthesis still derives from documented findings", () => {
     const synthesis = computeNeurologicalOverviewSynthesis({
       neuroOverview: "Unable to Assess",
       neuroUnableToAssessReason: "Patient declined",
     });
-    expect(synthesis).toBe("Neurological status could not be fully assessed during this visit. Reason: Patient declined.");
+    expect(synthesis).not.toMatch(/could not be fully assessed/i);
   });
 
   it("new-or-worsening example -- comparison leads, ahead of the status line, per priority rule #1", () => {

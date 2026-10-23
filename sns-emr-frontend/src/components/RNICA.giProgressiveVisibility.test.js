@@ -27,8 +27,8 @@ describe("computeGiOverviewCardGate -- GI Overview and Notes are always visible"
 describe("computeGiOverviewCardGate -- No Current GI Concern (state 1)", () => {
   const overview = "No Current GI Concern";
 
-  it("hides GI Symptoms when no GI data has ever been documented", () => {
-    expect(computeGiOverviewCardGate("GI Symptoms", { gastrointestinalOverview: overview })).toBe("hide");
+  it("hides Bowel Symptoms when no GI data has ever been documented", () => {
+    expect(computeGiOverviewCardGate("Bowel Symptoms", { gastrointestinalOverview: overview })).toBe("hide");
   });
 
   it("hides Abdominal / Bowel Assessment when no GI data has ever been documented", () => {
@@ -50,9 +50,9 @@ describe("computeGiOverviewCardGate -- No Current GI Concern (state 1)", () => {
     })).toBe("hide");
   });
 
-  it("falls through to a preserved-findings banner (never silently disappears) when GI Symptoms already has documented data", () => {
+  it("falls through to a preserved-findings banner (never silently disappears) when Bowel Symptoms already has documented data", () => {
     const data = { gastrointestinalOverview: overview, constipation: "Moderate" };
-    expect(computeGiOverviewCardGate("GI Symptoms", data)).toBe("banner");
+    expect(computeGiOverviewCardGate("Bowel Symptoms", data)).toBe("banner");
   });
 
   it("falls through to a preserved-findings banner when Abdominal / Bowel Assessment already has documented data", () => {
@@ -69,8 +69,8 @@ describe("computeGiOverviewCardGate -- No Current GI Concern (state 1)", () => {
 describe("computeGiOverviewCardGate -- Existing GI Findings Review (state 2)", () => {
   const overview = "Existing GI Findings Review";
 
-  it("passes through GI Symptoms (full review of current severities)", () => {
-    expect(computeGiOverviewCardGate("GI Symptoms", { gastrointestinalOverview: overview })).toBe("pass-through");
+  it("passes through Bowel Symptoms (full review of current severities)", () => {
+    expect(computeGiOverviewCardGate("Bowel Symptoms", { gastrointestinalOverview: overview })).toBe("pass-through");
   });
 
   it("passes through Clinical Status Change", () => {
@@ -86,7 +86,7 @@ describe("computeGiOverviewCardGate -- New or Worsening GI Findings (state 3)", 
   const overview = "New or Worsening GI Findings";
 
   it("passes through every hideable card (nothing is gated -- full documentation required)", () => {
-    expect(computeGiOverviewCardGate("GI Symptoms", { gastrointestinalOverview: overview })).toBe("pass-through");
+    expect(computeGiOverviewCardGate("Bowel Symptoms", { gastrointestinalOverview: overview })).toBe("pass-through");
     expect(computeGiOverviewCardGate("Abdominal / Bowel Assessment", { gastrointestinalOverview: overview })).toBe("pass-through");
     expect(computeGiOverviewCardGate("Feeding Devices", { gastrointestinalOverview: overview })).toBe("pass-through");
     expect(computeGiOverviewCardGate("Clinical Status Change", { gastrointestinalOverview: overview })).toBe("pass-through");
@@ -95,7 +95,7 @@ describe("computeGiOverviewCardGate -- New or Worsening GI Findings (state 3)", 
 
 describe("computeGiOverviewCardGate -- no Overview selected yet (legacy/unanswered records)", () => {
   it("passes every card through unchanged when gastrointestinalOverview is unset (backward compatible with records predating this field)", () => {
-    expect(computeGiOverviewCardGate("GI Symptoms", {})).toBe("pass-through");
+    expect(computeGiOverviewCardGate("Bowel Symptoms", {})).toBe("pass-through");
     expect(computeGiOverviewCardGate("Abdominal / Bowel Assessment", {})).toBe("pass-through");
     expect(computeGiOverviewCardGate("Feeding Devices", {})).toBe("pass-through");
     expect(computeGiOverviewCardGate("Clinical Status Change", {})).toBe("pass-through");

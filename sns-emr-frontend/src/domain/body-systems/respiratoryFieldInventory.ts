@@ -339,16 +339,6 @@ export const RESPIRATORY_BARREL_CHEST_PRESENT_FIELD: RespiratoryFieldDefinition 
     "single-select. Not a cough characteristic; coexists freely with any coughType/hemoptysis value.",
 };
 
-export const RESPIRATORY_SPUTUM_CHARACTER_FIELD: RespiratoryFieldDefinition = {
-  fieldId: "respiratory_sputum_character",
-  label: "Sputum Character",
-  owner: "respiratory",
-  ownerFactKey: "sputum",
-  legacySource: "respiratory.sputumCharacter",
-  responseType: "text",
-  nullable: true,
-};
-
 export const RESPIRATORY_OXYGEN_IN_USE_FIELD: RespiratoryFieldDefinition = {
   fieldId: "respiratory_oxygen_in_use",
   label: "Oxygen in Use",
@@ -695,40 +685,6 @@ export const RESPIRATORY_TREATMENT_DESCRIPTION_FIELD: RespiratoryFieldDefinition
   nullable: true,
   notes:
     "FINAL PRODUCT-OWNER DIRECTIVE (clinical workflow / data-ownership correction): this field is no longer an active control for INITIATED or ALREADY_IN_PLACE. It was an unrestricted free-text box that let a nurse re-enter authoritative order/medication details (drug, dose, route, frequency) that belong exclusively to the Orders/Medications workflow — not a training issue, a data-ownership defect. It remains active ONLY for DECLINED ('Decline Reason') and NOT_INDICATED ('Clinical Rationale'), where no medication-order risk exists (see RespiratoryPanel.tsx's treatmentDescriptionContext() and isFieldCurrentlyRelevant()). Historical INITIATED/ALREADY_IN_PLACE values already stored in this field are preserved read-only and displayed as 'Legacy Respiratory Treatment Documentation' — never deleted, never auto-converted into an order, never editable going forward in those two contexts.",
-};
-
-export const RESPIRATORY_CLINICAL_RESPONSE_FIELD: RespiratoryFieldDefinition = {
-  fieldId: "respiratory_clinical_response",
-  label: "Clinical Response to Treatment",
-  owner: "respiratory",
-  ownerFactKey: "respiratory_exertion_tolerance",
-  legacySource: "respiratory.clinicalResponse",
-  responseType: "single_select",
-  controlledValues: [
-    "EFFECTIVE",
-    "PARTIALLY_EFFECTIVE",
-    "INEFFECTIVE",
-    "NO_CHANGE",
-    "WORSENING",
-    "NOT_YET_EVALUATED",
-    "UNABLE_TO_ASSESS",
-    "NOT_APPLICABLE",
-  ],
-  nullable: true,
-  notes:
-    "FINAL PRODUCT-OWNER DIRECTIVE: documents the patient's observed clinical response during the visit for INITIATED or ALREADY_IN_PLACE. It records the patient's response only — it never creates, modifies, or references an order. Required when Treatment Decision is INITIATED or ALREADY_IN_PLACE (replaces the removed free-text 'Describe the treatment' requirement for those two values).",
-};
-
-export const RESPIRATORY_CLINICAL_RESPONSE_EVIDENCE_FIELD: RespiratoryFieldDefinition = {
-  fieldId: "respiratory_clinical_response_evidence",
-  label: "Clinical Response Evidence",
-  owner: "respiratory",
-  ownerFactKey: "respiratory_exertion_tolerance",
-  legacySource: "respiratory.clinicalResponseEvidence",
-  responseType: "text",
-  nullable: true,
-  notes:
-    "FINAL PRODUCT-OWNER DIRECTIVE: optional. Allowed content is the patient's observed response only (change in dyspnea, respiratory effort, SpO2, cough, secretions, patient-reported relief, observed adverse response, or reason the response could not be evaluated). UI help text (mandatory, must not be edited): \"Document the patient's observed response. Medication and treatment-order details belong in Orders.\" Never a medication name, dose, route, frequency, or prescription instruction.",
 };
 
 export const RESPIRATORY_TREATMENT_DECLINE_REASON_FIELD: RespiratoryFieldDefinition = {
@@ -1103,7 +1059,7 @@ export const RESPIRATORY_SPUTUM_OTHER_SPECIFICATION_FIELD: RespiratoryFieldDefin
   legacySource: "respiratory.sputumOtherSpecification",
   responseType: "text",
   nullable: true,
-  notes: "Required when sputum character or color is OTHER.",
+  notes: "Required when sputum color is OTHER.",
 };
 
 export const RESPIRATORY_COUGH_CLINICAL_SIGNIFICANCE_FIELD: RespiratoryFieldDefinition = {
@@ -1365,8 +1321,6 @@ export const RESPIRATORY_FIELD_INVENTORY: readonly RespiratoryFieldDefinition[] 
   RESPIRATORY_TREATMENT_RESPONSE_TIME_FIELD,
   RESPIRATORY_TREATMENT_RESPONSE_FIELD,
   RESPIRATORY_TREATMENT_RESPONSE_STATUS_FIELD,
-  RESPIRATORY_CLINICAL_RESPONSE_FIELD,
-  RESPIRATORY_CLINICAL_RESPONSE_EVIDENCE_FIELD,
   RESPIRATORY_FOLLOW_UP_NEED_FIELD,
   RESPIRATORY_FOLLOW_UP_TIMING_PLAN_FIELD,
   RESPIRATORY_FOLLOW_UP_RESPONSIBLE_CLINICIAN_FIELD,
@@ -1376,7 +1330,6 @@ export const RESPIRATORY_FIELD_INVENTORY: readonly RespiratoryFieldDefinition[] 
   RESPIRATORY_COUGH_TYPE_FIELD,
   RESPIRATORY_HEMOPTYSIS_PRESENT_FIELD,
   RESPIRATORY_BARREL_CHEST_PRESENT_FIELD,
-  RESPIRATORY_SPUTUM_CHARACTER_FIELD,
   RESPIRATORY_SPUTUM_AMOUNT_FIELD,
   RESPIRATORY_SPUTUM_COLOR_FIELD,
   RESPIRATORY_SPUTUM_OTHER_SPECIFICATION_FIELD,

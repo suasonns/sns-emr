@@ -9,17 +9,13 @@ import { syntheticComprehensiveAssessmentFixture } from "./fixtures/comprehensiv
  * by tests (and the safe dev-only preview route in App.tsx), but not
  * wired into any production navigation.
  *
- * `patientId` is an obviously-synthetic placeholder UUID — this preview
- * has no real patient context. Selecting Respiratory will call the real
- * Respiratory API with this id; a dev environment with no matching
- * patient record will correctly show the panel's "unavailable" or
- * "unauthorized" state rather than fabricated data.
+ * Respiratory's former proof-of-pattern expansion (a real, API-backed
+ * detail panel for this one system) was retired per product-authority
+ * direction to collapse Respiratory back onto the same plain-register
+ * model as the other nine systems — this preview is now purely
+ * presentation-only/read-only for all ten, driven entirely by the
+ * synthetic fixture, with no network calls.
  */
 export function BodySystemsWorkspacePreview() {
-  return (
-    <BodySystemsWorkspace
-      fixture={syntheticComprehensiveAssessmentFixture}
-      patientId="00000000-0000-0000-0000-000000000000"
-    />
-  );
+  return <BodySystemsWorkspace fixture={syntheticComprehensiveAssessmentFixture} />;
 }

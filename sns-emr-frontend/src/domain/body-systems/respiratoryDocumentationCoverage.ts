@@ -153,15 +153,6 @@ const RESPIRATORY_COVERAGE_ITEMS: RespiratoryCoverageItemConfig[] = [
     unresolvedHint: () => "Record the treatment decision.",
   },
   {
-    key: "clinicalResponse",
-    label: "Clinical Response",
-    sourceFieldKeys: ["respiratory_clinical_response"],
-    applicable: (d) => d.treatmentDecision === "INITIATED" || d.treatmentDecision === "ALREADY_IN_PLACE",
-    check: (d) => Boolean(d.clinicalResponse),
-    summarize: (d) => formatCoverageOptionValue(d.clinicalResponse as string),
-    unresolvedHint: () => "Record the clinical response to the current treatment.",
-  },
-  {
     key: "treatmentNarrative",
     label: "Treatment Narrative",
     sourceFieldKeys: ["respiratory_treatment_description"],
@@ -280,10 +271,10 @@ const RESPIRATORY_COVERAGE_ITEMS: RespiratoryCoverageItemConfig[] = [
     key: "sputumSpecification",
     label: "Sputum Specification",
     sourceFieldKeys: ["respiratory_sputum_other_specification"],
-    applicable: (d) => d.sputumCharacter === "OTHER" || d.sputumColor === "OTHER",
+    applicable: (d) => d.sputumColor === "OTHER",
     check: (d) => textFilled(d.sputumOtherSpecification),
     summarize: (d) => d.sputumOtherSpecification as string,
-    unresolvedHint: () => "Specify the sputum character/color.",
+    unresolvedHint: () => "Specify the sputum color.",
   },
   {
     key: "hemoptysisSignificance",

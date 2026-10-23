@@ -257,6 +257,16 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
         )
     )
 
+    # PRODUCT OWNER DIRECTIVE (2026-10-16) "Musculoskeletal Architecture
+    # Review" -- Musculoskeletal's `mobility.ambulatoryStatus` is retired
+    # ("should have been documented in Functional Status / ADLs from the
+    # beginning"; no substitute field, no hidden field). `mobility_status`
+    # above will simply be absent going forward, so `_derive_ambulation_
+    # assistance` naturally falls through to `None` -- this ADL Transferring
+    # dependency-score fallback (same `_adl_score_at_least` helper already
+    # used for `dressing_assistance_required`/`bathing_assistance_required`
+    # immediately below) is the refactored Functional Status/ADL source of
+    # truth the directive requires.
     facts["ambulation_assistance_required"] = _coalesce_bool(
         _to_bool(
             _first_value(
@@ -268,6 +278,7 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
             )
         ),
         _derive_ambulation_assistance(mobility_status),
+        _adl_score_at_least(adl_payload, "transferring", 3),
     )
 
     facts["dressing_assistance_required"] = _coalesce_bool(
@@ -343,6 +354,13 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
         ),
     )
 
+    # PRODUCT OWNER DIRECTIVE (2026-10-16) "Musculoskeletal Architecture
+    # Review" -- same retirement as above for `mobility_status`; `pps`
+    # (Palliative Performance Scale, already harvested into `facts["pps"]`
+    # at the top of this function) is added as the Functional Status
+    # source of truth for bedbound -- the standard PPS descriptor defines
+    # 10%-20% as "Totally Bed Bound". Braden Activity stays as an existing,
+    # unrelated fallback (Skin domain, not Musculoskeletal).
     facts["is_bedbound"] = _coalesce_bool(
         _to_bool(
             _first_value(
@@ -353,7 +371,7 @@ def harvest_clinical_facts(patient: Any) -> dict[str, Any]:
                 ],
             )
         ),
-        _derive_bedbound(mobility_status, braden_activity),
+        _derive_bedbound(mobility_status, braden_activity, facts["pps"]),
     )
 
     swallowing_issues = _first_value(
@@ -1122,7 +1140,7 @@ def _derive_ambulation_assistance(mobility_status: Any) -> bool | None:
     return None
 
 
-def _derive_bedbound(mobility_status: Any, braden_activity: int | None) -> bool | None:
+def _derive_bedbound(mobility_status: Any, braden_activity: int | None, pps: float | None = None) -> bool | None:
     if not _empty(mobility_status):
         normalized = str(mobility_status).strip().lower()
         if normalized == "bedbound":
@@ -1131,6 +1149,8 @@ def _derive_bedbound(mobility_status: Any, braden_activity: int | None) -> bool 
             return False
     if braden_activity is not None:
         return braden_activity == 1
+    if pps is not None:
+        return pps <= 20
     return None
 
 

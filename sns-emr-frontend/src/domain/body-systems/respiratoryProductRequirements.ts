@@ -63,10 +63,6 @@ export interface RespiratoryProductAuthorizedValues {
   treatmentActionTime?: string;
   treatmentResponse?: string;
   treatmentResponseStatus?: string;
-  /** FINAL PRODUCT-OWNER DIRECTIVE: documents the patient's observed
-   * clinical response for INITIATED/ALREADY_IN_PLACE. See
-   * respiratoryFieldInventory.ts's RESPIRATORY_CLINICAL_RESPONSE_FIELD. */
-  clinicalResponse?: string;
 
   followUpNeed?: string;
   followUpTimingPlan?: string;
@@ -90,7 +86,6 @@ export interface RespiratoryProductAuthorizedValues {
   hemoptysisPresent?: boolean;
   /** Independent thoracic-inspection finding -- not a cough characteristic. */
   barrelChestPresent?: boolean;
-  sputumCharacter?: string;
   sputumAmount?: string;
   sputumColor?: string;
   sputumOtherSpecification?: string;
@@ -184,21 +179,6 @@ export function getMissingProductAuthorizedRequirements(
     values.respiratorySupportStatus === "IN_USE";
   if (treatmentApplicable && !values.treatmentDecision) {
     push("respiratory_treatment_decision", "Record the treatment decision.");
-  }
-  // FINAL PRODUCT-OWNER DIRECTIVE (clinical workflow / data-ownership
-  // correction): the free-text "Describe the treatment" requirement for
-  // INITIATED/ALREADY_IN_PLACE is REMOVED — it let a nurse re-enter
-  // medication/order details (drug, dose, route, frequency) that belong
-  // exclusively to the authoritative Orders/Medications workflow, a data-
-  // ownership defect, not a training issue. Treatment Decision itself
-  // (INITIATED/ALREADY_IN_PLACE/DECLINED/NOT_INDICATED) is unchanged and
-  // is never remapped. In its place, the two values now require the
-  // Clinical Response (patient's observed response only — never an order).
-  if (
-    (values.treatmentDecision === "INITIATED" || values.treatmentDecision === "ALREADY_IN_PLACE") &&
-    !values.clinicalResponse
-  ) {
-    push("respiratory_clinical_response", "Record the clinical response to the current treatment.");
   }
   // Hospice-admission simplification (product-owner directive): DECLINED
   // reuses the single canonical Treatment Narrative field
@@ -301,10 +281,10 @@ export function getMissingProductAuthorizedRequirements(
     }
   }
   if (
-    (values.sputumCharacter === "OTHER" || values.sputumColor === "OTHER") &&
+    values.sputumColor === "OTHER" &&
     !textFilled(values.sputumOtherSpecification)
   ) {
-    push("respiratory_sputum_other_specification", "Specify the sputum character/color.");
+    push("respiratory_sputum_other_specification", "Specify the sputum color.");
   }
   if (values.hemoptysisPresent && !textFilled(values.coughClinicalSignificance)) {
     push("respiratory_cough_clinical_significance", "Record the clinical significance of hemoptysis.");

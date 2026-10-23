@@ -3,188 +3,70 @@ import {
   computeCardiovascularNarrative,
   computeCardiovascularWorkflowStatus,
   cardiovascularHasActionablePocFinding,
-  cardiovascularHasPreservedAbnormalFinding,
+  computeCardiovascularDocumentationCoverage,
   resolvePulseDimensionDisplay,
   resolveBpStatusDisplay,
   resolveOrthostaticFindingDisplay,
   resolveBpLegacyDisplay,
-  resolveCardiacDyspneaGate,
   resolveHeartFailureTypeSelection,
 } from "./RNICA.jsx";
 
-// Cardiovascular Overview Gate regression coverage (Final Owner Directive,
-// 2026-09-28). Scope: status/summary/POC-gating/legacy-alias behavior
-// only. No schema, migration, or persistence changes are exercised here.
+// PRODUCT OWNER DIRECTIVE (2026-10-13) "Remove The Cardiovascular 4-Path
+// Gate -- No Replacement" regression coverage. The former Overview Gate
+// (`cardiovascularOverview`/`cardiovascularUnableToAssessReason`/
+// `...Other`/`cardiovascularFindingsConfirmedThisVisit`) is retired
+// entirely, same precedent as Neurological's Overview Gate removal: the
+// nurse documents findings, the software derives status/narrative
+// directly from them. Legacy stored values on historical records are
+// preserved but no longer read by any active workflow/narrative/POC
+// logic -- several tests below verify that inertness explicitly. No
+// schema, migration, or persistence changes are exercised here.
 
 describe("computeCardiovascularWorkflowStatus", () => {
   it("returns Not Started when nothing has been documented", () => {
     expect(computeCardiovascularWorkflowStatus({}).code).toBe("not_started");
   });
 
-  it("returns In Progress when data exists but no Overview path is chosen", () => {
-    expect(computeCardiovascularWorkflowStatus({ fatigue: "Mild" }).code).toBe("in_progress");
+  // PRODUCT OWNER DIRECTIVE (2026-10-13) -- Overview is no longer a
+  // separate nurse decision the status can be "in progress" waiting on;
+  // `in_progress` was removed entirely. Once any finding is documented,
+  // the record is Ready for Review -- there is nothing left to answer.
+  it("reports Ready for Review once any finding is documented (no separate Overview step to wait on)", () => {
+    expect(computeCardiovascularWorkflowStatus({ fatigue: "Mild" }).code).toBe("ready_for_review");
   });
 
-  // CORRECTION (2026-09-28, audit): a completed Unable to Assess path is
-  // not automatically unresolved -- Review Required applies only while a
-  // genuine blocker exists (no reason, incomplete Other, or a preserved
-  // conflict). These 8 cases mirror the corrected directive's required
-  // Unable-to-Assess status matrix exactly.
-  describe("Unable to Assess status resolution", () => {
-    it("1. no reason selected -> Review Required", () => {
-      const status = computeCardiovascularWorkflowStatus({ cardiovascularOverview: "Unable to Assess" });
-      expect(status.code).toBe("review_required");
-    });
-
-    it("2. Other selected with no explanation -> Review Required", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "Unable to Assess",
-        cardiovascularUnableToAssessReason: "Other",
-        cardiovascularUnableToAssessOther: "",
-      });
-      expect(status.code).toBe("review_required");
-    });
-
-    it("4. approved non-Other reason, no conflict -> Ready for Review", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "Unable to Assess",
-        cardiovascularUnableToAssessReason: "Patient unresponsive",
-      });
-      expect(status.code).toBe("ready_for_review");
-      expect(status.variant).toBe("success");
-    });
-
-    it("5. Other reason with explanation, no conflict -> Ready for Review", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "Unable to Assess",
-        cardiovascularUnableToAssessReason: "Other",
-        cardiovascularUnableToAssessOther: "Patient declined visit today.",
-      });
-      expect(status.code).toBe("ready_for_review");
-    });
-
-    it("6a. preserved conflicting legacy BP values -> Review Required", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "Unable to Assess",
-        cardiovascularUnableToAssessReason: "Patient unresponsive",
-        bpSymptoms: ["Normal", "Hypertensive"],
-      });
-      expect(status.code).toBe("review_required");
-    });
-
-    it("6b. preserved legacy cardiac-dyspnea attribution with blank Respiratory -> Review Required", () => {
-      const status = computeCardiovascularWorkflowStatus(
-        {
-          cardiovascularOverview: "Unable to Assess",
-          cardiovascularUnableToAssessReason: "Patient unresponsive",
-          cardiacDyspnea: true,
-        },
-        undefined,
-      );
-      expect(status.code).toBe("review_required");
-    });
-
-    it("8. Unable to Assess alone never suggests POC, regardless of status resolution", () => {
-      expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "Unable to Assess", chestPain: { present: "Yes" } })).toBe(false);
-    });
+  it("reports Ready for Review once any pulse/BP/symptom finding is documented", () => {
+    expect(computeCardiovascularWorkflowStatus({ chestPain: { present: "Yes" } }).code).toBe("ready_for_review");
+    expect(computeCardiovascularWorkflowStatus({ pulseRhythm: "Regular" }).code).toBe("ready_for_review");
   });
 
-  it("Path 2 requires clinician confirmation plus Clinical Status Change to reach Ready for Review", () => {
-    const incomplete = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      pulseRhythm: "Regular",
-    });
-    expect(incomplete.code).toBe("in_progress");
-    const complete = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      cardiovascularFindingsConfirmedThisVisit: true,
-      clinicalStatusChange: "No Significant Change",
-    });
-    expect(complete.code).toBe("ready_for_review");
+  it("is Ready for Review even alongside a preserved abnormal finding -- there is no longer a conflicting path to contradict", () => {
+    const status = computeCardiovascularWorkflowStatus({ chestPain: { present: "Yes" }, edema: { present: "Yes" } });
+    expect(status.code).toBe("ready_for_review");
+    expect(status.variant).toBe("success");
   });
 
-  it("reports In Progress for a chosen path with nothing else documented yet", () => {
-    expect(computeCardiovascularWorkflowStatus({ cardiovascularOverview: "Existing Cardiovascular Findings Review" }).code).toBe("in_progress");
+  it("reports Ready for Review for a legacy record carrying a stale cardiovascularOverview value and nothing else", () => {
+    const status = computeCardiovascularWorkflowStatus({
+      cardiovascularOverview: "Unable to Assess",
+      cardiovascularUnableToAssessReason: "Patient unresponsive",
+    });
+    expect(status.code).toBe("ready_for_review");
+    expect(status.variant).toBe("success");
   });
 
-  // FIX (2026-09-28, live-UI audit): reproduces the exact defect observed
-  // in the running app on a real record -- selecting "No Current
-  // Cardiovascular Concern" while chest pain / edema / heart failure /
-  // other abnormal findings remain stored must never reach Ready for
-  // Review, and completing Path 1's own required fields (with no
-  // conflict) must reach Ready for Review on its own, independent of any
-  // unrelated documented value.
-  describe("No Current Cardiovascular Concern (Path 1) status resolution", () => {
-    it("stays In Progress until Rhythm, Rate, Strength, and Clinical Status Change are all deliberately completed", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "No Current Cardiovascular Concern",
-        pulseRhythm: "Regular",
-      });
-      expect(status.code).toBe("in_progress");
-    });
+  it("reports Not Started for a blank record even with stray empty-string legacy fields", () => {
+    expect(computeCardiovascularWorkflowStatus({ cardiovascularOverview: "", cardiovascularUnableToAssessReason: "" }).code).toBe("not_started");
+  });
 
-    it("reaches Ready for Review once every required Path 1 field is complete and no conflict exists", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "No Current Cardiovascular Concern",
-        pulseRhythm: "Regular",
-        pulseRate: "Normal",
-        pulseStrength: "Strong",
-        clinicalStatusChange: "Stable / No Change",
-      });
-      expect(status.code).toBe("ready_for_review");
-    });
-
-    it("reproduction: preserved chest pain + edema blocks Ready for Review", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "No Current Cardiovascular Concern",
-        chestPain: { present: "Yes" },
-        edema: { present: "Yes" },
-        heartFailurePresent: true,
-      });
-      expect(status.code).toBe("review_required");
-    });
-
-    it.each([
-      ["chest pain", { chestPain: { present: "Yes" } }],
-      ["edema", { edema: { present: "Yes" } }],
-      ["syncope", { syncope: "Yes" }],
-      ["cardiac dyspnea attribution", { cardiacDyspnea: true }],
-      ["dizziness", { dizziness: "Mild" }],
-      ["conflicting legacy BP", { bpSymptoms: ["Normal", "Hypertensive"] }],
-      ["abnormal BP status", { bpStatus: "Hypertensive" }],
-      ["irregular pulse rhythm", { pulseRhythm: "Irregular" }],
-      ["abnormal pulse rate", { pulseRate: "Tachycardic" }],
-      ["abnormal pulse strength", { pulseStrength: "Thready" }],
-    ])("%s alone forces Review Required, even with Path 1 selected", (_label, findings) => {
-      const status = computeCardiovascularWorkflowStatus({ cardiovascularOverview: "No Current Cardiovascular Concern", ...findings });
-      expect(status.code).toBe("review_required");
-    });
-
-    // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
-    // Correction" -- Heart Failure is a diagnosis, not a current
-    // sign/symptom, so a legacy `heartFailurePresent` value alone must
-    // NOT block "No Current Cardiovascular Concern" from reaching Ready
-    // for Review (only actual current symptoms do).
-    it("legacy heart failure alone does NOT force Review Required on Path 1", () => {
-      const status = computeCardiovascularWorkflowStatus({
-        cardiovascularOverview: "No Current Cardiovascular Concern",
-        heartFailurePresent: true,
-        pulseRhythm: "Regular",
-        pulseRate: "Normal",
-        pulseStrength: "Strong",
-        clinicalStatusChange: "Stable / No Change",
-      });
-      expect(status.code).toBe("ready_for_review");
-    });
-
-    it("never deletes or clears the preserved abnormal finding while flagging the conflict", () => {
-      const d = { cardiovascularOverview: "No Current Cardiovascular Concern", chestPain: { present: "Yes" }, edema: { present: "Yes" } };
-      computeCardiovascularWorkflowStatus(d);
-      expect(d.chestPain.present).toBe("Yes");
-      expect(d.edema.present).toBe("Yes");
-    });
+  it("never deletes or clears a preserved finding while computing status", () => {
+    const d = { chestPain: { present: "Yes" }, edema: { present: "Yes" } };
+    computeCardiovascularWorkflowStatus(d);
+    expect(d.chestPain.present).toBe("Yes");
+    expect(d.edema.present).toBe("Yes");
   });
 });
+
 
 describe("resolvePulseDimensionDisplay - legacy pulseQuality aliasing", () => {
   it.each([
@@ -298,35 +180,19 @@ describe("BP Status / Orthostatic Finding legacy aliasing", () => {
   });
 });
 
-describe("resolveCardiacDyspneaGate - Respiratory/Cardiovascular ownership", () => {
-  it("shows the attribution checkbox once Respiratory confirms dyspnea", () => {
-    const gate = resolveCardiacDyspneaGate({}, { sobSeverity: "Moderate" });
-    expect(gate.visible).toBe(true);
-    expect(gate.reviewRequired).toBe(false);
-  });
-
-  it("hides the checkbox and shows guidance when Respiratory is incomplete (blank)", () => {
-    const gate = resolveCardiacDyspneaGate({}, {});
-    expect(gate.visible).toBe(false);
-    expect(gate.guidance).toMatch(/Document dyspnea in Respiratory/);
-  });
-
-  it("hides the checkbox with no guidance when Respiratory explicitly documents no dyspnea", () => {
-    const gate = resolveCardiacDyspneaGate({}, { sobSeverity: "None" });
-    expect(gate.visible).toBe(false);
-    expect(gate.guidance).toBe("");
-  });
-
-  it("preserves and flags a legacy cardiacDyspnea value when Respiratory is blank", () => {
-    const gate = resolveCardiacDyspneaGate({ cardiacDyspnea: true }, {});
-    expect(gate.visible).toBe(true);
-    expect(gate.reviewRequired).toBe(true);
-  });
-
-  it("preserves and flags a legacy cardiacDyspnea value when Respiratory is negative", () => {
-    const gate = resolveCardiacDyspneaGate({ cardiacDyspnea: true }, { sobSeverity: "None" });
-    expect(gate.visible).toBe(true);
-    expect(gate.reviewRequired).toBe(true);
+describe("legacy cardiacDyspnea compatibility -- retired field, no UI gate", () => {
+  // PRODUCT OWNER DIRECTIVE (2026-10-13) "Cardiovascular Subjective
+  // Review" -- the "Dyspnea Attributed to Cardiac Condition" checkbox
+  // and resolveCardiacDyspneaGate (its visibility gate) are retired from
+  // active UI: it asked for a cardiac-cause attribution the RN cannot
+  // directly observe, not an objective/measurable finding. No
+  // replacement RN-facing question was introduced. A pre-retirement
+  // record's legacy `cardiacDyspnea: true` is never cleared/rewritten
+  // and still contributes to POC-actionable/narrative determinations
+  // (see the dedicated assertions in the describe blocks below).
+  it("no longer exports a visibility gate for this field", async () => {
+    const module = await import("./RNICA.jsx");
+    expect(module.resolveCardiacDyspneaGate).toBeUndefined();
   });
 });
 
@@ -335,20 +201,17 @@ describe("cardiovascularHasActionablePocFinding", () => {
     expect(cardiovascularHasActionablePocFinding({})).toBe(false);
   });
 
-  it("is false for No Current Cardiovascular Concern with no other findings", () => {
+  it("is false for a stale legacy cardiovascularOverview value alone (no longer read)", () => {
     expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "No Current Cardiovascular Concern" })).toBe(false);
-  });
-
-  it("is false for Unable to Assess alone (per directive: not a POC trigger)", () => {
     expect(cardiovascularHasActionablePocFinding({
       cardiovascularOverview: "Unable to Assess",
       cardiovascularUnableToAssessReason: "Patient declined",
     })).toBe(false);
+    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "New or Worsening Cardiovascular Findings" })).toBe(false);
   });
 
   it("is false for stable chronic Heart Failure alone (Contradiction 7 correction)", () => {
     expect(cardiovascularHasActionablePocFinding({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
       heartFailurePresent: true,
       clinicalStatusChange: "Stable / No Change",
     })).toBe(false);
@@ -356,7 +219,6 @@ describe("cardiovascularHasActionablePocFinding", () => {
 
   it("is false for stable chronic edema alone", () => {
     expect(cardiovascularHasActionablePocFinding({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
       edema: { present: "Yes", severity: "1+" },
     })).toBe(false);
   });
@@ -367,10 +229,6 @@ describe("cardiovascularHasActionablePocFinding", () => {
 
   it("is true for Syncope Present", () => {
     expect(cardiovascularHasActionablePocFinding({ syncope: "Yes" })).toBe(true);
-  });
-
-  it("is true whenever the New/Worsening path is selected", () => {
-    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "New or Worsening Cardiovascular Findings" })).toBe(true);
   });
 
   it("is true for Declining or New Symptom Since Prior clinical status change", () => {
@@ -397,68 +255,24 @@ describe("cardiovascularHasActionablePocFinding", () => {
   });
 });
 
-describe("computeCardiovascularNarrative - Not Started / blank", () => {
+describe("computeCardiovascularNarrative - blank / legacy-only records", () => {
   it("returns '' (falsy) for a completely blank record, letting the generic fallback apply", () => {
     expect(computeCardiovascularNarrative({})).toBe("");
   });
-});
 
-describe("computeCardiovascularNarrative - No Current Concern", () => {
-  it("does not claim 'No current cardiovascular concern identified.' until all required normal-path fields are complete", () => {
+  it("returns '' for a stale legacy cardiovascularOverview value alone (no longer read)", () => {
     expect(computeCardiovascularNarrative({ cardiovascularOverview: "No Current Cardiovascular Concern" })).toBe("");
     expect(computeCardiovascularNarrative({
-      cardiovascularOverview: "No Current Cardiovascular Concern",
-      pulseRhythm: "Regular",
-      pulseRate: "Normal",
-    })).toBe("");
-  });
-
-  it("renders the exact approved sentence once Rhythm/Rate/Strength/Clinical Status Change are all documented", () => {
-    const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "No Current Cardiovascular Concern",
-      pulseRhythm: "Regular",
-      pulseRate: "Normal",
-      pulseStrength: "Strong",
-      clinicalStatusChange: "Stable / No Change",
-    });
-    expect(narrative).toBe("No current cardiovascular concern identified.");
-  });
-});
-
-describe("computeCardiovascularNarrative - Existing Findings Review", () => {
-  it("does not claim stability without an explicit current Clinical Status Change selection", () => {
-    const narrative = computeCardiovascularNarrative({ cardiovascularOverview: "Existing Cardiovascular Findings Review" });
-    expect(narrative).toBe("Cardiovascular findings documented.");
-    expect(narrative).not.toMatch(/stable/i);
-  });
-
-  it("claims stability only once Clinical Status Change = Stable / No Change is explicitly selected", () => {
-    const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      clinicalStatusChange: "Stable / No Change",
-    });
-    expect(narrative).toBe("Cardiovascular findings documented as stable/no significant change.");
-  });
-});
-
-describe("computeCardiovascularNarrative - Unable to Assess wording", () => {
-  it("renders exactly the approved sentence with no unrelated clinical clauses", () => {
-    const narrative = computeCardiovascularNarrative({
       cardiovascularOverview: "Unable to Assess",
       cardiovascularUnableToAssessReason: "Patient unable to participate",
-      chestPain: { present: "Yes" },
-      heartFailurePresent: true,
-    });
-    expect(narrative).toBe("Cardiovascular assessment unable to complete. Reason: Patient unable to participate.");
-    expect(narrative).not.toMatch(/Chest pain/);
-    expect(narrative).not.toMatch(/Heart failure/);
+    })).toBe("");
+    expect(computeCardiovascularNarrative({ cardiovascularOverview: "Existing Cardiovascular Findings Review" })).toBe("");
   });
 });
 
-describe("computeCardiovascularNarrative - New/Worsening findings", () => {
+describe("computeCardiovascularNarrative - documented findings", () => {
   it("generates one concise clause per confirmed finding only", () => {
     const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       pulseRhythm: "Irregular",
       pulseRate: "Tachycardic",
       pulseStrength: "Weak",
@@ -474,15 +288,13 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
     expect(narrative).toContain("Dyspnea attributed to cardiac condition.");
     // Owner directive (2026-09-28) "Cardiovascular Symptom-Focused Scope
     // Correction": Heart Failure is a diagnosis, not a current
-    // sign/symptom, and must never appear in the Structured
-    // Findings/summary narrative even when legacy `heartFailurePresent`
-    // data is present on the record.
+    // sign/symptom, so it must never appear in the narrative even when
+    // legacy `heartFailurePresent` data is present on the record.
     expect(narrative).not.toContain("Heart failure documented.");
   });
 
   it("omits pulse/BP clauses entirely when every dimension is normal", () => {
     const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
       pulseRhythm: "Regular",
       pulseRate: "Normal",
       pulseStrength: "Strong",
@@ -493,62 +305,24 @@ describe("computeCardiovascularNarrative - New/Worsening findings", () => {
   });
 
   it("surfaces a contradictory legacy BP array as a review-required note", () => {
-    const narrative = computeCardiovascularNarrative({
-      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
-      bpSymptoms: ["Normal", "Hypertensive"],
-    });
+    const narrative = computeCardiovascularNarrative({ bpSymptoms: ["Normal", "Hypertensive"] });
     expect(narrative).toMatch(/Legacy BP values on record \(Normal, Hypertensive\) -- review required\./);
   });
 });
 
-// Control-Model Correction directive (2026-09-28) Section 4/11 --
-// Cardiovascular's own Clinical Status Change list must not affect the
-// shared CLINICAL_STATUS_CHANGE_OPTIONS used by other body systems, and
-// a Path 3 record that simultaneously claims stability is an internal
-// contradiction that must surface for review.
+// PRODUCT OWNER DIRECTIVE (2026-10-13) -- Cardiovascular's own Clinical
+// Status Change list is unchanged and still feeds
+// `cardiovascularHasActionablePocFinding` directly; it no longer feeds any
+// Overview-path narrative/status branching, since that branching was
+// retired.
 describe("Clinical Status Change -- Cardiovascular-specific list and legacy compatibility", () => {
-  it("treats both the legacy and new stability strings as equivalent for the Path 2 narrative", () => {
-    const legacy = computeCardiovascularNarrative({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      clinicalStatusChange: "Stable / No Change",
-    });
-    const current = computeCardiovascularNarrative({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      clinicalStatusChange: "No Significant Change",
-    });
-    expect(legacy).toBe(current);
-    expect(legacy).toMatch(/stable\/no significant change/);
-  });
-
   it("treats both the legacy and new decline/worsening strings as POC-actionable", () => {
     expect(cardiovascularHasActionablePocFinding({ clinicalStatusChange: "New Symptom Since Prior Assessment" })).toBe(true);
     expect(cardiovascularHasActionablePocFinding({ clinicalStatusChange: "New or Worsening Finding" })).toBe(true);
   });
 
-  it("forces Review Required when Path 3 (New/Worsening) is paired with a stability claim", () => {
-    const legacy = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
-      clinicalStatusChange: "Stable / No Change",
-    });
-    const current = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
-      clinicalStatusChange: "No Significant Change",
-    });
-    expect(legacy.code).toBe("review_required");
-    expect(current.code).toBe("review_required");
-  });
-
-  it("does not force Review Required for Path 3 with a genuine decline claim", () => {
-    const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "New or Worsening Cardiovascular Findings",
-      clinicalStatusChange: "Declining",
-      chestPain: { present: "Yes" },
-    });
-    expect(status.code).toBe("ready_for_review");
-  });
-
   it("never rewrites a legacy Clinical Status Change value while computing status/narrative", () => {
-    const d = { cardiovascularOverview: "Existing Cardiovascular Findings Review", clinicalStatusChange: "Symptom Well-Managed" };
+    const d = { clinicalStatusChange: "Symptom Well-Managed" };
     computeCardiovascularWorkflowStatus(d);
     computeCardiovascularNarrative(d);
     expect(d.clinicalStatusChange).toBe("Symptom Well-Managed");
@@ -556,32 +330,31 @@ describe("Clinical Status Change -- Cardiovascular-specific list and legacy comp
 });
 
 // Owner directive (2026-09-28) "Correct the Overview Label" -- exact
-// approved wording is "New or Worsening Cardiovascular Findings", not the
-// slash-joined "New/Worsening Cardiovascular Findings". A record already
-// saved with the old slash wording must never be rewritten and must
-// still behave identically to the corrected label everywhere.
-describe("Cardiovascular Overview label correction -- legacy slash-joined value compatibility", () => {
+// approved wording was "New or Worsening Cardiovascular Findings", not the
+// slash-joined "New/Worsening Cardiovascular Findings". PRODUCT OWNER
+// DIRECTIVE (2026-10-13) subsequently retired the Overview field from all
+// active logic entirely; a stored value under either spelling is now
+// just inert legacy data, confirmed identically inert below.
+describe("legacy cardiovascularOverview compatibility -- inert field", () => {
   const legacyOverview = "New/Worsening Cardiovascular Findings";
 
-  it("still treats a stored legacy value as POC-actionable", () => {
-    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: legacyOverview })).toBe(true);
+  it("a stored legacy or corrected overview label no longer affects POC-actionable status", () => {
+    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: legacyOverview })).toBe(false);
+    expect(cardiovascularHasActionablePocFinding({ cardiovascularOverview: "New or Worsening Cardiovascular Findings" })).toBe(false);
   });
 
-  it("produces the identical narrative for the legacy and corrected labels", () => {
-    const base = {
-      pulseRhythm: "Irregular",
-      chestPain: { present: "Yes", type: "pressure-like" },
-    };
-    const legacy = computeCardiovascularNarrative({ ...base, cardiovascularOverview: legacyOverview });
-    const current = computeCardiovascularNarrative({ ...base, cardiovascularOverview: "New or Worsening Cardiovascular Findings" });
+  it("produces the identical (empty) narrative for the legacy and corrected labels alone", () => {
+    const legacy = computeCardiovascularNarrative({ cardiovascularOverview: legacyOverview });
+    const current = computeCardiovascularNarrative({ cardiovascularOverview: "New or Worsening Cardiovascular Findings" });
     expect(legacy).toBe(current);
+    expect(legacy).toBe("");
   });
 
-  it("produces the identical workflow status for the legacy and corrected labels", () => {
-    const base = { chestPain: { present: "Yes" } };
-    const legacy = computeCardiovascularWorkflowStatus({ ...base, cardiovascularOverview: legacyOverview });
-    const current = computeCardiovascularWorkflowStatus({ ...base, cardiovascularOverview: "New or Worsening Cardiovascular Findings" });
+  it("produces the identical workflow status for the legacy and corrected labels alone", () => {
+    const legacy = computeCardiovascularWorkflowStatus({ cardiovascularOverview: legacyOverview });
+    const current = computeCardiovascularWorkflowStatus({ cardiovascularOverview: "New or Worsening Cardiovascular Findings" });
     expect(legacy).toEqual(current);
+    expect(legacy.code).toBe("ready_for_review");
   });
 
   it("never rewrites the legacy stored value while computing status/narrative", () => {
@@ -617,42 +390,99 @@ describe("resolveHeartFailureTypeSelection", () => {
   });
 });
 
-// Directive (2026-09-28) Section 13 -- Path 2 clinician confirmation.
-describe("Path 2 clinician confirmation gating", () => {
-  it("Path 2 with confirmation but no Clinical Status Change stays In Progress", () => {
-    const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      cardiovascularFindingsConfirmedThisVisit: true,
-    });
-    expect(status.code).toBe("in_progress");
+// PRODUCT OWNER DIRECTIVE (2026-10-13) retired the per-field clinician
+// confirmation checkbox (`cardiovascularFindingsConfirmedThisVisit`)
+// entirely along with the Overview Gate it belonged to -- a stored
+// legacy value is now just inert documented data like any other field.
+describe("legacy cardiovascularFindingsConfirmedThisVisit compatibility -- inert field", () => {
+  it("no longer affects workflow status in either direction", () => {
+    expect(computeCardiovascularWorkflowStatus({ cardiovascularFindingsConfirmedThisVisit: true }).code).toBe("ready_for_review");
+    expect(computeCardiovascularWorkflowStatus({ cardiovascularFindingsConfirmedThisVisit: false }).code).toBe("not_started");
   });
 
-  it("Path 2 with Clinical Status Change but no confirmation stays In Progress", () => {
-    const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      clinicalStatusChange: "No Significant Change",
-    });
-    expect(status.code).toBe("in_progress");
+  it("never affects whether a POC finding is actionable", () => {
+    expect(cardiovascularHasActionablePocFinding({ cardiovascularFindingsConfirmedThisVisit: true })).toBe(false);
   });
 
-  it("Path 2 with both confirmation and Clinical Status Change reaches Ready for Review", () => {
-    const status = computeCardiovascularWorkflowStatus({
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
-      cardiovascularFindingsConfirmedThisVisit: true,
-      clinicalStatusChange: "No Significant Change",
-    });
-    expect(status.code).toBe("ready_for_review");
-  });
-
-  it("the confirmation control never rewrites a preserved abnormal finding while computing status", () => {
+  it("never rewrites a preserved abnormal finding while computing status", () => {
     const d = {
-      cardiovascularOverview: "Existing Cardiovascular Findings Review",
       cardiovascularFindingsConfirmedThisVisit: true,
-      clinicalStatusChange: "No Significant Change",
       heartFailurePresent: true,
     };
     computeCardiovascularWorkflowStatus(d);
     expect(d.heartFailurePresent).toBe(true);
+  });
+});
+
+// PRODUCT OWNER DIRECTIVE (2026-10-13) "Add Cardiovascular Documentation
+// Coverage" Phase 1 -- regression coverage for
+// computeCardiovascularDocumentationCoverage, mirroring the test shape
+// already used for its Neurological counterpart.
+describe("computeCardiovascularDocumentationCoverage", () => {
+  it("reports every item unresolved on a blank record except the always-complete Devices item", () => {
+    const coverage = computeCardiovascularDocumentationCoverage({});
+    const byKey = Object.fromEntries(coverage.map((item) => [item.key, item]));
+    expect(byKey.pulseAssessment.complete).toBe(false);
+    expect(byKey.pulseAssessment.unresolvedHint).toBe("Document pulse rhythm, rate, strength, or sites");
+    expect(byKey.perfusion.complete).toBe(false);
+    expect(byKey.edema.complete).toBe(false);
+    expect(byKey.chestPain.complete).toBe(false);
+    expect(byKey.bpStatus.complete).toBe(false);
+    expect(byKey.fatigue.complete).toBe(false);
+    expect(byKey.dizziness.complete).toBe(false);
+    expect(byKey.syncope.complete).toBe(false);
+    expect(byKey.comparison.complete).toBe(false);
+    expect(byKey.devices.complete).toBe(true);
+    expect(byKey.devices.value).toBe("None documented");
+    expect(byKey.devices.unresolvedHint).toBeNull();
+  });
+
+  it("never surfaces the retired cardiacDyspnea field as a coverage item", () => {
+    const coverage = computeCardiovascularDocumentationCoverage({ cardiacDyspnea: true });
+    expect(coverage.some((item) => item.key === "cardiacDyspnea" || /dyspnea/i.test(item.label))).toBe(false);
+  });
+
+  it("marks pulse assessment complete and summarizes documented dimensions", () => {
+    const coverage = computeCardiovascularDocumentationCoverage({
+      pulseRhythm: "Regular", pulseRate: "Normal", pulseStrength: "Strong", pulseSites: ["Radial", "Pedal"],
+    });
+    const item = coverage.find((i) => i.key === "pulseAssessment");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Regular; Normal; Strong; Sites: Radial, Pedal");
+    expect(item.unresolvedHint).toBeNull();
+  });
+
+  it("treats booleanPill extras (cool extremities, varicose veins, stasis ulcer) as summary-only, not a completion gate", () => {
+    const incomplete = computeCardiovascularDocumentationCoverage({ coolExtremities: true });
+    expect(incomplete.find((i) => i.key === "perfusion").complete).toBe(false);
+
+    const complete = computeCardiovascularDocumentationCoverage({ skinColor: "Pale", coolExtremities: true });
+    const item = complete.find((i) => i.key === "perfusion");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Pale; Cool Extremities");
+  });
+
+  it("treats Edema Present = 'No' as complete documentation with no sub-fields required", () => {
+    const coverage = computeCardiovascularDocumentationCoverage({ edema: { present: "No" } });
+    const item = coverage.find((i) => i.key === "edema");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("No Edema");
+  });
+
+  it("summarizes Edema Present = 'Yes' with its sub-fields", () => {
+    const coverage = computeCardiovascularDocumentationCoverage({
+      edema: { present: "Yes", location: ["Bilateral lower extremities"], severity: "2+", pitting: "Pitting" },
+    });
+    const item = coverage.find((i) => i.key === "edema");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("Present; Bilateral lower extremities; 2+; Pitting");
+  });
+
+  it("marks comparison complete only once Clinical Status Change is selected", () => {
+    const coverage = computeCardiovascularDocumentationCoverage({ clinicalStatusChange: "No Significant Change" });
+    const item = coverage.find((i) => i.key === "comparison");
+    expect(item.complete).toBe(true);
+    expect(item.value).toBe("No Significant Change");
   });
 });
 

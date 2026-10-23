@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { emitRnIcaTelemetry } from "../../features/rnIcaTelemetry";
 import {
   ClinicalCommandContextBar,
@@ -410,7 +410,7 @@ export default function RNICACommandWorkspace({
   renderWorkspaceSections,
   bodySystemsAccordionItems,
   bodySystemsStructuredFindings,
-  generatedBodySystemsSummary,
+  missingRequiredDocumentation,
   visitRecorder,
   alerts,
   // R3 Command Workspace parity repair (Owner Directive): pre-built JSX
@@ -512,6 +512,59 @@ export default function RNICACommandWorkspace({
   // data. See rnicaThirteenScreenTaxonomy.js.
   const screenGroups = useMemo(() => groupRoutesIntoScreens(routes), [routes]);
   const activeScreen = useMemo(() => screenForModuleKey(activeSection), [activeSection]);
+  // PRODUCT OWNER CORRECTION (2026-11-24) "Navigation Must Preserve
+  // Clinical Context" -- opening the Skin Impairment Assessment
+  // workspace fully unmounts this command workspace, so `openBodySystems`
+  // (this component's own inner per-system accordion expand state) is
+  // lost on the round trip even though RNICA.jsx's outer
+  // `activeSection`/screen DOES restore correctly via its own launch-
+  // context effect. This is the missing piece: it reuses the SAME
+  // sessionStorage snapshot RNICA.jsx's `captureSkinImpairmentLaunchContext`
+  // writes (key duplicated here only as a literal string -- importing the
+  // constant from RNICA.jsx would create a circular import, since
+  // RNICA.jsx is the one that imports this file).
+  //
+  // The snapshot is captured SYNCHRONOUSLY during the initial render via
+  // this lazy `useState` initializer, NOT read lazily inside an effect --
+  // RNICA.jsx's own restore effect (the parent) removes this same
+  // sessionStorage key as soon as it runs, and React commits child
+  // effects before parent effects on the same pass, but `activeSection`
+  // (and therefore `activeScreen`) does not become "skin"/"bodySystems"
+  // until THAT parent effect's `setActiveSection` call lands, one commit
+  // after the key has already been removed. Reading via an effect gated
+  // on `activeScreen` therefore raced the key's own removal and silently
+  // found nothing. Reading once up front, before any effect runs,
+  // sidesteps the race entirely.
+  const [capturedSkinImpairmentLaunchCtx] = useState(() => {
+    try {
+      const raw = sessionStorage.getItem("rnica.skinImpairmentLaunchContext");
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  });
+  // Once `activeScreen` settles on "bodySystems" after RNICA.jsx's own
+  // restore, ensures "skin" is open and scrolls it into view using the
+  // exact same `document.getElementById('rnica-bodysystem-<key>')` +
+  // `scrollIntoView` mechanism `navigateToBodySystem` below already uses
+  // for "jump to system" -- no new navigation concept introduced. Guarded
+  // by a ref so it only ever acts once per mount, never re-triggering on
+  // later, unrelated navigation to Body Systems.
+  const didRestoreSkinImpairmentFocus = useRef(false);
+  useEffect(() => {
+    if (didRestoreSkinImpairmentFocus.current) return;
+    if (activeScreen?.key !== "bodySystems") return;
+    if (capturedSkinImpairmentLaunchCtx?.activeSection !== "skin") return;
+    didRestoreSkinImpairmentFocus.current = true;
+    // Deliberately REPLACES whatever `openBodySystems` currently is
+    // (including the default `null` == "all open") with exactly
+    // `["skin"]` -- the directive requires returning to ONLY Skin
+    // expanded, not Skin-plus-every-other-system's default-open state.
+    setOpenBodySystems(["skin"]);
+    requestAnimationFrame(() => {
+      document.getElementById("rnica-bodysystem-skin")?.scrollIntoView({ behavior: "auto", block: "start" });
+    });
+  }, [activeScreen, capturedSkinImpairmentLaunchCtx]);
   const activeScreenIndex = activeScreen
     ? RNICA_THIRTEEN_SCREENS.findIndex((screen) => screen.key === activeScreen.key)
     : -1;
@@ -530,7 +583,21 @@ export default function RNICACommandWorkspace({
         ?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
-  const errorKeys = Object.keys(validation.errors);
+  // PRODUCT OWNER DIRECTIVE "Ambulation Status Safety Validation" (MSK
+  // only) -- this Command Workspace is the only RNICA surface presented to
+  // clinical staff (see file banner above), so the Validation rail's
+  // top-5 error slice below is the actual "top-priority" surface that
+  // must always include the safety-critical Ambulation Status requirement
+  // when unresolved, not just the legacy/unreachable sidebar block. This
+  // reorders only `musculoskeletal.ambulationStatus` to the front when
+  // present; every other error keeps its existing relative order, so no
+  // other section's Validation rail behavior changes.
+  const errorKeys = (() => {
+    const keys = Object.keys(validation.errors);
+    const mskIndex = keys.indexOf("musculoskeletal.ambulationStatus");
+    if (mskIndex <= 0) return keys;
+    return [keys[mskIndex], ...keys.slice(0, mskIndex), ...keys.slice(mskIndex + 1)];
+  })();
   const warningKeys = Object.keys(validation.warnings);
   const routeForRequirement = (key) => [...routes]
     .sort((a, b) => (b.validationPrefix || b.formSection).length - (a.validationPrefix || a.formSection).length)
@@ -543,8 +610,23 @@ export default function RNICACommandWorkspace({
   if (import.meta.env.DEV && !navigationAudit.valid) {
     throw new Error(`Invalid RNICA clinical navigation: ${navigationAudit.errors.join("; ")}`);
   }
+  // [OWNER DIRECTIVE -- "ELIMINATE NESTED SCROLLING"] .rnica-command-detail
+  // no longer has its own overflow:auto scroll (RNICACommandWorkspace.css)
+  // -- it flows with the page now, so scrolling it directly is a no-op.
+  // Reset the actual single scroll container instead: when this workspace
+  // is embedded inside the patient chart shell (PatientChart.jsx), that is
+  // the chart's own `data-scroll-root="patient-chart-content"` content
+  // area; otherwise (e.g. the standalone /rnica route) it's the browser
+  // window/document itself.
   const scrollDetailTop = () => {
-    requestAnimationFrame(() => document.querySelector(".rnica-command-detail")?.scrollTo({ top: 0, behavior: "smooth" }));
+    requestAnimationFrame(() => {
+      const chartScrollRoot = document.querySelector('[data-scroll-root="patient-chart-content"]');
+      if (chartScrollRoot) {
+        chartScrollRoot.scrollTo({ top: 0, behavior: "smooth" });
+      } else {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
   };
 
   useEffect(() => {
@@ -971,49 +1053,23 @@ export default function RNICACommandWorkspace({
                 </AccordionItem>
               ))}
             </Accordion>
-            {/* Pass 2, Section 12 -- Generated Body Systems Summary
-                (RENAMED from "Review of Systems Summary" per owner
-                design correction 2026-10-06: this is not a true ROS --
-                it is a read-only restatement of confirmed current
-                findings already documented in Body Systems, not a
-                symptom-review interview). Two-system (Neurological,
-                Cardiovascular) only per the owner's explicit Pass 2
-                scope; every other body system is intentionally left out
-                of this container for now. Each line is recomputed
-                straight from current structured data via
-                computeBodySystemFindings -- the same already-charted-
-                field-only function that drives the Structured Findings
-                rail -- never from header/rail presentation text, warning
-                banners, or workflow/review-gate messaging, so there is
-                no second stored clinical dataset and no drift risk.
-                Source-linked (click label to jump to that system); never
-                editable from here. */}
-            {generatedBodySystemsSummary?.length ? (
-              <ShadcnCard className="rnica-bodysystems__body-summary" aria-label="Body Systems Summary">
-                <ShadcnCardHeader>
-                  <ShadcnCardTitle>Body Systems Summary</ShadcnCardTitle>
-                  <span className="rnica-bodysystems__body-summary-subtitle">Generated from current Body Systems documentation</span>
-                </ShadcnCardHeader>
-                <ShadcnCardContent>
-                  <dl className="rnica-bodysystems__body-summary-list">
-                    {generatedBodySystemsSummary.map((entry) => (
-                      <div key={entry.key} className="rnica-bodysystems__body-summary-row">
-                        <dt>
-                          <button
-                            type="button"
-                            className="rnica-bodysystems__body-summary-link"
-                            onClick={() => navigateToBodySystem(entry.key)}
-                          >
-                            {entry.label}
-                          </button>
-                        </dt>
-                        <dd>{entry.statement}</dd>
-                      </div>
-                    ))}
-                  </dl>
-                </ShadcnCardContent>
-              </ShadcnCard>
-            ) : null}
+            {/* PRODUCT OWNER REVIEW (2026-10-21) "Remove Duplicate Summary
+                Systems" -- the "Body Systems Summary" card that lived here
+                (Neurological/Cardiovascular/Infection only, one joined-
+                sentence-per-system restatement) was a second, parallel
+                summary of the exact same computeBodySystemFindings output
+                already shown in full, for every system, in the Clinical
+                Findings Summary rail below (see bodySystemsStructuredFindings
+                in RNICA.jsx). Two summaries of one data source is the
+                duplication the directive calls out ("duplicate UI,
+                duplicate maintenance, risk of inconsistent summaries");
+                it is removed outright rather than kept as a second
+                display -- "ONE DATA SOURCE. ONE SUMMARY ENGINE. ONE
+                DISPLAY COMPONENT." Validated before removal: the rail now
+                shows every system's full finding list (no more
+                "simplified"/first-line-only truncation for Neurological/
+                Cardiovascular -- see the findings-groups render below), so
+                nothing this card displayed is now missing anywhere. */}
           </div>
           {/* GitHub Directive (2026-09-28) Section 4/32 -- when empty,
               collapse to a narrow rail with a compact count instead of
@@ -1024,18 +1080,45 @@ export default function RNICACommandWorkspace({
               <ShadcnCard className="rnica-bodysystems__findings">
                 <ShadcnCardHeader className="rnica-bodysystems__findings-header">
                   <ShadcnCardTitle>
-                    Structured Findings{findingsCount ? ` (${findingsCount})` : ""}
+                    Clinical Findings{findingsCount ? ` (${findingsCount})` : ""}
                   </ShadcnCardTitle>
                   <button
                     type="button"
                     className="rnica-bodysystems__rail-toggle"
                     onClick={() => setFindingsRailExpanded(false)}
-                    aria-label="Collapse Structured Findings panel"
+                    aria-label="Collapse Clinical Findings panel"
                   >
                     Collapse
                   </button>
                 </ShadcnCardHeader>
                 <ShadcnCardContent>
+                  {/* PRODUCT OWNER REVIEW (2026-10-21) "Clinical Findings
+                      Refinement" item 4, "DISPLAY MISSING REQUIRED ITEMS
+                      ABOVE CLINICAL FINDINGS" -- reuses the same
+                      validateRNICA hard-block errors already driving the
+                      Finalization screen (see missingRequiredDocumentation
+                      in RNICA.jsx); this is a read-only alert, not a new
+                      validation engine. Rendered above the findings groups
+                      per the owner's example layout. Each item navigates
+                      to its owning system, same as a finding bullet. */}
+                  {missingRequiredDocumentation?.length ? (
+                    <div className="rnica-bodysystems__missing-required" role="alert">
+                      <div className="rnica-bodysystems__missing-required-title">Missing Required Documentation</div>
+                      <ul className="rnica-bodysystems__missing-required-list">
+                        {missingRequiredDocumentation.map((item) => (
+                          <li key={item.key}>
+                            <button
+                              type="button"
+                              className="rnica-bodysystems__missing-required-link"
+                              onClick={() => navigateToBodySystem(item.systemKey)}
+                            >
+                              {item.label}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : null}
                   {/* Deterministic restatement of already-charted fields only
                       -- never generated/inferred/predicted. See
                       bodySystemsStructuredFindings in RNICA.jsx.
@@ -1044,44 +1127,86 @@ export default function RNICACommandWorkspace({
                       system (icon + label + count) instead of one flat,
                       unattributed bullet list, so a reviewer can tell at a
                       glance which system each finding came from. Same
-                      strings, same source fields -- grouping/labels only. */}
+                      strings, same source fields -- grouping/labels only.
+                      PRODUCT OWNER REVIEW (2026-10-21) "Remove Duplicate
+                      Summary Systems" -- this panel is now the single,
+                      canonical summary display (the former separate "Body
+                      Systems Summary" card is removed). Per the owner's
+                      explicit example format ("Skin / Wounds (6)" followed
+                      by its full finding list), EVERY system now shows its
+                      complete bullet list -- the prior "simplified"
+                      single-line truncation for Neurological/Cardiovascular
+                      is removed so no system's findings are under-
+                      represented. Every system label AND every individual
+                      finding bullet navigates to that system's section
+                      (reuses the existing navigateToBodySystem scroll/
+                      expand behavior -- no new navigation concept).
+                      PRODUCT OWNER REVIEW (2026-10-21) "Clinical Findings
+                      Refinement" item 3 -- Problem/Risk counts are shown
+                      as their own prominent badges; Observation/History
+                      are combined into one muted "info" count so they
+                      never compete visually with actionable counts. */}
                   {findingsGroups.length ? (
                     <div className="rnica-bodysystems__findings-groups">
                       {findingsGroups.map((group) => {
-                        // Pass 2, Section 11 -- Neurological and
-                        // Cardiovascular get the simplified rail entry
-                        // (system name + count + ONE concise current
-                        // finding, navigation only); the other 8 systems
-                        // are untouched and keep their full bullet list.
-                        const simplified = group.key === "neurological" || group.key === "cardiovascular";
+                        // PRODUCT OWNER REVIEW (2026-10-21) "Clinical
+                        // Findings Refinement" PHASE 3 item 1 --
+                        // Documentation (diet/texture orders, or a field
+                        // charted "n/a"/"Unable to Verify") folds into the
+                        // same muted "info" count as Observation/History;
+                        // it must not inflate the Problem count, but it
+                        // also doesn't need its own prominent badge.
+                        const infoCount = (group.counts?.observation || 0) + (group.counts?.history || 0) + (group.counts?.documentation || 0);
                         return (
                           <div key={group.key} className="rnica-bodysystems__findings-group">
                             <div className="rnica-bodysystems__findings-group-header">
                               <span aria-hidden="true">{group.icon}</span>
-                              {simplified ? (
-                                <button
-                                  type="button"
-                                  className="rnica-bodysystems__findings-group-label rnica-bodysystems__findings-group-label--link"
-                                  onClick={() => navigateToBodySystem(group.key)}
-                                >
-                                  {group.label}
-                                </button>
-                              ) : (
-                                <span className="rnica-bodysystems__findings-group-label">{group.label}</span>
-                              )}
-                              <ShadcnBadge variant="neutral" className="rnica-bodysystems__findings-group-count">
-                                {group.findings.length}
-                              </ShadcnBadge>
+                              <button
+                                type="button"
+                                className="rnica-bodysystems__findings-group-label rnica-bodysystems__findings-group-label--link"
+                                onClick={() => navigateToBodySystem(group.key)}
+                              >
+                                {group.label}
+                              </button>
+                              <span className="rnica-bodysystems__findings-group-counts">
+                                {group.counts?.problem ? (
+                                  <ShadcnBadge variant="critical" className="rnica-bodysystems__findings-group-count rnica-bodysystems__findings-group-count--problem">
+                                    {group.counts.problem} Problem{group.counts.problem === 1 ? "" : "s"}
+                                  </ShadcnBadge>
+                                ) : null}
+                                {group.counts?.risk ? (
+                                  <ShadcnBadge variant="warning" className="rnica-bodysystems__findings-group-count rnica-bodysystems__findings-group-count--risk">
+                                    {group.counts.risk} Risk{group.counts.risk === 1 ? "" : "s"}
+                                  </ShadcnBadge>
+                                ) : null}
+                                {infoCount ? (
+                                  <span className="rnica-bodysystems__findings-group-count rnica-bodysystems__findings-group-count--info">
+                                    {infoCount} info
+                                  </span>
+                                ) : null}
+                              </span>
                             </div>
-                            {simplified ? (
-                              <p className="rnica-bodysystems__findings-concise">{group.findings[0]}</p>
-                            ) : (
-                              <ul className="rnica-bodysystems__findings-list">
-                                {group.findings.map((finding, idx) => (
-                                  <li key={idx}>{finding}</li>
-                                ))}
-                              </ul>
-                            )}
+                            <ul className="rnica-bodysystems__findings-list">
+                              {group.findings.map((finding, idx) => (
+                                <li key={idx} className={`rnica-bodysystems__findings-item rnica-bodysystems__findings-item--${finding.severity}`}>
+                                  <button
+                                    type="button"
+                                    className="rnica-bodysystems__findings-item-link"
+                                    onClick={() => navigateToBodySystem(group.key)}
+                                  >
+                                    <span className={`rnica-bodysystems__findings-item-type rnica-bodysystems__findings-item-type--${finding.type.toLowerCase()}`} aria-hidden="true">{finding.type}</span>
+                                    <span className="rnica-bodysystems__findings-item-text">
+                                      {finding.text}
+                                      {finding.pocSuggestion ? (
+                                        <span className="rnica-bodysystems__findings-item-poc-suggestion">
+                                          {" "}→ Suggests: {finding.pocSuggestion}
+                                        </span>
+                                      ) : null}
+                                    </span>
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         );
                       })}
@@ -1097,11 +1222,11 @@ export default function RNICACommandWorkspace({
               type="button"
               className="rnica-bodysystems__rail-collapsed-toggle"
               onClick={() => setFindingsRailExpanded(true)}
-              aria-label="Expand Structured Findings panel"
-              title="Structured Findings"
+              aria-label="Expand Clinical Findings panel"
+              title="Clinical Findings"
             >
               <span className="rnica-bodysystems__rail-collapsed-count">{findingsCount}</span>
-              <span className="rnica-bodysystems__rail-collapsed-label">Structured Findings</span>
+              <span className="rnica-bodysystems__rail-collapsed-label">Clinical Findings</span>
             </button>
           )}
         </div>

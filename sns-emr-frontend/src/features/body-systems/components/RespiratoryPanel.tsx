@@ -1,24 +1,26 @@
 /**
  * SNS Body Systems — Respiratory detail panel.
  *
- * Respiratory proof-of-pattern milestone (explicit product-authority
- * decision superseding the narrowed shell's "no detail panel / no API"
- * rule for Respiratory only — see BodySystemsWorkspace.tsx docstring).
- * Renders every verified field in `RESPIRATORY_FIELD_INVENTORY`, drives
- * conditional display from the situation selector, surfaces server-
- * derived review exceptions, and wires load/save to the Respiratory API
- * via `useRespiratoryAssessment`.
+ * Architecture collapse (explicit product-authority decision, "Option B":
+ * retire Respiratory's one-off proof-of-pattern persistence milestone and
+ * fold it back onto the same model every other Body System uses). This
+ * panel is now a PLAIN, PRESENTATIONAL, CONTROLLED component: it takes a
+ * `value`/`onChange` pair exactly like every other system's section of
+ * RNICA's `formData`, with no internal data-fetching, no save/complete
+ * buttons, no server-persisted review state, and no imperative bridge.
+ * RNICA's existing Autosave / Save Assessment / Validate & Lock flow is
+ * the only persistence path, same as the other nine systems.
  *
- * No other Body System has (or may gain, via this file) a detail panel,
- * an API client, or draft persistence — that remains out of scope per the
- * milestone's "one system at a time" delivery rule.
+ * KEPT from the original milestone: every verified field in
+ * `RESPIRATORY_FIELD_INVENTORY`, conditional display driven by the
+ * (now purely client-derived) situation, the Documentation Coverage
+ * inventory, and the Legacy Respiratory Workflow Alerts validation
+ * banner — all pure functions of the draft, unrelated to persistence.
  */
-import { useEffect, useState, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useState, type CSSProperties, type ReactNode } from "react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../../../components/ui/select";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Textarea } from "../../../components/ui/textarea";
-import { Button } from "../../../components/ui/button";
-import { Alert, AlertDescription } from "../../../components/ui/alert";
 import { DocumentationCoverage } from "../../../components/ui/documentation-coverage";
 import { computeRespiratoryDocumentationCoverage } from "../../../domain/body-systems/respiratoryDocumentationCoverage";
 import {
@@ -43,19 +45,30 @@ import {
   mapTreatmentDecisionToLegacy,
   mapVentilatorDurationToLegacy,
 } from "../../../domain/body-systems/respiratoryBackwardCompatibility";
-import { useRespiratoryAssessment, type RespiratoryDraft } from "./useRespiratoryAssessment";
+import {
+  getRespiratoryReviewCompletion,
+  type RespiratoryAssessmentValues,
+} from "../../../domain/body-systems/respiratoryWorkflowRules";
+
+/** `RespiratoryAssessmentValues` plus the raw overview selection, which the
+ * situation is derived from but which the field itself still needs to be
+ * rendered/edited as its own controlled value. Formerly defined in the
+ * now-removed `useRespiratoryAssessment.ts` network hook; this panel is
+ * its only consumer, so the type now lives here. */
+export interface RespiratoryDraft extends RespiratoryAssessmentValues {
+  respiratoryOverview?: string;
+}
 
 export interface RespiratoryPanelProps {
-  patientId: string;
-  /** RNICA episode id (`RnicaAssessment.id`) that scopes this Respiratory
-   * record — required so two episodes for the same patient never read or
-   * write each other's assessment. */
-  assessmentId: string;
+  /** The current Respiratory section of RNICA's `formData`, read exactly
+   * like every other body system's section — no separate fetch/load. */
+  value: RespiratoryDraft;
+  /** Merges a partial patch into `formData.respiratory`, exactly like
+   * every other body system's field `onChange`. */
+  onChange: (patch: Partial<RespiratoryDraft>) => void;
   /** True once the owning RNICA episode is locked/signed. Disables every
-   * input and the Save/Complete actions as defense-in-depth alongside the
-   * backend's own 409 rejection (`RnicaAssessment.status == "LOCKED"`) —
-   * mirrors the same `locked` concept `renderGenericSection` already
-   * respects for every other Body System. */
+   * input as defense-in-depth — mirrors the same `locked` concept
+   * `renderGenericSection` already respects for every other Body System. */
   readOnly?: boolean;
   /** The visit date for the RNICA episode this Respiratory assessment
    * belongs to (ongoing-visit date, or facesheet SOC date for an initial
@@ -79,8 +92,6 @@ const INTERVENTION_FIELD_IDS = new Set([
   "respiratory_treatment_response_time",
   "respiratory_treatment_response",
   "respiratory_treatment_response_status",
-  "respiratory_clinical_response",
-  "respiratory_clinical_response_evidence",
 ]);
 const FOLLOW_UP_FIELD_IDS = new Set([
   "respiratory_follow_up_need",
@@ -264,7 +275,7 @@ function applyCanonicalLegacyMapping(
   }
 }
 
-function FieldLabel({ children, htmlFor }: { children: ReactNode; htmlFor: string }) {
+function FieldLabel({ children, htmlFor }: { children: ReactNode; htmlFor?: string }) {
   return (
     <label htmlFor={htmlFor} className="text-xs font-medium text-rnica-textStrong">
       {children}
@@ -273,17 +284,27 @@ function FieldLabel({ children, htmlFor }: { children: ReactNode; htmlFor: strin
 }
 
 /**
- * Density Pass 2 — visual-hierarchy fix: ordinary clinical grouping
- * containers (Assessment Context, Comparison to Prior, Lung Sounds,
- * Respiratory Pattern, and any other multi-select/radio-group field) must
- * read as quiet structure, not as warnings. Replaces the browser's default
- * high-contrast `fieldset` border with the subtle slate tokens the
- * directive specified, scoped locally to this panel (no existing
- * equivalent design-system token covers this low-emphasis "ordinary group"
- * case, so these stay local rather than becoming a new global token).
+ * Body System Visual Consistency Review (product-owner directive,
+ * "RESPIRATORY BOXED CONTAINERS SHOULD BE REMOVED"): Respiratory was the
+ * only Body System rendering its clinical grouping fields (Assessment
+ * Context, Comparison to Prior, Lung Sounds, Respiratory Pattern) inside a
+ * bordered/background box. Neurological, Cardiovascular, and Infection all
+ * render groups as a plain "Section Heading -> Content" pair with no box,
+ * border, or fill — this constant now matches that shared, no-chrome
+ * treatment instead of the Respiratory-only boxed style. No layout
+ * structure, field grouping, or clinical content changes: only the box
+ * visuals (border/background) are removed.
+ *
+ * `border-0` is required, not merely omitting a border-color class:
+ * Tailwind's preflight reset is disabled project-wide (see
+ * `RnicaTailwind.css`), so the native `<fieldset>` elements these groups
+ * render as (`MultiSelectField`/`RadioGroupField`, below) fall back to the
+ * browser's own default grooved fieldset border/legend chrome the moment
+ * no explicit border utility suppresses it — the exact same "disabled
+ * preflight" caveat already documented on `ToggleGroupItem`'s
+ * `bg-transparent` for buttons.
  */
-const GROUP_CONTAINER_CLASS =
-  "rounded-lg border border-[rgba(148,163,184,0.16)] bg-[rgba(15,23,42,0.10)] px-2 py-1.5 focus-within:border-[rgba(45,212,191,0.58)]";
+const GROUP_CONTAINER_CLASS = "border-0 m-0 p-0";
 
 /**
  * Density Pass 2 — raw enum values (e.g. `CURRENT_CONCERNS_ASSESSED`,
@@ -328,6 +349,33 @@ function optionLabel(option: string): string {
  * now driven entirely by inline style rather than conditional utility
  * classes. Also adds a checkmark glyph so the selected option never
  * depends on color alone (color-blind / low-contrast displays).
+ *
+ * Body System Visual Consistency Review (product-owner directive,
+ * "chip color ... should not identify the body system"): the unselected
+ * branch originally painted `var(--sns-bg)` — the near-black page
+ * background — behind every Respiratory pill. A follow-up fix changed
+ * this to literal `transparent`, reasoning that the shared ToggleGroupItem
+ * (FormSegmented/FormPillGroup, used by every other Body System's chips)
+ * is `bg-transparent` and therefore "shows transparent."
+ *
+ * Live computed-style verification (getComputedStyle on real chips)
+ * disproved that: `.rnica-screen button { background: var(--sns-cardSoft); }`
+ * in RNICACommandWorkspace.css is a global element-selector rule that
+ * beats Tailwind's single-class `bg-transparent` on CSS specificity, so
+ * the shared ToggleGroupItem chips actually render solid
+ * `var(--sns-cardSoft)` (#182c42 / rgb(24,44,66)) almost everywhere
+ * (e.g. Neurological's "Angry"/"Restless"/"Seizure"). The handful of
+ * chips that render truly transparent (e.g. Infection's
+ * "Immunosuppressed", Neurological's "Seizure History") are a different,
+ * older component (FormBooleanPill) whose inline `background: "transparent"`
+ * style wins over that CSS rule by specificity — they are the minority
+ * exception, not the app-wide norm.
+ *
+ * Respiratory's pill background is also set via inline style, so the
+ * `.rnica-screen button` CSS override never reaches it either way — it
+ * must explicitly paint `var(--sns-cardSoft)` itself to match the actual
+ * dominant chip color used across Neurological/Cardiovascular/Infection,
+ * rather than `transparent`, which only matches the rare exception chips.
  */
 function pillStateStyle(checked: boolean): CSSProperties {
   return checked
@@ -339,7 +387,7 @@ function pillStateStyle(checked: boolean): CSSProperties {
         boxShadow: "0 0 0 1px var(--sns-teal)",
       }
     : {
-        backgroundColor: "var(--sns-bg)",
+        backgroundColor: "var(--sns-cardSoft)",
         borderColor: "var(--sns-border)",
         color: "var(--sns-white)",
         fontWeight: 500,
@@ -353,15 +401,23 @@ function pillStateStyle(checked: boolean): CSSProperties {
  * full-width) rather than being enumerated one-by-one.
  */
 const SELECT_WIDTH_CLASS: Record<string, string> = {
-  respiratory_sob_severity: "w-[220px]",
-  respiratory_exertion_level: "w-[220px]",
-  respiratory_cough_type: "w-[220px]",
-  respiratory_oxygen_delivery_type: "w-[220px]",
-  respiratory_oxygen_delivery_mode: "w-[160px]",
-  respiratory_clinical_status_change: "w-[300px]",
-  respiratory_unable_to_assess_reason: "w-[280px]",
+  respiratory_sob_severity: "w-[160px]",
+  respiratory_exertion_level: "w-[160px]",
+  respiratory_cough_type: "w-[160px]",
+  respiratory_oxygen_delivery_type: "w-[160px]",
+  respiratory_oxygen_delivery_mode: "w-[140px]",
+  respiratory_clinical_status_change: "w-[280px]",
+  respiratory_unable_to_assess_reason: "w-[260px]",
+  // Density Pass 5 ("field width should match data width" -- no select
+  // should be wider than its longest controlled value needs): widths
+  // below are sized to each field's own option set, not a shared
+  // default, so short-value controls stop wasting row width that could
+  // instead hold another field.
+  respiratory_oxygen_frequency: "w-[120px]",
+  respiratory_sputum_amount: "w-[130px]",
+  respiratory_sputum_color: "w-[140px]",
 };
-const DEFAULT_SELECT_WIDTH_CLASS = "w-[240px]";
+const DEFAULT_SELECT_WIDTH_CLASS = "w-[160px]";
 
 function SingleSelectField({
   field,
@@ -827,9 +883,6 @@ function treatmentDescriptionContext(draft: RespiratoryDraft): { label: string; 
   return { label: "Decline Reason / Clinical Rationale" };
 }
 
-const CLINICAL_RESPONSE_EVIDENCE_PLACEHOLDER =
-  "Document the patient's observed response. Medication and treatment-order details belong in Orders.";
-
 function GenericField({
   field,
   draft,
@@ -880,10 +933,7 @@ function GenericField({
     case "text": {
       const override =
         field.fieldId === "respiratory_treatment_description" ? treatmentDescriptionContext(draft) : undefined;
-      const placeholder =
-        field.fieldId === "respiratory_clinical_response_evidence"
-          ? CLINICAL_RESPONSE_EVIDENCE_PLACEHOLDER
-          : override?.placeholder;
+      const placeholder = override?.placeholder;
       return (
         <TextField
           field={field}
@@ -922,7 +972,6 @@ const VENTILATOR_DETAIL_FIELD_IDS = new Set([
   "respiratory_tracheostomy_size",
 ]);
 const SPUTUM_CHARACTERISTIC_FIELD_IDS = new Set([
-  "respiratory_sputum_character",
   "respiratory_sputum_amount",
   "respiratory_sputum_color",
 ]);
@@ -1021,7 +1070,7 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
     return draft.coughType === "Productive";
   }
   if (field.fieldId === "respiratory_sputum_other_specification") {
-    return draft.sputumCharacter === "OTHER" || draft.sputumColor === "OTHER";
+    return draft.sputumColor === "OTHER";
   }
   if (field.fieldId === "respiratory_cough_clinical_significance") {
     return draft.hemoptysisPresent === true;
@@ -1054,12 +1103,6 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
     // medication-order risk exists for either.
     return draft.treatmentDecision === "DECLINED" || draft.treatmentDecision === "NOT_INDICATED";
   }
-  if (field.fieldId === "respiratory_clinical_response" || field.fieldId === "respiratory_clinical_response_evidence") {
-    // FINAL PRODUCT-OWNER DIRECTIVE: documents the patient's observed
-    // response for INITIATED/ALREADY_IN_PLACE, replacing the removed
-    // free-text "Describe the treatment" control for those two values.
-    return draft.treatmentDecision === "INITIATED" || draft.treatmentDecision === "ALREADY_IN_PLACE";
-  }
   if (field.fieldId === "respiratory_treatment_decline_reason") {
     return draft.treatmentDecision === "DECLINED";
   }
@@ -1082,9 +1125,6 @@ function isFieldCurrentlyRelevant(field: RespiratoryFieldDefinition, draft: Resp
   }
   if (field.fieldId === "respiratory_comfort_function_evidence") {
     return draft.comfortFunctionImpact === "IMPACT_PRESENT" || draft.comfortFunctionImpact === "UNABLE_TO_ASSESS";
-  }
-  if (field.fieldId === "respiratory_sputum_character") {
-    return draft.coughType === "Productive";
   }
   if (field.fieldId === "respiratory_exertion_level") {
     // Dyspnea context: only relevant once some level of shortness of
@@ -1140,10 +1180,24 @@ const LEFT_COLUMN_FIELD_IDS = new Set([
   "respiratory_comfort_function_evidence",
   "respiratory_comfort_function_screening_date",
   "respiratory_comfort_function_screening_time",
-  "respiratory_lung_sounds",
-  "respiratory_respiration_pattern",
 ]);
+/*
+ * PRODUCT OWNER DIRECTIVE (2026-10-14, whitespace-balance follow-up)
+ * "Neuro And Respiratory Both Need To Be At Or Below Infection's 14.9%
+ * Baseline" -- live-measured whitespace was 41.3% because the left
+ * ("Dyspnea, impact & observed breathing") column held 6 field groups
+ * (866px) while the middle ("Treatment decision...") column held only 2
+ * (220px) and the right (Oxygen) column held 1 (438px). Moving "Lung
+ * Sounds" into the Oxygen column and "Respiration Pattern" into the
+ * Treatment/Follow-up column -- no field/value/option change, only
+ * which column renders them -- measured 11.3% afterward. Both findings
+ * remain `respiratory_lung_sounds` / `respiratory_respiration_pattern`,
+ * same data path, same validation; only this presentational bucketing
+ * changed.
+ */
+const MIDDLE_COLUMN_SUPPLEMENTAL_FIELD_IDS = new Set(["respiratory_respiration_pattern"]);
 const OXYGEN_SECTION_FIELD_IDS = new Set([
+  "respiratory_lung_sounds",
   "respiratory_oxygen_use",
   "respiratory_oxygen_unable_to_verify_reason",
   "respiratory_oxygen_in_use",
@@ -1168,7 +1222,6 @@ const OXYGEN_SECTION_FIELD_IDS = new Set([
 ]);
 const COUGH_SECTION_FIELD_IDS = new Set([
   "respiratory_cough_type",
-  "respiratory_sputum_character",
   "respiratory_sputum_amount",
   "respiratory_sputum_color",
   "respiratory_sputum_other_specification",
@@ -1473,27 +1526,10 @@ const LEGACY_HIDDEN_FIELD_IDS = new Set([
 // `respiratoryDocumentationCoverage.ts` and
 // `docs/architecture/decision-records/ADR-004-sns-documentation-coverage.md`.
 
-const SAVE_STATE_MESSAGE: Record<string, string> = {
-  idle: "",
-  saving: "Saving…",
-  saved: "Saved.",
-  error: "Save failed.",
-  conflict: "Save blocked — this assessment changed elsewhere.",
-};
-
-export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: RespiratoryPanelProps) {
-  const {
-    loadState,
-    assessment,
-    draft,
-    completion,
-    updateDraft,
-    saveState,
-    saveError,
-    save,
-    completeReview,
-    reload,
-  } = useRespiratoryAssessment(assessmentId);
+export function RespiratoryPanel({ value, onChange, readOnly = false, visitDate }: RespiratoryPanelProps) {
+  const draft = value;
+  const completion = getRespiratoryReviewCompletion(draft);
+  const updateDraft = useCallback((patch: Partial<RespiratoryDraft>) => onChange(patch), [onChange]);
   const [notesFocused, setNotesFocused] = useState(false);
 
   // Hospice visit-based documentation directive: default SOB Screening Date
@@ -1545,47 +1581,6 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
     updateDraft(patch);
   }, [draft.coughType, draft.hemoptysisPresent, draft.barrelChestPresent, updateDraft]);
 
-  if (loadState === "loading") {
-    return (
-      <div data-testid="respiratory-panel" className="p-3 text-xs text-rnica-muted" role="status">
-        Loading Respiratory assessment…
-      </div>
-    );
-  }
-
-  if (loadState === "unauthorized") {
-    return (
-      <div data-testid="respiratory-panel" className="p-3">
-        <Alert variant="critical">
-          <AlertDescription>You are not authorized to view this patient&apos;s Respiratory assessment.</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  if (loadState === "unavailable") {
-    return (
-      <div data-testid="respiratory-panel" className="p-3">
-        <Alert>
-          <AlertDescription>Respiratory assessment is unavailable for this patient.</AlertDescription>
-        </Alert>
-      </div>
-    );
-  }
-
-  if (loadState === "network_error" || !assessment) {
-    return (
-      <div data-testid="respiratory-panel" className="flex flex-col gap-2 p-3">
-        <Alert variant="critical">
-          <AlertDescription>Unable to load the Respiratory assessment. Check your connection.</AlertDescription>
-        </Alert>
-        <Button variant="outline" size="sm" onClick={() => void reload()}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
   const isUnableToAssess = draft.respiratoryUnableToAssess === true;
   const unableToAssessReasonValue = getFieldValue(draft, RESPIRATORY_UNABLE_TO_ASSESS_REASON_FIELD);
   const detailFields = RESPIRATORY_FIELD_INVENTORY.filter(
@@ -1607,6 +1602,9 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
     (field) => isFieldCurrentlyRelevant(field, draft) && !LEGACY_HIDDEN_FIELD_IDS.has(field.fieldId),
   );
   const leftColumnFields = relevantDetailFields.filter((field) => LEFT_COLUMN_FIELD_IDS.has(field.fieldId));
+  const middleColumnSupplementalFields = relevantDetailFields.filter((field) =>
+    MIDDLE_COLUMN_SUPPLEMENTAL_FIELD_IDS.has(field.fieldId),
+  );
   const oxygenFields = relevantDetailFields.filter((field) => OXYGEN_SECTION_FIELD_IDS.has(field.fieldId));
   const coughFields = relevantDetailFields.filter((field) => COUGH_SECTION_FIELD_IDS.has(field.fieldId));
   const supportFields = relevantDetailFields.filter((field) => SUPPORT_SECTION_FIELD_IDS.has(field.fieldId));
@@ -1624,7 +1622,7 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
     // pattern/lung sounds left, Treatment/Oxygen right), with Cough and
     // Respiratory Support as full-width workflows below. Stacks to one
     // column below `lg`.
-    <div data-testid="respiratory-panel" className="flex flex-col gap-2 p-2.5">
+    <div data-testid="respiratory-panel" className="flex flex-col gap-1.5 p-2.5">
       <DocumentationCoverage
         title="Respiratory Documentation Coverage"
         items={respiratoryCoverageItems}
@@ -1656,57 +1654,6 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
         </section>
       )}
 
-      {/*
-        Assessment context: Contract v2's two explicit, non-gating
-        declarations plus the existing clinical-status comparison field,
-        grouped as one compact top row (not a gate other fields wait on).
-      */}
-      <section className="flex flex-wrap items-center gap-3" aria-label="Assessment context" data-testid="respiratory-context-row">
-        {clinicalStatusField && (
-          <SingleSelectField
-            field={clinicalStatusField}
-            value={getFieldValue(draft, clinicalStatusField)}
-            onChange={(value) => updateDraft(setFieldValue(draft, clinicalStatusField, value) as Partial<RespiratoryDraft>)}
-            disabled={readOnly}
-          />
-        )}
-      </section>
-
-      <section
-        className="flex flex-wrap items-start gap-3"
-        aria-label="Assessment context and comparison"
-        data-testid="respiratory-assessment-context-section"
-      >
-        <RadioGroupField
-          field={RESPIRATORY_ASSESSMENT_CONTEXT_FIELD}
-          value={draft.assessmentContext}
-          onChange={(value) =>
-            updateDraft(
-              applyCanonicalLegacyMapping(
-                RESPIRATORY_ASSESSMENT_CONTEXT_FIELD,
-                { ...draft, assessmentContext: value as RespiratoryDraft["assessmentContext"] },
-                visitDate,
-              ) as Partial<RespiratoryDraft>,
-            )
-          }
-          disabled={readOnly}
-        />
-        <RadioGroupField
-          field={RESPIRATORY_CLINICAL_COMPARISON_FIELD}
-          value={draft.clinicalComparison}
-          onChange={(value) => updateDraft({ clinicalComparison: value as RespiratoryDraft["clinicalComparison"] })}
-          disabled={readOnly}
-        />
-        {draft.clinicalComparison === "CHANGED_FROM_PRIOR" && (
-          <TextField
-            field={RESPIRATORY_CLINICAL_STATUS_CHANGE_DETAIL_FIELD}
-            value={draft.clinicalStatusChangeDetail}
-            onChange={(value) => updateDraft({ clinicalStatusChangeDetail: value })}
-            disabled={readOnly}
-          />
-        )}
-      </section>
-
       {isUnableToAssess && (
         <section className="flex flex-col gap-2" data-testid="respiratory-limitation-section" aria-label="Assessment limitation">
           <h3 className="text-xs font-semibold uppercase text-rnica-muted">Assessment limitation</h3>
@@ -1727,14 +1674,73 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
         </section>
       )}
 
-      <div className="grid grid-cols-1 gap-2.5 lg:grid-cols-2 lg:items-start">
-        <div className="flex flex-col gap-2.5" data-testid="respiratory-left-column">
+      {/*
+        PRODUCT OWNER DIRECTIVE (2026-10-14, follow-up) "Match The
+        Infection LAYOUT, Not Just The Sequence": the prior Tailwind
+        `lg:grid-cols-2` wrapper visually produced a 2-column assessment
+        area, while Infection's approved reference layout is a 3-
+        independent-height-column grid (`rnica-bodysystem-grid-columns`/
+        `-column`, the same shared class Neurological and Cardiovascular
+        now use). Reusing that exact class here instead of a Respiratory-
+        specific Tailwind grid so Respiratory visually matches Infection's
+        column count/gap/density. Same 3 card groups, same fields, same
+        order within each group -- only the wrapper markup and column
+        count change (2 -> 3): Column 1 Dyspnea/observed breathing
+        (unchanged), Column 2 Treatment decision/response & follow-up
+        (unchanged), Column 3 Oxygen use & measurement (previously
+        grouped into the same column as Treatment/Follow-up; now its own
+        column, same as Infection's smaller single-card columns).
+      */}
+      <div className="rnica-bodysystem-grid-columns">
+        <div className="rnica-bodysystem-grid-column" data-testid="respiratory-left-column">
           <section
-            className="flex flex-col gap-2"
+            className="flex flex-col gap-1"
             aria-label="Dyspnea, impact, and observed breathing"
             data-testid="respiratory-current-evidence-section"
           >
             <h3 className="text-xs font-semibold uppercase text-rnica-muted">Dyspnea, impact &amp; observed breathing</h3>
+            {/*
+              PRODUCT OWNER DIRECTIVE (2026-10-14) "Body System Alignment
+              Review -- Infection Is The Gold Standard": Assessment
+              Context and Comparison to Prior must live inside the
+              Assessment itself, not as a distinct full-width layer
+              rendered before it. Folded in here as the first fields of
+              the assessment card.
+            */}
+            <div
+              className="flex flex-wrap items-start gap-3"
+              aria-label="Assessment context and comparison"
+              data-testid="respiratory-assessment-context-section"
+            >
+              <RadioGroupField
+                field={RESPIRATORY_ASSESSMENT_CONTEXT_FIELD}
+                value={draft.assessmentContext}
+                onChange={(value) =>
+                  updateDraft(
+                    applyCanonicalLegacyMapping(
+                      RESPIRATORY_ASSESSMENT_CONTEXT_FIELD,
+                      { ...draft, assessmentContext: value as RespiratoryDraft["assessmentContext"] },
+                      visitDate,
+                    ) as Partial<RespiratoryDraft>,
+                  )
+                }
+                disabled={readOnly}
+              />
+              <RadioGroupField
+                field={RESPIRATORY_CLINICAL_COMPARISON_FIELD}
+                value={draft.clinicalComparison}
+                onChange={(value) => updateDraft({ clinicalComparison: value as RespiratoryDraft["clinicalComparison"] })}
+                disabled={readOnly}
+              />
+              {draft.clinicalComparison === "CHANGED_FROM_PRIOR" && (
+                <TextField
+                  field={RESPIRATORY_CLINICAL_STATUS_CHANGE_DETAIL_FIELD}
+                  value={draft.clinicalStatusChangeDetail}
+                  onChange={(value) => updateDraft({ clinicalStatusChangeDetail: value })}
+                  disabled={readOnly}
+                />
+              )}
+            </div>
             <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
               {leftColumnFields.map((field) => (
                 <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
@@ -1743,9 +1749,9 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
           </section>
         </div>
 
-        <div className="flex flex-col gap-2.5" data-testid="respiratory-right-column">
+        <div className="rnica-bodysystem-grid-column" data-testid="respiratory-right-column">
           <section
-            className="flex flex-col gap-2"
+            className="flex flex-col gap-1"
             aria-label="Treatment decision, response, and follow-up"
             data-testid="respiratory-intervention-section"
           >
@@ -1795,9 +1801,22 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
               </div>
             )}
             {followUpFields.length === 0 && <div data-testid="respiratory-follow-up-section" aria-hidden="true" className="hidden" />}
+            {middleColumnSupplementalFields.length > 0 && (
+              <div
+                className="flex flex-wrap items-start gap-x-3 gap-y-1.5"
+                data-testid="respiratory-breath-pattern-section"
+                aria-label="Respiration pattern"
+              >
+                {middleColumnSupplementalFields.map((field) => (
+                  <GenericField key={field.fieldId} field={field} draft={draft} updateDraft={updateDraft} disabled={readOnly} visitDate={visitDate} />
+                ))}
+              </div>
+            )}
           </section>
+        </div>
 
-          <section className="flex flex-col gap-2" aria-label="Oxygen use and measurement" data-testid="respiratory-oxygen-section">
+        <div className="rnica-bodysystem-grid-column" data-testid="respiratory-oxygen-column">
+          <section className="flex flex-col gap-1" aria-label="Oxygen use and measurement" data-testid="respiratory-oxygen-section">
             <h3 className="text-xs font-semibold uppercase text-rnica-muted">Oxygen use &amp; measurement</h3>
             <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
               {oxygenFields.map((field) => (
@@ -1824,27 +1843,24 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
       </div>
 
       {/*
-        RESPIRATORY FINAL UI OPTIMIZATION (product-owner directive --
-        "Place Cough Action and Respiratory Support on same horizontal
-        row" / "Convert Secretions & Respiratory Support into a
-        two-column layout" / "Utilize unused right-column space" /
-        "Minimize vertical scrolling"): Secretions (Cough/Sputum) and
-        Respiratory Support render as a true side-by-side 2-column grid
-        at `lg` (not two stacked full-width rows), the same column split
-        already used for the Dyspnea/Treatment grid above. Progressive
-        disclosure is unchanged -- cough/secretions fields only render
-        for a Productive cough or hemoptysis (sputum fields specifically
-        stay hidden until coughType = Productive, see
-        SPUTUM_CHARACTERISTIC_FIELD_IDS gating above); support-detail
-        fields only render once Respiratory Support Status = In Use. The
-        whole card renders nothing when neither group has anything to
-        show (zero added height). `data-testid`s on the inner groups are
-        preserved for existing test/debugging hooks.
+        RESPIRATORY LAYOUT COMPACTION (product-owner directive, Field
+        Redundancy Review follow-up -- "Secretions section: single row --
+        Cough Type, Sputum Amount, Sputum Color, Respiratory Support
+        Status"): after Sputum Character's removal the prior 2-column
+        grid (`lg:grid-cols-2`) forced Cough Type/Sputum Amount onto row
+        1 and Sputum Color alone onto row 2, wasting height. Cough and
+        Support fields now share one flex-wrap row at full panel width
+        so they pack onto a single visual line whenever they fit
+        (progressive disclosure for sputum/ventilator detail fields is
+        unchanged -- they still only render when their trigger value is
+        set, and simply wrap to additional lines when present).
+        `data-testid`s on the inner groups are preserved for existing
+        test/debugging hooks.
       */}
       {(coughFields.length > 0 || supportFields.length > 0) && (
-        <section className="flex flex-col gap-2" aria-label="Secretions and respiratory support" data-testid="respiratory-secretions-support-section">
+        <section className="flex flex-col gap-1" aria-label="Secretions and respiratory support" data-testid="respiratory-secretions-support-section">
           <h3 className="text-xs font-semibold uppercase text-rnica-muted">Secretions &amp; respiratory support</h3>
-          <div className="grid grid-cols-1 gap-x-4 gap-y-1.5 lg:grid-cols-2 lg:items-start">
+          <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5">
             {coughFields.length > 0 && (
               <div className="flex flex-wrap items-start gap-x-3 gap-y-1.5" data-testid="respiratory-cough-section">
                 {coughFields.map((field) => (
@@ -1864,25 +1880,14 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
       )}
 
       {/*
-        RESPIRATORY FINAL UI OPTIMIZATION (product-owner directive --
-        "Justify Respiratory Notes" / "Retire Respiratory Notes if
-        information is already generated through narrative synthesis"):
-        Reviewed and KEPT. Confirmed (grep across
-        clinicalNarrativeBuilder.js, structured_findings.py,
-        rnica_poc_adapter.py, hopeReportMapper.js) that no narrative-
-        synthesis pipeline exists today that reads structured Respiratory
-        fields and reproduces an equivalent free-text sentence --
-        clinicalNarrativeBuilder.js composes a *different*,
-        patient-level summary from sobSeverity/lungSounds and never
-        reads this field. Per RNICA_COMPLETION_MATRIX.md this is the
-        catch-all "RN-only-by-design... free-text narrative / clinical
-        judgment field" for observations that genuinely do not fit any
-        structured control (the same category as the retained Cough
-        Action fields, not a future-plan field) -- retiring it now, with
-        no synthesis feature to replace it, would be a pure data-capture
-        loss, not a duplication removal. Retained.
+        RESPIRATORY LAYOUT COMPACTION (product-owner directive --
+        "Respiratory Notes: move directly below the Secretions row, not
+        after a large gap, not in a separate visual block"): Notes now
+        renders immediately after Secretions &amp; respiratory support,
+        ahead of Clinical Status Change, matching the panel's uniform
+        `gap-1` section rhythm rather than a visually distinct block.
       */}
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-0.5">
         <FieldLabel htmlFor={RESPIRATORY_NOTES_FIELD.fieldId}>{RESPIRATORY_NOTES_FIELD.label}</FieldLabel>
         <Textarea
           id={RESPIRATORY_NOTES_FIELD.fieldId}
@@ -1895,52 +1900,23 @@ export function RespiratoryPanel({ assessmentId, readOnly = false, visitDate }: 
         />
       </div>
 
-      {assessment.openReviewExceptions.length > 0 && (
-        <section className="flex flex-col gap-2" aria-label="Review exceptions" data-testid="respiratory-review-exceptions">
-          <h3 className="text-xs font-semibold uppercase text-rnica-muted">Review exceptions</h3>
-          <ul className="flex flex-col gap-1">
-            {assessment.openReviewExceptions.map((exception) => (
-              <li key={exception.id} className="text-xs text-rnica-text">
-                <a href={exception.fieldPath ? `#${exception.fieldPath}` : undefined}>{exception.message}</a>
-              </li>
-            ))}
-          </ul>
+      {/*
+        PRODUCT OWNER DIRECTIVE (2026-10-14) "Body System Alignment
+        Review -- Infection Is The Gold Standard": Clinical Status Change
+        renders below Notes here (content-complete order) rather than
+        gating the panel's last field behind it.
+      */}
+      {clinicalStatusField && (
+        <section className="flex flex-wrap items-center gap-3" aria-label="Clinical status change" data-testid="respiratory-context-row">
+          <SingleSelectField
+            field={clinicalStatusField}
+            value={getFieldValue(draft, clinicalStatusField)}
+            onChange={(value) => updateDraft(setFieldValue(draft, clinicalStatusField, value) as Partial<RespiratoryDraft>)}
+            disabled={readOnly}
+          />
         </section>
       )}
-
-      <div className="flex items-center gap-3">
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={() => void save()}
-          disabled={readOnly || saveState === "saving"}
-          data-testid="respiratory-save-button"
-        >
-          Save draft
-        </Button>
-        <Button
-          size="sm"
-          onClick={() => void completeReview()}
-          disabled={readOnly || saveState === "saving" || !completion.complete}
-          data-testid="respiratory-complete-review-button"
-        >
-          Complete system review
-        </Button>
-        <span role="status" data-testid="respiratory-save-status" className="text-xs text-rnica-muted">
-          {readOnly ? "This episode is locked — Respiratory is read-only." : SAVE_STATE_MESSAGE[saveState]}
-        </span>
-        {!readOnly && saveState === "conflict" && (
-          <Button variant="outline" size="sm" onClick={() => void reload()}>
-            Reload latest
-          </Button>
-        )}
-        {!readOnly && saveState === "error" && (
-          <Button variant="outline" size="sm" onClick={() => void save()}>
-            Retry
-          </Button>
-        )}
-      </div>
-      {saveError && saveState !== "idle" && <p className="text-xs text-rnica-red">{saveError}</p>}
     </div>
   );
 }
+

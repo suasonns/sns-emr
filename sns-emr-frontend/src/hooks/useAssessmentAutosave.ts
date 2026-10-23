@@ -115,10 +115,12 @@ export function useAssessmentAutosave<T>({
       const serializedFormData = serializeFormData(currentFormData);
       const currentAssessmentId = assessmentIdRef.current ?? null;
 
-      if (
+      const formDataUnchanged = (
         lastPersistedPayloadRef.current === serializedFormData
         && lastPersistedAssessmentIdRef.current === currentAssessmentId
-      ) {
+      );
+
+      if (formDataUnchanged) {
         return;
       }
 

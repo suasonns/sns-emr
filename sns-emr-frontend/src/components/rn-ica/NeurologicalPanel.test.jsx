@@ -104,14 +104,26 @@ describe("NeurologicalPanel -- Neurological Overview container removal", () => {
   });
 });
 
-// PRODUCT OWNER DIRECTIVE (2026-10-13) "Body System Layout
-// Standardization -- SNS Design System V1 / Infection Is The Reference
-// Layout" -- proves Neurological now renders the same 3-independent-
-// height-column Assessment Grid as Infection (shared
-// `rnica-bodysystem-grid-columns`/`-column` classes) instead of the
-// prior 2-column `PanelRow` pairs, with Clinical Status Change
-// ("Overall Change Since Prior Assessment") moved to directly below the
-// grid instead of above it.
+// PRODUCT OWNER CORRECTION (2026-10-21) "Neurological Layout and HOPE
+// Anxiety/Agitation Impact" Section 9 "Neuro Must Follow Infection
+// Layout" -- secondary cards balanced directly inside Columns 2/3 of the
+// one 3-column grid, not pooled into a separate full-width row below it.
+//
+// PRODUCT OWNER REVIEW (2026-10-24) "Organize, Don't Hide" -- supersedes
+// the Column 2 "dumping ground" placement below: Psychiatric History
+// moves to Column 3 (directly below Communication / Hearing / Vision)
+// and is no longer collapsed by default. Final structure --
+//   Column 1: Consciousness, Orientation, Sensory Deficits/Sensory Aids.
+//   Column 2: Behavioral Symptoms, Cognitive Findings, Neurological
+//     Findings.
+//   Column 3: Communication / Hearing / Vision, Psychiatric History.
+//
+// PRODUCT OWNER REVIEW (2026-10-24) "Sleep Assessment Is Not Clinically
+// Aligned With Responsiveness / Status Change" -- the former "Sleep /
+// Responsiveness" standalone card is split into three cards ("Sleep
+// Assessment", "Responsiveness", "Neurological Status Change"), none of
+// which are part of any grid column -- all three render as their own
+// standalone, always-visible, full-width sections below the grid.
 describe("NeurologicalPanel -- Body System Layout Standardization (3-column Assessment Grid)", () => {
   it("buckets existing cards into 3 independent-height columns using the shared body-system grid classes", () => {
     const { container, getByTestId } = render(
@@ -122,8 +134,12 @@ describe("NeurologicalPanel -- Body System Layout Standardization (3-column Asse
           "Consciousness": <div data-testid="card-consciousness">Consciousness card</div>,
           "Orientation": <div data-testid="card-orientation">Orientation card</div>,
           "Communication / Hearing / Vision": <div data-testid="card-communication">Communication card</div>,
-          "Sleep / Responsiveness": <div data-testid="card-sleep">Sleep card</div>,
-          "Cognitive / Behavioral Findings": <div data-testid="card-cognitive">Cognitive card</div>,
+          "Sleep Assessment": <div data-testid="card-sleep-assessment">Sleep Assessment card</div>,
+          "Responsiveness": <div data-testid="card-responsiveness">Responsiveness card</div>,
+          "Neurological Status Change": <div data-testid="card-status-change">Status Change card</div>,
+          "Behavioral Symptoms": <div data-testid="card-behavioral">Behavioral card</div>,
+          "Cognitive Findings": <div data-testid="card-cognitive">Cognitive card</div>,
+          "Neurological Findings": <div data-testid="card-neuro-findings">Neuro findings card</div>,
           "Psychiatric History": <div data-testid="card-psych">Psych card</div>,
           "Sensory Deficits / Sensory Aids": <div data-testid="card-sensory">Sensory card</div>,
         }}
@@ -134,32 +150,41 @@ describe("NeurologicalPanel -- Body System Layout Standardization (3-column Asse
     expect(grid.classList.contains("rnica-bodysystem-grid-columns")).toBe(true);
     const columns = grid.querySelectorAll(".rnica-bodysystem-grid-column");
     expect(columns.length).toBe(3);
-    // PRODUCT OWNER DIRECTIVE (2026-10-23) "Just Lay It Out How You Laid
-    // Out Infection" (Part 2) -- Psychiatric History and Sleep /
-    // Responsiveness (Neuro's only two `collapsedByDefault` cards, both
-    // unpredictable-height when expanded) are pulled OUT of the 3-column
-    // grid and render as their own full-width rows below it instead,
-    // mirroring Infection's "Infection History Notes" precedent -- see
-    // the NeurologicalPanel doc comment. Only the grid's three
-    // always-expanded, predictable-height cards remain column content.
+    // Column 1: Consciousness, Orientation, Sensory Deficits/Sensory Aids.
     expect(columns[0].querySelector('[data-testid="card-consciousness"]')).not.toBeNull();
     expect(columns[0].querySelector('[data-testid="card-orientation"]')).not.toBeNull();
+    expect(columns[0].querySelector('[data-testid="card-sensory"]')).not.toBeNull();
+    // Column 2: Behavioral Symptoms, Cognitive Findings, Neurological
+    // Findings -- Psychiatric History moved to Column 3 (below).
+    expect(columns[1].querySelector('[data-testid="card-behavioral"]')).not.toBeNull();
     expect(columns[1].querySelector('[data-testid="card-cognitive"]')).not.toBeNull();
-    expect(columns[2].querySelector('[data-testid="card-communication"]')).not.toBeNull();
-    expect(columns[2].querySelector('[data-testid="card-sensory"]')).not.toBeNull();
+    expect(columns[1].querySelector('[data-testid="card-neuro-findings"]')).not.toBeNull();
     expect(columns[1].querySelector('[data-testid="card-psych"]')).toBeNull();
-    expect(columns[1].querySelector('[data-testid="card-sleep"]')).toBeNull();
-    // Psychiatric History and Sleep / Responsiveness instead render as
-    // full-width rows directly below the grid.
-    const fullWidthCollapsible = getByTestId("neurological-panel-collapsible-fullwidth");
-    expect(fullWidthCollapsible.querySelector('[data-testid="card-psych"]')).not.toBeNull();
-    expect(fullWidthCollapsible.querySelector('[data-testid="card-sleep"]')).not.toBeNull();
-    // No findings are lost -- every card passed in is present somewhere in the DOM.
+    // Column 3: Communication / Hearing / Vision, then Psychiatric
+    // History -- Sleep Assessment/Responsiveness/Neurological Status
+    // Change are NOT in this grid at all (see standalone-section tests
+    // below).
+    expect(columns[2].querySelector('[data-testid="card-communication"]')).not.toBeNull();
+    expect(columns[2].querySelector('[data-testid="card-psych"]')).not.toBeNull();
+    expect(columns[2].querySelector('[data-testid="card-sleep-assessment"]')).toBeNull();
+    expect(columns[2].querySelector('[data-testid="card-responsiveness"]')).toBeNull();
+    expect(columns[2].querySelector('[data-testid="card-status-change"]')).toBeNull();
+    // The pooled full-width collapsible row is retired entirely.
+    expect(
+      container.querySelector('[data-testid="neurological-panel-fullwidth-collapsible-cards"]')
+    ).toBeNull();
+    // No findings are lost -- every card passed in is present somewhere in the DOM
+    // (Sleep Assessment/Responsiveness/Status Change render in their own
+    // standalone sections, not the grid).
     expect(container.querySelector('[data-testid="card-consciousness"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="card-orientation"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="card-communication"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="card-sleep"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="card-sleep-assessment"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="card-responsiveness"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="card-status-change"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="card-behavioral"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="card-cognitive"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="card-neuro-findings"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="card-psych"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="card-sensory"]')).not.toBeNull();
   });
@@ -176,7 +201,7 @@ describe("NeurologicalPanel -- Body System Layout Standardization (3-column Asse
       />
     );
     const grid = container.querySelector('[data-testid="neurological-panel-assessment-grid"]');
-    const changeRow = container.querySelector('[data-testid="neurological-panel-change-since-prior-fullwidth"]');
+    const changeRow = container.querySelector('[data-testid="neurological-panel-status-change-fullwidth"]');
     expect(grid).not.toBeNull();
     expect(changeRow).not.toBeNull();
     // DOCUMENT_POSITION_FOLLOWING (4) means `changeRow` comes after `grid` in document order.
@@ -189,5 +214,89 @@ describe("NeurologicalPanel -- Body System Layout Standardization (3-column Asse
       <NeurologicalPanel header={null} documentationCoverage={null} cardsByTitle={{}} />
     );
     expect(container.querySelector('[data-testid="neurological-panel-assessment-grid"]')).toBeNull();
+  });
+});
+
+// PRODUCT OWNER REVIEW (2026-10-24) "Sleep Assessment Is Not Clinically
+// Aligned With Responsiveness / Status Change" -- "SLEEP ANSWERS: How is
+// the patient sleeping? RESPONSIVENESS ANSWERS: How responsive is the
+// patient? STATUS CHANGE ANSWERS: Has the neurological condition
+// changed? THREE DIFFERENT QUESTIONS. THREE DIFFERENT GROUPS." Sleep
+// Assessment, Responsiveness, and Neurological Status Change each render
+// as their own standalone full-width section, outside every grid column,
+// in that order: Sleep Assessment, then Responsiveness, then
+// Neurological Status Change (grouped with `changeSincePrior` --
+// "Overall Change Since Prior Assessment" -- so the two trend fields
+// read together as one visual block).
+describe("NeurologicalPanel -- Sleep Assessment / Responsiveness / Neurological Status Change standalone sections", () => {
+  it("renders Sleep Assessment, Responsiveness, and Neurological Status Change outside the Assessment Grid, each in its own full-width row", () => {
+    const { container } = render(
+      <NeurologicalPanel
+        header={null}
+        documentationCoverage={<div data-testid="neurological-documentation-coverage">Coverage content</div>}
+        cardsByTitle={{
+          "Consciousness": <div data-testid="card-consciousness">Consciousness card</div>,
+          "Communication / Hearing / Vision": <div data-testid="card-communication">Communication card</div>,
+          "Sleep Assessment": <div data-testid="card-sleep-assessment">Sleep Assessment card</div>,
+          "Responsiveness": <div data-testid="card-responsiveness">Responsiveness card</div>,
+          "Neurological Status Change": <div data-testid="card-status-change">Status Change card</div>,
+        }}
+        changeSincePrior={<div data-testid="neuro-change-since-prior">change since prior</div>}
+      />
+    );
+    const grid = container.querySelector('[data-testid="neurological-panel-assessment-grid"]');
+    const sleepRow = container.querySelector('[data-testid="neurological-panel-sleep-assessment-fullwidth"]');
+    const responsivenessRow = container.querySelector('[data-testid="neurological-panel-responsiveness-fullwidth"]');
+    const statusChangeRow = container.querySelector('[data-testid="neurological-panel-status-change-fullwidth"]');
+    expect(grid).not.toBeNull();
+    expect(sleepRow).not.toBeNull();
+    expect(responsivenessRow).not.toBeNull();
+    expect(statusChangeRow).not.toBeNull();
+    expect(sleepRow.querySelector('[data-testid="card-sleep-assessment"]')).not.toBeNull();
+    expect(responsivenessRow.querySelector('[data-testid="card-responsiveness"]')).not.toBeNull();
+    expect(statusChangeRow.querySelector('[data-testid="card-status-change"]')).not.toBeNull();
+    // Overall Change Since Prior Assessment is grouped inside the same
+    // status-change row as Neurological Status Change's own field, not a
+    // separate row.
+    expect(statusChangeRow.querySelector('[data-testid="neuro-change-since-prior"]')).not.toBeNull();
+    // None are inside the grid at all.
+    expect(grid.querySelector('[data-testid="card-sleep-assessment"]')).toBeNull();
+    expect(grid.querySelector('[data-testid="card-responsiveness"]')).toBeNull();
+    expect(grid.querySelector('[data-testid="card-status-change"]')).toBeNull();
+  });
+
+  it("positions Sleep Assessment, Responsiveness, and Neurological Status Change in that order after the Assessment Grid", () => {
+    const { container } = render(
+      <NeurologicalPanel
+        header={null}
+        documentationCoverage={null}
+        cardsByTitle={{
+          "Consciousness": <div data-testid="card-consciousness">Consciousness card</div>,
+          "Sleep Assessment": <div data-testid="card-sleep-assessment">Sleep Assessment card</div>,
+          "Responsiveness": <div data-testid="card-responsiveness">Responsiveness card</div>,
+          "Neurological Status Change": <div data-testid="card-status-change">Status Change card</div>,
+        }}
+        changeSincePrior={<div data-testid="neuro-change-since-prior">change since prior</div>}
+      />
+    );
+    const grid = container.querySelector('[data-testid="neurological-panel-assessment-grid"]');
+    const sleepRow = container.querySelector('[data-testid="neurological-panel-sleep-assessment-fullwidth"]');
+    const responsivenessRow = container.querySelector('[data-testid="neurological-panel-responsiveness-fullwidth"]');
+    const statusChangeRow = container.querySelector('[data-testid="neurological-panel-status-change-fullwidth"]');
+    // eslint-disable-next-line no-bitwise
+    expect(grid.compareDocumentPosition(sleepRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // eslint-disable-next-line no-bitwise
+    expect(sleepRow.compareDocumentPosition(responsivenessRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    // eslint-disable-next-line no-bitwise
+    expect(responsivenessRow.compareDocumentPosition(statusChangeRow) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("renders no Sleep Assessment / Responsiveness / Neurological Status Change row when none of the cards (or changeSincePrior) are supplied", () => {
+    const { container } = render(
+      <NeurologicalPanel header={null} documentationCoverage={null} cardsByTitle={{}} />
+    );
+    expect(container.querySelector('[data-testid="neurological-panel-sleep-assessment-fullwidth"]')).toBeNull();
+    expect(container.querySelector('[data-testid="neurological-panel-responsiveness-fullwidth"]')).toBeNull();
+    expect(container.querySelector('[data-testid="neurological-panel-status-change-fullwidth"]')).toBeNull();
   });
 });

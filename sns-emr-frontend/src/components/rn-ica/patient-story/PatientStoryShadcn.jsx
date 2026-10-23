@@ -252,8 +252,8 @@ export default function PatientStoryShadcn({
                     {caregiverSummary}
                   </button>
                   {caregiver.anxietyLevel && <p className="text-[10px] text-rnica-muted">Anxiety level: {caregiver.anxietyLevel}</p>}
-                  {caregiver.willingToProvideCare === false && (
-                    <Badge variant="orange" className="self-start">Not willing to provide care</Badge>
+                  {["Reluctant", "Overwhelmed/resistant"].includes(caregiver.caregiverReadiness) && (
+                    <Badge variant="orange" className="self-start">Caregiver readiness concern noted</Badge>
                   )}
                 </div>
               )}

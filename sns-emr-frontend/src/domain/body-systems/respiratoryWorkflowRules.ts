@@ -83,7 +83,6 @@ export interface RespiratoryAssessmentValues {
   hemoptysisPresent?: boolean;
   /** Independent thoracic-inspection finding -- not a cough characteristic. */
   barrelChestPresent?: boolean;
-  sputumCharacter?: string;
   oxygenTherapy?: RespiratoryOxygenTherapyValues;
   ventilator?: RespiratoryVentilatorValues;
   treatmentInitiated?: boolean;
@@ -109,10 +108,6 @@ export interface RespiratoryAssessmentValues {
   treatmentResponseTime?: string;
   treatmentResponse?: string;
   treatmentResponseStatus?: string;
-  /** FINAL PRODUCT-OWNER DIRECTIVE: patient's observed clinical response
-   * for INITIATED/ALREADY_IN_PLACE. Never an order/medication detail. */
-  clinicalResponse?: string;
-  clinicalResponseEvidence?: string;
   followUpNeed?: string;
   followUpTimingPlan?: string;
   followUpResponsibleClinician?: string;
@@ -164,7 +159,6 @@ function toProductAuthorizedValues(values: RespiratoryAssessmentValues): Respira
     treatmentActionTime: values.treatmentActionTime,
     treatmentResponse: values.treatmentResponse,
     treatmentResponseStatus: values.treatmentResponseStatus,
-    clinicalResponse: values.clinicalResponse,
     followUpNeed: values.followUpNeed,
     followUpTimingPlan: values.followUpTimingPlan,
     followUpResponsibleClinician: values.followUpResponsibleClinician,
@@ -191,7 +185,6 @@ function toProductAuthorizedValues(values: RespiratoryAssessmentValues): Respira
     oxygenMeasurementTime: values.oxygenMeasurementTime,
     oxygenEffectivenessResponse: values.oxygenEffectivenessResponse,
     coughType: values.coughType,
-    sputumCharacter: values.sputumCharacter,
     sputumAmount: values.sputumAmount,
     sputumColor: values.sputumColor,
     sputumOtherSpecification: values.sputumOtherSpecification,
@@ -253,7 +246,6 @@ function hasAnyCurrentFindingFieldPopulated(values: RespiratoryAssessmentValues)
       (values.coughType && values.coughType !== "None") ||
       values.hemoptysisPresent ||
       values.barrelChestPresent ||
-      values.sputumCharacter ||
       values.oxygenTherapy?.inUse ||
       values.ventilator?.shortTermVentilator ||
       values.ventilator?.longTermVentilator,

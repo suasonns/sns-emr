@@ -45,7 +45,6 @@
 .body-system-shell__assessment-state,
 .body-system-shell__essential-findings,
 .body-system-shell__change-since-prior,
-.body-system-shell__triggered-detail,
 .body-system-shell__notes,
 .body-system-shell__poc-action {
   display: flex;
@@ -53,9 +52,62 @@
   gap: 0.375rem;
 }
 
+/* PRODUCT OWNER DIRECTIVE (2026-10-13) "Cardiovascular Layout
+   Optimization Phase 2" -- the triggered-detail slot was a strict
+   single-column flex stack (one card per row regardless of width),
+   which is the root cause of Cardiovascular's reported wasted
+   horizontal space / excessive scrolling: every other Body System packs
+   several small cards per row via `.rnica-bodysystem-group__cards`'s
+   auto-fit grid, but a system rendered through BodySystemShell could
+   not. Matches that same proven 260px-minmax auto-fit pattern so 2-3 of
+   Cardiovascular's small split cards (Pulse Assessment, Circulation
+   Assessment, Perfusion Assessment, Edema, Symptoms, Devices) now pack
+   side by side instead of each reserving a full-width row. Shared/
+   generic change (BodySystemShell is used by any system that adopts
+   it), not Cardiovascular-specific markup -- no field/value change. */
+/* PRODUCT OWNER DIRECTIVE (2026-10-13) "Cardiovascular Layout
+   Optimization Phase 2 Review" -- measured via live DOM audit that a
+   row-based auto-fit grid (even with `align-items: start`) still
+   reserves each ROW's height equal to its tallest card, so a short card
+   sharing a row with a tall one (e.g. "Devices", 3 pills, paired with
+   "Symptoms", 6 fields) leaves a large empty gap below it before the
+   next row starts -- the card itself no longer stretches, but the dead
+   space just moves outside its border into the row track. CSS
+   multi-column layout greedily balances content into column height
+   instead of row height, which removes that gap: a short card is
+   immediately followed by the next card in its column with no reserved
+   row height. Falls back to a single column below 700px (matching the
+   existing `.rnica-bodysystem-group__cards` narrow-viewport
+   convention) since columns of out-of-order stacked content are a
+   desktop-only density technique. No field/value change. */
 .body-system-shell__triggered-detail {
+  column-gap: 0.75rem;
   border-left: 2px solid var(--sns-border, #1F2937);
   padding-left: 0.75rem;
+}
+
+/* PRODUCT OWNER DIRECTIVE (2026-10-14, follow-up) "Match The Infection
+   LAYOUT, Not Just The Sequence" -- the prior `column-count: 2` rule
+   here (Cardiovascular Layout Optimization Phase 2) never actually
+   rendered as multiple columns: CSS multi-column properties have no
+   effect on a flex container, and `.body-system-shell__essential-
+   findings` is a flex column per the shared rule above -- confirmed via
+   live screenshot showing a single full-width stack. Cardiovascular's
+   `essentialFindings` content now supplies its own explicit 3-column
+   `rnica-bodysystem-grid-columns`/`-column` markup directly (same
+   shared class Infection/Neurological use), so this slot itself just
+   needs to stay a plain block-level wrapper around that one grid div --
+   no column/multicol styling needed here anymore. */
+
+.body-system-shell__triggered-detail > [data-card-title] {
+  break-inside: avoid;
+  margin-bottom: 0.75rem;
+}
+
+@media (max-width: 700px) {
+  .body-system-shell__triggered-detail {
+    column-count: 1;
+  }
 }
 
 .body-system-shell__poc-action {

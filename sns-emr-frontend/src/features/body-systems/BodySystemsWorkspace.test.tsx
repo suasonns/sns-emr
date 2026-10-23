@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
-import { render, screen, fireEvent, within, waitFor } from "@testing-library/react";
+import { describe, it, expect } from "vitest";
+import { render, screen, fireEvent, within } from "@testing-library/react";
 import { BodySystemsWorkspace } from "./components/BodySystemsWorkspace";
 import { syntheticComprehensiveAssessmentFixture } from "./fixtures/comprehensiveAssessment.fixture";
 import { BODY_SYSTEMS, BODY_SYSTEM_LABELS } from "../../domain/body-systems";
@@ -11,38 +11,8 @@ import { BODY_SYSTEMS, BODY_SYSTEM_LABELS } from "../../domain/body-systems";
 // `toBeInTheDocument()`. These tests follow that same convention rather
 // than introducing a new dependency.
 
-// Respiratory's panel calls the real Respiratory API
-// (`src/api/bodySystems.ts`) — mocked here so these workspace-level tests
-// never make a network call and stay in full control of the load state.
-const mocks = vi.hoisted(() => ({
-  getRespiratoryAssessment: vi.fn(),
-  saveRespiratoryDraft: vi.fn(),
-}));
-
-vi.mock("../../api/bodySystems", async () => {
-  const actual = await vi.importActual<typeof import("../../api/bodySystems")>("../../api/bodySystems");
-  return {
-    ...actual,
-    getRespiratoryAssessment: mocks.getRespiratoryAssessment,
-    saveRespiratoryDraft: mocks.saveRespiratoryDraft,
-  };
-});
-
-const TEST_PATIENT_ID = "11111111-1111-1111-1111-111111111111";
-
-beforeEach(() => {
-  mocks.getRespiratoryAssessment.mockReset();
-  mocks.saveRespiratoryDraft.mockReset();
-  // Default: Respiratory load never resolves within these tests unless a
-  // specific test overrides it — keeps the other-nine-systems assertions
-  // unaffected by Respiratory's async load state.
-  mocks.getRespiratoryAssessment.mockReturnValue(new Promise(() => {}));
-});
-
 function renderWorkspace() {
-  return render(
-    <BodySystemsWorkspace fixture={syntheticComprehensiveAssessmentFixture} patientId={TEST_PATIENT_ID} />,
-  );
+  return render(<BodySystemsWorkspace fixture={syntheticComprehensiveAssessmentFixture} />);
 }
 
 /** The system label also appears on the accordion trigger button, so
@@ -170,12 +140,10 @@ describe("BodySystemsWorkspace — selection and the generic read-only placehold
   });
 });
 
-const NON_RESPIRATORY_SYSTEMS = BODY_SYSTEMS.filter((system) => system !== "respiratory");
-
-describe("BodySystemsWorkspace — the remaining nine systems have no deferred-milestone content", () => {
-  it("renders no clinical-detail, assessment-situation, or review-exception panel content for any system except Respiratory", () => {
+describe("BodySystemsWorkspace — every system has no deferred-milestone content", () => {
+  it("renders no clinical-detail, assessment-situation, or review-exception panel content for any system", () => {
     renderWorkspace();
-    NON_RESPIRATORY_SYSTEMS.forEach((system) => {
+    BODY_SYSTEMS.forEach((system) => {
       clickNavSystem(new RegExp(BODY_SYSTEM_LABELS[system]));
     });
     expect(screen.queryByText(/Current baseline evidence/)).toBeNull();
@@ -186,17 +154,17 @@ describe("BodySystemsWorkspace — the remaining nine systems have no deferred-m
     expect(screen.queryByTestId("respiratory-panel")).toBeNull();
   });
 
-  it("renders no save, submit, sign, finalize, or approve controls for any system except Respiratory", () => {
+  it("renders no save, submit, sign, finalize, or approve controls for any system", () => {
     renderWorkspace();
-    NON_RESPIRATORY_SYSTEMS.forEach((system) => {
+    BODY_SYSTEMS.forEach((system) => {
       clickNavSystem(new RegExp(BODY_SYSTEM_LABELS[system]));
     });
     expect(screen.queryByRole("button", { name: /save|submit|sign|finalize|approve/i })).toBeNull();
   });
 
-  it("renders no text input, textarea, or checkbox for any system except Respiratory", () => {
+  it("renders no text input, textarea, or checkbox for any system", () => {
     const { container } = renderWorkspace();
-    NON_RESPIRATORY_SYSTEMS.forEach((system) => {
+    BODY_SYSTEMS.forEach((system) => {
       clickNavSystem(new RegExp(BODY_SYSTEM_LABELS[system]));
     });
     expect(container.querySelectorAll("input, textarea").length).toBe(0);
@@ -208,49 +176,5 @@ describe("BodySystemsWorkspace — the remaining nine systems have no deferred-m
     within(nav)
       .getAllByRole("button")
       .forEach((button) => expect(button.tagName).toBe("BUTTON"));
-  });
-});
-
-describe("BodySystemsWorkspace — Respiratory proof-of-pattern expansion", () => {
-  it("renders the real Respiratory detail panel, calling the Respiratory API for the supplied patientId", async () => {
-    mocks.getRespiratoryAssessment.mockResolvedValueOnce({
-      id: "sa-1",
-      bodySystemsAssessmentId: "bsa-1",
-      assessmentStatus: "draft",
-      system: "respiratory",
-      situation: null,
-      reviewState: "not_reviewed",
-      data: {},
-      summary: null,
-      version: 1,
-      updatedAt: null,
-      openReviewExceptions: [],
-    });
-    renderWorkspace();
-    clickNavSystem(/Respiratory/);
-    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
-    expect(mocks.getRespiratoryAssessment).toHaveBeenCalledWith(TEST_PATIENT_ID);
-  });
-
-  it("selecting another system after Respiratory does not leave the Respiratory panel mounted", async () => {
-    mocks.getRespiratoryAssessment.mockResolvedValueOnce({
-      id: "sa-1",
-      bodySystemsAssessmentId: "bsa-1",
-      assessmentStatus: "draft",
-      system: "respiratory",
-      situation: null,
-      reviewState: "not_reviewed",
-      data: {},
-      summary: null,
-      version: 1,
-      updatedAt: null,
-      openReviewExceptions: [],
-    });
-    renderWorkspace();
-    clickNavSystem(/Respiratory/);
-    await waitFor(() => expect(screen.getByTestId("respiratory-panel")).toBeTruthy());
-    clickNavSystem(/Neurological/);
-    expect(screen.queryByTestId("respiratory-panel")).toBeNull();
-    expect(screen.getByText("Read-only synthetic register preview")).toBeTruthy();
   });
 });

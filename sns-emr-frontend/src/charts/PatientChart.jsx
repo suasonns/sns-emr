@@ -34,6 +34,35 @@ import DocumentsBoard from './DocumentsBoard';
 import CommunicationLogBoard from './CommunicationLogBoard';
 import FaxesBoard from './FaxesBoard';
 
+// PRODUCT OWNER CORRECTION "Navigation Must Return To Exact Prior
+// Location" -- PatientChart's active tab (e.g. "nursing-assessment", the
+// RNICA tab) previously always defaulted to "facesheet" on every mount.
+// Any navigation away from /chart/:patientId -- including RNICA's own
+// "Add / Manage Skin Impairments" -> /skin-impairments round trip --
+// unmounts PatientChart entirely; without this, returning to
+// /chart/:patientId remounted it fresh at the default Facesheet tab,
+// discarding which tab the RN had open regardless of what RNICA's own
+// internal section/scroll restore logic did (it never got a chance to
+// run, since the RNICA tab wasn't even the one showing). This persists
+// the active tab per-patient in sessionStorage and restores it
+// synchronously on mount, so the RN lands back on the exact tab they left.
+const PATIENT_CHART_ACTIVE_SECTION_KEY = 'sns.patientChart.activeSection';
+
+function readStoredActiveSection(patientId) {
+  if (!patientId) return 'facesheet';
+  try {
+    const raw = sessionStorage.getItem(PATIENT_CHART_ACTIVE_SECTION_KEY);
+    if (!raw) return 'facesheet';
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.patientId === patientId && typeof parsed.section === 'string') {
+      return parsed.section;
+    }
+  } catch {
+    // sessionStorage unavailable -- fall back to the Facesheet default.
+  }
+  return 'facesheet';
+}
+
 const getColors = (mode) => mode === 'light' ? {
   bg: '#f3f8f7',
   panel: '#ffffff',
@@ -55,7 +84,7 @@ const PatientChart = () => {
   const { mode } = useThemeMode();
   const colors = getColors(mode);
   const { patientId: routePatientId } = useParams();
-  const [activeSection, setActiveSection] = useState('facesheet');
+  const [activeSection, setActiveSection] = useState(() => readStoredActiveSection(routePatientId || getActivePatientId() || ''));
   const [summary, setSummary] = useState(null);
   const [loading, setLoading] = useState(true);
   const [assessmentHistorySelection, setAssessmentHistorySelection] = useState(null);
@@ -117,6 +146,22 @@ const PatientChart = () => {
   }, [navigationOpen]);
 
   const resolvedPatientId = routePatientId || getActivePatientId() || '';
+
+  // Keep the persisted "last active tab" for this patient in sync so a
+  // round trip through a sibling route (e.g. /skin-impairments) restores
+  // the exact tab the RN left, not the Facesheet default. See
+  // `readStoredActiveSection` above.
+  useEffect(() => {
+    if (!resolvedPatientId) return;
+    try {
+      sessionStorage.setItem(
+        PATIENT_CHART_ACTIVE_SECTION_KEY,
+        JSON.stringify({ patientId: resolvedPatientId, section: activeSection }),
+      );
+    } catch {
+      // sessionStorage unavailable -- restore simply won't occur next time.
+    }
+  }, [resolvedPatientId, activeSection]);
 
   useEffect(() => {
     if (!resolvedPatientId) {
@@ -918,7 +963,7 @@ const PatientChart = () => {
           </div>
         </>
       )}
-      <div ref={chartContentRef} style={{ flex: 1, minWidth: 0, width: '100%', height: '100vh', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
+      <div ref={chartContentRef} data-scroll-root="patient-chart-content" style={{ flex: 1, minWidth: 0, width: '100%', height: '100vh', minHeight: 0, overflowY: 'auto', overflowX: 'hidden' }}>
         {compactNavigation && (
           <button
             ref={navigationButtonRef}

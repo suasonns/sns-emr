@@ -8,34 +8,26 @@ import { BodySystemsRegister } from "./BodySystemsRegister";
 
 export interface BodySystemsWorkspaceProps {
   fixture: SyntheticComprehensiveAssessmentFixture;
-  /**
-   * Real patient identifier used only for the Respiratory API wiring (see
-   * `RespiratoryPanel.tsx`). The other nine systems never use this value —
-   * they remain register-only and make no network calls.
-   */
-  patientId: string;
 }
 
 /**
  * "Initial Comprehensive RN Assessment" Body Systems register shell.
  *
- * Completed narrowed-shell foundation: the ten-system register, canonical
- * navigation, review-state badges, and review-progress counts remain
+ * Narrowed-shell foundation: the ten-system register, canonical
+ * navigation, review-state badges, and review-progress counts are
  * presentation-only and read-only, driven entirely by the caller-supplied
  * synthetic fixture — no editing, persistence, API, AI, or RNICA
- * integration for nine of the ten systems.
+ * integration for any of the ten systems.
  *
- * Respiratory proof-of-pattern expansion (explicit product-authority
- * decision — see `RespiratoryPanel.tsx`): selecting and expanding
- * Respiratory renders a real, editable detail panel wired to the
- * Respiratory API (`src/api/bodySystems.ts`) for `patientId`, with load,
- * save, review-exception, and optimistic-concurrency-conflict handling.
- * Every other system's register row still renders only the fixed,
- * neutral, read-only placeholder — this expansion does not generalize to
- * the remaining nine systems and does not change canonical identifiers,
- * labels, or ordering.
+ * Respiratory's former proof-of-pattern expansion (a real, API-backed
+ * detail panel wired to `src/api/bodySystems.ts`) was retired per
+ * product-authority direction: Respiratory now behaves identically to the
+ * other nine systems in production (plain `formData`-backed fields, no
+ * separate persistence), so this dev-only preview no longer has a
+ * one-off expansion case either — every row renders the fixed, neutral,
+ * read-only placeholder.
  */
-export function BodySystemsWorkspace({ fixture, patientId }: BodySystemsWorkspaceProps) {
+export function BodySystemsWorkspace({ fixture }: BodySystemsWorkspaceProps) {
   const [selectedSystem, setSelectedSystem] = useState<BodySystemCode | null>(null);
 
   return (
@@ -58,7 +50,6 @@ export function BodySystemsWorkspace({ fixture, patientId }: BodySystemsWorkspac
             rows={fixture.systems}
             expandedSystem={selectedSystem}
             onExpandedSystemChange={setSelectedSystem}
-            patientId={patientId}
           />
         </div>
       </div>

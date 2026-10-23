@@ -67,7 +67,8 @@ from app.models.clinical_note import ClinicalNote
 from app.models.notification import Notification
 from app.models.rn_recert_assessment import RNRecertAssessment
 from app.models.rnica_assessment import RnicaAssessment
-from app.models.body_systems import BodySystemsAssessment, SystemAssessment, ReviewException
+from app.models.skin_impairment import SkinImpairment
+from app.models.skin_impairment_event import SkinImpairmentEvent
 from app.models.admission_action_request import AdmissionActionRequest
 from app.models.plan_of_care import PlanOfCare
 from app.models.poc import POCProblem, POCGoal, POCIntervention

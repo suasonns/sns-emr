@@ -138,6 +138,29 @@ export async function listRnicaAssessmentsByPatientType(
   );
 }
 
+// PRODUCT OWNER DIRECTIVE "Skin Impairment History" -- the identity/
+// lifecycle registry (backend table `skin_impairments`, keyed by the same
+// `woundId` already used client-side). `status: "unresolved"` is the
+// carry-forward query used on a brand-new assessment; omitted, it returns
+// every impairment (Current + Resolved) for list/search/timeline views.
+export async function listSkinImpairmentsByPatient(patientId: string, options: { status?: "unresolved" | string } = {}) {
+  return unwrap(
+    api.get(`/visits/rnica/skin-impairments/${patientId}`, { params: options }),
+    "Skin impairment history lookup failed"
+  );
+}
+
+// PRODUCT OWNER DIRECTIVE "Longitudinal Wound Record" -- the full,
+// chronological event history (assessment/treatment/photo/status_change/
+// coc/resolution/reopened) for ONE skin impairment, used by the per-
+// impairment Longitudinal Timeline view.
+export async function getSkinImpairmentTimeline(woundId: string) {
+  return unwrap(
+    api.get(`/visits/rnica/skin-impairments/${woundId}/timeline`),
+    "Skin impairment timeline lookup failed"
+  );
+}
+
 export async function listMswIcaAssessmentsByPatient(patientId: string, options: { lockedOnly?: boolean } = {}) {
   return unwrap(
     api.get<{ patientId: string; assessments: AssessmentRecordSummary[] }>(`/visits/msw-ica/by-patient/${patientId}/records`, { params: options }),

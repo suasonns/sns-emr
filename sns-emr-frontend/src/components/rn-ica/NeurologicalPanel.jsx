@@ -129,22 +129,105 @@ import React from "react";
 //     longer share column space with the always-expanded cards above.
 export function NeurologicalPanel({ header, documentationCoverage, cardsByTitle, changeSincePrior, pocAction }) {
   const cards = cardsByTitle || {};
+  // PRODUCT OWNER DIRECTIVE (2026-10-21, "Neurological Layout Review --
+  // One Layout Model Only") -- supersedes the Column 2 "Cognitive +
+  // Psychiatric History" stacking immediately above: mixing a 3-column
+  // grid, a 2-card-stacked column, and full-width rows in the same
+  // section was flagged as visually inconsistent ("three different
+  // layout models in the same section"). Collapsing to exactly two
+  // models --
+  //   Primary Findings (3-column grid, always-expanded cards only):
+  //     Column 1: Consciousness, Orientation, Sensory Deficits/Sensory Aids
+  //     Column 2: Cognitive / Behavioral Findings (alone)
+  //     Column 3: Communication / Hearing / Vision
+  //   Secondary Assessments (collapsed-by-default, full width, below the
+  //   grid -- both unpredictable-height collapsible cards grouped here
+  //   together instead of one living inside the grid):
+  //     Psychiatric History, Sleep / Responsiveness
+  //   Notes (full width, below Secondary Assessments): Neurological Notes
+  //   -- sole narrative field.
+  // No field/path/value/collapse-state change to any card -- column/
+  // section placement only.
+  // PRODUCT OWNER CORRECTION (2026-10-21) "Neurological Layout and HOPE
+  // Anxiety/Agitation Impact" Section 9 "Neuro Must Follow Infection
+  // Layout" -- supersedes the "Infection Is The Layout Reference
+  // Standard" full-width-collapsible-row grouping immediately above:
+  // that layout let every collapsed secondary card accumulate in one
+  // place while a sibling column sat empty, which the owner rejected as
+  // unbalanced ("Do not allow all collapsed secondary content to
+  // accumulate in Column 2 while Column 3 remains mostly empty.
+  // Balance the secondary collapsible panels across Columns 2 and 3.").
+  // Neuro now uses Infection's actual one-balanced-three-column
+  // structure, not merely its CSS class:
+  //   Column 1: Consciousness, Orientation, Sensory Deficits/Sensory Aids.
+  //   Column 2: Behavioral Symptoms (+ its own conditional Anxiety/
+  //     Agitation Impact controls, rendered inside the same card -- see
+  //     SECTION_CONFIGS.neurological), then Cognitive Findings and
+  //     Neurological Findings.
+  //   Column 3: Communication / Hearing / Vision, then Psychiatric
+  //     History.
+  // No field/path/value change to any card -- column placement only.
+  //
+  // PRODUCT OWNER REVIEW (2026-10-24) "Organize, Don't Hide" -- supersedes
+  // the "Psychiatric History in Column 2, collapsed by default" placement
+  // above: Column 2 had become "a dumping ground for multiple unrelated
+  // sections" while Column 3 sat underutilized. Psychiatric History moves
+  // to Column 3, directly below Communication / Hearing / Vision, and its
+  // `collapsedByDefault` flag is removed (see SECTION_CONFIGS.neurological
+  // in RNICA.jsx) -- "DO NOT COLLAPSE PSYCHIATRIC HISTORY... THE GOAL IS
+  // NOT TO REDUCE VISIBILITY." Neurological Findings stays in Column 2,
+  // alongside Cognitive Findings, with its collapse state unchanged --
+  // only Psychiatric History's column and collapse state moved.
+  //
+  // PRODUCT OWNER REVIEW (2026-10-24) "Sleep / Responsiveness -- Own
+  // 3-Column Layout" -- Sleep / Responsiveness is pulled OUT of the
+  // primary Assessment Grid entirely ("THIS SECTION SHALL NOT BE MERGED
+  // INTO THE PRIMARY NEUROLOGICAL GRID") and now renders as its own
+  // standalone, full-width, ALWAYS-VISIBLE section directly below the
+  // 3-column Assessment Grid -- the same full-width-row placement already
+  // established for Infection's unpredictable-height "Notes" card and for
+  // this panel's own `changeSincePrior` row. It is rendered immediately
+  // ABOVE `changeSincePrior` ("Overall Change Since Prior Assessment") so
+  // that Sleep's own internal Row 2 (Responsiveness, Change Since Prior
+  // Visit -- see SECTION_CONFIGS.neurological's "Sleep / Responsiveness"
+  // field order/CSS) sits directly adjacent to the section-wide Overall
+  // Change control, letting all three read as one visual block without
+  // duplicating `changeSincePrior` inside the Sleep card itself.
+  // PRODUCT OWNER REVIEW (2026-10-24) "Sleep Assessment Is Not Clinically
+  // Aligned With Responsiveness / Status Change" -- supersedes the
+  // "Sleep / Responsiveness" standalone-card note above: that single
+  // card mixed three different clinical questions ("How is the patient
+  // sleeping?", "How responsive is the patient?", "Has the neurological
+  // condition changed?") into one group. It is now split into three
+  // separate, always-visible, full-width sections rendered in this
+  // order below the Assessment Grid: "Sleep Assessment" (own 3-column
+  // layout, CSS override in RNICACommandWorkspace.css), "Responsiveness"
+  // (its own section, not part of Sleep), and "Neurological Status
+  // Change" (the card's "Change Since Prior Visit" field grouped
+  // together with the existing section-wide `changeSincePrior` prop
+  // ("Overall Change Since Prior Assessment") -- "THESE ARE TREND
+  // ANALYSIS FIELDS. THEY SHOULD BE TOGETHER."). None of these three
+  // cards is collapsed by default. No field/path/value change -- split,
+  // order, and grouping only.
   const column1 = [
     cards["Consciousness"],
     cards["Orientation"],
+    cards["Sensory Deficits / Sensory Aids"],
   ].filter((entry) => entry != null);
   const column2 = [
-    cards["Cognitive / Behavioral Findings"],
+    cards["Behavioral Symptoms"],
+    cards["Cognitive Findings"],
+    cards["Neurological Findings"],
   ].filter((entry) => entry != null);
   const column3 = [
     cards["Communication / Hearing / Vision"],
-    cards["Sensory Deficits / Sensory Aids"],
+    cards["Psychiatric History"],
   ].filter((entry) => entry != null);
   const hasGridContent = column1.length > 0 || column2.length > 0 || column3.length > 0;
-  const fullWidthCollapsibleCards = [
-    cards["Psychiatric History"],
-    cards["Sleep / Responsiveness"],
-  ].filter((entry) => entry != null);
+  const sleepAssessment = cards["Sleep Assessment"];
+  const responsiveness = cards["Responsiveness"];
+  const neurologicalStatusChange = cards["Neurological Status Change"];
+  const hasStatusChangeContent = neurologicalStatusChange != null || changeSincePrior != null;
   return (
     <div className="flex flex-col gap-2" data-testid="neurological-panel">
       {header}
@@ -170,13 +253,44 @@ export function NeurologicalPanel({ header, documentationCoverage, cardsByTitle,
           <div className="rnica-bodysystem-grid-column">{column3}</div>
         </div>
       ) : null}
-      {fullWidthCollapsibleCards.length > 0 ? (
-        <div className="flex flex-col gap-1.5" data-testid="neurological-panel-collapsible-fullwidth">
-          {fullWidthCollapsibleCards}
+      {/*
+       * PRODUCT OWNER REVIEW (2026-10-24) "Sleep Assessment Is Not
+       * Clinically Aligned With Responsiveness / Status Change" --
+       * standalone, full-width, own 3-column section, explicitly NOT
+       * part of the 3-column Assessment Grid above and NOT merged with
+       * Responsiveness or Neurological Status Change below.
+       */}
+      {sleepAssessment ? (
+        <div className="flex flex-col gap-1.5" data-testid="neurological-panel-sleep-assessment-fullwidth">
+          {sleepAssessment}
         </div>
       ) : null}
-      {changeSincePrior ? (
-        <div className="flex flex-col gap-1.5" data-testid="neurological-panel-change-since-prior-fullwidth">
+      {/*
+       * PRODUCT OWNER REVIEW (2026-10-24) -- Responsiveness is "a
+       * neurological observation. It is not part of the sleep
+       * assessment." Its own standalone, full-width section, rendered
+       * directly after Sleep Assessment and before Neurological Status
+       * Change.
+       */}
+      {responsiveness ? (
+        <div className="flex flex-col gap-1.5" data-testid="neurological-panel-responsiveness-fullwidth">
+          {responsiveness}
+        </div>
+      ) : null}
+      {/*
+       * PRODUCT OWNER REVIEW (2026-10-24) -- "Neurological Status Change
+       * GROUP: Change Since Prior Visit, Overall Change Since Prior
+       * Assessment. THESE ARE TREND ANALYSIS FIELDS. THEY SHOULD BE
+       * TOGETHER." `neurologicalStatusChange` (the card's own "Change
+       * Since Prior Visit" field) renders directly above the existing
+       * section-wide `changeSincePrior` prop ("Overall Change Since
+       * Prior Assessment") inside one shared wrapper, so the two trend
+       * fields read as a single grouped section without duplicating
+       * `clinicalStatusChange` inside the card itself.
+       */}
+      {hasStatusChangeContent ? (
+        <div className="flex flex-col gap-1.5" data-testid="neurological-panel-status-change-fullwidth">
+          {neurologicalStatusChange}
           {changeSincePrior}
         </div>
       ) : null}

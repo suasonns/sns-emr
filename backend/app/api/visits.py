@@ -27,6 +27,7 @@ from app.models.enums import (
     TaskRegulatoryBasis,)
 from app.models.clinical_note import ClinicalNote
 from app.models.patient import Patient
+from app.models.patient_allergy import PatientAllergy
 from app.models.patient_assignment import PatientAssignment
 from app.models.patient_facesheet import PatientFaceSheet
 from app.models.task import Task
@@ -42,6 +43,8 @@ from app.models.chha_visit_outcome import CHHAVisitOutcome
 from app.models.chha_visit_task_result import CHHAVisitTaskResult
 from app.models.cc_hourly_narrative_entry import CCHourlyNarrativeEntry
 from app.models.rnica_assessment import RnicaAssessment
+from app.models.skin_impairment import SkinImpairment
+from app.models.skin_impairment_event import SkinImpairmentEvent
 from app.models.patient_evidence import PatientHarvestedSignal
 from app.services import rnica_poc_adapter
 from app.services.rnica_finalization_service import evaluate_finalization_readiness
@@ -566,13 +569,34 @@ def _audit_rnica_contributing_conditions_diff(
         )
 
 
-def _build_rnica_allergy_summary(form_data: dict) -> tuple[bool | None, str | None]:
-    allergies = _flatten_rnica_list_items(
-        ((form_data or {}).get("infection") or {}).get("allergies")
+def _build_rnica_allergy_summary(db: Session, patient_id: uuid.UUID) -> tuple[bool | None, str | None]:
+    # PRODUCT OWNER DIRECTIVE (2026-10-13) "Investigate allergy
+    # inconsistency" -- this previously read `form_data.infection.allergies`,
+    # a field RNICA.jsx's `AllergiesCard` never writes to (it posts
+    # directly to the dedicated `patient_allergies` table via
+    # POST/GET /patients/{id}/allergies, never through RNICA form state).
+    # That field was always `[]`, so every RNICA save forcibly overwrote
+    # the Face Sheet's allergy banner to "No Known Allergies" regardless
+    # of what was actually documented in the structured Allergies module
+    # (the same `patient_allergies` table Infection's card and the drug-
+    # safety engine, `drug_safety_service.py`, already treat as
+    # authoritative). Fixed to read the live table instead -- same source
+    # of truth Infection displays, so the two can no longer disagree.
+    rows = (
+        db.query(PatientAllergy)
+        .filter(PatientAllergy.patient_id == patient_id, PatientAllergy.active.is_(True))
+        .order_by(PatientAllergy.created_at.asc())
+        .all()
     )
-    if not allergies:
+    if not rows:
         return False, None
-    return True, "\n".join(f"- {item}" for item in allergies)
+    lines = []
+    for row in rows:
+        detail = (row.allergen_type or "DRUG").title()
+        if row.severity:
+            detail = f"{detail}, {row.severity.title()}"
+        lines.append(f"- {row.allergen_text} ({detail})")
+    return True, "\n".join(lines)
 def _sync_facesheet_from_rnica(
     db: Session,
     *,
@@ -600,7 +624,7 @@ def _sync_facesheet_from_rnica(
                 patient_id,
             )
             return
-        has_allergies, allergies_text = _build_rnica_allergy_summary(form_data)
+        has_allergies, allergies_text = _build_rnica_allergy_summary(db, patient_id)
         facesheet.primary_diagnosis = _flatten_rnica_primary_diagnosis(form_data)
         facesheet.secondary_diagnoses = _build_rnica_secondary_summary(form_data)
         facesheet.has_allergies = has_allergies
@@ -615,6 +639,275 @@ def _sync_facesheet_from_rnica(
             patient_id,
             exc_info=True,
         )
+def _parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value)[:10]).date()
+    except (ValueError, TypeError):
+        return None
+
+
+def _parse_skin_event_decimal(value):
+    if value is None or value == "":
+        return None
+    try:
+        return Decimal(str(value))
+    except (InvalidOperation, ValueError):
+        return None
+
+
+def _upsert_skin_impairment_event(
+    db: Session,
+    *,
+    skin_impairment_id: str,
+    tenant_id,
+    patient_id,
+    visit_id,
+    assessment_id,
+    event_type: str,
+    photo_id: str = "",
+    **fields,
+) -> None:
+    """
+    PRODUCT OWNER DIRECTIVE "Longitudinal Wound Record" -- insert-or-
+    update one SkinImpairmentEvent row keyed by the natural key
+    (skin_impairment_id, assessment_id, event_type, photo_id). Repeated
+    autosaves of the SAME visit therefore update that visit's one event
+    row instead of appending duplicates on every keystroke-driven save --
+    the append-only history grows one row per visit per event type (or
+    per photo), matching "capture all wound events" without flooding the
+    log with autosave noise.
+    """
+    photo_id = photo_id or ""
+    record = (
+        db.query(SkinImpairmentEvent)
+        .filter(
+            SkinImpairmentEvent.skin_impairment_id == skin_impairment_id,
+            SkinImpairmentEvent.assessment_id == assessment_id,
+            SkinImpairmentEvent.event_type == event_type,
+            SkinImpairmentEvent.photo_id == photo_id,
+        )
+        .first()
+    )
+    if record is None:
+        record = SkinImpairmentEvent(
+            id=uuid.uuid4(),
+            skin_impairment_id=skin_impairment_id,
+            tenant_id=tenant_id,
+            patient_id=patient_id,
+            visit_id=visit_id,
+            assessment_id=assessment_id,
+            event_type=event_type,
+            photo_id=photo_id,
+        )
+        db.add(record)
+    for key, value in fields.items():
+        setattr(record, key, value)
+
+
+def _sync_skin_impairments_from_form_data(
+    db: Session,
+    *,
+    tenant_id: uuid.UUID | None,
+    patient_id: uuid.UUID,
+    visit_id: uuid.UUID | None,
+    assessment_id: uuid.UUID,
+    form_data: dict,
+    current_user: CurrentUser,
+) -> None:
+    """
+    PRODUCT OWNER DIRECTIVE "Skin Impairment History" -- keeps the
+    lightweight skin_impairments identity/lifecycle registry in sync with
+    whatever this save just persisted to form_data["skin"]["wounds"][].
+    Never deletes a row (a wound absent from a later visit's array is
+    simply not refreshed here -- "a wound must never disappear", so
+    deletion is never part of this sync). Best-effort / non-fatal: a
+    failure here must never block the RNICA save itself, matching the
+    established error-handling pattern of _sync_facesheet_from_rnica.
+    """
+    wounds = ((form_data or {}).get("skin") or {}).get("wounds") or []
+    if not isinstance(wounds, list) or not wounds:
+        return
+    try:
+        today = datetime.now(timezone.utc).date()
+        user = db.query(User).filter(User.id == current_user.user_id).first()
+        discipline = (getattr(user, "discipline", None) or getattr(user, "role", None) or None)
+        discipline = str(discipline).strip() if discipline else None
+        for wound in wounds:
+            wound_id = str((wound or {}).get("woundId") or "").strip()
+            if not wound_id:
+                continue
+            status = str((wound or {}).get("status") or "New").strip() or "New"
+            event_date = _parse_iso_date((wound or {}).get("assessmentDate")) or today
+            record = db.query(SkinImpairment).filter(SkinImpairment.id == wound_id).first()
+            previous_status = record.status if record is not None else None
+            if record is None:
+                record = SkinImpairment(
+                    id=wound_id,
+                    tenant_id=tenant_id,
+                    patient_id=patient_id,
+                    condition_type=str((wound or {}).get("conditionType") or "") or "unknown",
+                    present_as_pressure_injury=bool((wound or {}).get("presentAsPressureInjury")),
+                    location=(wound or {}).get("location") or None,
+                    laterality=(wound or {}).get("laterality") or None,
+                    opened_date=_parse_iso_date((wound or {}).get("firstObservedDate")) or today,
+                    opened_visit_id=visit_id,
+                    opened_assessment_id=assessment_id,
+                    opened_by=current_user.user_id,
+                    opened_by_discipline=discipline,
+                    status=status,
+                )
+                db.add(record)
+            else:
+                # Identity fields may still be corrected on an early visit
+                # (e.g. location clarified) but a later row that lacks
+                # them never silently blanks out an already-known value.
+                if (wound or {}).get("conditionType"):
+                    record.condition_type = wound.get("conditionType")
+                if (wound or {}).get("location"):
+                    record.location = wound.get("location")
+                if (wound or {}).get("laterality"):
+                    record.laterality = wound.get("laterality")
+                record.present_as_pressure_injury = bool((wound or {}).get("presentAsPressureInjury"))
+                record.status = status
+            record.current_stage = (wound or {}).get("stage") or record.current_stage
+            record.current_treatment_summary = (
+                (wound or {}).get("currentTreatment") or record.current_treatment_summary
+            )
+            record.last_assessment_id = assessment_id
+            record.last_assessment_visit_id = visit_id
+            record.last_assessment_date = today
+            if status == "Resolved":
+                record.resolved_date = _parse_iso_date((wound or {}).get("resolutionDate")) or record.resolved_date or today
+                record.resolved_by = record.resolved_by or current_user.user_id
+                record.resolved_by_discipline = record.resolved_by_discipline or discipline
+                if (wound or {}).get("resolutionNotes"):
+                    record.resolution_narrative = wound.get("resolutionNotes")
+            else:
+                # Still active (New/Existing/Treat/COC) -- clear any
+                # resolution metadata from a prior resolve/reopen cycle so
+                # a reopened impairment never displays stale resolution
+                # data alongside its active status.
+                record.resolved_date = None
+                record.resolved_by = None
+                record.resolved_by_discipline = None
+                record.resolution_narrative = None
+
+            # ----------------------------------------------------------------
+            # PRODUCT OWNER DIRECTIVE "Longitudinal Wound Record" -- append the
+            # structured event-log rows this save implies ("Capture all wound
+            # events. Capture treatment history. Capture photo history. Capture
+            # COC history. Capture resolution history. Design the database so
+            # future clinical decision support can analyze wound trajectories.
+            # Do NOT build treatment recommendation logic in this RNICA phase.")
+            # No interpretation/recommendation logic lives here -- only the raw
+            # structured history such a future feature would eventually read.
+            # ----------------------------------------------------------------
+            common_event_fields = dict(
+                tenant_id=tenant_id,
+                patient_id=patient_id,
+                visit_id=visit_id,
+                assessment_id=assessment_id,
+                event_date=event_date,
+                recorded_by=current_user.user_id,
+                recorded_by_discipline=discipline,
+            )
+
+            # 1) One "assessment" snapshot event per visit -- the backbone of
+            #    the future trajectory timeline (status/stage/measurements/
+            #    drainage/odor/surrounding skin at this point in time).
+            _upsert_skin_impairment_event(
+                db, skin_impairment_id=wound_id, event_type="assessment",
+                status=status, previous_status=previous_status,
+                stage=(wound or {}).get("stage") or None,
+                measurement_length_cm=_parse_skin_event_decimal((wound or {}).get("length")),
+                measurement_width_cm=_parse_skin_event_decimal((wound or {}).get("width")),
+                measurement_depth_cm=_parse_skin_event_decimal((wound or {}).get("depth")),
+                drainage_amount=(wound or {}).get("drainage") or None,
+                drainage_character=(wound or {}).get("drainageCharacter") or None,
+                odor=(wound or {}).get("odor") or None,
+                surrounding_skin=(wound or {}).get("surroundingSkin") or None,
+                notes=(wound or {}).get("notes") or None,
+                **common_event_fields,
+            )
+
+            # 2) Treatment event -- only when a treatment/dressing was
+            #    actually documented this visit.
+            treatment_summary = (wound or {}).get("currentTreatment") or ""
+            dressing = (wound or {}).get("dressing") or ""
+            dressing_frequency = (wound or {}).get("dressingFrequency") or ""
+            if treatment_summary or dressing:
+                treatment_text = treatment_summary or dressing
+                if dressing and dressing not in treatment_text:
+                    treatment_text = f"{treatment_text} — {dressing}".strip(" —")
+                if dressing_frequency:
+                    treatment_text = f"{treatment_text} ({dressing_frequency})"
+                _upsert_skin_impairment_event(
+                    db, skin_impairment_id=wound_id, event_type="treatment",
+                    status=status, treatment_summary=treatment_text,
+                    **common_event_fields,
+                )
+
+            # 3) Photo events -- one per photo not yet logged. `photos[]` is
+            #    append-only on the frontend, so a new photoId always means
+            #    a new, previously-unseen event; metadata only, the image
+            #    itself stays in form_data (see SkinImpairmentEvent docstring).
+            for photo in (wound or {}).get("photos") or []:
+                photo_id = str((photo or {}).get("photoId") or "").strip()
+                if not photo_id:
+                    continue
+                photo_event_date = _parse_iso_date((photo or {}).get("photoDate")) or event_date
+                _upsert_skin_impairment_event(
+                    db, skin_impairment_id=wound_id, event_type="photo", photo_id=photo_id,
+                    status=status, notes=(photo or {}).get("notes") or None,
+                    tenant_id=tenant_id, patient_id=patient_id, visit_id=visit_id,
+                    assessment_id=assessment_id, event_date=photo_event_date,
+                    recorded_by=current_user.user_id, recorded_by_discipline=discipline,
+                )
+
+            # 4) Status-transition events -- status_change / coc / resolution /
+            #    reopened. Fired when the status actually changed since this
+            #    impairment's last known value, or (coc/resolution only) when
+            #    a brand-new record is first saved already in that state
+            #    (e.g. historical back-entry of an already-resolved issue).
+            status_changed = previous_status is not None and previous_status != status
+            if status_changed:
+                _upsert_skin_impairment_event(
+                    db, skin_impairment_id=wound_id, event_type="status_change",
+                    status=status, previous_status=previous_status,
+                    **common_event_fields,
+                )
+                if previous_status == "Resolved" and status != "Resolved":
+                    _upsert_skin_impairment_event(
+                        db, skin_impairment_id=wound_id, event_type="reopened",
+                        status=status, previous_status=previous_status,
+                        **common_event_fields,
+                    )
+            if status == "COC" and (status_changed or previous_status is None):
+                _upsert_skin_impairment_event(
+                    db, skin_impairment_id=wound_id, event_type="coc",
+                    status=status, previous_status=previous_status,
+                    coc_reason=(wound or {}).get("notes") or None,
+                    **common_event_fields,
+                )
+            if status == "Resolved" and (status_changed or previous_status is None):
+                _upsert_skin_impairment_event(
+                    db, skin_impairment_id=wound_id, event_type="resolution",
+                    status=status, previous_status=previous_status,
+                    resolution_narrative=(wound or {}).get("resolutionNotes") or None,
+                    **common_event_fields,
+                )
+        db.commit()
+    except Exception:
+        db.rollback()
+        logger.warning(
+            "Skin impairment registry sync failed for patient %s",
+            patient_id,
+            exc_info=True,
+        )
+
+
 def _resolve_current_user_display_name(db: Session, current_user: CurrentUser) -> str:
     user = db.query(User).filter(User.id == current_user.user_id).first()
     if user:
@@ -1119,6 +1412,15 @@ def save_rnica_assessment(
         patient_id=patient_uuid,
         form_data=form_data,
     )
+    _sync_skin_impairments_from_form_data(
+        db,
+        tenant_id=getattr(patient, "tenant_id", None),
+        patient_id=patient_uuid,
+        visit_id=assessment.visit_id,
+        assessment_id=assessment.id,
+        form_data=form_data,
+        current_user=current_user,
+    )
     return {
         "assessmentId": str(assessment.id),
         "status": "saved",
@@ -1264,6 +1566,147 @@ def list_rnica_assessments_by_patient(
         "patientId": str(patient_uuid),
         "assessmentType": normalized_assessment_type,
         "assessments": [_serialize_rnica_assessment(record) for record in records],
+    }
+
+
+def _serialize_skin_impairment(record: SkinImpairment) -> dict:
+    return {
+        "woundId": record.id,
+        "patientId": str(record.patient_id),
+        "conditionType": record.condition_type,
+        "presentAsPressureInjury": bool(record.present_as_pressure_injury),
+        "location": record.location,
+        "laterality": record.laterality,
+        "openedDate": record.opened_date.isoformat() if record.opened_date else None,
+        "openedVisitId": str(record.opened_visit_id) if record.opened_visit_id else None,
+        "openedAssessmentId": str(record.opened_assessment_id) if record.opened_assessment_id else None,
+        "openedByDiscipline": record.opened_by_discipline,
+        "status": record.status,
+        "currentStage": record.current_stage,
+        "currentTreatmentSummary": record.current_treatment_summary,
+        "lastAssessmentId": str(record.last_assessment_id) if record.last_assessment_id else None,
+        "lastAssessmentVisitId": str(record.last_assessment_visit_id) if record.last_assessment_visit_id else None,
+        "lastAssessmentDate": record.last_assessment_date.isoformat() if record.last_assessment_date else None,
+        "resolvedDate": record.resolved_date.isoformat() if record.resolved_date else None,
+        "resolvedByDiscipline": record.resolved_by_discipline,
+        "resolutionNarrative": record.resolution_narrative,
+    }
+
+
+@router.get("/rnica/skin-impairments/{patient_id}")
+def list_skin_impairments_by_patient(
+    patient_id: str,
+    status: Optional[str] = Query(default=None),
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """
+    PRODUCT OWNER DIRECTIVE "Skin Impairment History" -- the identity/
+    lifecycle registry read endpoint. Used two ways by the frontend:
+    (1) `?status=unresolved` -- carry-forward: every impairment not yet
+        Resolved, auto-seeded into a brand-new assessment's wounds[] so an
+        active impairment "must never disappear between visits";
+    (2) no filter -- the Current/Resolved Skin Issues views and the
+        per-impairment Longitudinal Timeline (merged client-side with
+        each matching assessment's wounds[] entry for full clinical
+        detail, same pattern as WoundPhotoHistoryByVisit).
+    """
+    try:
+        patient_uuid = uuid.UUID(patient_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="patient_id must be a valid UUID") from None
+    get_authorized_patient(db, patient_uuid, current_user)
+    query = db.query(SkinImpairment).filter(SkinImpairment.patient_id == patient_uuid)
+    if status == "unresolved":
+        query = query.filter(SkinImpairment.status != "Resolved")
+    elif status:
+        query = query.filter(SkinImpairment.status == status)
+    records = query.order_by(SkinImpairment.opened_date.desc().nullslast()).all()
+    return {
+        "patientId": str(patient_uuid),
+        "impairments": [_serialize_skin_impairment(record) for record in records],
+    }
+
+
+def _serialize_skin_impairment_event(record: SkinImpairmentEvent) -> dict:
+    """
+    PRODUCT OWNER REVIEW "Design events as longitudinal clinical events,
+    not wound-specific" -- the response always leads with the seven
+    fields the Product Owner named as mandatory for ANY future clinical
+    event (eventId/eventType/patientId/visitId/assessmentId/createdBy/
+    discipline/eventTimestamp), under those exact names, before the
+    module-specific skin/wound detail fields. A future generic clinical-
+    event API for Medications/Orders/Falls/etc. can reuse this same
+    header shape unchanged.
+    """
+    def _dec(value):
+        return float(value) if value is not None else None
+
+    return {
+        # ---- generic clinical-event header (reusable by future modules) ----
+        "eventId": str(record.id),
+        "eventType": record.event_type,
+        "patientId": str(record.patient_id) if record.patient_id else None,
+        "visitId": str(record.visit_id) if record.visit_id else None,
+        "assessmentId": str(record.assessment_id) if record.assessment_id else None,
+        "createdBy": str(record.recorded_by) if record.recorded_by else None,
+        "discipline": record.recorded_by_discipline,
+        "eventTimestamp": record.recorded_at.isoformat() if record.recorded_at else None,
+        # ---- skin/wound-specific detail ----
+        "woundId": record.skin_impairment_id,
+        "eventDate": record.event_date.isoformat() if record.event_date else None,
+        "status": record.status,
+        "previousStatus": record.previous_status,
+        "stage": record.stage,
+        "measurementLengthCm": _dec(record.measurement_length_cm),
+        "measurementWidthCm": _dec(record.measurement_width_cm),
+        "measurementDepthCm": _dec(record.measurement_depth_cm),
+        "drainageAmount": record.drainage_amount,
+        "drainageCharacter": record.drainage_character,
+        "odor": record.odor,
+        "surroundingSkin": record.surrounding_skin,
+        "treatmentSummary": record.treatment_summary,
+        "photoId": record.photo_id or None,
+        "cocReason": record.coc_reason,
+        "resolutionReason": record.resolution_reason,
+        "resolutionNarrative": record.resolution_narrative,
+        "pocChangeSummary": record.poc_change_summary,
+        "providerNotified": record.provider_notified,
+        "providerNotifiedName": record.provider_notified_name,
+        "notes": record.notes,
+    }
+
+
+@router.get("/rnica/skin-impairments/{wound_id}/timeline")
+def get_skin_impairment_timeline(
+    wound_id: str,
+    db: Session = Depends(get_db),
+    current_user: CurrentUser = Security(get_current_user),
+):
+    """
+    PRODUCT OWNER DIRECTIVE "Longitudinal Wound Record" -- the full,
+    chronological event history for ONE skin impairment: every assessment,
+    treatment, photo, status change, COC, resolution, and reopening ever
+    recorded against it, oldest first. This is the structured source a
+    future clinical-decision-support feature would read to compare an
+    EXPECTED wound trajectory against the OBSERVED one -- no
+    recommendation/interpretation logic is implemented here, only the
+    history itself.
+    """
+    impairment = db.query(SkinImpairment).filter(SkinImpairment.id == wound_id).first()
+    if not impairment:
+        raise HTTPException(status_code=404, detail="Skin impairment not found")
+    get_authorized_patient(db, impairment.patient_id, current_user)
+    events = (
+        db.query(SkinImpairmentEvent)
+        .filter(SkinImpairmentEvent.skin_impairment_id == wound_id)
+        .order_by(SkinImpairmentEvent.event_date.asc().nullslast(), SkinImpairmentEvent.recorded_at.asc())
+        .all()
+    )
+    return {
+        "woundId": wound_id,
+        "impairment": _serialize_skin_impairment(impairment),
+        "events": [_serialize_skin_impairment_event(event) for event in events],
     }
 
 
@@ -1415,6 +1858,15 @@ def update_rnica_assessment(
         tenant_id=getattr(patient, "tenant_id", None) if patient else None,
         patient_id=record.patient_id,
         form_data=form_data,
+    )
+    _sync_skin_impairments_from_form_data(
+        db,
+        tenant_id=getattr(patient, "tenant_id", None) if patient else None,
+        patient_id=record.patient_id,
+        visit_id=record.visit_id,
+        assessment_id=record.id,
+        form_data=form_data,
+        current_user=current_user,
     )
     return {
         "assessmentId": str(record.id),

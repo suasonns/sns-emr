@@ -23,6 +23,7 @@ const SetPasswordPage = lazy(() => import("./pages/SetPasswordPage"));
 const CareOverviewPage = lazy(() => import("./pages/CareOverviewPage"));
 const PlanOfCarePage = lazy(() => import("./pages/PlanOfCarePage"));
 const RNICAPage = lazy(() => import("./pages/RNICAPage"));
+const SkinImpairmentWorkspacePage = lazy(() => import("./pages/SkinImpairmentWorkspacePage"));
 const MSWICAPage = lazy(() => import("./pages/MSWICAPage"));
 const SCICAPage = lazy(() => import("./pages/SCICAPage"));
 const PatientLCDPage = lazy(() => import("./pages/PatientLCDPage"));
@@ -115,6 +116,8 @@ export default function App() {
         <Route path="/nursing-assessment" element={tenantRoute(<RNICAPage />)} />
         <Route path="/admission" element={tenantRoute(<RNICAPage />)} />
         <Route path="/assessment" element={tenantRoute(<RNICAPage />)} />
+        <Route path="/skin-impairments" element={tenantRoute(<SkinImpairmentWorkspacePage />)} />
+        <Route path="/skin-impairments/:woundId" element={tenantRoute(<SkinImpairmentWorkspacePage />)} />
         <Route path="/msw-ica" element={tenantRoute(<MSWICAPage />)} />
         <Route path="/psychosocial" element={tenantRoute(<MSWICAPage />)} />
         <Route path="/psychosocial-assessment" element={tenantRoute(<MSWICAPage />)} />

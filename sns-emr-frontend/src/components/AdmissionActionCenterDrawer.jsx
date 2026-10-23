@@ -64,6 +64,17 @@ const REQUEST_TYPE_LABELS = Object.fromEntries(
   ACTION_CENTER_REQUEST_TYPES.map((t) => [t.value, t.label]),
 );
 
+// TEAM-BASED ADMISSION WORKFLOW DIRECTIVE: "Assign Order Task To" options.
+// Stored as-is in the existing free-text `responsible_discipline` column.
+const RESPONSIBLE_DISCIPLINE_OPTIONS = [
+  { value: "", label: "Unassigned (I will complete it)" },
+  { value: "DPCS", label: "DPCS" },
+  { value: "CASE_MANAGER", label: "Case Manager" },
+  { value: "RN", label: "RN" },
+  { value: "OFFICE_RN", label: "Office RN" },
+  { value: "OTHER", label: "Other" },
+];
+
 function statusColor(status, COLORS) {
   if (status === "COMPLETED") return COLORS.success || "#0F766E";
   if (status === "REQUESTED") return COLORS.gray;
@@ -88,6 +99,8 @@ export default function AdmissionActionCenterDrawer({
   onClose,
   assessmentId,
   sourceSection,
+  patientName,
+  initialRequestType,
   styles,
   COLORS,
 }) {
@@ -95,11 +108,29 @@ export default function AdmissionActionCenterDrawer({
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState("");
 
-  const [requestType, setRequestType] = useState(ACTION_CENTER_REQUEST_TYPES[0].value);
+  const [requestType, setRequestType] = useState(initialRequestType || ACTION_CENTER_REQUEST_TYPES[0].value);
   const [details, setDetails] = useState("");
   const [typeDetails, setTypeDetails] = useState({});
+  // TEAM-BASED ADMISSION WORKFLOW DIRECTIVE: lets the requesting RN name
+  // who should complete the order/request (DPCS, Case Manager, Office RN,
+  // another RN, or Other) instead of being assumed to complete it herself.
+  // Reuses the existing free-text `responsible_discipline` column (no
+  // schema change) -- the backend stores whatever string is sent, so this
+  // is purely a frontend convenience list of the roles that actually do
+  // this work at SNS, plus an "Other" free-text escape hatch.
+  const [responsibleDiscipline, setResponsibleDiscipline] = useState("");
+  const [responsibleDisciplineOther, setResponsibleDisciplineOther] = useState("");
   const [submitError, setSubmitError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  // TEAM-BASED ADMISSION WORKFLOW DIRECTIVE: dirty-close protection. If the
+  // RN has started a request draft (details or any type-detail field has
+  // text), closing the drawer -- via header button, Escape, or
+  // clicking the overlay -- must not silently discard it. There is no
+  // separate "save draft" concept for this request form (submitting IS
+  // the save), so the choice offered is "Submit Request and Return" /
+  // "Discard and Return" / "Continue Editing" rather than inventing a
+  // draft-persistence mechanism that does not exist on the backend.
+  const [closeConfirmOpen, setCloseConfirmOpen] = useState(false);
 
   const [statusDrafts, setStatusDrafts] = useState({});
   const [statusError, setStatusError] = useState("");
@@ -128,15 +159,60 @@ export default function AdmissionActionCenterDrawer({
     }
   }, [assessmentId]);
 
+  // Escape key closes the drawer, but must route through the same
+  // dirty-draft check as every other close affordance (header button,
+  // overlay click) -- no silent discard-on-Escape.
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleKeyDown = (e) => {
+      if (e.key !== "Escape") return;
+      const dirty =
+        details.trim().length > 0 ||
+        Object.values(typeDetails).some((v) => (v || "").trim().length > 0);
+      if (dirty) {
+        setCloseConfirmOpen(true);
+      } else {
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [open, details, typeDetails, onClose]);
+
   useEffect(() => {
     if (open) {
       refresh();
+      // Reset the draft each time the drawer opens, honoring a preselected
+      // request type (e.g. Respiratory's "Create / Open Order" button)
+      // when one is supplied; otherwise default to the first type as
+      // before.
+      setRequestType(initialRequestType || ACTION_CENTER_REQUEST_TYPES[0].value);
+      setDetails("");
+      setTypeDetails({});
+      setResponsibleDiscipline("");
+      setResponsibleDisciplineOther("");
+      setSubmitError("");
+      setCloseConfirmOpen(false);
     }
-  }, [open, refresh]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, refresh, initialRequestType]);
 
   if (!open) return null;
 
   const requiredTypeDetailFields = TYPE_DETAIL_FIELDS[requestType] || [];
+
+  // Dirty = the RN has started a request draft worth protecting on close.
+  const hasDraftInProgress =
+    details.trim().length > 0 ||
+    Object.values(typeDetails).some((v) => (v || "").trim().length > 0);
+
+  const requestClose = () => {
+    if (hasDraftInProgress) {
+      setCloseConfirmOpen(true);
+      return;
+    }
+    onClose();
+  };
 
   const handleRequestTypeChange = (nextType) => {
     setRequestType(nextType);
@@ -165,14 +241,19 @@ export default function AdmissionActionCenterDrawer({
       requiredTypeDetailFields.forEach((field) => {
         payloadTypeDetails[field.key] = (typeDetails[field.key] || "").trim();
       });
+      const resolvedDiscipline =
+        responsibleDiscipline === "OTHER" ? responsibleDisciplineOther.trim() : responsibleDiscipline;
       await createRnicaActionCenterRequest(assessmentId, {
         request_type: requestType,
         details: details.trim(),
         source_section: sourceSection,
+        ...(resolvedDiscipline ? { responsible_discipline: resolvedDiscipline } : {}),
         ...(requiredTypeDetailFields.length > 0 ? { type_details: payloadTypeDetails } : {}),
       });
       setDetails("");
       setTypeDetails({});
+      setResponsibleDiscipline("");
+      setResponsibleDisciplineOther("");
       await refresh();
     } catch (error) {
       setSubmitError(error.message || "Unable to create request.");
@@ -252,7 +333,7 @@ export default function AdmissionActionCenterDrawer({
         justifyContent: "flex-end",
         background: "rgba(15, 23, 42, 0.35)",
       }}
-      onClick={onClose}
+      onClick={requestClose}
     >
       <div
         style={{
@@ -267,15 +348,68 @@ export default function AdmissionActionCenterDrawer({
         onClick={(e) => e.stopPropagation()}
       >
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-          <div style={styles.sectionTitle}>Admission Action Center</div>
-          <button type="button" style={styles.btnSecondary} onClick={onClose}>
-            Close
+          <div>
+            <div style={styles.sectionTitle}>Admission Action Center</div>
+            {/* TEAM-BASED ADMISSION WORKFLOW DIRECTIVE: show the patient's
+                name, never a raw patient/assessment UUID, so the RN can
+                confirm she's looking at the right chart. */}
+            {patientName && (
+              <div style={{ fontSize: 12, color: COLORS.gray }}>{patientName}</div>
+            )}
+          </div>
+          {/* "Back to Assessment" (not "Close"): this drawer never
+              navigates away from or unmounts RNICA -- it is an overlay --
+              so the label reflects what actually happens: the nurse
+              returns to the assessment exactly where she left it. */}
+          <button type="button" style={styles.btnSecondary} onClick={requestClose}>
+            Back to Assessment
           </button>
         </div>
         <div style={styles.sectionSubtitle}>
           Request Medications, Physician Orders, DME, Supplies, or Referrals without leaving this assessment.
           This tracks request status only — fulfillment, approval routing, and notifications are out of scope.
         </div>
+
+        {closeConfirmOpen && (
+          <div style={{ ...styles.card, border: `1px solid ${COLORS.warning || "#B45309"}`, marginTop: 10 }}>
+            <div style={{ fontWeight: 700, fontSize: 13, marginBottom: 6 }}>
+              You have an unsubmitted request
+            </div>
+            <div style={{ fontSize: 12.5, marginBottom: 10 }}>
+              Details or request-specific fields have text that hasn't been submitted yet. What would you like to do?
+            </div>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <button
+                type="button"
+                style={styles.btnPrimary}
+                onClick={async () => {
+                  await handleCreate();
+                  setCloseConfirmOpen(false);
+                }}
+                disabled={submitting}
+              >
+                Submit Request and Return
+              </button>
+              <button
+                type="button"
+                style={styles.btnSecondary}
+                onClick={() => {
+                  setDetails("");
+                  setTypeDetails({});
+                  setResponsibleDiscipline("");
+                  setResponsibleDisciplineOther("");
+                  setCloseConfirmOpen(false);
+                  onClose();
+                }}
+              >
+                Discard and Return
+              </button>
+              <button type="button" style={styles.btnSecondary} onClick={() => setCloseConfirmOpen(false)}>
+                Continue Editing
+              </button>
+            </div>
+          </div>
+        )}
 
         <div style={styles.card}>
           <div style={styles.cardTitle}>New Request</div>
@@ -316,6 +450,35 @@ export default function AdmissionActionCenterDrawer({
               />
             </div>
           ))}
+
+          {/* TEAM-BASED ADMISSION WORKFLOW DIRECTIVE: the admitting RN is
+              frequently not the clinician who completes the order. This
+              lets her name who should, without leaving RNICA or being
+              forced to complete it herself. Stored in the existing
+              free-text responsible_discipline column -- no schema change. */}
+          <div style={styles.formGroup}>
+            <label style={styles.label}>Assign Order Task To</label>
+            <select
+              style={styles.select}
+              value={responsibleDiscipline}
+              onChange={(e) => setResponsibleDiscipline(e.target.value)}
+            >
+              {RESPONSIBLE_DISCIPLINE_OPTIONS.map((opt) => (
+                <option key={opt.value} value={opt.value}>
+                  {opt.label}
+                </option>
+              ))}
+            </select>
+            {responsibleDiscipline === "OTHER" && (
+              <input
+                type="text"
+                style={{ ...styles.select, marginTop: 6 }}
+                placeholder="Role or name"
+                value={responsibleDisciplineOther}
+                onChange={(e) => setResponsibleDisciplineOther(e.target.value)}
+              />
+            )}
+          </div>
 
           {sourceSection && (
             <div style={{ fontSize: 11, color: COLORS.gray, marginBottom: 8 }}>
@@ -373,6 +536,11 @@ export default function AdmissionActionCenterDrawer({
               {r.sourceSection && (
                 <div style={{ fontSize: 10.5, color: COLORS.gray, marginBottom: 6 }}>
                   Source section: {r.sourceSection}
+                </div>
+              )}
+              {r.responsibleDiscipline && (
+                <div style={{ fontSize: 10.5, color: COLORS.gray, marginBottom: 6 }}>
+                  Assigned to: {r.responsibleDiscipline}
                 </div>
               )}
               {r.status === "COMPLETED" && r.completionEvidence && (

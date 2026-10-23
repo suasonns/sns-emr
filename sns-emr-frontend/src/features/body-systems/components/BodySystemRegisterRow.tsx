@@ -1,35 +1,27 @@
 import { AccordionItem, AccordionTrigger, AccordionContent } from "../../../components/ui/accordion";
 import { BODY_SYSTEM_LABELS } from "../../../domain/body-systems";
 import { ReviewStateBadge } from "./ReviewStateBadge";
-import { RespiratoryPanel } from "./RespiratoryPanel";
 import type { SyntheticSystemRow } from "../types/presentation";
 
 export interface BodySystemRegisterRowProps {
   row: SyntheticSystemRow;
-  /** Only consumed when `row.system === "respiratory"`. */
-  patientId: string;
 }
 
 /**
  * One expandable register row.
  *
- * Narrowed-shell foundation (unchanged): expanding any of the other nine
- * systems reveals only a fixed, neutral, read-only placeholder line — no
- * clinical-detail panel, assessment-situation presentation, review
- * exception content, editing, persistence, or API access.
+ * Narrowed-shell foundation: expanding any of the ten systems reveals only
+ * a fixed, neutral, read-only placeholder line — no clinical-detail panel,
+ * assessment-situation presentation, review exception content, editing,
+ * persistence, or API access.
  *
- * Respiratory proof-of-pattern expansion (explicit product-authority
- * decision — see `BodySystemsWorkspace.tsx` docstring): Respiratory's row
- * renders the real, editable `RespiratoryPanel` instead, wired to the
- * Respiratory API for `patientId`. No other system may render that panel
- * or call that API.
- *
- * This preview harness has no real RNICA episode to scope by (it is a
- * dev-only synthetic-row preview, not the live RNICA route), so it passes
- * `patientId` as a STAND-IN `assessmentId`. The live RNICA.jsx mount
- * (RNICA.jsx, not this file) passes the real `RnicaAssessment.id`.
+ * Respiratory's former proof-of-pattern expansion (a real, API-backed
+ * `RespiratoryPanel` for this one system) was retired per product-
+ * authority direction to collapse Respiratory back onto the same
+ * plain-register model as every other system — this preview harness no
+ * longer special-cases any system.
  */
-export function BodySystemRegisterRow({ row, patientId }: BodySystemRegisterRowProps) {
+export function BodySystemRegisterRow({ row }: BodySystemRegisterRowProps) {
   return (
     <AccordionItem value={row.system}>
       <AccordionTrigger>
@@ -39,11 +31,7 @@ export function BodySystemRegisterRow({ row, patientId }: BodySystemRegisterRowP
         </span>
       </AccordionTrigger>
       <AccordionContent>
-        {row.system === "respiratory" ? (
-          <RespiratoryPanel patientId={patientId} assessmentId={patientId} />
-        ) : (
-          <p className="text-xs text-rnica-muted">Read-only synthetic register preview</p>
-        )}
+        <p className="text-xs text-rnica-muted">Read-only synthetic register preview</p>
       </AccordionContent>
     </AccordionItem>
   );

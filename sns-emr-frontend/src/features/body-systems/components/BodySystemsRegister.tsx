@@ -7,8 +7,6 @@ export interface BodySystemsRegisterProps {
   rows: readonly SyntheticSystemRow[];
   expandedSystem: BodySystemCode | null;
   onExpandedSystemChange: (system: BodySystemCode | null) => void;
-  /** Threaded through to the Respiratory row only — see `BodySystemRegisterRow.tsx`. */
-  patientId: string;
 }
 
 /**
@@ -18,7 +16,7 @@ export interface BodySystemsRegisterProps {
  * requirement — kept as the single behavior for both desktop and mobile
  * rather than two different interaction models.
  */
-export function BodySystemsRegister({ rows, expandedSystem, onExpandedSystemChange, patientId }: BodySystemsRegisterProps) {
+export function BodySystemsRegister({ rows, expandedSystem, onExpandedSystemChange }: BodySystemsRegisterProps) {
   return (
     <Accordion
       type="single"
@@ -29,7 +27,7 @@ export function BodySystemsRegister({ rows, expandedSystem, onExpandedSystemChan
       data-testid="body-systems-register"
     >
       {rows.map((row) => (
-        <BodySystemRegisterRow key={row.system} row={row} patientId={patientId} />
+        <BodySystemRegisterRow key={row.system} row={row} />
       ))}
     </Accordion>
   );
