@@ -458,10 +458,6 @@ export const CONCEPT_REGISTRY = {
     section: "neurological",
     writes: [{ path: "communication", value: "Clear", op: "set", section: null }],
   },
-  NEURO_COMMUNICATION_NORMAL: {
-    section: "neurological",
-    writes: [{ path: "communication", value: "Normal", op: "set", section: null }],
-  },
   NEURO_COMMUNICATION_IMPAIRED: {
     section: "neurological",
     writes: [{ path: "communication", value: "Impaired", op: "set", section: null }],
@@ -513,10 +509,6 @@ export const CONCEPT_REGISTRY = {
   NEURO_BALANCE_UNABLE_TO_STAND: {
     section: "neurological",
     writes: [{ path: "balance", value: "Unable to stand", op: "set", section: null }],
-  },
-  NEURO_BALANCE_UNABLE_TO_ASSESS: {
-    section: "neurological",
-    writes: [{ path: "balance", value: "Unable to assess", op: "set", section: null }],
   },
   NEURO_SENSORY_NUMBNESS: {
     section: "neurological",
@@ -584,7 +576,7 @@ export const CONCEPT_REGISTRY = {
   },
   NEURO_DEMEANOR_CONFUSED: {
     section: "neurological",
-    writes: [{ path: "symptomsDemeanor", value: "Confused", op: "multi_add", section: null }],
+    writes: [{ path: "symptomsDemeanor", value: "Confusion", op: "multi_add", section: null }],
   },
   NEURO_DEMEANOR_RESTLESS: {
     section: "neurological",
@@ -986,6 +978,10 @@ export const CONCEPT_REGISTRY = {
     section: "musculoskeletal",
     writes: [{ path: "romLimitations", value: "Lower extremities", op: "multi_add", section: null }],
   },
+  MSK_ROM_LOSS_PRESENT: {
+    section: "musculoskeletal",
+    writes: [{ path: "romLossPresent", value: true, op: "set", section: null }],
+  },
   MSK_ISSUE_JOINT_SWELLING: {
     section: "musculoskeletal",
     writes: [{ path: "musculoskeletalIssues", value: "Joint swelling", op: "multi_add", section: null }],
@@ -1049,66 +1045,6 @@ export const CONCEPT_REGISTRY = {
   MSK_ASSISTIVE_DEVICE_HOYER_LIFT: {
     section: "musculoskeletal",
     writes: [{ path: "assistiveDevices", value: "Hoyer lift", op: "multi_add", section: null }],
-  },
-  MSK_AMBULATORY_INDEPENDENT: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.ambulatoryStatus", value: "Independent", op: "set", section: null }],
-  },
-  MSK_AMBULATORY_SUPERVISED: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.ambulatoryStatus", value: "Supervised", op: "set", section: null }],
-  },
-  MSK_AMBULATORY_ASSISTED: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.ambulatoryStatus", value: "Assisted", op: "set", section: null }],
-  },
-  MSK_AMBULATORY_DEPENDENT: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.ambulatoryStatus", value: "Dependent", op: "set", section: null }],
-  },
-  MSK_BEDBOUND: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.ambulatoryStatus", value: "Bedbound", op: "set", section: null }],
-  },
-  MSK_TRANSFER_INDEPENDENT: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.transferAbility", value: "Independent", op: "set", section: null }],
-  },
-  MSK_TRANSFER_1_PERSON_ASSIST: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.transferAbility", value: "1-person assist", op: "set", section: null }],
-  },
-  MSK_TRANSFER_2_PERSON_ASSIST: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.transferAbility", value: "2-person assist", op: "set", section: null }],
-  },
-  MSK_TRANSFER_HOYER_LIFT: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.transferAbility", value: "Hoyer lift", op: "set", section: null }],
-  },
-  MSK_STRENGTH_DECREASED: {
-    section: "musculoskeletal",
-    writes: [{ path: "strength", value: "Decreased", op: "set", section: null }],
-  },
-  MSK_STRENGTH_ABSENT: {
-    section: "musculoskeletal",
-    writes: [{ path: "strength", value: "Absent", op: "set", section: null }],
-  },
-  MSK_BALANCE_IMPAIRED: {
-    section: "musculoskeletal",
-    writes: [{ path: "balance", value: "Impaired", op: "set", section: null }],
-  },
-  MSK_PAIN_WITH_MOVEMENT_MILD: {
-    section: "musculoskeletal",
-    writes: [{ path: "painWithMovement", value: "Mild", op: "set", section: null }],
-  },
-  MSK_PAIN_WITH_MOVEMENT_MODERATE: {
-    section: "musculoskeletal",
-    writes: [{ path: "painWithMovement", value: "Moderate", op: "set", section: null }],
-  },
-  MSK_PAIN_WITH_MOVEMENT_SEVERE: {
-    section: "musculoskeletal",
-    writes: [{ path: "painWithMovement", value: "Severe", op: "set", section: null }],
   },
   ADL_BATHING_INDEPENDENT: {
     section: "musculoskeletal",
@@ -1254,18 +1190,6 @@ export const CONCEPT_REGISTRY = {
     section: "musculoskeletal",
     writes: [{ path: "adl.grooming", value: "5", op: "set", section: null }],
   },
-  MSK_ENDURANCE_GOOD: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.endurance", value: "Good", op: "set", section: null }],
-  },
-  MSK_ENDURANCE_FAIR: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.endurance", value: "Fair", op: "set", section: null }],
-  },
-  MSK_ENDURANCE_POOR: {
-    section: "musculoskeletal",
-    writes: [{ path: "mobility.endurance", value: "Poor", op: "set", section: null }],
-  },
   MSK_FALLS_LAST_90_DAYS: {
     section: "musculoskeletal",
     writes: [],
@@ -1363,31 +1287,31 @@ export const CONCEPT_REGISTRY = {
   },
   GI_ABDOMEN_SOFT: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Soft", op: "set", section: null }],
+    writes: [{ path: "abdomenConsistency", value: "Soft", op: "set", section: null }],
   },
   GI_ABDOMEN_FIRM: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Firm", op: "set", section: null }],
+    writes: [{ path: "abdomenConsistency", value: "Firm", op: "set", section: null }],
   },
   GI_ABDOMEN_TYMPANIC: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Tympanic", op: "set", section: null }],
+    writes: [{ path: "abdomenAppearance", value: "Tympanic", op: "set", section: null }],
   },
   GI_ABDOMEN_DISTENDED: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Distended", op: "set", section: null }],
+    writes: [{ path: "abdomenAppearance", value: "Distended", op: "set", section: null }],
   },
   GI_ABDOMEN_TENDER: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Tender", op: "set", section: null }],
+    writes: [{ path: "abdomenTenderness", value: "Tender", op: "set", section: null }],
   },
   GI_ABDOMEN_NONTENDER: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Nontender", op: "set", section: null }],
+    writes: [{ path: "abdomenTenderness", value: "Nontender", op: "set", section: null }],
   },
   GI_ABDOMEN_RIGID: {
     section: "gastrointestinal",
-    writes: [{ path: "abdomen", value: "Rigid", op: "set", section: null }],
+    writes: [{ path: "abdomenConsistency", value: "Rigid", op: "set", section: null }],
   },
   GI_ASCITES_PRESENT: {
     section: "gastrointestinal",
@@ -1833,90 +1757,26 @@ export const CONCEPT_REGISTRY = {
     section: "neurological",
     writes: [{ path: "sleepRest.sleepPattern", value: "Normal", op: "set", section: null }],
   },
-  NEURO_SLEEP_PATTERN_INCREASED_SLEEPING: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.sleepPattern", value: "Increased Sleeping", op: "set", section: null }],
-  },
-  NEURO_SLEEP_PATTERN_EXCESSIVE_SLEEPING: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.sleepPattern", value: "Excessive Sleeping", op: "set", section: null }],
-  },
-  NEURO_SLEEP_PATTERN_FRAGMENTED_SLEEP: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.sleepPattern", value: "Fragmented Sleep", op: "set", section: null }],
-  },
   NEURO_SLEEP_PATTERN_INSOMNIA: {
     section: "neurological",
     writes: [{ path: "sleepRest.sleepPattern", value: "Insomnia", op: "set", section: null }],
   },
-  NEURO_RESPONSIVENESS_EASILY_AROUSED: {
+  NEURO_SLEEP_PATTERN_HYPERSOMNIA: {
     section: "neurological",
-    writes: [{ path: "sleepRest.responsiveness", value: "Easily Aroused", op: "set", section: null }],
+    writes: [{ path: "sleepRest.sleepPattern", value: "Hypersomnia", op: "set", section: null }],
   },
-  NEURO_RESPONSIVENESS_SOMNOLENT: {
+  NEURO_SLEEP_PATTERN_FRAGMENTED: {
     section: "neurological",
-    writes: [{ path: "sleepRest.responsiveness", value: "Somnolent", op: "set", section: null }],
+    writes: [{ path: "sleepRest.sleepPattern", value: "Fragmented", op: "set", section: null }],
   },
-  NEURO_RESPONSIVENESS_DIFFICULT_TO_AROUSE: {
+  NEURO_SLEEP_PATTERN_SOMNOLENCE: {
     section: "neurological",
-    writes: [{ path: "sleepRest.responsiveness", value: "Difficult To Arouse", op: "set", section: null }],
-  },
-  NEURO_RESPONSIVENESS_MINIMALLY_RESPONSIVE: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.responsiveness", value: "Minimally Responsive", op: "set", section: null }],
-  },
-  NEURO_RESPONSIVENESS_UNRESPONSIVE: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.responsiveness", value: "Unresponsive", op: "set", section: null }],
-  },
-  NEURO_SLEEP_CHANGE_NO_CHANGE: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.changeSincePrior", value: "No Change", op: "set", section: null }],
-  },
-  NEURO_SLEEP_CHANGE_SLEEPING_MORE: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.changeSincePrior", value: "Sleeping More", op: "set", section: null }],
-  },
-  NEURO_SLEEP_CHANGE_INCREASED_SOMNOLENCE: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.changeSincePrior", value: "Increased Somnolence", op: "set", section: null }],
-  },
-  NEURO_SLEEP_CHANGE_MORE_DIFFICULT_TO_AROUSE: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.changeSincePrior", value: "More Difficult To Arouse", op: "set", section: null }],
-  },
-  NEURO_SLEEP_CHANGE_NEW_UNRESPONSIVENESS: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.changeSincePrior", value: "New Unresponsiveness", op: "set", section: null }],
+    writes: [{ path: "sleepRest.sleepPattern", value: "Somnolence", op: "set", section: null }],
   },
   NEURO_AVG_SLEEP_HOURS: {
     section: "neurological",
     writes: [],
     valueSlot: { kind: "numeric", path: "sleepRest.averageSleepHours", minValue: 0, maxValue: 24, maxLen: null },
-  },
-  NEURO_NIGHT_SYMPTOM_PAIN: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.nighttimeSymptoms", value: "Pain", op: "multi_add", section: null }],
-  },
-  NEURO_NIGHT_SYMPTOM_DYSPNEA: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.nighttimeSymptoms", value: "Dyspnea", op: "multi_add", section: null }],
-  },
-  NEURO_NIGHT_SYMPTOM_RESTLESSNESS: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.nighttimeSymptoms", value: "Restlessness", op: "multi_add", section: null }],
-  },
-  NEURO_NIGHT_SYMPTOM_CONFUSION: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.nighttimeSymptoms", value: "Confusion", op: "multi_add", section: null }],
-  },
-  NEURO_NIGHT_SYMPTOM_ANXIETY: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.nighttimeSymptoms", value: "Anxiety", op: "multi_add", section: null }],
-  },
-  NEURO_NIGHT_SYMPTOM_NAUSEA: {
-    section: "neurological",
-    writes: [{ path: "sleepRest.nighttimeSymptoms", value: "Nausea", op: "multi_add", section: null }],
   },
   NEURO_SLEEP_AID_MEDICATION: {
     section: "neurological",
@@ -2437,11 +2297,6 @@ export const CONCEPT_REGISTRY = {
     section: "genitourinary",
     writes: [],
     valueSlot: { kind: "free_text_bounded", path: "urineColor", minValue: null, maxValue: null, maxLen: 30 },
-  },
-  RESP_SPUTUM_CHARACTER: {
-    section: "respiratory",
-    writes: [],
-    valueSlot: { kind: "free_text_bounded", path: "sputumCharacter", minValue: null, maxValue: null, maxLen: 60 },
   },
   RESP_TRACH_TYPE: {
     section: "respiratory",
@@ -3157,7 +3012,7 @@ export const CONCEPT_REGISTRY = {
   },
   CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.physicalAbility", value: "Capable with limitations", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.physicalAbility", value: "Capable with support", op: "set", section: null }],
   },
   CAREGIVER_PHYSICAL_ABILITY_LIMITED: {
     section: "demographics",
@@ -3201,27 +3056,27 @@ export const CONCEPT_REGISTRY = {
   },
   CAREGIVER_AVAILABILITY_24_7: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "24/7 available", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Around the clock", op: "set", section: null }],
   },
   CAREGIVER_AVAILABILITY_16_23_HOURS: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "16-23 hours", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Daytime only", op: "set", section: null }],
   },
   CAREGIVER_AVAILABILITY_8_15_HOURS: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "8-15 hours", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Evening only", op: "set", section: null }],
   },
   CAREGIVER_AVAILABILITY_4_7_HOURS: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "4-7 hours", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Intermittent", op: "set", section: null }],
   },
   CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Less than 4 hours", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Limited availability", op: "set", section: null }],
   },
   CAREGIVER_AVAILABILITY_NOT_AVAILABLE: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Not available", op: "set", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.availabilityForCare", value: "Unable to determine", op: "set", section: null }],
   },
   CAREGIVER_TRAINING_MEDICATION_ADMIN: {
     section: "demographics",
@@ -3239,73 +3094,17 @@ export const CONCEPT_REGISTRY = {
     section: "demographics",
     writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Emergency procedures", op: "multi_add", section: null }],
   },
-  CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS: {
+  CAREGIVER_TRAINING_TRANSFERS: {
     section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Body mechanics/transfers", op: "multi_add", section: null }],
+    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Transfers", op: "multi_add", section: null }],
   },
   CAREGIVER_TRAINING_NUTRITION_FEEDING: {
     section: "demographics",
     writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Nutrition/feeding", op: "multi_add", section: null }],
   },
-  CAREGIVER_TRAINING_SKIN_CARE_POSITIONING: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Skin care/positioning", op: "multi_add", section: null }],
-  },
   CAREGIVER_TRAINING_EQUIPMENT_USE: {
     section: "demographics",
     writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Equipment use", op: "multi_add", section: null }],
-  },
-  CAREGIVER_TRAINING_INFECTION_CONTROL: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Infection control", op: "multi_add", section: null }],
-  },
-  CAREGIVER_TRAINING_PAIN_ASSESSMENT: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "Pain assessment", op: "multi_add", section: null }],
-  },
-  CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.trainingNeeds", value: "When to call hospice", op: "multi_add", section: null }],
-  },
-  CAREGIVER_WILLINGNESS_1_UNWILLING: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "1", op: "set", section: null }],
-  },
-  CAREGIVER_WILLINGNESS_2_RELUCTANT: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "2", op: "set", section: null }],
-  },
-  CAREGIVER_WILLINGNESS_3_AMBIVALENT: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "3", op: "set", section: null }],
-  },
-  CAREGIVER_WILLINGNESS_4_WILLING: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "4", op: "set", section: null }],
-  },
-  CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.willingnessScore", value: "5", op: "set", section: null }],
-  },
-  CAREGIVER_CAPABILITY_1_UNABLE: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "1", op: "set", section: null }],
-  },
-  CAREGIVER_CAPABILITY_2_MINIMAL: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "2", op: "set", section: null }],
-  },
-  CAREGIVER_CAPABILITY_3_MODERATE: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "3", op: "set", section: null }],
-  },
-  CAREGIVER_CAPABILITY_4_CAPABLE: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "4", op: "set", section: null }],
-  },
-  CAREGIVER_CAPABILITY_5_FULLY_CAPABLE: {
-    section: "demographics",
-    writes: [{ path: "pcg.caregiverEvaluation.capabilityScore", value: "5", op: "set", section: null }],
   },
   CAREGIVER_SUPPORT_SYSTEM_ADEQUATE: {
     section: "demographics",

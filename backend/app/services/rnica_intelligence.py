@@ -115,12 +115,23 @@ def _collect_findings(form_data: dict[str, Any]) -> tuple[list[dict[str, Any]], 
         recommendations.append("Reinforce fall precautions, mobility support, and caregiver awareness.")
 
     musculoskeletal = form_data.get("musculoskeletal") or {}
-    ambulation = str(musculoskeletal.get("mobility", {}).get("ambulatoryStatus") or "").lower()
-    if "non" in ambulation or "bedbound" in ambulation or "chair" in ambulation:
+    # PRODUCT OWNER DIRECTIVE (2026-10-16) "Musculoskeletal Architecture
+    # Review" -- `mobility.ambulatoryStatus` is retired from Musculoskeletal
+    # ("should have been documented in Functional Status / ADLs from the
+    # beginning"); this advisory now reads the ADL Transferring dependency
+    # score (0=Independent .. 5=Total dependence) instead, same Functional
+    # Status/ADL source-of-truth refactor applied to the eligibility
+    # evidence harvester's `ambulation_assistance_required` fact.
+    adl = musculoskeletal.get("adl") or {}
+    try:
+        transfer_score = int(adl.get("transferring"))
+    except (TypeError, ValueError):
+        transfer_score = None
+    if transfer_score is not None and transfer_score >= 3:
         findings.append({
             "category": "mobility_limitations",
             "title": "Mobility limitation",
-            "details": "Ambulation or transfer status indicates significant functional limitation.",
+            "details": "Transfer dependency indicates significant functional limitation.",
             "severity": "moderate",
         })
         recommendations.append("Document assistive device use, caregiver support, and transfer safety needs.")

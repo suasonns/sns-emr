@@ -28,7 +28,16 @@ import "../design-system/RnicaTailwind.css";
 
 const NOT_DOCUMENTED = "Not yet documented";
 
-function Fact({ label, value }) {
+function Fact({ label, value, hideIfEmpty = false }) {
+  // PRODUCT OWNER REVIEW (Onset & Progression reassessment): hospice
+  // patients/caregivers frequently cannot reliably identify pain onset
+  // (metastatic disease, dementia, stroke, long-standing chronic pain,
+  // late admission). This field is optional, not clinically required,
+  // and not a HOPE/CMS data element -- an empty value is never a
+  // documentation deficiency, so it must not render the "Not yet
+  // documented" warning style. `hideIfEmpty` rows are omitted entirely
+  // when blank instead of showing any fallback text.
+  if (hideIfEmpty && !value) return null;
   return (
     <div className="flex items-start justify-between gap-4 border-b border-rnica-border/50 py-2 last:border-b-0">
       <span className="w-[38%] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-rnica-muted">{label}</span>
@@ -99,10 +108,14 @@ export default function PainSymptomBurdenOverview({
             <Fact label="Pain present" value={currentPainLabel} />
             <Fact label="Pain Location" value={joinList(painData?.painLocation)} />
             <Fact label="Type of Pain" value={typeOfPain} />
-            <Fact label="Onset & Progression" value={painData?.painOnsetProgression} />
-            <Fact label="Duration & Frequency" value={painData?.painDurationFrequency} />
+            <Fact label="Pain History" value={painData?.painHistory} hideIfEmpty />
+            <Fact label="Pain Trend" value={painData?.painTrend} hideIfEmpty />
+            <Fact label="Pain Pattern" value={painData?.painPattern} hideIfEmpty />
+            <Fact label="Frequency" value={painData?.painFrequency} hideIfEmpty />
+            <Fact label="Additional Detail" value={painData?.painAdditionalDetail} hideIfEmpty />
             <Fact label="Aggravating Factors" value={joinList(painData?.aggravatingFactors)} />
             <Fact label="Alleviating Factors" value={joinList(painData?.relievingFactors)} />
+            <Fact label="Pain Impact" value={joinList(painData?.painImpact)} hideIfEmpty />
           </CardContent>
         </Card>
 
@@ -117,9 +130,9 @@ export default function PainSymptomBurdenOverview({
           <CardContent className="pt-0">
             <Fact label="Scheduled Regimen" value={scheduledRegimen} />
             <Fact label="Breakthrough Regimen" value={breakthroughRegimen} />
-            <Fact label="Adjuvant / Non-Pharm" value={joinList(painData?.nonPharmInterventions)} />
+            <Fact label="Adjuvant / Non-Pharm" value={joinList(painData?.nonPharmInterventions)} hideIfEmpty />
             <Fact label="Effectiveness Rating" value={painData?.painEffectivenessRating} />
-            <Fact label="Notes" value={painData?.painManagementPlan} />
+            <Fact label="Notes" value={painData?.painManagementPlan} hideIfEmpty />
           </CardContent>
         </Card>
 

@@ -389,7 +389,12 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "SYMPTOM_AGITATION_SEVERITY_MODERATE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_MODERATE", "neurological", "Agitation severity: moderate (HOPE J2051H)", (_fw("agitation", "2", section="symptomImpact"),)),
     "SYMPTOM_AGITATION_SEVERITY_SEVERE": ConceptMapping("SYMPTOM_AGITATION_SEVERITY_SEVERE", "neurological", "Agitation severity: severe (HOPE J2051H)", (_fw("agitation", "3", section="symptomImpact"),)),
     "NEURO_DEMEANOR_PEACEFUL": ConceptMapping("NEURO_DEMEANOR_PEACEFUL", "neurological", "Peaceful", (_fw("symptomsDemeanor", "Peaceful", op="multi_add"),)),
-    "NEURO_DEMEANOR_CONFUSED": ConceptMapping("NEURO_DEMEANOR_CONFUSED", "neurological", "Confused", (_fw("symptomsDemeanor", "Confused", op="multi_add"),)),
+    # PRODUCT OWNER REVIEW (2026-10-21) "Neurological Duplicate Documentation
+    # Removal" -- renamed from "Confused" to "Confusion" to document the
+    # clinical finding itself rather than an adjective describing the
+    # patient; concept key (NEURO_DEMEANOR_CONFUSED) kept stable since
+    # nothing external references the key, only the written value.
+    "NEURO_DEMEANOR_CONFUSED": ConceptMapping("NEURO_DEMEANOR_CONFUSED", "neurological", "Confusion", (_fw("symptomsDemeanor", "Confusion", op="multi_add"),)),
     "NEURO_DEMEANOR_RESTLESS": ConceptMapping("NEURO_DEMEANOR_RESTLESS", "neurological", "Restless", (_fw("symptomsDemeanor", "Restless", op="multi_add"),)),
     "NEURO_DEMEANOR_DEPRESSED": ConceptMapping("NEURO_DEMEANOR_DEPRESSED", "neurological", "Depressed", (_fw("symptomsDemeanor", "Depressed", op="multi_add"),)),
     "NEURO_DEMEANOR_COMBATIVE": ConceptMapping("NEURO_DEMEANOR_COMBATIVE", "neurological", "Combative", (_fw("symptomsDemeanor", "Combative", op="multi_add"),)),
@@ -522,6 +527,7 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "MSK_CONTRACTURES_LOC_UPPER_EXTREMITIES": ConceptMapping("MSK_CONTRACTURES_LOC_UPPER_EXTREMITIES", "musculoskeletal", "Contractures, upper extremities", (_fw("contracturesLocation", "Upper extremities", op="multi_add"),)),
     "MSK_ROM_LOSS_UPPER_EXTREMITIES": ConceptMapping("MSK_ROM_LOSS_UPPER_EXTREMITIES", "musculoskeletal", "ROM loss, upper extremities", (_fw("romLimitations", "Upper extremities", op="multi_add"),)),
     "MSK_ROM_LOSS_LOWER_EXTREMITIES": ConceptMapping("MSK_ROM_LOSS_LOWER_EXTREMITIES", "musculoskeletal", "ROM loss, lower extremities", (_fw("romLimitations", "Lower extremities", op="multi_add"),)),
+    "MSK_ROM_LOSS_PRESENT": ConceptMapping("MSK_ROM_LOSS_PRESENT", "musculoskeletal", "ROM loss present", (_fw("romLossPresent", True),)),
     "MSK_ISSUE_JOINT_SWELLING": ConceptMapping("MSK_ISSUE_JOINT_SWELLING", "musculoskeletal", "Joint swelling", (_fw("musculoskeletalIssues", "Joint swelling", op="multi_add"),)),
     "MSK_ISSUE_SPASMS_CRAMPS": ConceptMapping("MSK_ISSUE_SPASMS_CRAMPS", "musculoskeletal", "Spasms / cramps", (_fw("musculoskeletalIssues", "Spasms / cramps", op="multi_add"),)),
     "MSK_ISSUE_AMPUTATION": ConceptMapping("MSK_ISSUE_AMPUTATION", "musculoskeletal", "Amputation", (_fw("musculoskeletalIssues", "Amputation", op="multi_add"),)),
@@ -538,21 +544,14 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     "MSK_ASSISTIVE_DEVICE_CRUTCHES": ConceptMapping("MSK_ASSISTIVE_DEVICE_CRUTCHES", "musculoskeletal", "Uses crutches", (_fw("assistiveDevices", "Crutches", op="multi_add"),)),
     "MSK_ASSISTIVE_DEVICE_HOSPITAL_BED": ConceptMapping("MSK_ASSISTIVE_DEVICE_HOSPITAL_BED", "musculoskeletal", "Has hospital bed", (_fw("assistiveDevices", "Hospital bed", op="multi_add"),)),
     "MSK_ASSISTIVE_DEVICE_HOYER_LIFT": ConceptMapping("MSK_ASSISTIVE_DEVICE_HOYER_LIFT", "musculoskeletal", "Uses Hoyer lift", (_fw("assistiveDevices", "Hoyer lift", op="multi_add"),)),
-    "MSK_AMBULATORY_INDEPENDENT": ConceptMapping("MSK_AMBULATORY_INDEPENDENT", "musculoskeletal", "Ambulatory, independent", (_fw("mobility.ambulatoryStatus", "Independent"),)),
-    "MSK_AMBULATORY_SUPERVISED": ConceptMapping("MSK_AMBULATORY_SUPERVISED", "musculoskeletal", "Ambulatory, supervised", (_fw("mobility.ambulatoryStatus", "Supervised"),)),
-    "MSK_AMBULATORY_ASSISTED": ConceptMapping("MSK_AMBULATORY_ASSISTED", "musculoskeletal", "Ambulatory, assisted", (_fw("mobility.ambulatoryStatus", "Assisted"),)),
-    "MSK_AMBULATORY_DEPENDENT": ConceptMapping("MSK_AMBULATORY_DEPENDENT", "musculoskeletal", "Ambulation dependent", (_fw("mobility.ambulatoryStatus", "Dependent"),)),
-    "MSK_BEDBOUND": ConceptMapping("MSK_BEDBOUND", "musculoskeletal", "Bedbound", (_fw("mobility.ambulatoryStatus", "Bedbound"),)),
-    "MSK_TRANSFER_INDEPENDENT": ConceptMapping("MSK_TRANSFER_INDEPENDENT", "musculoskeletal", "Transfers independently", (_fw("mobility.transferAbility", "Independent"),)),
-    "MSK_TRANSFER_1_PERSON_ASSIST": ConceptMapping("MSK_TRANSFER_1_PERSON_ASSIST", "musculoskeletal", "Transfers, 1-person assist", (_fw("mobility.transferAbility", "1-person assist"),)),
-    "MSK_TRANSFER_2_PERSON_ASSIST": ConceptMapping("MSK_TRANSFER_2_PERSON_ASSIST", "musculoskeletal", "Transfers, 2-person assist", (_fw("mobility.transferAbility", "2-person assist"),)),
-    "MSK_TRANSFER_HOYER_LIFT": ConceptMapping("MSK_TRANSFER_HOYER_LIFT", "musculoskeletal", "Transfers via Hoyer lift", (_fw("mobility.transferAbility", "Hoyer lift"),)),
-    "MSK_STRENGTH_DECREASED": ConceptMapping("MSK_STRENGTH_DECREASED", "musculoskeletal", "Strength decreased", (_fw("strength", "Decreased"),)),
-    "MSK_STRENGTH_ABSENT": ConceptMapping("MSK_STRENGTH_ABSENT", "musculoskeletal", "Strength absent", (_fw("strength", "Absent"),)),
-    "MSK_BALANCE_IMPAIRED": ConceptMapping("MSK_BALANCE_IMPAIRED", "musculoskeletal", "Balance impaired", (_fw("balance", "Impaired"),)),
-    "MSK_PAIN_WITH_MOVEMENT_MILD": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_MILD", "musculoskeletal", "Mild pain with movement", (_fw("painWithMovement", "Mild"),)),
-    "MSK_PAIN_WITH_MOVEMENT_MODERATE": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_MODERATE", "musculoskeletal", "Moderate pain with movement", (_fw("painWithMovement", "Moderate"),)),
-    "MSK_PAIN_WITH_MOVEMENT_SEVERE": ConceptMapping("MSK_PAIN_WITH_MOVEMENT_SEVERE", "musculoskeletal", "Severe pain with movement", (_fw("painWithMovement", "Severe"),)),
+    # PRODUCT OWNER DIRECTIVE (2026-10-16) "Musculoskeletal Architecture
+    # Review" -- MSK_AMBULATORY_*/MSK_BEDBOUND/MSK_TRANSFER_*/
+    # MSK_BALANCE_IMPAIRED/MSK_PAIN_WITH_MOVEMENT_* concept mappings
+    # removed: `mobility.ambulatoryStatus`/`mobility.transferAbility`
+    # duplicated the Functional Status/ADL workflow, `balance` duplicated
+    # Gait, and `painWithMovement` belongs in Pain Assessment, not
+    # Musculoskeletal. No replacement concept -- straight removal, same
+    # precedent as the `strength` field's removal.
 
     # ═══════════════════════════ MUSCULOSKELETAL (coverage expansion) ═══
     "ADL_BATHING_INDEPENDENT": ConceptMapping(
@@ -699,18 +698,11 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "ADL_GROOMING_TOTAL_DEPENDENCE", "musculoskeletal", "Grooming: Total dependence",
         (_fw("adl.grooming", "5"),),
     ),
-    "MSK_ENDURANCE_GOOD": ConceptMapping(
-        "MSK_ENDURANCE_GOOD", "musculoskeletal", "Endurance: good",
-        (_fw("mobility.endurance", "Good"),),
-    ),
-    "MSK_ENDURANCE_FAIR": ConceptMapping(
-        "MSK_ENDURANCE_FAIR", "musculoskeletal", "Endurance: fair",
-        (_fw("mobility.endurance", "Fair"),),
-    ),
-    "MSK_ENDURANCE_POOR": ConceptMapping(
-        "MSK_ENDURANCE_POOR", "musculoskeletal", "Endurance: poor",
-        (_fw("mobility.endurance", "Poor"),),
-    ),
+    # PRODUCT OWNER DIRECTIVE (2026-10-16) "Musculoskeletal Architecture
+    # Review" -- MSK_ENDURANCE_GOOD/FAIR/POOR removed along with
+    # `mobility.endurance`: "Current Good/Fair/Poor scale is vague,
+    # subjective, and does not provide unique hospice assessment value."
+    # No replacement concept.
     "MSK_FALLS_LAST_90_DAYS": ConceptMapping(
         "MSK_FALLS_LAST_90_DAYS", "musculoskeletal", "Falls in last 90 days",
         (),
@@ -809,33 +801,41 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         "GI_BOWEL_SOUNDS_ABSENT", "gastrointestinal", "Bowel sounds absent",
         (_fw("bowelSounds", "Absent"),),
     ),
+    # PRODUCT OWNER DIRECTIVE (2026-10-14) "GI Clinical Review -- Abdominal
+    # Assessment Regression" -- the rendered Abdomen control was split into
+    # 3 independent clinical axes (frontend RNICA.jsx SECTION_CONFIGS.
+    # gastrointestinal: abdomenConsistency/abdomenTenderness/
+    # abdomenAppearance); the legacy `abdomen` path is no longer rendered.
+    # Per this module's governance rule above a concept must never write to
+    # a path the RN cannot see/review, so these mappings now target the new
+    # rendered fields instead of the retired `abdomen` path.
     "GI_ABDOMEN_SOFT": ConceptMapping(
         "GI_ABDOMEN_SOFT", "gastrointestinal", "Abdomen soft",
-        (_fw("abdomen", "Soft"),),
+        (_fw("abdomenConsistency", "Soft"),),
     ),
     "GI_ABDOMEN_FIRM": ConceptMapping(
         "GI_ABDOMEN_FIRM", "gastrointestinal", "Abdomen firm",
-        (_fw("abdomen", "Firm"),),
+        (_fw("abdomenConsistency", "Firm"),),
     ),
     "GI_ABDOMEN_TYMPANIC": ConceptMapping(
         "GI_ABDOMEN_TYMPANIC", "gastrointestinal", "Abdomen tympanic",
-        (_fw("abdomen", "Tympanic"),),
+        (_fw("abdomenAppearance", "Tympanic"),),
     ),
     "GI_ABDOMEN_DISTENDED": ConceptMapping(
         "GI_ABDOMEN_DISTENDED", "gastrointestinal", "Abdomen distended",
-        (_fw("abdomen", "Distended"),),
+        (_fw("abdomenAppearance", "Distended"),),
     ),
     "GI_ABDOMEN_TENDER": ConceptMapping(
         "GI_ABDOMEN_TENDER", "gastrointestinal", "Abdomen tender",
-        (_fw("abdomen", "Tender"),),
+        (_fw("abdomenTenderness", "Tender"),),
     ),
     "GI_ABDOMEN_NONTENDER": ConceptMapping(
         "GI_ABDOMEN_NONTENDER", "gastrointestinal", "Abdomen nontender",
-        (_fw("abdomen", "Nontender"),),
+        (_fw("abdomenTenderness", "Nontender"),),
     ),
     "GI_ABDOMEN_RIGID": ConceptMapping(
         "GI_ABDOMEN_RIGID", "gastrointestinal", "Abdomen rigid",
-        (_fw("abdomen", "Rigid"),),
+        (_fw("abdomenConsistency", "Rigid"),),
     ),
     "GI_ASCITES_PRESENT": ConceptMapping(
         "GI_ASCITES_PRESENT", "gastrointestinal", "Ascites present",
@@ -1324,30 +1324,16 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
         (),
         value_slot=ValueSlot(kind="numeric", path="sleepRest.averageSleepHours", min_value=0, max_value=24),
     ),
-    "NEURO_NIGHT_SYMPTOM_PAIN": ConceptMapping(
-        "NEURO_NIGHT_SYMPTOM_PAIN", "neurological", "Nighttime pain",
-        (_fw("sleepRest.nighttimeSymptoms", "Pain", op="multi_add"),),
-    ),
-    "NEURO_NIGHT_SYMPTOM_DYSPNEA": ConceptMapping(
-        "NEURO_NIGHT_SYMPTOM_DYSPNEA", "neurological", "Nighttime dyspnea",
-        (_fw("sleepRest.nighttimeSymptoms", "Dyspnea", op="multi_add"),),
-    ),
-    "NEURO_NIGHT_SYMPTOM_RESTLESSNESS": ConceptMapping(
-        "NEURO_NIGHT_SYMPTOM_RESTLESSNESS", "neurological", "Nighttime restlessness",
-        (_fw("sleepRest.nighttimeSymptoms", "Restlessness", op="multi_add"),),
-    ),
-    "NEURO_NIGHT_SYMPTOM_CONFUSION": ConceptMapping(
-        "NEURO_NIGHT_SYMPTOM_CONFUSION", "neurological", "Nighttime confusion",
-        (_fw("sleepRest.nighttimeSymptoms", "Confusion", op="multi_add"),),
-    ),
-    "NEURO_NIGHT_SYMPTOM_ANXIETY": ConceptMapping(
-        "NEURO_NIGHT_SYMPTOM_ANXIETY", "neurological", "Nighttime anxiety",
-        (_fw("sleepRest.nighttimeSymptoms", "Anxiety", op="multi_add"),),
-    ),
-    "NEURO_NIGHT_SYMPTOM_NAUSEA": ConceptMapping(
-        "NEURO_NIGHT_SYMPTOM_NAUSEA", "neurological", "Nighttime nausea",
-        (_fw("sleepRest.nighttimeSymptoms", "Nausea", op="multi_add"),),
-    ),
+    # PRODUCT OWNER REVIEW (2026-10-21) "Neurological Duplicate Documentation
+    # Removal" -- the "Nighttime Symptoms" field/path (sleepRest.
+    # nighttimeSymptoms) is removed entirely: every value it offered already
+    # has a single authoritative owner elsewhere in Neuro (Restlessness ->
+    # Behavioral Symptoms `symptomsDemeanor`, Confusion -> Cognitive Findings
+    # `symptomsDemeanor`) or in another body system (Nausea -> GI). One
+    # clinical fact, one owner, one documentation location -- these three
+    # concepts (which only ever wrote to the now-removed path) are removed
+    # rather than redirected, since each fact already has its own concept
+    # pointed at its real owning field.
     "NEURO_SLEEP_AID_MEDICATION": ConceptMapping(
         "NEURO_SLEEP_AID_MEDICATION", "neurological", "Sleep aid: Medication",
         (_fw("sleepRest.sleepAids", "Medication", op="multi_add"),),
@@ -1622,10 +1608,6 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
     ),
 
     # ═══════════════════════ RESPIRATORY (remaining real gaps) ═════════════
-    "RESP_SPUTUM_CHARACTER": ConceptMapping(
-        "RESP_SPUTUM_CHARACTER", "respiratory", "Sputum character",
-        (), value_slot=ValueSlot(kind="free_text_bounded", path="sputumCharacter", max_len=60),
-    ),
     "RESP_TRACH_TYPE": ConceptMapping(
         "RESP_TRACH_TYPE", "respiratory", "Tracheostomy type",
         (), value_slot=ValueSlot(kind="free_text_bounded", path="ventilator.tracheostomyType", max_len=40),
@@ -1875,52 +1857,49 @@ CONCEPT_REGISTRY: dict[str, ConceptMapping] = {
 
     # ═══════════════ CAREGIVER ASSESSMENT (Phase 3 completion) ═══════════════
     # Lives under demographics.pcg.caregiverEvaluation (CDPH-required
-    # Caregiver Willingness & Capability Evaluation), not its own top-level
+    # Caregiver Capacity & Readiness Evaluation), not its own top-level
     # RNICA section. `evaluationNotes` is unbounded free text -- excluded.
-    # willingnessScore/capabilityScore are 1-5 CATEGORICAL determinations
-    # with fixed labels (e.g. "fully committed" = 5) -- mapped like
-    # PAIN_SEVERITY_* when the source document already states an explicit
-    # categorical conclusion (e.g. an MSW/referral note), not when the RN
-    # would need to perform the rating live during this visit.
-    "CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE", "demographics", "Caregiver physical ability: fully capable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Fully capable"),)),
-    "CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS", "demographics", "Caregiver physical ability: capable with limitations", (_fw("pcg.caregiverEvaluation.physicalAbility", "Capable with limitations"),)),
-    "CAREGIVER_PHYSICAL_ABILITY_LIMITED": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_LIMITED", "demographics", "Caregiver physical ability: limited capability", (_fw("pcg.caregiverEvaluation.physicalAbility", "Limited capability"),)),
-    "CAREGIVER_PHYSICAL_ABILITY_UNABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_UNABLE", "demographics", "Caregiver physical ability: unable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Unable"),)),
+    #
+    # [OWNER DIRECTIVE "Caregiver & Support Consolidation", 2026-10-23]
+    # `physicalAbility` is now the single authoritative "Caregiver Capacity"
+    # field (UI label renamed; option "Capable with limitations" renamed to
+    # "Capable with support") -- it replaced the former standalone PCG
+    # "Able to Participate in Care"/"Able to Administer Medications"
+    # questions, which carried no separate concept mapping of their own.
+    # `emotionalReadiness` is now the single authoritative "Caregiver
+    # Readiness" field (same options, UI label renamed) -- it replaced the
+    # former standalone "Willing to Provide Care" question. The
+    # willingnessScore/capabilityScore 1-5 numeric scales were removed
+    # entirely: they drove no Finding, POC action, or report, and
+    # duplicated these two categorical fields -- their ConceptMappings are
+    # removed below along with the four training-need options no longer
+    # offered by the simplified Training Needs list (Skin care/positioning,
+    # Infection control, Pain assessment, When to call hospice).
+    "CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_FULLY_CAPABLE", "demographics", "Caregiver capacity: fully capable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Fully capable"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_CAPABLE_WITH_LIMITATIONS", "demographics", "Caregiver capacity: capable with support", (_fw("pcg.caregiverEvaluation.physicalAbility", "Capable with support"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_LIMITED": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_LIMITED", "demographics", "Caregiver capacity: limited capability", (_fw("pcg.caregiverEvaluation.physicalAbility", "Limited capability"),)),
+    "CAREGIVER_PHYSICAL_ABILITY_UNABLE": ConceptMapping("CAREGIVER_PHYSICAL_ABILITY_UNABLE", "demographics", "Caregiver capacity: unable", (_fw("pcg.caregiverEvaluation.physicalAbility", "Unable"),)),
     "CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_FULLY_UNDERSTANDS", "demographics", "Caregiver cognitive ability: fully understands", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Fully understands"),)),
     "CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_UNDERSTANDS_WITH_REINFORCEMENT", "demographics", "Caregiver cognitive ability: understands with reinforcement", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Understands with reinforcement"),)),
     "CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_DIFFICULTY", "demographics", "Caregiver cognitive ability: difficulty understanding", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Difficulty understanding"),)),
     "CAREGIVER_COGNITIVE_ABILITY_UNABLE": ConceptMapping("CAREGIVER_COGNITIVE_ABILITY_UNABLE", "demographics", "Caregiver cognitive ability: unable to understand", (_fw("pcg.caregiverEvaluation.cognitiveAbility", "Unable to understand"),)),
-    "CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED", "demographics", "Caregiver emotional readiness: ready and engaged", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ready and engaged"),)),
-    "CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING", "demographics", "Caregiver emotional readiness: ambivalent but willing", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ambivalent but willing"),)),
-    "CAREGIVER_EMOTIONAL_READINESS_RELUCTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_RELUCTANT", "demographics", "Caregiver emotional readiness: reluctant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Reluctant"),)),
-    "CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT", "demographics", "Caregiver emotional readiness: overwhelmed/resistant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Overwhelmed/resistant"),)),
-    "CAREGIVER_AVAILABILITY_24_7": ConceptMapping("CAREGIVER_AVAILABILITY_24_7", "demographics", "Caregiver availability: 24/7 available", (_fw("pcg.caregiverEvaluation.availabilityForCare", "24/7 available"),)),
-    "CAREGIVER_AVAILABILITY_16_23_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_16_23_HOURS", "demographics", "Caregiver availability: 16-23 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "16-23 hours"),)),
-    "CAREGIVER_AVAILABILITY_8_15_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_8_15_HOURS", "demographics", "Caregiver availability: 8-15 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "8-15 hours"),)),
-    "CAREGIVER_AVAILABILITY_4_7_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_4_7_HOURS", "demographics", "Caregiver availability: 4-7 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "4-7 hours"),)),
-    "CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS", "demographics", "Caregiver availability: less than 4 hours", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Less than 4 hours"),)),
-    "CAREGIVER_AVAILABILITY_NOT_AVAILABLE": ConceptMapping("CAREGIVER_AVAILABILITY_NOT_AVAILABLE", "demographics", "Caregiver availability: not available", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Not available"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_READY_ENGAGED", "demographics", "Caregiver readiness: ready and engaged", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ready and engaged"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_AMBIVALENT_BUT_WILLING", "demographics", "Caregiver readiness: ambivalent but willing", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Ambivalent but willing"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_RELUCTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_RELUCTANT", "demographics", "Caregiver readiness: reluctant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Reluctant"),)),
+    "CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT": ConceptMapping("CAREGIVER_EMOTIONAL_READINESS_OVERWHELMED_RESISTANT", "demographics", "Caregiver readiness: overwhelmed/resistant", (_fw("pcg.caregiverEvaluation.emotionalReadiness", "Overwhelmed/resistant"),)),
+    "CAREGIVER_AVAILABILITY_24_7": ConceptMapping("CAREGIVER_AVAILABILITY_24_7", "demographics", "Caregiver availability: around the clock", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Around the clock"),)),
+    "CAREGIVER_AVAILABILITY_16_23_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_16_23_HOURS", "demographics", "Caregiver availability: daytime only", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Daytime only"),)),
+    "CAREGIVER_AVAILABILITY_8_15_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_8_15_HOURS", "demographics", "Caregiver availability: evening only", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Evening only"),)),
+    "CAREGIVER_AVAILABILITY_4_7_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_4_7_HOURS", "demographics", "Caregiver availability: intermittent", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Intermittent"),)),
+    "CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS": ConceptMapping("CAREGIVER_AVAILABILITY_LESS_THAN_4_HOURS", "demographics", "Caregiver availability: limited availability", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Limited availability"),)),
+    "CAREGIVER_AVAILABILITY_NOT_AVAILABLE": ConceptMapping("CAREGIVER_AVAILABILITY_NOT_AVAILABLE", "demographics", "Caregiver availability: unable to determine", (_fw("pcg.caregiverEvaluation.availabilityForCare", "Unable to determine"),)),
     "CAREGIVER_TRAINING_MEDICATION_ADMIN": ConceptMapping("CAREGIVER_TRAINING_MEDICATION_ADMIN", "demographics", "Caregiver training need: medication administration", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Medication administration", op="multi_add"),)),
     "CAREGIVER_TRAINING_WOUND_CARE": ConceptMapping("CAREGIVER_TRAINING_WOUND_CARE", "demographics", "Caregiver training need: wound care", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Wound care", op="multi_add"),)),
     "CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT": ConceptMapping("CAREGIVER_TRAINING_SYMPTOM_MANAGEMENT", "demographics", "Caregiver training need: symptom management", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Symptom management", op="multi_add"),)),
     "CAREGIVER_TRAINING_EMERGENCY_PROCEDURES": ConceptMapping("CAREGIVER_TRAINING_EMERGENCY_PROCEDURES", "demographics", "Caregiver training need: emergency procedures", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Emergency procedures", op="multi_add"),)),
-    "CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS": ConceptMapping("CAREGIVER_TRAINING_BODY_MECHANICS_TRANSFERS", "demographics", "Caregiver training need: body mechanics/transfers", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Body mechanics/transfers", op="multi_add"),)),
+    "CAREGIVER_TRAINING_TRANSFERS": ConceptMapping("CAREGIVER_TRAINING_TRANSFERS", "demographics", "Caregiver training need: transfers", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Transfers", op="multi_add"),)),
     "CAREGIVER_TRAINING_NUTRITION_FEEDING": ConceptMapping("CAREGIVER_TRAINING_NUTRITION_FEEDING", "demographics", "Caregiver training need: nutrition/feeding", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Nutrition/feeding", op="multi_add"),)),
-    "CAREGIVER_TRAINING_SKIN_CARE_POSITIONING": ConceptMapping("CAREGIVER_TRAINING_SKIN_CARE_POSITIONING", "demographics", "Caregiver training need: skin care/positioning", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Skin care/positioning", op="multi_add"),)),
     "CAREGIVER_TRAINING_EQUIPMENT_USE": ConceptMapping("CAREGIVER_TRAINING_EQUIPMENT_USE", "demographics", "Caregiver training need: equipment use", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Equipment use", op="multi_add"),)),
-    "CAREGIVER_TRAINING_INFECTION_CONTROL": ConceptMapping("CAREGIVER_TRAINING_INFECTION_CONTROL", "demographics", "Caregiver training need: infection control", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Infection control", op="multi_add"),)),
-    "CAREGIVER_TRAINING_PAIN_ASSESSMENT": ConceptMapping("CAREGIVER_TRAINING_PAIN_ASSESSMENT", "demographics", "Caregiver training need: pain assessment", (_fw("pcg.caregiverEvaluation.trainingNeeds", "Pain assessment", op="multi_add"),)),
-    "CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE": ConceptMapping("CAREGIVER_TRAINING_WHEN_TO_CALL_HOSPICE", "demographics", "Caregiver training need: when to call hospice", (_fw("pcg.caregiverEvaluation.trainingNeeds", "When to call hospice", op="multi_add"),)),
-    "CAREGIVER_WILLINGNESS_1_UNWILLING": ConceptMapping("CAREGIVER_WILLINGNESS_1_UNWILLING", "demographics", "Caregiver willingness score: 1 (unwilling)", (_fw("pcg.caregiverEvaluation.willingnessScore", "1"),)),
-    "CAREGIVER_WILLINGNESS_2_RELUCTANT": ConceptMapping("CAREGIVER_WILLINGNESS_2_RELUCTANT", "demographics", "Caregiver willingness score: 2 (reluctant)", (_fw("pcg.caregiverEvaluation.willingnessScore", "2"),)),
-    "CAREGIVER_WILLINGNESS_3_AMBIVALENT": ConceptMapping("CAREGIVER_WILLINGNESS_3_AMBIVALENT", "demographics", "Caregiver willingness score: 3 (ambivalent)", (_fw("pcg.caregiverEvaluation.willingnessScore", "3"),)),
-    "CAREGIVER_WILLINGNESS_4_WILLING": ConceptMapping("CAREGIVER_WILLINGNESS_4_WILLING", "demographics", "Caregiver willingness score: 4 (willing)", (_fw("pcg.caregiverEvaluation.willingnessScore", "4"),)),
-    "CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED": ConceptMapping("CAREGIVER_WILLINGNESS_5_FULLY_COMMITTED", "demographics", "Caregiver willingness score: 5 (fully committed)", (_fw("pcg.caregiverEvaluation.willingnessScore", "5"),)),
-    "CAREGIVER_CAPABILITY_1_UNABLE": ConceptMapping("CAREGIVER_CAPABILITY_1_UNABLE", "demographics", "Caregiver capability score: 1 (unable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "1"),)),
-    "CAREGIVER_CAPABILITY_2_MINIMAL": ConceptMapping("CAREGIVER_CAPABILITY_2_MINIMAL", "demographics", "Caregiver capability score: 2 (minimal)", (_fw("pcg.caregiverEvaluation.capabilityScore", "2"),)),
-    "CAREGIVER_CAPABILITY_3_MODERATE": ConceptMapping("CAREGIVER_CAPABILITY_3_MODERATE", "demographics", "Caregiver capability score: 3 (moderate)", (_fw("pcg.caregiverEvaluation.capabilityScore", "3"),)),
-    "CAREGIVER_CAPABILITY_4_CAPABLE": ConceptMapping("CAREGIVER_CAPABILITY_4_CAPABLE", "demographics", "Caregiver capability score: 4 (capable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "4"),)),
-    "CAREGIVER_CAPABILITY_5_FULLY_CAPABLE": ConceptMapping("CAREGIVER_CAPABILITY_5_FULLY_CAPABLE", "demographics", "Caregiver capability score: 5 (fully capable)", (_fw("pcg.caregiverEvaluation.capabilityScore", "5"),)),
     "CAREGIVER_SUPPORT_SYSTEM_ADEQUATE": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_ADEQUATE", "demographics", "Caregiver support system: adequate", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Adequate"),)),
     "CAREGIVER_SUPPORT_SYSTEM_INADEQUATE": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_INADEQUATE", "demographics", "Caregiver support system: inadequate", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Inadequate"),)),
     "CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT": ConceptMapping("CAREGIVER_SUPPORT_SYSTEM_NEEDS_REINFORCEMENT", "demographics", "Caregiver support system: needs reinforcement", (_fw("pcg.caregiverEvaluation.supportSystemAdequacy", "Needs reinforcement"),)),

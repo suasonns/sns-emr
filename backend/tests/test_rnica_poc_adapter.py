@@ -925,10 +925,15 @@ def test_sleep_rest_structured_fields_save_reload_and_poc_linkage(client, db_ses
 
 def test_musculoskeletal_structured_fields_save_reload_and_poc_linkage(client, db_session, rn_headers):
     """Master Map §5.10 Musculoskeletal structured fields (Issues checklist,
-    ROM-loss location, Disability classification, and Additional items —
-    Strength/Balance/Pain with movement) persist through the existing
+    ROM-loss presence/location, Disability classification, and Additional
+    items — Balance/Pain with movement) persist through the existing
     RNICA form_data JSONB model, round-trip on reload, and coexist with
-    POC controls on the musculoskeletal section."""
+    POC controls on the musculoskeletal section.
+
+    Musculoskeletal Pre-Implementation Review (2026-10-15): `strength` was
+    retired (duplicated `weakness`); `rigidityPresent`/`contracturesPresent`
+    are now true parent-presence gates (not a parallel/ungated path); and a
+    new `romLossPresent` parent-presence field was added, mirroring them."""
     tenant_id = db_session.info.get("tenant_id")
     patient, _admission = _make_patient_and_admission(db_session, tenant_id)
 
@@ -937,18 +942,17 @@ def test_musculoskeletal_structured_fields_save_reload_and_poc_linkage(client, d
     updated_musculoskeletal = {
         "weakness": "Moderate",
         "rigidity": "Mild",
+        "rigidityPresent": True,
         "contractures": "None",
+        "contracturesPresent": False,
         "paralysis": "Right hemiparesis",
         "contracturesLocation": [],
+        "romLossPresent": True,
         "romLimitations": ["Upper extremities", "Neck/spine"],
         "musculoskeletalIssues": ["Joint swelling", "Spasms / cramps", "Prosthesis"],
-        "strength": "Decreased",
-        "balance": "Impaired",
-        "painWithMovement": "Moderate",
         "gait": "Unsteady",
         "assistiveDevices": ["Walker"],
         "fallHistory": {"fallsLast90Days": "1", "fallInjuries": "None"},
-        "mobility": {"ambulatoryStatus": "Assisted", "endurance": "Fair", "transferAbility": "Standby assist"},
         "adl": {"bathing": "3", "dressing": "2", "toileting": "2", "transferring": "3", "eating": "0", "grooming": "1"},
         "notes": "Right-sided weakness following recent CVA; fall precautions in place.",
     }

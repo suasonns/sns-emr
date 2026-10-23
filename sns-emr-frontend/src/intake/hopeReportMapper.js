@@ -1,4 +1,9 @@
 import { defaultPatient } from "./ConsentNotifications";
+// PRODUCT OWNER IMPLEMENTATION DIRECTIVE (2026-10-21) "GI Cleanup and
+// HOPE N0520" Sections 7-12 -- shared selector/CMS-mapping module, also
+// imported by the GI section of RNICA.jsx, so N0520 applicability and
+// code mapping is defined in exactly one place.
+import { bowelRegimenCmsCode, legacyBowelRegimenResponse } from "../domain/hope/n0520";
 
 const PLACEHOLDER = "^";
 
@@ -550,6 +555,12 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const diagnoses = formData.diagnoses || {};
   const pain = formData.pain || {};
   const respiratory = formData.respiratory || {};
+  // PRODUCT OWNER IMPLEMENTATION DIRECTIVE (2026-10-21) "GI Cleanup and
+  // HOPE N0520" Sections 7-12 -- the structured HOPE N0520 response now
+  // lives on the GI section (rendered "near Bowel Program" per the
+  // directive), not on `medications` (which stays the source for
+  // N0500/N0510 "initiated/continued" and the applicability trigger).
+  const gastrointestinal = formData.gastrointestinal || {};
   const symptomImpact = formData.symptomImpact || {};
   const sfv = formData.sfv || {};
   const skin = formData.skin || {};
@@ -608,8 +619,17 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
   const sobIndicated = Boolean(respiratory.sobSeverity && respiratory.sobSeverity !== "None");
   const sfvRequirement = options.sfvRequirement || null;
   const sfvStatus = getSfvStatus(formData, sfvRequirement);
-  const opioidPresent = Boolean(medications.scheduledOpioid || medications.prnOpioid);
-  const bowelRegimenCode = medications.bowelRegimen ? ["2", "Initiated / continued"] : opioidPresent ? ["0", "Not initiated / continued"] : ["1", "Not applicable - no opioid trigger"];
+  // PRODUCT OWNER IMPLEMENTATION DIRECTIVE (2026-10-21) "GI Cleanup and
+  // HOPE N0520" Sections 7-12 -- replaces the old ad-hoc
+  // opioid-present/bowelRegimen-boolean computation (which conflated
+  // "opioid present" with N0500A/N0510A "initiated or continued" and used
+  // a CMS code order that did not match the real HOPE value set) with the
+  // single shared selector/mapper. New GI response first; falls back to
+  // the legacy `medications.bowelRegimen` boolean only for assessments
+  // recorded before this structured field existed.
+  const bowelRegimenResponse = gastrointestinal.bowelRegimenResponse || legacyBowelRegimenResponse(medications);
+  const bowelRegimenCode = bowelRegimenCmsCode(medications, bowelRegimenResponse);
+  const bowelRegimenInitiatedDate = gastrointestinal.bowelRegimenInitiatedDate || medications.bowelRegimenDate;
   const hasHeartFailure = activeDiagnosisFlag(diagnoses, /\b(chf|congestive heart failure|heart failure)\b/);
   const hasCopd = activeDiagnosisFlag(diagnoses, /\b(copd|chronic obstructive pulmonary disease)\b/);
   const hasOtherMedicalCondition = diagnosisEntries(diagnoses).length > (diagnoses.primaryDiagnosis?.description || diagnoses.primaryDiagnosis?.icd10 ? 1 : 0);
@@ -716,7 +736,7 @@ export function mapRnIcaToHopeReport(formData = {}, patient = defaultPatient, ag
         items: [
           { code: "N0500", label: "Scheduled Opioid", entries: [{ label: "A. Initiated / continued?", value: boolCode(Boolean(medications.scheduledOpioid)).description }, { label: "B. Date", value: formatDate(medications.scheduledOpioidDate) }] },
           { code: "N0510", label: "PRN Opioid", entries: [{ label: "A. Initiated / continued?", value: boolCode(Boolean(medications.prnOpioid)).description }, { label: "B. Date", value: formatDate(medications.prnOpioidDate) }] },
-          { code: "N0520", label: "Bowel Regimen", entries: [{ label: "A. Status", value: `${bowelRegimenCode[0]} - ${bowelRegimenCode[1]}` }, { label: "B. Date", value: bowelRegimenCode[0] === "2" ? formatDate(medications.bowelRegimenDate) : PLACEHOLDER }] },
+          { code: "N0520", label: "Bowel Regimen", entries: [{ label: "A. Status", value: bowelRegimenCode ? `${bowelRegimenCode[0]} - ${bowelRegimenCode[1]}` : PLACEHOLDER }, { label: "B. Date", value: bowelRegimenCode && bowelRegimenCode[0] === "2" ? formatDate(bowelRegimenInitiatedDate) : PLACEHOLDER }] },
         ],
       },
       {

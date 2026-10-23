@@ -60,6 +60,18 @@ export const RNICA_THIRTEEN_SCREENS = [
     moduleKeys: ["demographics"],
   },
   {
+    // [OWNER-DIRECTION OVERRIDE -- "APPROVED RNICA NAVIGATION ORDER",
+    // 2026-10-22] Moved ahead of Pain & Symptom Burden/Diagnosis & LCD/
+    // Functional Status/Body Systems. Rationale: ACP & Goals of Care
+    // (hospitalization preferences, resuscitation preferences, escalation
+    // decisions, plan-of-care strategy, caregiver expectations) must be
+    // established before Body Systems -- it frames how findings there are
+    // acted on. Supersedes the prior 2026-09-25 ordering below.
+    key: "acpGoalsOfCare",
+    label: "ACP & Goals of Care",
+    moduleKeys: ["advancedCarePlanning"],
+  },
+  {
     // [PRODUCT-AUTHORITY DECISION -- 2026-09-22, final] Order 3-5 is
     // Pain & Symptom Burden, Diagnosis & LCD, Functional Status -- see
     // docs/tenant-platform/RNICA_NAVIGATION_SPECIFICATION.md and
@@ -98,6 +110,20 @@ export const RNICA_THIRTEEN_SCREENS = [
     ],
   },
   {
+    // [OWNER-DIRECTION OVERRIDE -- "APPROVED RNICA NAVIGATION ORDER",
+    // 2026-10-22] Death & Dying now follows Body Systems directly.
+    // Rationale: Death & Dying represents the clinical synthesis of Body
+    // Systems findings, Functional Status, Symptom Burden, and disease
+    // trajectory, so it follows Body Systems rather than Safety &
+    // Clinical Risk (see the 2026-10-22 split-out comment below, still
+    // accurate for *why* this is its own screen -- only its position in
+    // the flow has changed here). Remains a dedicated screen; not
+    // returned to Safety & Clinical Risk.
+    key: "deathDying",
+    label: "Death & Dying",
+    moduleKeys: ["imminentDeath"],
+  },
+  {
     key: "caregiverSupport",
     label: "Caregiver & Support",
     // RNICA_REDESIGN_SOURCE_OF_TRUTH.md Screen 7: caregiver capability,
@@ -107,15 +133,18 @@ export const RNICA_THIRTEEN_SCREENS = [
   {
     key: "safetyClinicalRisk",
     label: "Safety & Clinical Risk",
-    // RNICA_REDESIGN_SOURCE_OF_TRUTH.md Screen 8: fall risk, oxygen safety,
-    // home/disaster safety, imminent-death screening -- legacy `safety` and
-    // `imminentDeath` modules, plus SFV per the Feature-to-UI Wiring Matrix.
-    moduleKeys: ["safety", "imminentDeath", "sfv"],
-  },
-  {
-    key: "acpGoalsOfCare",
-    label: "ACP & Goals of Care",
-    moduleKeys: ["advancedCarePlanning"],
+    // RNICA_REDESIGN_SOURCE_OF_TRUTH.md Screen 8 (as originally documented):
+    // fall risk, oxygen safety, home/disaster safety, imminent-death
+    // screening, plus SFV. [OWNER-DIRECTION OVERRIDE -- "REMOVE IMMINENT
+    // DEATH FROM SAFETY & CLINICAL RISK"] Imminent Death (`imminentDeath`,
+    // HOPE J0050) is clinically misgrouped here -- it is not a safety
+    // assessment or a disaster-triage activity, it is its own hospice
+    // clinical domain (every hospice patient will progress through an
+    // end-of-life phase). Moved to its own screen, `deathDying`
+    // (now positioned right after Body Systems -- see
+    // "APPROVED RNICA NAVIGATION ORDER", 2026-10-22). `safety` and `sfv`
+    // remain owned here unchanged.
+    moduleKeys: ["safety", "sfv"],
   },
   {
     key: "ordersPoc",

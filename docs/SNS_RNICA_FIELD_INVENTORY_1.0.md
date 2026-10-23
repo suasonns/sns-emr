@@ -483,7 +483,10 @@ Source: `RNICA.jsx:177` (nav), `RNICA.jsx:489-496`.
 | `gastrointestinal.diarrhea` | Diarrhea | select | facility scale | Optional | — | — | |
 | `gastrointestinal.constipation` | Constipation | select | facility scale | Optional | — | — | |
 | `gastrointestinal.bowelSounds` | Bowel Sounds | select | facility list | Optional | — | — | |
-| `gastrointestinal.abdomen` | Abdomen | select | facility list | Optional | — | — | |
+| `gastrointestinal.abdomenConsistency` | Abdomen Consistency | select | Soft/Firm/Rigid | Optional | — | — | Split from legacy `abdomen` 2026-10-14; see Abdomen Tenderness/Appearance. |
+| `gastrointestinal.abdomenTenderness` | Abdomen Tenderness | select | Tender/Nontender | Optional | — | — | Split from legacy `abdomen` 2026-10-14. |
+| `gastrointestinal.abdomenAppearance` | Abdomen Appearance | select | Flat/Distended/Tympanic | Optional | — | — | Split from legacy `abdomen` 2026-10-14. |
+| `gastrointestinal.abdomen` | Abdomen (legacy, unrendered) | select | facility list | N/A | — | — | No longer rendered; retained only for backward-compatible reads of historical charts. |
 | `gastrointestinal.bowelStatus` | Bowel Status | select | facility list | Optional | — | — | |
 | `gastrointestinal.lastBM` | Last BM | date | date | Optional | — | — | |
 | `gastrointestinal.continence` | Continence (Bowel) | select | facility list | Optional | — | — | |

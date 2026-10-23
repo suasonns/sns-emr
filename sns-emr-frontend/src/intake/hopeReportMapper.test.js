@@ -1188,3 +1188,65 @@ describe("getHopeAdmissionStatus — SECTION 7 HOPE Admission harvest/completion
     expect(status).not.toHaveProperty("generated");
   });
 });
+
+// PRODUCT OWNER IMPLEMENTATION DIRECTIVE (2026-10-21) "GI Cleanup and HOPE
+// N0520" Section 17 -- N0520 Bowel Regimen export mapping. The shared
+// `domain/hope/n0520.js` selectors are the single source of truth for
+// applicability + CMS code; these tests prove the mapper wires that
+// correctly, including the "9 - Not applicable" skip-logic convention and
+// the incomplete/PLACEHOLDER path when applicable-but-unanswered.
+describe("mapRnIcaToHopeReport — N0520 Bowel Regimen", () => {
+  it("exports '9 - Not applicable' when no opioid was initiated/continued (N0500A/N0510A both absent)", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({ medications: {}, gastrointestinal: {} }));
+    expect(responseCode(report, "N0520")).toBe("9");
+    expect(responseDescription(report, "N0520")).toBe("Not applicable");
+  });
+
+  it("exports the incomplete PLACEHOLDER when applicable (opioid present) but not yet answered", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({ medications: { scheduledOpioid: true }, gastrointestinal: {} }));
+    expect(findItem(report, "N0520").entries[0].value).toBe(PLACEHOLDER);
+  });
+
+  it("exports CMS code 2 and the initiated date when the structured response is Yes", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({
+      medications: { prnOpioid: true },
+      gastrointestinal: { bowelRegimenResponse: "Yes", bowelRegimenInitiatedDate: "2026-02-01" },
+    }));
+    expect(responseCode(report, "N0520")).toBe("2");
+    expect(findItem(report, "N0520").entries[1].value).toBe("02/01/2026");
+  });
+
+  it("exports CMS code 1 for No - Reason Documented, and omits the initiated date (PLACEHOLDER)", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({
+      medications: { scheduledOpioid: true },
+      gastrointestinal: { bowelRegimenResponse: "No - Reason Documented", bowelRegimenReasons: ["Patient or representative declined"] },
+    }));
+    expect(responseCode(report, "N0520")).toBe("1");
+    expect(findItem(report, "N0520").entries[1].value).toBe(PLACEHOLDER);
+  });
+
+  it("exports CMS code 0 for No - No Documented Reason", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({
+      medications: { scheduledOpioid: true },
+      gastrointestinal: { bowelRegimenResponse: "No - No Documented Reason" },
+    }));
+    expect(responseCode(report, "N0520")).toBe("0");
+  });
+
+  it("falls back to the legacy medications.bowelRegimen boolean for historical charts with no structured GI response", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({
+      medications: { scheduledOpioid: true, bowelRegimen: true, bowelRegimenDate: "2025-11-15" },
+      gastrointestinal: {},
+    }));
+    expect(responseCode(report, "N0520")).toBe("2");
+    expect(findItem(report, "N0520").entries[1].value).toBe("11/15/2025");
+  });
+
+  it("a new structured response always takes precedence over legacy medications data when both are present", () => {
+    const report = mapRnIcaToHopeReport(baseFormData({
+      medications: { scheduledOpioid: true, bowelRegimen: true },
+      gastrointestinal: { bowelRegimenResponse: "No - No Documented Reason" },
+    }));
+    expect(responseCode(report, "N0520")).toBe("0");
+  });
+});

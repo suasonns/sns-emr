@@ -231,11 +231,16 @@ export function buildClinicalNarrative(formData = {}, patient = {}) {
   lines.push(narrativeLine(utilSentence || utilNotesSentence, [utilSentence, utilNotesSentence].filter(Boolean).join(" ")));
 
   // Caregiver situation.
+  // [OWNER DIRECTIVE "Caregiver & Support Consolidation", 2026-10-23] Reads
+  // the two authoritative caregiverEvaluation fields (Caregiver Capacity,
+  // Caregiver Readiness) instead of the former standalone
+  // willingToProvideCare/ableToAdministerMeds fields.
+  const caregiverEval = pcg.caregiverEvaluation || {};
   lines.push(narrativeLine(
-    pcg.noPcg === true || hasDocumentedValue(pcg.willingToProvideCare) || hasDocumentedValue(pcg.ableToAdministerMeds),
+    pcg.noPcg === true || hasDocumentedValue(caregiverEval.emotionalReadiness) || hasDocumentedValue(caregiverEval.physicalAbility),
     pcg.noPcg === true
       ? "No primary caregiver is documented."
-      : `Caregiver willingness to provide care is documented as ${pcg.willingToProvideCare || "not documented"}; ability to administer medications is documented as ${pcg.ableToAdministerMeds || "not documented"}.`
+      : `Caregiver readiness is documented as ${caregiverEval.emotionalReadiness || "not documented"}; caregiver capacity is documented as ${caregiverEval.physicalAbility || "not documented"}.`
   ));
 
   // Psychosocial findings (referral-determination model, not a discipline

@@ -50,7 +50,8 @@ const STEPS = [
   { key: "review", label: "Review & Save", cardTitles: [] },
 ];
 
-function ReviewRow({ label, value }) {
+function ReviewRow({ label, value, hideIfEmpty = false }) {
+  if (hideIfEmpty && !value) return null;
   return (
     <div className="flex items-start justify-between gap-4 border-b border-rnica-border/50 py-2 last:border-b-0">
       <span className="w-[42%] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-rnica-muted">{label}</span>
@@ -64,8 +65,9 @@ function ReviewRow({ label, value }) {
 // Same ReviewRow row shape, but renders each selected value as its own
 // chip instead of one joined string. No data/path change -- purely how
 // the already-selected values are displayed on this read-only summary.
-function ReviewChipRow({ label, values }) {
+function ReviewChipRow({ label, values, hideIfEmpty = false }) {
   const items = (values || []).filter(Boolean);
+  if (hideIfEmpty && !items.length) return null;
   return (
     <div className="flex items-start justify-between gap-4 border-b border-rnica-border/50 py-2 last:border-b-0">
       <span className="w-[42%] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-rnica-muted">{label}</span>
@@ -155,7 +157,12 @@ export default function PainAssessmentEditSheet({ open, onOpenChange, painData =
               <ReviewRow label="Active pain problem" value={activeProblemLabel} />
               <ReviewChipRow label="Pain Location" values={painData?.painLocation} />
               <ReviewChipRow label="Type of Pain" values={typeOfPainChips} />
-              <ReviewRow label="Functional Impact" value={painData?.effectOnFunction} />
+              <ReviewRow label="Pain History" value={painData?.painHistory} hideIfEmpty />
+              <ReviewRow label="Pain Trend" value={painData?.painTrend} hideIfEmpty />
+              <ReviewRow label="Pain Pattern" value={painData?.painPattern} hideIfEmpty />
+              <ReviewRow label="Frequency" value={painData?.painFrequency} hideIfEmpty />
+              <ReviewRow label="Additional Detail" value={painData?.painAdditionalDetail} hideIfEmpty />
+              <ReviewChipRow label="Pain Impact" values={painData?.painImpact} hideIfEmpty />
             </div>
           )}
         </div>

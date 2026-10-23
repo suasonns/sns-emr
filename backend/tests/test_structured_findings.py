@@ -761,7 +761,7 @@ def test_edema_pitting_is_not_a_registered_concept():
     assert not any(code.startswith("CV_EDEMA_PITTING") for code in CONCEPT_REGISTRY)
 
 
-def test_rnica_sprint_registry_reaches_800_concepts():
+def test_rnica_sprint_registry_reaches_776_concepts():
     # Guards against silent regressions in the sprint total across all
     # 7 sections (Symptom Impact 8, Skin/Wounds 15/32-codes, GU 7,
     # GI 2-new-of-5, Endocrine 3, Nutrition 1-new-of-2,
@@ -770,7 +770,35 @@ def test_rnica_sprint_registry_reaches_800_concepts():
     # Barrel chest split out of the coughType single-select into its own
     # independent thoracic-inspection finding; see RESP_COUGH_HEMOPTYSIS's
     # sibling edit, which repoints an existing concept rather than adding
-    # a new one).
-    assert len(CONCEPT_REGISTRY) == 800
+    # a new one), minus 17 for the Musculoskeletal Architecture Review
+    # (2026-10-16) PO-directed field removals: MSK_AMBULATORY_* (4) /
+    # MSK_BEDBOUND (1) / MSK_TRANSFER_* (4) retired with
+    # `mobility.ambulatoryStatus` / `mobility.transferAbility` (duplicated
+    # the Functional Status/ADL workflow); MSK_BALANCE_IMPAIRED (1)
+    # retired with `balance` (duplicated Gait); MSK_PAIN_WITH_MOVEMENT_*
+    # (3) retired with `painWithMovement` (belongs in Pain Assessment);
+    # MSK_ENDURANCE_* (3) retired with `mobility.endurance` (vague,
+    # subjective Good/Fair/Poor scale with no unique hospice value).
+    # 800 - 17 = 783 (prior checkpoint).
+    #
+    # Prior segment (Neurological Nighttime Symptoms cross-section-
+    # duplication correction, PO directive: "pain and dyspnea should not
+    # be discussed in neuro... pain is under pain dyspnea is under
+    # respiratory" / "anxiety in behavioral and anxiety in nighttime
+    # symptom is just a duplication") retired 3: NEURO_NIGHT_SYMPTOM_
+    # PAIN/DYSPNEA/ANXIETY. 783 -> 779 checkpoint.
+    #
+    # This segment (PRODUCT OWNER REVIEW 2026-10-21 "Neurological
+    # Duplicate Documentation Removal") retires the remaining 3
+    # NEURO_NIGHT_SYMPTOM_* concepts in full: RESTLESSNESS/CONFUSION/
+    # NAUSEA. The "Nighttime Symptoms" field/path
+    # (sleepRest.nighttimeSymptoms) is removed entirely -- every value it
+    # offered already has a single authoritative owner elsewhere
+    # (Restlessness -> Behavioral Symptoms, Confusion -> Cognitive
+    # Findings, Nausea -> GI). 779 - 3 = 776; confirmed as the registry's
+    # actual current length, not a hand-derived delta -- update this
+    # guard again (with its own dated note) the next time
+    # CONCEPT_REGISTRY intentionally changes.
+    assert len(CONCEPT_REGISTRY) == 776
 
 

@@ -86,11 +86,19 @@ export function computeAiPainNotes(data) {
   if (data?.controlStatus === "Uncontrolled") {
     notes.push({ text: "Chronic pain control status documented as Uncontrolled.", field: "Control Status" });
   }
-  if (currentPain === "0" && data?.chronicPainHistory === "1" && data?.effectOnFunction) {
-    notes.push({ text: `Pain is documented as affecting function/quality of life: "${data.effectOnFunction}".`, field: "Effect on Function/QOL" });
+  // PRODUCT OWNER DIRECTIVE (Pain Character & Impact redesign) -- the
+  // separate `functionalImpact`/`qualityOfLifeImpact` fields duplicated
+  // Functional Status documentation and were collapsed into a single,
+  // pain-specific `painImpact` field; "No pain-related impact reported"
+  // is excluded here since it is the absence of an impact, not a finding
+  // to surface.
+  const painImpactList = (data?.painImpact || []).filter((v) => v !== "No pain-related impact reported");
+  const impactSummary = painImpactList.join(", ");
+  if (currentPain === "0" && data?.chronicPainHistory === "1" && impactSummary) {
+    notes.push({ text: `Pain is documented as affecting function/quality of life: "${impactSummary}".`, field: "Pain Impact" });
   }
-  if (currentPain === "1" && data?.effectOnFunction) {
-    notes.push({ text: `Pain is documented as affecting function/quality of life: "${data.effectOnFunction}".`, field: "Effect on Function/QOL" });
+  if (currentPain === "1" && impactSummary) {
+    notes.push({ text: `Pain is documented as affecting function/quality of life: "${impactSummary}".`, field: "Pain Impact" });
   }
   if (currentPain === "1" && !hasCurrent) {
     notes.push({ text: "Patient reports current pain but current intensity has not been documented.", field: "Current Pain / Current Intensity" });

@@ -77,10 +77,8 @@ verification, signature) are required in both `ica` and `ongoing` modes.
 | `performanceStatus.pps` / `.kps` | `mode !== "ongoing"`, at least one must be present | HOPE M1190 |
 | `neurological.hopeItems.n0500` | `mode !== "ongoing"` | HOPE N0500 (BIMS) |
 | `imminentDeath.appearsThreeDaysOrLess` | `mode !== "ongoing"` | HOPE J0050 |
-| `demographics.pcg.willingToProvideCare` | skipped entirely if `demographics.pcg.noPcg` is true | CDPH caregiver willingness |
-| `demographics.pcg.ableToAdministerMeds` | skipped entirely if `demographics.pcg.noPcg` is true | CDPH med-administration ability |
-| `demographics.pcg.caregiverEvaluation.willingnessScore` | skipped entirely if `demographics.pcg.noPcg` is true | CDPH willingness score |
-| `demographics.pcg.caregiverEvaluation.capabilityScore` | skipped entirely if `demographics.pcg.noPcg` is true | CDPH capability score |
+| `demographics.pcg.caregiverEvaluation.physicalAbility` | skipped entirely if `demographics.pcg.noPcg` is true | CDPH: Caregiver capacity required |
+| `demographics.pcg.caregiverEvaluation.emotionalReadiness` | skipped entirely if `demographics.pcg.noPcg` is true | CDPH: Caregiver readiness required |
 | `skin.braden.total` | none (unconditional warning) | Braden Scale total required |
 | `finalization.pocGenerationCompleted` | none (unconditional warning) | CDPH: POC generation from assessment problems required before lock |
 | `demographics.pcg` (assessed) | unconditional warning if `pcgIsAssessed()` returns false | Primary Caregiver status not yet assessed |
@@ -89,7 +87,7 @@ verification, signature) are required in both `ica` and `ongoing` modes.
 
 | Dependent field(s) | Depends on | Behavior |
 |---|---|---|
-| `demographics.pcg.willingToProvideCare`, `.ableToAdministerMeds`, `.caregiverEvaluation.willingnessScore`, `.caregiverEvaluation.capabilityScore` | `demographics.pcg.noPcg` | If `noPcg === true`, none of these four are validated at all (entire `if` block skipped, `RNICA.jsx:807-820`) |
+| `demographics.pcg.caregiverEvaluation.physicalAbility`, `.emotionalReadiness` | `demographics.pcg.noPcg` | If `noPcg === true`, neither of these is validated at all (entire `if` block skipped) |
 | all HOPE-tagged required/conditional fields (11 of the 27 rules above) | `mode` parameter | `includeHopeRequirements = mode !== "ongoing"` (`RNICA.jsx:768`) — an entire block of rules is skipped when the assessment is an RN Recertification rather than an initial ICA |
 | `performanceStatus` warning | `pps` OR `kps` | Only fails if **both** are empty — it is an OR, not an AND (either one satisfies HOPE M1190 per current code) |
 | Lock button enablement | `errors` object emptiness | `isValid` is computed purely from `errors`; `warnings` never affect whether `lockRnicaAssessment()` can be called |
