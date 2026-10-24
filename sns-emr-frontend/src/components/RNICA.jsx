@@ -533,13 +533,17 @@ export const INITIAL_FORM = {
     // Caregiver Capacity rather than a standalone question (see
     // "Caregiver & Support Consolidation" directive, 2026-10-23).
     medicationSafety: {
-      // [REFINEMENT 2026-10-23 round 3] #6: single authoritative field —
-      // "Patient Independent" / "Patient With Assistance" / "Family
-      // Caregiver" / "Facility Staff" / "Unable To Assess" — replacing the
-      // former two-question (capability + responsible-party) flow. The
-      // legacy fields below are still populated from this single
-      // selection so the existing contradiction-warning check and any
-      // historical data continue to work unchanged.
+      // [PRODUCT OWNER DIRECTIVE "Medication Administration Review",
+      // 2026-10-24] Two-question workflow, superseding the single
+      // combined pill from [REFINEMENT 2026-10-23 round 3] #6: patient
+      // self-administration capability and who is responsible when the
+      // patient cannot are different clinical facts, not equivalent
+      // answers to the same question.
+      selfAdministrationAbility: "", // "Independent" | "With Assistance" | "No" | "Unable to Determine"
+      administeredBy: "", // only meaningful when selfAdministrationAbility === "No"
+      // Legacy single-field shape, still populated below from the two
+      // questions above so any historical-chart read of the old shape
+      // continues to work unchanged.
       administrationResponsibility: "",
       selfAdministersMeds: "",
       medsAdministeredBy: "",
@@ -1466,19 +1470,84 @@ export const INITIAL_FORM = {
   // ─── 19. SAFETY ───────────────────────────────────
   safety: {
     safetyAssessmentCompleted: false,
+    // Legacy pre-2026-11-26 fields -- superseded by the structured
+    // Environmental Safety columns below, but never deleted/renamed so
+    // any chart that recorded them keeps rendering exactly what was
+    // charted (see the "Previously recorded" legacy-chip convention used
+    // throughout this file).
     homeEnvironment: [],
+    firearmInHome: false,
+    // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+    // Correct Modernization Using the HospiceMD Baseline" -- Environmental
+    // Safety is now one structured group: an overall status plus concerns
+    // grouped into 3 columns (Utilities & Emergency Readiness / Living
+    // Area & Bedroom / Bathroom & Household Risks), each a flat array of
+    // the exact concern-pill strings selected for that column.
+    environmentalSafetyStatus: "",
+    environmentalUtilitiesConcerns: [],
+    environmentalLivingAreaConcerns: [],
+    environmentalBathroomConcerns: [],
+    safetyEducationProvided: "",
     fallRiskAssessmentCompleted: false,
+    // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+    // Correct Modernization Using the HospiceMD Baseline" -- the prior
+    // "Morse Fall Scale" labeling/point values are REJECTED and replaced
+    // with the supplied HospiceMD-baseline factors/point values (see
+    // FALL_RISK_FACTOR_GROUPS/computeFallRiskScore below). Single-select
+    // groups store a string under their key; multi-select groups store
+    // an array under their key plus a sibling `<key>Reviewed` boolean so
+    // "reviewed, nothing applies" is distinguishable from "not yet
+    // reviewed" (an empty array is ambiguous between the two).
+    fallRiskFactors: {
+      fallHistory: "", mentalStatus: "",
+      mobilityConcerns: [], mobilityReviewed: false,
+      abilityToFollowDirections: "", orthostaticHypotension: "",
+      medicationRisk: [], medicationRiskReviewed: false,
+      ambulationConditions: [], ambulationConditionsReviewed: false,
+    },
+    // Retained AS THE SOLE DOCUMENTED VALUE OF RECORD only until a
+    // verified agency-approved scoring threshold is available (see
+    // FallRiskCard) -- the directive requires "Classification Pending
+    // Verified Threshold" rather than an invented Low/Moderate/High
+    // cutoff, so this manual field is not yet replaced by a read-only
+    // calculated value.
     fallRiskLevel: "",
     transferSafetyLevel: "",
-    firearmInHome: false,
+    // Patient Safety group (HospiceMD-model reference, directive
+    // 2026-11-25/26): a dedicated multi-select pill card, distinct from
+    // the scored Fall Risk tool. The 3 legacy booleans below are
+    // superseded by `patientSafetyConcerns` (array) but never deleted.
+    wanderingRisk: false,
+    impairedJudgementRisk: false,
+    unsafeAmbulationRisk: false,
+    patientSafetyConcerns: [],
     oxygenInUse: false, oxygenSafetyReviewed: false,
+    // Oxygen Safety's own structured checklist, shown only when oxygen
+    // is applicable (see OxygenSafetyCard -- conditional on
+    // `respiratory.oxygenTherapy.inUse`, falling back to this legacy
+    // `oxygenInUse` boolean for a chart recorded before that cross-
+    // section field existed).
+    oxygenSafetyItems: [],
+    // Caregiver Safety (directive 2026-11-25/26) -- distinct from
+    // Caregiver & Support (screen 10, psychosocial/coping focus); this is
+    // specifically the caregiver's ability to safely assist with THIS
+    // patient's documented safety risks. The 3 legacy booleans are
+    // superseded by the synchronized summary (CaregiverSafetyCard, reads
+    // `demographics.pcg.caregiverEvaluation`) plus this RN visit
+    // confirmation -- never deleted.
+    caregiverAbleToAssist: false,
+    caregiverAwareOfLimitations: false,
+    caregiverUnderstandsSafetyPrecautions: false,
+    caregiverSafetyConfirmedThisVisit: false,
     incidentOccurrenceReported: false,
+    incidentType: "",
     incidentOccurrenceNotes: "",
     disasterLevel: "",
     disasterLevelOneConditions: [],
     disasterLevelTwoConditions: [],
     disasterLevelThreeConditions: [],
     dmeItems: DME_ITEM_LIST.map((item) => ({ item, status: "", specify: "" })),
+    dmeNotes: "",
     supplies: {
       existingCategories: [], neededCategories: [], otherSuppliesNotes: "",
     },
@@ -7227,52 +7296,609 @@ export function isRetiredInfectionClinicalStatusValue(value) {
   return INFECTION_RETIRED_CLINICAL_STATUS_VALUES.some((r) => r.toLowerCase() === norm);
 }
 
-function DmeStatusCard({ data, updateField, styles, COLORS }) {
-  const items = data?.dmeItems || [];
+// PRODUCT OWNER DIRECTIVE (2026-11-24) "Safety & Clinical Risk Phase II
+// Redesign" item 7 -- replaces the prior per-item Item/Status-dropdown/
+// Specify TABLE (`styles.table`/`<select>`) with two multi-select pill
+// rows matching the Infection/Supplies pill pattern: "Existing DME" and
+// "Needed DME". Each DME_ITEM_LIST item still stores exactly one
+// `status` string on the SAME `dmeItems` array/shape as before (no
+// migration) -- selecting a pill in "Existing DME" sets that item's
+// status to "Has"; selecting it in "Needed DME" sets it to "Needs";
+// de-selecting from whichever list it was active in clears the status
+// back to "". Mutual exclusivity (an item can't be both Existing and
+// Needed at once) falls out automatically from both pill rows reading/
+// writing the same single `status` field -- same exclusivity guarantee
+// `pillGroupSubset` fields already rely on elsewhere. A chart with a
+// legacy status this redesign doesn't surface as an active pill in
+// either row (Ordered/Delivered/Declined/N/A) is never silently
+// dropped -- it renders as a read-only "Previously recorded" chip, same
+// convention FormPillGroup/FormRadioGroup already use for a retired
+// option value, so no legacy documentation is lost or hidden.
+const DME_EXISTING_STATUSES = new Set(["Has", "Delivered"]);
+const DME_NEEDED_STATUSES = new Set(["Needs", "Ordered"]);
+const DME_LEGACY_ONLY_STATUSES = new Set(["Declined", "N/A"]);
 
-  const updateItem = (idx, field, value) => {
-    updateField("dmeItems", items.map((it, i) => (i === idx ? { ...it, [field]: value } : it)));
+// PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+// Correct Modernization Using the HospiceMD Baseline" -- REJECTS the
+// prior "Morse Fall Scale" labeling and its invented point values/
+// thresholds. Replaced with the exact fall-risk factors and point
+// values the directive supplies. Single-select groups (`single: true`)
+// store one option string; multi-select groups store an array plus a
+// sibling `<key>Reviewed` boolean recorded by FallRiskCard so "reviewed,
+// none apply" (array stays empty, reviewed = true) is distinguishable
+// from "not yet reviewed" (reviewed = false) -- an empty array alone is
+// ambiguous between the two and must never be silently scored as zero.
+const FALL_RISK_FACTOR_GROUPS = [
+  { key: "fallHistory", label: "Fall History", single: true, options: [
+    { value: "No falls", points: 0 },
+    { value: "1 or 2 falls", points: 2 },
+    { value: "More than 2 falls", points: 3 },
+  ]},
+  { key: "mentalStatus", label: "Mental Status", single: true, options: [
+    { value: "No qualifying confusion", points: 0 },
+    { value: "Intermittent confusion", points: 2 },
+    { value: "Confused at all times", points: 4 },
+  ]},
+  { key: "mobilityConcerns", label: "Mobility", single: false, reviewedKey: "mobilityReviewed", options: [
+    { value: "Gait or balance problem", points: 2 },
+    { value: "Confined to bed or chair", points: 3 },
+  ]},
+  { key: "abilityToFollowDirections", label: "Ability to Follow Directions", single: true, options: [
+    { value: "Cooperative and able to follow directions", points: 0 },
+    { value: "Uncooperative or unable to follow directions", points: 4 },
+  ]},
+  { key: "orthostaticHypotension", label: "Orthostatic Hypotension", single: true, options: [
+    { value: "No", points: 0 },
+    { value: "Yes", points: 2 },
+    // Per the directive: a documented "Unable to Assess" is answered
+    // (it is not a blocker to assessment completeness) but is never
+    // silently treated as a negative ("No") finding -- it contributes
+    // no points and is called out separately in the score summary.
+    { value: "Unable to Assess", points: 0 },
+  ]},
+  { key: "medicationRisk", label: "Medication Risk (select all that apply, 1 point each)", single: false, reviewedKey: "medicationRiskReviewed", options: [
+    { value: "Sedative/Hypnotic", points: 1 },
+    { value: "Psychotropic", points: 1 },
+    { value: "Diuretic", points: 1 },
+    { value: "Anti-Parkinson", points: 1 },
+    { value: "Opiate", points: 1 },
+    { value: "Benzodiazepine", points: 1 },
+    { value: "Antihypertensive", points: 1 },
+  ]},
+  { key: "ambulationConditions", label: "Conditions Affecting Ambulation (select all that apply, 1 point each)", single: false, reviewedKey: "ambulationConditionsReviewed", options: [
+    { value: "Seizure disorder", points: 1 },
+    { value: "Chronic debilitating illness", points: 1 },
+    { value: "Dementia or Alzheimer's disease", points: 1 },
+    { value: "Weakness or paralysis of extremities", points: 1 },
+    { value: "Parkinson's disease", points: 1 },
+  ]},
+];
+
+// Totals the exact point values above. Per the directive, NO Low/
+// Moderate/High threshold exists anywhere in this repository and none
+// is invented here -- the calculated total is displayed alongside
+// "Classification Pending Verified Threshold" until an agency-approved
+// cutoff is supplied (tracked as the single unresolved fall-risk item;
+// see the session's final delivery report). A group that hasn't been
+// reviewed yet (single-select empty string, or a multi-select group
+// whose `reviewedKey` is still false) makes the whole assessment
+// "Incomplete" rather than silently contributing zero points.
+function computeFallRiskScore(factors) {
+  const f = factors || {};
+  let score = 0;
+  let allGroupsReviewed = true;
+  for (const group of FALL_RISK_FACTOR_GROUPS) {
+    if (group.single) {
+      const selected = f[group.key];
+      if (!selected) { allGroupsReviewed = false; continue; }
+      const opt = group.options.find((o) => o.value === selected);
+      if (opt) score += opt.points;
+    } else {
+      if (!f[group.reviewedKey]) { allGroupsReviewed = false; continue; }
+      const selectedValues = f[group.key] || [];
+      for (const value of selectedValues) {
+        const opt = group.options.find((o) => o.value === value);
+        if (opt) score += opt.points;
+      }
+    }
+  }
+  return { score, complete: allGroupsReviewed };
+}
+
+function FallRiskCard({ data, updateField, styles, COLORS, fullFormData }) {
+  const factors = data?.fallRiskFactors || {};
+  const { score, complete } = computeFallRiskScore(factors);
+  const orthostaticUnableToAssess = factors.orthostaticHypotension === "Unable to Assess";
+  // Suggestion-with-confirmation hint, same "never silently check a box"
+  // convention HOPE_COMORBIDITY_CATEGORIES/diagnosesIncludeCategory
+  // already use elsewhere in this file -- only 2 of the 5 Conditions
+  // Affecting Ambulation options have a reliable diagnosis-category
+  // match in this repo (Seizure Disorder, Dementia/Alzheimer's); the
+  // other 3 (chronic debilitating illness, weakness/paralysis,
+  // Parkinson's disease) have no distinct existing category to match
+  // against and are left as plain RN-reviewed pills, not invented.
+  const diagnosesData = fullFormData?.diagnoses;
+  const seizureSuggested = diagnosesIncludeCategory(diagnosesData, "seizureDisorder") && !factors.ambulationConditions?.includes("Seizure disorder");
+  const dementiaSuggested = diagnosesIncludeCategory(diagnosesData, "dementia") && !factors.ambulationConditions?.includes("Dementia or Alzheimer's disease");
+  const applyAmbulationSuggestion = (value) => {
+    const current = factors.ambulationConditions || [];
+    if (!current.includes(value)) {
+      updateField("fallRiskFactors.ambulationConditions", [...current, value]);
+    }
+    updateField("fallRiskFactors.ambulationConditionsReviewed", true);
   };
-
   return (
     <div>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Item</th>
-            <th style={styles.th}>Status</th>
-            <th style={styles.th}></th>
-          </tr>
-        </thead>
-        <tbody>
-          {items.map((it, idx) => (
-            <tr key={it.item}>
-              <td style={styles.td}>{it.item}</td>
-              <td style={styles.td}>
-                <select
-                  style={styles.select}
-                  value={it.status || ""}
-                  onChange={(e) => updateItem(idx, "status", e.target.value)}
-                >
-                  {DME_STATUS_OPTIONS.map((opt) => (
-                    <option key={opt || "blank"} value={opt}>{opt || "— select —"}</option>
-                  ))}
-                </select>
-              </td>
-              <td style={styles.td}>
-                {DME_ITEMS_WITH_SPECIFY.has(it.item) && (
-                  <input
-                    style={styles.input}
-                    placeholder="(specify)"
-                    value={it.specify || ""}
-                    onChange={(e) => updateItem(idx, "specify", e.target.value)}
-                  />
+      <FormBooleanPill
+        label="Fall Risk Assessment Completed"
+        checked={!!data?.fallRiskAssessmentCompleted}
+        onChange={(v) => updateField("fallRiskAssessmentCompleted", v)}
+      />
+      <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.02em", textTransform: "uppercase", color: COLORS?.textSecondary || "#888", margin: "8px 0 4px" }}>
+        Fall Risk Factors
+      </div>
+      {FALL_RISK_FACTOR_GROUPS.map((group) => (
+        group.single ? (
+          <FormSegmented
+            key={group.key}
+            label={group.label}
+            value={factors[group.key] || ""}
+            onChange={(v) => updateField(`fallRiskFactors.${group.key}`, v)}
+            options={group.options.map((o) => o.value)}
+            compact
+          />
+        ) : (
+          <div key={group.key}>
+            <FormPillGroup
+              label={group.label}
+              values={factors[group.key] || []}
+              onChange={(v) => {
+                updateField(`fallRiskFactors.${group.key}`, v);
+                updateField(`fallRiskFactors.${group.reviewedKey}`, true);
+              }}
+              options={group.options.map((o) => o.value)}
+            />
+            {group.key === "ambulationConditions" && (seizureSuggested || dementiaSuggested) && (
+              <div style={{ fontSize: 11, color: COLORS?.textSecondary || "#888", margin: "0 0 6px" }}>
+                Suggested from documented diagnoses (not auto-applied):{" "}
+                {seizureSuggested && (
+                  <button type="button" className="rnica-segment-btn" style={{ padding: "1px 7px", fontSize: 11, borderRadius: 999, marginRight: 4 }} onClick={() => applyAmbulationSuggestion("Seizure disorder")}>
+                    + Apply: Seizure disorder
+                  </button>
                 )}
-              </td>
-            </tr>
+                {dementiaSuggested && (
+                  <button type="button" className="rnica-segment-btn" style={{ padding: "1px 7px", fontSize: 11, borderRadius: 999 }} onClick={() => applyAmbulationSuggestion("Dementia or Alzheimer's disease")}>
+                    + Apply: Dementia or Alzheimer's disease
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )
+      ))}
+      <div
+        data-testid="fall-risk-calculated-score"
+        style={{
+          margin: "6px 0 10px",
+          padding: "6px 10px",
+          borderRadius: 8,
+          border: `1px dashed ${COLORS?.border || "#ccc"}`,
+          fontSize: 12,
+          fontWeight: 600,
+          color: COLORS?.textSecondary || "#555",
+        }}
+      >
+        {complete ? (
+          <>
+            Calculated Risk Score: {score}. Classification Pending Verified Threshold — no agency-approved Low/
+            Moderate/High cutoff for this scoring tool is on file; the Fall Risk Level selected below remains the
+            RN's documented determination of record until one is supplied.
+            {orthostaticUnableToAssess && " Orthostatic Hypotension: Unable to Assess (not scored as a negative finding)."}
+          </>
+        ) : (
+          "Fall Risk Assessment Incomplete — review every factor group above (including Mobility, Medication Risk, and Conditions Affecting Ambulation, even if none apply) before a score is calculated."
+        )}
+      </div>
+      <FormSegmented
+        label="Fall Risk Level"
+        value={data?.fallRiskLevel || ""}
+        onChange={(v) => updateField("fallRiskLevel", v)}
+        options={["Low", "Moderate", "High"]}
+      />
+      <FormSegmented
+        label="Transfer Safety"
+        value={data?.transferSafetyLevel || ""}
+        onChange={(v) => updateField("transferSafetyLevel", v)}
+        options={["Independent", "Needs assist x1", "Needs assist x2", "Mechanical lift required", "Unsafe/high risk"]}
+      />
+      {!data?.transferSafetyLevel && (fullFormData?.musculoskeletal?.mobility?.transferAbility) && (
+        <div style={{ fontSize: 11, color: COLORS?.textSecondary || "#888", margin: "0 0 6px" }}>
+          Suggested from Musculoskeletal Functional Status: {fullFormData.musculoskeletal.mobility.transferAbility}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+// Correct Modernization Using the HospiceMD Baseline" -- Patient Safety
+// is its own multi-select pill card, distinct from the scored Fall Risk
+// tool above (directive section on "Patient Safety"). The 3 legacy
+// booleans (wanderingRisk/impairedJudgementRisk/unsafeAmbulationRisk)
+// are superseded by this array but never deleted -- a chart that only
+// has the legacy booleans set still shows them as read-only
+// "Previously recorded" chips so no documentation is lost.
+const PATIENT_SAFETY_NO_CONCERN = "No Additional Patient Safety Concern";
+const PATIENT_SAFETY_OPTIONS = [
+  "Wandering Risk", "Impaired Judgment", "Unsafe Ambulation", "Elopement Risk",
+  "Smoking with Oxygen in Use", "Firearm Access", "Medication Misuse Risk",
+  "Self-Harm Risk", "Aggressive/Combative Behavior", "Unsupervised Cooking/Stove Use",
+  PATIENT_SAFETY_NO_CONCERN,
+];
+function PatientSafetyCard({ data, updateField, COLORS }) {
+  const concerns = data?.patientSafetyConcerns || [];
+  const legacyFlags = [
+    data?.wanderingRisk && "Wandering Risk (legacy)",
+    data?.impairedJudgementRisk && "Impaired Judgement (legacy)",
+    data?.unsafeAmbulationRisk && "Unsafe Ambulation (legacy)",
+  ].filter(Boolean);
+  const handleChange = (nextValues) => {
+    const addedNoConcern = nextValues.includes(PATIENT_SAFETY_NO_CONCERN) && !concerns.includes(PATIENT_SAFETY_NO_CONCERN);
+    if (addedNoConcern) {
+      updateField("patientSafetyConcerns", [PATIENT_SAFETY_NO_CONCERN]);
+      return;
+    }
+    const withoutNoConcern = nextValues.filter((v) => v !== PATIENT_SAFETY_NO_CONCERN);
+    updateField("patientSafetyConcerns", withoutNoConcern);
+  };
+  return (
+    <div>
+      <FormPillGroup label="Patient Safety Concerns" values={concerns} onChange={handleChange} options={PATIENT_SAFETY_OPTIONS} />
+      {legacyFlags.length > 0 && (
+        <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {legacyFlags.map((flag) => (
+            <span key={flag}
+              title="This finding was previously recorded under the retired single-checkbox fields. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ {flag}
+            </span>
           ))}
-        </tbody>
-      </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-11-26) -- Environmental Safety is one
+// structured group: an overall status plus 3 concern-pill columns
+// (Utilities & Emergency Readiness / Living Area & Bedroom / Bathroom &
+// Household Risks). Residence-aware: the default status display reads
+// `demographics.livingSituation.siteOfService` (HOPE A0215) so the RN
+// sees an honest "Facility Managed" hint for a facility-coded residence
+// instead of an empty Home-oriented default -- it is a display hint
+// only, never auto-written into the stored status. Legacy fields
+// (`homeEnvironment` array, `firearmInHome` boolean) are preserved as
+// read-only "Previously recorded" chips, same DME-established
+// convention, never deleted/migrated.
+const ENVIRONMENTAL_SAFETY_STATUS_OPTIONS = ["No Environmental Concerns Identified", "Concern Identified", "Facility Managed", "Unable to Assess"];
+const ENVIRONMENTAL_SAFETY_COLUMNS = [
+  { key: "environmentalUtilitiesConcerns", label: "Utilities & Emergency Readiness", options: [
+    "Inadequate heating/cooling", "No working smoke detectors", "Fire hazard present", "Requires electricity for medical equipment", "No backup power plan",
+  ]},
+  { key: "environmentalLivingAreaConcerns", label: "Living Area & Bedroom", options: [
+    "Clutter/obstacles", "Throw rugs", "Inadequate lighting", "Stairs without railing", "Pets", "Firearms in home",
+  ]},
+  { key: "environmentalBathroomConcerns", label: "Bathroom & Household Risks", options: [
+    "No grab bars/handrails", "Slippery surfaces", "Pest infestation", "Unsafe water temperature", "Unsanitary conditions",
+  ]},
+];
+// HOPE A0215 site-of-service codes that indicate a facility (not the
+// patient's own home) -- used only to show an honest residence-aware
+// hint, never to auto-select a status.
+const FACILITY_SITE_OF_SERVICE_CODES = new Set(["02", "03", "04", "06", "07", "08", "09"]);
+function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
+  const status = data?.environmentalSafetyStatus || "";
+  const siteOfService = fullFormData?.demographics?.livingSituation?.siteOfService;
+  const isFacilityResidence = FACILITY_SITE_OF_SERVICE_CODES.has(siteOfService);
+  const legacyHazards = data?.homeEnvironment || [];
+  const legacyFirearm = data?.firearmInHome;
+  const handleStatusChange = (v) => updateField("environmentalSafetyStatus", v);
+  const handleColumnChange = (key, nextValues) => {
+    updateField(key, nextValues);
+    if (nextValues.length > 0 && status === "No Environmental Concerns Identified") {
+      updateField("environmentalSafetyStatus", "Concern Identified");
+    }
+  };
+  return (
+    <div>
+      {!status && isFacilityResidence && (
+        <div style={{ fontSize: 11, color: COLORS?.textSecondary || "#888", margin: "0 0 6px" }}>
+          Residence on file is a licensed facility (not the patient's own home) — environmental concerns below may be
+          facility-managed rather than patient/family-managed.
+        </div>
+      )}
+      <FormSegmented label="Environmental Safety Status" value={status} onChange={handleStatusChange} options={ENVIRONMENTAL_SAFETY_STATUS_OPTIONS} />
+      {ENVIRONMENTAL_SAFETY_COLUMNS.map((col) => (
+        <FormPillGroup
+          key={col.key}
+          label={col.label}
+          values={data?.[col.key] || []}
+          onChange={(v) => handleColumnChange(col.key, v)}
+          options={col.options}
+        />
+      ))}
+      {(legacyHazards.length > 0 || legacyFirearm) && (
+        <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {legacyHazards.map((hazard) => (
+            <span key={hazard}
+              title="This hazard was previously recorded under the retired Home Environment Hazards list. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: "{hazard}"
+            </span>
+          ))}
+          {legacyFirearm && (
+            <span
+              title="Firearm in Home was previously recorded as a standalone field. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: Firearm in Home
+            </span>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-11-26) -- Caregiver Safety is a
+// read-only synchronized summary of the real Caregiver & Support
+// evaluation (`demographics.pcg.caregiverEvaluation`) plus an RN
+// per-visit confirmation; it does not duplicate a second note field or
+// invent a 1:1 remapping to option values that don't exist on the
+// source fields. When no caregiver has been assessed at all
+// (`pcg.assessed` is falsy or no name on file), this is shown plainly as
+// "No Caregiver on File" rather than silently leaving the card blank.
+// The 3 legacy booleans are preserved as read-only chips, never deleted.
+function CaregiverSafetyCard({ data, updateField, COLORS, fullFormData }) {
+  const pcg = fullFormData?.demographics?.pcg;
+  const evaluation = pcg?.caregiverEvaluation;
+  const hasCaregiver = Boolean(pcg?.assessed && pcg?.name);
+  const legacyFlags = [
+    data?.caregiverAbleToAssist && "Caregiver Able to Assist (legacy)",
+    data?.caregiverAwareOfLimitations && "Caregiver Aware of Limitations (legacy)",
+    data?.caregiverUnderstandsSafetyPrecautions && "Caregiver Understands Safety Precautions (legacy)",
+  ].filter(Boolean);
+  return (
+    <div>
+      {!hasCaregiver ? (
+        <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555", margin: "0 0 8px" }}>
+          No Caregiver on File (Caregiver & Support screen)
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: COLORS?.textSecondary || "#555", margin: "0 0 8px" }}>
+          Synchronized from Caregiver & Support for {pcg.name}:
+          <br />Physical Ability: {evaluation?.physicalAbility || "Not yet documented"}
+          <br />Cognitive Ability: {evaluation?.cognitiveAbility || "Not yet documented"}
+          <br />Emotional Readiness: {evaluation?.emotionalReadiness || "Not yet documented"}
+        </div>
+      )}
+      <FormBooleanPill
+        label="Caregiver Safety Confirmed This Visit"
+        checked={!!data?.caregiverSafetyConfirmedThisVisit}
+        onChange={(v) => updateField("caregiverSafetyConfirmedThisVisit", v)}
+      />
+      {legacyFlags.length > 0 && (
+        <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {legacyFlags.map((flag) => (
+            <span key={flag}
+              title="This finding was previously recorded under the retired single-checkbox fields. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ {flag}
+            </span>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-11-26) -- Oxygen Safety is conditional
+// on oxygen actually being in use. The authoritative source is
+// Respiratory's `respiratory.oxygenTherapy.inUse`; the legacy
+// `safety.oxygenInUse` boolean is used only as a fallback for a chart
+// recorded before that cross-section field existed, never overwritten.
+const OXYGEN_SAFETY_ITEMS = [
+  "No Smoking Signage Posted", "No Open Flame in Room", "Equipment Stored Upright/Secured",
+  "Backup Tank/Supply Available", "Emergency Contact Posted", "Patient/Caregiver Education Provided",
+  "Concern Identified", "Unable to Assess",
+];
+function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
+  const oxygenInUse = fullFormData?.respiratory?.oxygenTherapy?.inUse ?? data?.oxygenInUse;
+  if (!oxygenInUse) {
+    return (
+      <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555" }}>
+        Not Applicable — Oxygen is not documented as in use (Respiratory).
+      </div>
+    );
+  }
+  return (
+    <div>
+      <FormPillGroup
+        label="Oxygen Safety Checklist"
+        values={data?.oxygenSafetyItems || []}
+        onChange={(v) => updateField("oxygenSafetyItems", v)}
+        options={OXYGEN_SAFETY_ITEMS}
+      />
+    </div>
+  );
+}
+
+function DmeStatusCard({ data, updateField, styles, COLORS, pane }) {
+  const items = data?.dmeItems || [];
+  const getItem = (name) => items.find((it) => it.item === name) || { item: name, status: "", specify: "" };
+
+  const setItemStatus = (name, nextStatus) => {
+    const exists = items.some((it) => it.item === name);
+    const nextItems = exists
+      ? items.map((it) => (it.item === name ? { ...it, status: nextStatus } : it))
+      : [...items, { item: name, status: nextStatus, specify: "" }];
+    updateField("dmeItems", nextItems);
+  };
+
+  const setItemSpecify = (name, specify) => {
+    const exists = items.some((it) => it.item === name);
+    const nextItems = exists
+      ? items.map((it) => (it.item === name ? { ...it, specify } : it))
+      : [...items, { item: name, status: "", specify }];
+    updateField("dmeItems", nextItems);
+  };
+
+  const existingValues = DME_ITEM_LIST.filter((name) => DME_EXISTING_STATUSES.has(getItem(name).status));
+  const neededValues = DME_ITEM_LIST.filter((name) => DME_NEEDED_STATUSES.has(getItem(name).status));
+  const legacyItems = items.filter((it) => DME_LEGACY_ONLY_STATUSES.has(it.status));
+
+  const handleExistingChange = (nextValues) => {
+    DME_ITEM_LIST.forEach((name) => {
+      const wasExisting = existingValues.includes(name);
+      const isExisting = nextValues.includes(name);
+      if (isExisting && !wasExisting) setItemStatus(name, "Has");
+      else if (!isExisting && wasExisting) setItemStatus(name, "");
+    });
+  };
+
+  const handleNeededChange = (nextValues) => {
+    DME_ITEM_LIST.forEach((name) => {
+      const wasNeeded = neededValues.includes(name);
+      const isNeeded = nextValues.includes(name);
+      if (isNeeded && !wasNeeded) setItemStatus(name, "Needs");
+      else if (!isNeeded && wasNeeded) setItemStatus(name, "");
+    });
+  };
+
+  const specifyRelevantExisting = DME_ITEM_LIST.filter((name) => DME_ITEMS_WITH_SPECIFY.has(name) && existingValues.includes(name));
+  const specifyRelevantNeeded = DME_ITEM_LIST.filter((name) => DME_ITEMS_WITH_SPECIFY.has(name) && neededValues.includes(name));
+
+  // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+  // Correct Modernization Using the HospiceMD Baseline" item 9 --
+  // Existing DME / Needed DME render as two separate 2-column-row cards
+  // (same shared `dmeItems` data/status model, no migration); `pane`
+  // selects which pill row + its own specify inputs this card instance
+  // shows. Notes stay optional and conditional: they only render when
+  // "Other" is an active item in that pane (nothing to specify
+  // otherwise), consistent with "hide notes fields unless an exception
+  // condition is met."
+  if (pane === "needed") {
+    return (
+      <div>
+        <FormPillGroup label="Needed DME" values={neededValues} onChange={handleNeededChange} options={DME_ITEM_LIST} />
+        {specifyRelevantNeeded.map((name) => (
+          <FormInput key={name} label={`${name} (specify)`} value={getItem(name).specify || ""} onChange={(v) => setItemSpecify(name, v)} />
+        ))}
+        {neededValues.includes("Other") && (
+          <FormTextarea label="DME Notes (optional)" value={data?.dmeNotes || ""} onChange={(v) => updateField("dmeNotes", v)} />
+        )}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <FormPillGroup label="Existing DME" values={existingValues} onChange={handleExistingChange} options={DME_ITEM_LIST} />
+      {specifyRelevantExisting.map((name) => (
+        <FormInput key={name} label={`${name} (specify)`} value={getItem(name).specify || ""} onChange={(v) => setItemSpecify(name, v)} />
+      ))}
+      {legacyItems.length > 0 && (
+        <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {legacyItems.map((it) => (
+            <span
+              key={it.item}
+              title="This item was previously recorded with a status no longer offered in Existing/Needed DME. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ {it.item} previously recorded: “{it.status}”
+            </span>
+          ))}
+        </div>
+      )}
+      {existingValues.includes("Other") && (
+        <FormTextarea label="DME Notes (optional)" value={data?.dmeNotes || ""} onChange={(v) => updateField("dmeNotes", v)} />
+      )}
+    </div>
+  );
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-11-24) "Safety & Clinical Risk Phase II
+// Redesign" item 6 -- previously all three level condition checklists
+// rendered simultaneously regardless of the selected Disaster Level,
+// forcing the nurse to scan every option across all three levels to
+// find the ~3-4 that actually apply to the level they picked. This now
+// selects the level FIRST (RNICA pill styling via FormSegmented, matching
+// every other single-select field in this section) and reveals only that
+// level's own condition pills second -- same three existing
+// checkboxGroup-turned-pillGroup paths (`disasterLevelOneConditions`/
+// `...TwoConditions`/`...ThreeConditions`), same stored option strings;
+// a chart saved before this change still round-trips its selected level
+// and that level's own already-checked conditions exactly as before. If
+// the level is changed after conditions were checked under a previous
+// level, those other levels' stored arrays are left untouched (not
+// cleared) -- simply not the level currently shown -- so no data is
+// silently lost by toggling the level selector.
+const DISASTER_TRIAGE_LEVELS = [
+  {
+    value: "Level 1 — Hospice must assist; no assistance available",
+    shortLabel: "Level 1",
+    conditionsPath: "disasterLevelOneConditions",
+    conditionsLabel: "Level 1 Conditions (two or more apply)",
+    options: ["Bed- or chair-confined", "Dependent on walker or cane", "Lives above ground floor", "Requires electricity for medical equipment"],
+  },
+  {
+    value: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
+    shortLabel: "Level 2",
+    conditionsPath: "disasterLevelTwoConditions",
+    conditionsLabel: "Level 2 Conditions (one applies)",
+    options: ["Bed- or chair-confined", "Dependent on walker or cane", "Lives above ground floor", "Requires electricity for medical equipment"],
+  },
+  {
+    value: "Level 3 — No need for hospice to assist; has adequate assistance available",
+    shortLabel: "Level 3",
+    conditionsPath: "disasterLevelThreeConditions",
+    conditionsLabel: "Level 3 Conditions",
+    options: ["Lives in facility with disaster support", "Has alternate location and available helper to go to"],
+  },
+];
+
+function DisasterTriageCard({ data, updateField, styles, COLORS }) {
+  const level = data?.disasterLevel || "";
+  const selectedLevel = DISASTER_TRIAGE_LEVELS.find((l) => l.value === level) || null;
+  return (
+    <div>
+      {/* PRODUCT OWNER DIRECTIVE (2026-11-26) item 6 -- short "Level 1/2/3"
+          pills (via FormSegmented's `{value, label}` option shape) with
+          the full description shown below the current selection, instead
+          of the full sentence as the pill label itself. `value` is
+          unchanged (still the full sentence), so a chart's stored
+          selection still round-trips exactly as before. */}
+      <FormSegmented
+        label="Disaster Level"
+        value={level}
+        onChange={(v) => updateField("disasterLevel", v)}
+        options={DISASTER_TRIAGE_LEVELS.map((l) => ({ value: l.value, label: l.shortLabel }))}
+      />
+      {selectedLevel && (
+        <>
+          <div style={{ fontSize: 12, color: COLORS?.textSecondary || "#555", margin: "0 0 8px" }}>
+            {selectedLevel.value}
+          </div>
+          <FormPillGroup
+            label={selectedLevel.conditionsLabel}
+            values={data?.[selectedLevel.conditionsPath] || []}
+            onChange={(v) => updateField(selectedLevel.conditionsPath, v)}
+            options={selectedLevel.options}
+          />
+        </>
+      )}
     </div>
   );
 }
@@ -16324,8 +16950,14 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
               options={["No", "Language Interpreter", "Hearing Accommodation", "Both", "Unable to determine"]} />
             {(data.pcg?.communicationAccommodation === "Language Interpreter" || data.pcg?.communicationAccommodation === "Both") && (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginTop: 4 }}>
+                {/* [PRODUCT OWNER DIRECTIVE "Communication Accommodation",
+                    2026-10-24] Language must not be a hardcoded one-off
+                    RNICA list -- reuse the centralized SNS language
+                    reference table (HOPE A1110 Preferred Language
+                    controlled list) already used elsewhere in the chart,
+                    instead of maintaining a second, narrower list here. */}
                 <FormSelect label="Primary Language" value={data.pcg?.communicationPrimaryLanguage} onChange={(v) => u("pcg.communicationPrimaryLanguage", v)}
-                  options={["Spanish", "Vietnamese", "Mandarin", "Cantonese", "Korean", "Tagalog", "Armenian", "Russian", "Arabic", "Farsi", "Other"]} />
+                  options={LANGUAGE_OPTIONS} />
                 <FormSelect label="Interpreter Source" value={data.pcg?.communicationInterpreterSource} onChange={(v) => u("pcg.communicationInterpreterSource", v)}
                   options={["Family translates", "Staff member translates", "Professional interpreter required", "Translation service available", "Unknown"]} />
               </div>
@@ -16360,41 +16992,81 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
               <FormInput label="Specify (safety/access/infection concern if applicable)" value={data.pcg?.householdPetsDetail} onChange={(v) => u("pcg.householdPetsDetail", v)} />
             )}
 
-            {/* Medication administration — who is responsible for getting
-                medications into the patient, combining the former two-
-                question flow (patient capability + responsible party)
-                into one pill field per owner directive.
-                [OWNER DIRECTIVE "Caregiver & Support Refinement",
-                2026-10-23] #6 (original): converted to pill controls.
-                [REFINEMENT 2026-10-23 round 3] #6: collapsed to a single
-                authoritative "Medication Administration" field — Patient
-                Independent / Patient With Assistance / Family Caregiver /
-                Facility Staff / Unable To Assess — since asking capability
-                and responsible-party as two separate questions was still
-                more complex than the clinical question actually requires.
-                The selection sets the legacy selfAdministersMeds/
-                medsAdministeredBy fields together (see onChange) so no
-                downstream logic (contradiction warning, below) needed to
-                change its field paths. A free-text "Other / Specify"
-                detail is shown only for the one option ("Family
-                Caregiver") where the contradiction check and care
-                planning benefit from knowing who, specifically — this is
-                the one place "additional detail only when needed"
-                actually applies; the other four options are already
-                fully specific on their own. */}
-            <FormSegmented label="Medication Administration" value={data.medicationSafety?.administrationResponsibility} onChange={(v) => {
-              u("medicationSafety.administrationResponsibility", v);
-              const legacy = {
-                "Patient Independent": { selfAdministersMeds: "Yes", medsAdministeredBy: "" },
-                "Patient With Assistance": { selfAdministersMeds: "With assistance", medsAdministeredBy: "" },
-                "Family Caregiver": { selfAdministersMeds: "No", medsAdministeredBy: "Primary caregiver" },
-                "Facility Staff": { selfAdministersMeds: "Not applicable", medsAdministeredBy: "Facility staff" },
-                "Unable To Assess": { selfAdministersMeds: "Unable to assess", medsAdministeredBy: "" },
-              }[v] || { selfAdministersMeds: "", medsAdministeredBy: "" };
-              u("medicationSafety.selfAdministersMeds", legacy.selfAdministersMeds);
-              u("medicationSafety.medsAdministeredBy", legacy.medsAdministeredBy);
-            }}
-              options={["Patient Independent", "Patient With Assistance", "Family Caregiver", "Facility Staff", "Unable To Assess"]} />
+            {/* Medication administration — split into two separate
+                questions per PRODUCT OWNER DIRECTIVE "Medication
+                Administration Review" (2026-10-24), superseding the
+                single combined pill from [REFINEMENT 2026-10-23 round 3]
+                #6: patient self-administration capability ("how
+                medications are taken") and who is responsible when the
+                patient cannot ("who administers") are different clinical
+                facts and were not equivalent answers in the same list.
+                The legacy single-field shape (administrationResponsibility/
+                selfAdministersMeds/medsAdministeredBy) is still written
+                below from these two questions so any historical-chart
+                read of the old shape continues to work unchanged. */}
+            <FormSegmented label="Can Patient Safely Self-Administer Medications?"
+              value={data.medicationSafety?.selfAdministrationAbility}
+              onChange={(v) => {
+                u("medicationSafety.selfAdministrationAbility", v);
+                // Switching away from "No" invalidates whatever Question 2
+                // ("who administers") answer was previously recorded --
+                // never leave a stale responsible-party selection attached
+                // to a changed self-administration answer.
+                if (v !== "No") u("medicationSafety.administeredBy", "");
+                const legacy = {
+                  "Independent": { administrationResponsibility: "Patient Independent", selfAdministersMeds: "Yes", medsAdministeredBy: "" },
+                  "With Assistance": { administrationResponsibility: "Patient With Assistance", selfAdministersMeds: "With assistance", medsAdministeredBy: "" },
+                  "No": { administrationResponsibility: "", selfAdministersMeds: "No", medsAdministeredBy: "" },
+                  "Unable to Determine": { administrationResponsibility: "Unable To Assess", selfAdministersMeds: "Unable to assess", medsAdministeredBy: "" },
+                }[v] || { administrationResponsibility: "", selfAdministersMeds: "", medsAdministeredBy: "" };
+                u("medicationSafety.administrationResponsibility", legacy.administrationResponsibility);
+                u("medicationSafety.selfAdministersMeds", legacy.selfAdministersMeds);
+                u("medicationSafety.medsAdministeredBy", legacy.medsAdministeredBy);
+              }}
+              options={["Independent", "With Assistance", "No", "Unable to Determine"]} />
+            {/* [PRODUCT OWNER DIRECTIVE "Medication Administration
+                Review", 2026-10-24] Question 2 only applies once
+                self-administration is "No". The option set is now a
+                single combined list covering both home and
+                facility-based responsible parties -- "Facility Staff" is
+                a common hospice workflow in Assisted Living/RCFE/Board &
+                Care/Memory Care/SNF, and splitting the list by setting
+                previously required deriving facility-vs-home state from
+                Primary Caregiver Status, which is susceptible to stale
+                `noPcgReason` data (see history). A single list sidesteps
+                that fragility and lets any responsible-party answer be
+                recorded regardless of setting. */}
+            {data.medicationSafety?.selfAdministrationAbility === "No" && (
+              <FormSegmented label="Who Administers Medications?"
+                value={data.medicationSafety?.administeredBy}
+                onChange={(v) => {
+                  u("medicationSafety.administeredBy", v);
+                  u("medicationSafety.administrationResponsibility", v);
+                  const legacyMedsAdministeredBy = {
+                    "Family Caregiver": "Primary caregiver",
+                    "Private Caregiver": "Private caregiver",
+                    "Facility Staff": "Facility staff",
+                    "Hospice Staff": "Hospice staff",
+                    "Shared Responsibility": "Shared responsibility",
+                    "Other": "Other",
+                  }[v] || "";
+                  u("medicationSafety.medsAdministeredBy", legacyMedsAdministeredBy);
+                }}
+                options={["Family Caregiver", "Private Caregiver", "Facility Staff", "Hospice Staff", "Shared Responsibility", "Other"]} />
+            )}
+            {/* [PRODUCT OWNER DIRECTIVE "Medication Administration
+                Review", 2026-10-24] "Unable to Determine" means
+                medication responsibility has not actually been
+                established -- a safety gap distinct from a documented
+                "No" + a chosen responsible party -- so it is surfaced as
+                a non-blocking review flag the same way every other
+                contradiction/review box in this Card is (see
+                `styles.warningBox` usages below). */}
+            {data.medicationSafety?.selfAdministrationAbility === "Unable to Determine" && (
+              <div style={styles.warningBox}>
+                ⚠️ Medication Safety Review Required: who is responsible for administering this patient's medications has not been established. Confirm and document before the next visit.
+              </div>
+            )}
             {/* [OWNER DIRECTIVE "Caregiver & Support Refinement",
                 2026-10-23] #7: contradiction/review warning — a
                 caregiver documented as "Unable" to provide physical care
@@ -16405,7 +17077,7 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
                 consistent with every other contradiction check in this
                 file (see `styles.warningBox` usages) — it flags the
                 combination for RN review, it does not prevent saving. */}
-            {data.pcg?.caregiverEvaluation?.physicalAbility === "Unable" && data.medicationSafety?.administrationResponsibility === "Family Caregiver" && (
+            {data.pcg?.caregiverEvaluation?.physicalAbility === "Unable" && data.medicationSafety?.selfAdministrationAbility === "No" && data.medicationSafety?.administeredBy === "Family Caregiver" && (
               <div style={styles.warningBox}>
                 ⚠️ Review: Caregiver Capacity is documented as "Unable", but the family caregiver is also documented as responsible for administering medications. Confirm this reflects an actual safety plan (e.g., pre-filled organizer, remote supervision) or update one of these fields.
               </div>
@@ -19001,6 +19673,201 @@ export function computeInfectionDocumentationCoverage(d = {}, extra = {}) {
       label: item.label,
       complete,
       value: complete ? item.summarize(d, extra) : null,
+      unresolvedHint: complete ? null : item.unresolvedHint,
+      sourceFieldKeys: item.sourceFieldKeys,
+    };
+  });
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-11-24) "Safety & Clinical Risk Phase II
+// Redesign" item 1 -- "Safety Documentation Coverage" counterpart to
+// INFECTION_COVERAGE_ITEMS/computeInfectionDocumentationCoverage above,
+// reusing the exact same shared `DocumentationCoverage` component
+// contract (key/label/complete/value/unresolvedHint/sourceFieldKeys).
+// Named items match the owner-directed coverage list exactly: Fall Risk,
+// Transfer Safety, Home Hazards, Oxygen Safety, Incident Review, Disaster
+// Triage, DME Status, Supplies Status.
+const SAFETY_COVERAGE_ITEMS = [
+  // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+  // Correct Modernization Using the HospiceMD Baseline" -- fall risk now
+  // reports the structured-factor completeness state from
+  // `computeFallRiskScore` (see FallRiskCard above) instead of only
+  // checking the legacy manual `fallRiskLevel` picker; `fallRiskLevel`
+  // is unchanged and still reported alongside the calculated score since
+  // no verified score-to-level threshold exists in the repo to replace
+  // it (see FallRiskCard's own "Classification Pending Verified
+  // Threshold" messaging).
+  {
+    key: "fallRisk",
+    label: "Fall Risk",
+    sourceFieldKeys: ["fallRiskFactors", "fallRiskLevel"],
+    check: (d) => computeFallRiskScore(d.fallRiskFactors).complete || Boolean(d.fallRiskLevel),
+    summarize: (d) => {
+      const { score, complete } = computeFallRiskScore(d.fallRiskFactors);
+      const scorePart = complete ? `Score ${score} (Classification Pending Verified Threshold)` : "Factors Incomplete";
+      return d.fallRiskLevel ? `${scorePart} — Level: ${d.fallRiskLevel}` : scorePart;
+    },
+    unresolvedHint: "Document all Fall Risk factors and/or select a Fall Risk Level",
+  },
+  {
+    key: "transferSafety",
+    label: "Transfer Safety",
+    sourceFieldKeys: ["transferSafetyLevel"],
+    check: (d) => Boolean(d.transferSafetyLevel),
+    summarize: (d) => d.transferSafetyLevel,
+    unresolvedHint: "Select a Transfer Safety level",
+  },
+  // Environmental Safety -- replaces the old single `homeEnvironment`
+  // checklist coverage with the new residence-aware status field plus
+  // the 3 concern columns (see EnvironmentalSafetyCard above). Legacy
+  // `homeEnvironment`/`firearmInHome` are still reported if present (a
+  // chart saved before this redesign).
+  {
+    key: "homeHazards",
+    label: "Environmental Safety",
+    sourceFieldKeys: ["environmentalSafetyStatus", "environmentalUtilitiesConcerns", "environmentalLivingAreaConcerns", "environmentalBathroomConcerns", "homeEnvironment", "firearmInHome"],
+    check: (d) => Boolean(d.environmentalSafetyStatus) || (d.homeEnvironment || []).length > 0,
+    summarize: (d) => {
+      const columns = [
+        ...(d.environmentalUtilitiesConcerns || []),
+        ...(d.environmentalLivingAreaConcerns || []),
+        ...(d.environmentalBathroomConcerns || []),
+      ];
+      if (d.environmentalSafetyStatus) {
+        return columns.length > 0 ? `${d.environmentalSafetyStatus}: ${columns.join(", ")}` : d.environmentalSafetyStatus;
+      }
+      const hazards = d.homeEnvironment || [];
+      const firearm = d.firearmInHome ? ["Firearm in Home"] : [];
+      return [...hazards, ...firearm].join(", ");
+    },
+    unresolvedHint: "Select an Environmental Safety status and document any concerns",
+  },
+  // New coverage item -- Patient Safety (wandering/impaired judgement/
+  // unsafe ambulation/other risks, see PatientSafetyCard above).
+  {
+    key: "patientSafety",
+    label: "Patient Safety",
+    sourceFieldKeys: ["patientSafetyConcerns"],
+    check: (d) => (d.patientSafetyConcerns || []).length > 0,
+    summarize: (d) => (d.patientSafetyConcerns || []).join(", "),
+    unresolvedHint: "Document Patient Safety concerns (or No Patient Safety Concerns Identified)",
+  },
+  // Caregiver Safety now reports the synchronized read-only summary +
+  // this-visit confirmation (see CaregiverSafetyCard above) rather than
+  // the 3 retired standalone booleans; those are still reported if a
+  // chart saved before this redesign has them set and nothing newer.
+  {
+    key: "caregiverSafety",
+    label: "Caregiver Safety",
+    sourceFieldKeys: ["caregiverSafetyConfirmedThisVisit", "caregiverAbleToAssist", "caregiverAwareOfLimitations", "caregiverUnderstandsSafetyPrecautions"],
+    check: (d) => d.caregiverSafetyConfirmedThisVisit || d.caregiverAbleToAssist || d.caregiverAwareOfLimitations || d.caregiverUnderstandsSafetyPrecautions,
+    summarize: (d) => {
+      if (d.caregiverSafetyConfirmedThisVisit) return "Confirmed This Visit";
+      const parts = [];
+      if (d.caregiverAbleToAssist) parts.push("Able to Assist");
+      if (d.caregiverAwareOfLimitations) parts.push("Aware of Limitations");
+      if (d.caregiverUnderstandsSafetyPrecautions) parts.push("Understands Safety Precautions");
+      return parts.join(", ");
+    },
+    unresolvedHint: "Confirm Caregiver Safety for this visit",
+  },
+  // Oxygen Safety is now conditional on whether oxygen is in use at all
+  // (see OxygenSafetyCard's `fullFormData?.respiratory?.oxygenTherapy?.
+  // inUse` read) -- "Not Applicable" is itself a complete, documented
+  // answer, same convention as other always-`check: () => true` items.
+  {
+    key: "oxygenSafety",
+    label: "Oxygen Safety",
+    sourceFieldKeys: ["oxygenSafetyItems", "oxygenInUse", "oxygenSafetyReviewed"],
+    check: () => true,
+    summarize: (d) => {
+      if (!d.oxygenInUse) return "Not Applicable — No Oxygen in Use";
+      const items = d.oxygenSafetyItems || [];
+      return items.length > 0 ? `Reviewed: ${items.join(", ")}` : "Oxygen in Use — Safety Review Pending";
+    },
+    unresolvedHint: null,
+  },
+  // Incident Review now reports the new `incidentType` single-select
+  // instead of the retired `incidentOccurrenceReported` boolean; the
+  // legacy boolean is still reported if a chart saved before this
+  // redesign has it set and `incidentType` is unset.
+  {
+    key: "incidentReview",
+    label: "Incident Review",
+    sourceFieldKeys: ["incidentType", "incidentOccurrenceNotes", "incidentOccurrenceReported"],
+    check: () => true,
+    summarize: (d) => {
+      if (d.incidentType) {
+        return d.incidentType === "No Incident or Occurrence This Visit"
+          ? "No Incident Reported This Visit"
+          : `${d.incidentType}${d.incidentOccurrenceNotes ? ` — ${d.incidentOccurrenceNotes}` : ""}`;
+      }
+      return d.incidentOccurrenceReported
+        ? `Incident Reported${d.incidentOccurrenceNotes ? ` — ${d.incidentOccurrenceNotes}` : ""}`
+        : "No Incident Reported This Visit";
+    },
+    unresolvedHint: null,
+  },
+  {
+    key: "disasterTriage",
+    label: "Disaster Triage",
+    sourceFieldKeys: ["disasterLevel", "disasterLevelOneConditions", "disasterLevelTwoConditions", "disasterLevelThreeConditions"],
+    check: (d) => Boolean(d.disasterLevel),
+    summarize: (d) => d.disasterLevel,
+    unresolvedHint: "Select a Disaster Triage level",
+  },
+  // New coverage item -- Safety Education (see the "Safety Education"
+  // card in SECTION_CONFIGS.safety.cards above).
+  {
+    key: "safetyEducation",
+    label: "Safety Education",
+    sourceFieldKeys: ["safetyEducationProvided"],
+    check: (d) => Boolean(d.safetyEducationProvided),
+    summarize: (d) => d.safetyEducationProvided,
+    unresolvedHint: "Document Safety Education provided this visit (or Not Indicated This Visit)",
+  },
+  {
+    key: "dmeStatus",
+    label: "DME Status",
+    sourceFieldKeys: ["dmeItems", "dmeNotes"],
+    check: (d) => (d.dmeItems || []).some((it) => it.status),
+    summarize: (d) => {
+      const existing = (d.dmeItems || []).filter((it) => DME_EXISTING_STATUSES.has(it.status)).map((it) => it.item);
+      const needed = (d.dmeItems || []).filter((it) => DME_NEEDED_STATUSES.has(it.status)).map((it) => it.item);
+      const parts = [
+        existing.length > 0 ? `Existing: ${existing.join(", ")}` : null,
+        needed.length > 0 ? `Needed: ${needed.join(", ")}` : null,
+      ].filter(Boolean);
+      return parts.length > 0 ? parts.join("; ") : "No DME Documented";
+    },
+    unresolvedHint: "Document existing/needed DME items",
+  },
+  {
+    key: "suppliesStatus",
+    label: "Supplies Status",
+    sourceFieldKeys: ["supplies.existingCategories", "supplies.neededCategories", "supplies.otherSuppliesNotes"],
+    check: (d) => (d.supplies?.existingCategories || []).length > 0 || (d.supplies?.neededCategories || []).length > 0,
+    summarize: (d) => {
+      const existing = d.supplies?.existingCategories || [];
+      const needed = d.supplies?.neededCategories || [];
+      const parts = [
+        existing.length > 0 ? `Existing: ${existing.join(", ")}` : null,
+        needed.length > 0 ? `Needed: ${needed.join(", ")}` : null,
+      ].filter(Boolean);
+      return parts.length > 0 ? parts.join("; ") : null;
+    },
+    unresolvedHint: "Document existing/needed supplies",
+  },
+];
+
+export function computeSafetyDocumentationCoverage(d = {}) {
+  return SAFETY_COVERAGE_ITEMS.map((item) => {
+    const complete = item.check(d);
+    return {
+      key: item.key,
+      label: item.label,
+      complete,
+      value: complete ? item.summarize(d) : null,
       unresolvedHint: complete ? null : item.unresolvedHint,
       sourceFieldKeys: item.sourceFieldKeys,
     };
@@ -22561,10 +23428,66 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // Integumentary Documentation Coverage (see
         // `skinImpairmentActionBar` near `skinDocumentationCoverage`).
 
+        // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+        // Correct Modernization Using the HospiceMD Baseline" -- see
+        // FallRiskCard/EnvironmentalSafetyCard/PatientSafetyCard/
+        // CaregiverSafetyCard/OxygenSafetyCard above. `fullFormData` is
+        // passed through (read-only) for the cross-section suggestion/
+        // sync reads each of these cards documents in its own comment.
+        if (sectionKey === "safety" && card.customRenderer === "fallRisk") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FallRiskCard data={data} updateField={u} styles={styles} COLORS={COLORS} fullFormData={fullFormData} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "safety" && card.customRenderer === "environmentalSafety") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <EnvironmentalSafetyCard data={data} updateField={u} COLORS={COLORS} fullFormData={fullFormData} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "safety" && card.customRenderer === "patientSafety") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <PatientSafetyCard data={data} updateField={u} COLORS={COLORS} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "safety" && card.customRenderer === "caregiverSafety") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <CaregiverSafetyCard data={data} updateField={u} COLORS={COLORS} fullFormData={fullFormData} />
+            </Card>
+          );
+        }
+
+        if (sectionKey === "safety" && card.customRenderer === "oxygenSafety") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <OxygenSafetyCard data={data} updateField={u} COLORS={COLORS} fullFormData={fullFormData} />
+            </Card>
+          );
+        }
+
         if (sectionKey === "safety" && card.customRenderer === "dmeStatus") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <DmeStatusCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+              <DmeStatusCard data={data} updateField={u} styles={styles} COLORS={COLORS} pane={card.pane} />
+            </Card>
+          );
+        }
+
+        // PRODUCT OWNER DIRECTIVE (2026-11-24) "Safety & Clinical Risk
+        // Phase II Redesign" item 6 -- see DisasterTriageCard above.
+        if (sectionKey === "safety" && card.customRenderer === "disasterTriage") {
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <DisasterTriageCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
             </Card>
           );
         }
@@ -23458,6 +24381,20 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
               // completed) is not applicable and must be hidden -- CMS
               // defines these as mutually exclusive. Shown otherwise.
               if (sectionKey === "sfv" && field.path === "reasonNotCompleted" && cardData.inPersonSfvCompleted) {
+                return null;
+              }
+              // PRODUCT OWNER DIRECTIVE (2026-11-26) Safety & Clinical
+              // Risk Incident Review -- details are only relevant once a
+              // real incident/occurrence type is picked; hidden while
+              // unset or while "No Incident or Occurrence This Visit" is
+              // selected, same inline per-field conditional-hide
+              // convention used elsewhere in this renderer (e.g. SFV
+              // reasonNotCompleted above).
+              if (
+                sectionKey === "safety" &&
+                field.path === "incidentOccurrenceNotes" &&
+                (!cardData.incidentType || cardData.incidentType === "No Incident or Occurrence This Visit")
+              ) {
                 return null;
               }
               // [FINAL OWNER REQUIREMENTS -- 2026-09-26] Pain Screening
@@ -25359,6 +26296,24 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
       }, {})
     : null;
 
+  // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+  // Correct Modernization Using the HospiceMD Baseline" -- same keyed
+  // lookup pattern as `infectionCardsByTitle` above, used to re-bucket
+  // Safety's already-rendered `cardsContent` into 3-col/2-col grid rows
+  // (see `safetyGroupedContent` below). NOT gated by
+  // `isBodySystemWorkspace` -- Safety is not a descendant of the
+  // `@container`-declaring `.rnica-bodysystem-workspace__content`
+  // wrapper the other body systems render inside, so it uses its own
+  // self-contained `@media`-based `.rnica-safety-grid-columns` CSS
+  // (same technique as `.rnica-acp-grid-columns`) instead of the
+  // `@container`-based `.rnica-bodysystem-grid-columns`.
+  const safetyCardsByTitle = (sectionKey === "safety")
+    ? resolvedCards.reduce((acc, card, ci) => {
+        acc[card.title] = cardsContent[ci];
+        return acc;
+      }, {})
+    : null;
+
   // PRODUCT OWNER DIRECTIVE (2026-11) "GASTROINTESTINAL BODY-SYSTEM
   // REDESIGN" Phase 4 -- same keyed lookup pattern as
   // `infectionCardsByTitle` above, used only to re-bucket GI's
@@ -26103,6 +27058,70 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
       />
     ) : null;
   })() : null;
+  // PRODUCT OWNER DIRECTIVE (2026-11-24) "Safety & Clinical Risk Phase II
+  // Redesign" item 1 -- "safety" is not one of the 10 BODY_SYSTEM_FORM_
+  // SECTIONS modules (it never uses `useBodySystemShell`/the ShadcnCard
+  // workspace wrapper), so this renders through the plain-`<div>`
+  // fallback branch below (same bare, title-having placement as
+  // Infection/ACP's own Documentation Coverage elements) rather than
+  // alongside `infectionDocumentationCoverage` et al. in the ShadcnCard
+  // branch.
+  const safetyDocumentationCoverage = sectionKey === "safety" ? (() => {
+    const coverage = computeSafetyDocumentationCoverage(data);
+    return coverage.length > 0 ? (
+      <DocumentationCoverage
+        title="Safety Documentation Coverage"
+        items={coverage}
+        data-testid="safety-documentation-coverage"
+      />
+    ) : null;
+  })() : null;
+  // PRODUCT OWNER DIRECTIVE (2026-11-26) -- realizes the directive's
+  // final row layout (3-col rows, then 2-col rows) via
+  // `safetyCardsByTitle` + the self-contained `.rnica-safety-grid-
+  // columns`/`-columns-2` CSS (ACP-style `@media`, not `@container` --
+  // see the comment on `safetyCardsByTitle` above for why). Falls back
+  // to plain `cardsContent` (one-per-row) if any expected title is ever
+  // renamed/missing in `SECTION_CONFIGS.safety.cards`, so a config typo
+  // degrades gracefully instead of silently dropping a card.
+  const safetyGroupedContent = (() => {
+    if (!safetyCardsByTitle) return null;
+    const expectedTitles = [
+      "Environmental Safety", "Fall Risk and Transfer Safety", "Oxygen Safety",
+      "Patient Safety", "Caregiver Safety", "Incident Review",
+      "Disaster Triage", "Safety Education", "Safety Notes",
+      "Existing DME", "Needed DME",
+      "Existing Supplies", "Needed Supplies",
+    ];
+    if (!expectedTitles.every((t) => safetyCardsByTitle[t])) return cardsContent;
+    return (
+      <>
+        <div className="rnica-safety-grid-columns" key="safety-row-1">
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Environmental Safety"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Fall Risk and Transfer Safety"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Oxygen Safety"]}</div>
+        </div>
+        <div className="rnica-safety-grid-columns" key="safety-row-2">
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Patient Safety"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Caregiver Safety"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Incident Review"]}</div>
+        </div>
+        <div className="rnica-safety-grid-columns" key="safety-row-3">
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Disaster Triage"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Safety Education"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Safety Notes"]}</div>
+        </div>
+        <div className="rnica-safety-grid-columns-2" key="safety-row-4">
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Existing DME"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Needed DME"]}</div>
+        </div>
+        <div className="rnica-safety-grid-columns-2" key="safety-row-5">
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Existing Supplies"]}</div>
+          <div className="rnica-safety-grid-column">{safetyCardsByTitle["Needed Supplies"]}</div>
+        </div>
+      </>
+    );
+  })();
   // PRODUCT OWNER DIRECTIVE (2026-11) "GASTROINTESTINAL BODY-SYSTEM
   // REDESIGN" Phase 2 -- same standalone, title-having placement as
   // Infection's Documentation Coverage above; no card, no gate, rendered
@@ -26378,7 +27397,8 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           : workspacePilot && sectionKey === "performanceStatus" ? "rnica-performance-grid"
           : undefined
         }>
-          {cardsContent}
+          {safetyDocumentationCoverage}
+          {sectionKey === "safety" ? safetyGroupedContent : cardsContent}
         </div>
       )}
     </>
@@ -29644,65 +30664,66 @@ const SECTION_CONFIGS = {
     ],
   },
 
+  // PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+  // Correct Modernization Using the HospiceMD Baseline" -- supersedes
+  // the 2026-11-24/25 redesigns (Morse Fall Scale rejected; the simple
+  // 4-group reorg replaced with this finer-grained structure). Every
+  // pre-existing field path is unchanged; only new fields were added
+  // (see the `safety` default-data block above) -- no stored value was
+  // renamed, migrated, or dropped. Cards are grouped into 3-card and
+  // 2-card grid rows by `safetyGroupedContent` (see the render function
+  // below, using `.rnica-safety-grid-columns`/`-columns-2`).
   safety: {
     title: "Environmental / Safety",
     subtitle: "Home safety, fall risk, disaster triage level",
     cards: [
-      { title: "Safety Assessment", fields: [
-        { type: "checkbox", label: "Safety Assessment Completed", path: "safetyAssessmentCompleted" },
-        { type: "checkboxGroup", label: "Home Environment Hazards", path: "homeEnvironment", options: [
-          "Adequate lighting", "Handrails present", "Throw rugs", "Clutter/obstacles",
-          "Stairs without railing", "Pets", "Weapons/firearms", "Pest infestation",
-          "Inadequate heating/cooling", "Smoke detectors present"
+      // Row 1 (3-col): Environmental Safety | Fall Risk and Transfer Safety | Oxygen Safety
+      { title: "Environmental Safety", customRenderer: "environmentalSafety" },
+      { title: "Fall Risk and Transfer Safety", customRenderer: "fallRisk" },
+      { title: "Oxygen Safety", customRenderer: "oxygenSafety" },
+      // Row 2 (3-col): Patient Safety | Caregiver Safety | Incident Review
+      { title: "Patient Safety", customRenderer: "patientSafety" },
+      // New Caregiver Safety group (distinct from Caregiver & Support,
+      // screen 10 -- that screen covers coping/psychosocial caregiver
+      // burden; this is specifically the caregiver's ability to safely
+      // assist with THIS patient's documented safety risks). See
+      // CaregiverSafetyCard -- synchronized read-only summary of
+      // `demographics.pcg.caregiverEvaluation`, no duplicate note field.
+      { title: "Caregiver Safety", customRenderer: "caregiverSafety" },
+      // PRODUCT OWNER DIRECTIVE (2026-11-24) item 5 -- Incident Review is
+      // its own dedicated card. `incidentType` is a new single-select;
+      // `incidentOccurrenceNotes` shows only once an incident type other
+      // than "No Incident or Occurrence This Visit" is selected (handled
+      // by the field.map conditional hide below, same convention already
+      // used elsewhere in this generic renderer for a dependent field).
+      { title: "Incident Review", fields: [
+        { type: "segmented", label: "Incident/Occurrence Type This Visit", path: "incidentType", options: [
+          "No Incident or Occurrence This Visit", "Fall", "Medication Error", "Equipment Failure",
+          "Caregiver/Family Concern", "Elopement", "Other",
         ]},
-        { type: "checkbox", label: "Fall Risk Assessment Completed", path: "fallRiskAssessmentCompleted" },
-        { type: "radio", label: "Fall Risk Level", path: "fallRiskLevel", options: ["Low", "Moderate", "High"] },
-        { type: "radio", label: "Transfer Safety", path: "transferSafetyLevel", options: [
-          "Independent", "Needs assist x1", "Needs assist x2", "Mechanical lift required", "Unsafe/high risk"
-        ]},
-        { type: "checkbox", label: "Firearm in Home", path: "firearmInHome" },
-        { type: "checkbox", label: "Oxygen in Use", path: "oxygenInUse" },
-        { type: "checkbox", label: "Oxygen Safety Reviewed", path: "oxygenSafetyReviewed" },
-        { type: "checkbox", label: "Incident/Occurrence Reported This Visit", path: "incidentOccurrenceReported" },
-        { type: "textarea", label: "Incident/Occurrence Notes", path: "incidentOccurrenceNotes" },
+        { type: "textarea", label: "Incident/Occurrence Details", path: "incidentOccurrenceNotes" },
       ]},
-      { title: "Disaster Triage", fields: [
-        { type: "radio", label: "Disaster Level", path: "disasterLevel", options: [
-          "Level 1 — Hospice must assist; no assistance available",
-          "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
-          "Level 3 — No need for hospice to assist; has adequate assistance available"
+      // Row 3 (3-col): Disaster Triage | Safety Education | Safety Notes
+      { title: "Disaster Triage", customRenderer: "disasterTriage" },
+      { title: "Safety Education", fields: [
+        { type: "segmented", label: "Safety Education Provided", path: "safetyEducationProvided", options: [
+          "Fall Prevention", "Home Safety", "Oxygen Safety", "Emergency Preparedness", "Not Indicated This Visit",
         ]},
-        { type: "checkboxGroup", label: "Level 1 Conditions (two or more apply)", path: "disasterLevelOneConditions", options: [
-          "Bed- or chair-confined", "Dependent on walker or cane",
-          "Lives above ground floor", "Requires electricity for medical equipment"
-        ]},
-        { type: "checkboxGroup", label: "Level 2 Conditions (one applies)", path: "disasterLevelTwoConditions", options: [
-          "Bed- or chair-confined", "Dependent on walker or cane",
-          "Lives above ground floor", "Requires electricity for medical equipment"
-        ]},
-        { type: "checkboxGroup", label: "Level 3 Conditions", path: "disasterLevelThreeConditions", options: [
-          "Lives in facility with disaster support", "Has alternate location and available helper to go to"
-        ]},
+      ]},
+      { title: "Safety Notes", fields: [
         { type: "textarea", label: "Safety Notes", path: "notes" },
       ]},
-      // [OWNER DIRECTIVE -- "REMOVE IMMINENT DEATH FROM SAFETY & CLINICAL
-      // RISK" / 2026-10-22] The 2026-10-22 "visible in normal section
-      // flow" directive was first satisfied by inlining a `dataSection:
-      // "imminentDeath"` copy of this card here (see git history). That
-      // relocation hack is superseded by a cleaner fix: Imminent Death now
-      // has its own dedicated "Death & Dying" screen
-      // (rnicaThirteenScreenTaxonomy.js), a single-module screen that
-      // lands directly on the `imminentDeath` module with no "Jump to"
-      // step required -- the same no-extra-navigation guarantee, without
-      // duplicating this card's markup inside `safety`. See the
-      // `imminentDeath` SECTION_CONFIGS entry above for the actual card
-      // (now titled "Death & Dying Assessment").
-      { title: "DME (Durable Medical Equipment)", customRenderer: "dmeStatus" },
-      { title: "Supplies", fields: [
-        { type: "checkboxGroup", label: "Existing Supplies", path: "supplies.existingCategories", options: [
+      // Row 4 (2-col): Existing DME | Needed DME
+      { title: "Existing DME", customRenderer: "dmeStatus", pane: "existing" },
+      { title: "Needed DME", customRenderer: "dmeStatus", pane: "needed" },
+      // Row 5 (2-col): Existing Supplies | Needed Supplies
+      { title: "Existing Supplies", fields: [
+        { type: "pillGroup", label: "Existing Supplies", path: "supplies.existingCategories", options: [
           "Wound supplies", "Continence supplies", "Oxygen supplies", "Medication supplies", "Other supplies"
         ]},
-        { type: "checkboxGroup", label: "Needed Supplies", path: "supplies.neededCategories", options: [
+      ]},
+      { title: "Needed Supplies", fields: [
+        { type: "pillGroup", label: "Needed Supplies", path: "supplies.neededCategories", options: [
           "Wound supplies", "Continence supplies", "Oxygen supplies", "Medication supplies", "Other supplies"
         ]},
         { type: "textarea", label: "Other Supplies Notes", path: "supplies.otherSuppliesNotes" },

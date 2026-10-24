@@ -2075,6 +2075,45 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+/* PRODUCT OWNER DIRECTIVE (2026-11-26) "Safety & Clinical Risk --
+   Correct Modernization Using the HospiceMD Baseline" -- Safety (like
+   ACP above) is not a descendant of `.rnica-bodysystem-workspace__content`
+   (it's not one of the BODY_SYSTEM_FORM_SECTIONS/body-systems-workspace-
+   pilot sections), so it gets its own self-contained copy of the same
+   3→2→1 (and 2→1) column grids using `@media` (viewport) breakpoints,
+   same values as `.rnica-acp-grid-columns` above -- no shared-class
+   coupling to the body-system workspace container. `-columns` is used
+   for the section's 3-card rows (Row 1-3); `-columns-2` is used for its
+   2-card rows (Existing/Needed DME, Existing/Needed Supplies). */
+.rnica-safety-grid-columns {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.rnica-safety-grid-columns-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.rnica-safety-grid-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+@media (max-width: 940px) {
+  .rnica-safety-grid-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 600px) {
+  .rnica-safety-grid-columns,
+  .rnica-safety-grid-columns-2 {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 /* [OWNER DIRECTIVE -- "ACP Review -- this version is not stale",
    2026-10-22] Outer row restored to three equal-width Cards (Decision
    Maker | Decision-Maker Contact | Legal Documents), reverting the
