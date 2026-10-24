@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Check, ChevronLeft, ChevronRight } from "lucide-react";
 import {
   Sheet,
@@ -11,36 +11,38 @@ import {
 import { Button } from "../../ui/button";
 import { Separator } from "../../ui/separator";
 import { Badge } from "../../ui/badge";
-import { SAFETY_WIZARD_STEPS } from "./safetyLogic";
+import { SAFETY_WIZARD_STEPS, getFirstIncompleteSafetyStepId } from "./safetyLogic";
 import "../design-system/RnicaTailwind.css";
 
-// PRODUCT OWNER DECISION (2026-10-24) "Safety Is One Assessment":
-// "REPLACE: 4 INDEPENDENT ASSESSMENT SHEETS WITH 1 SAFETY ASSESSMENT
-// WIZARD... THE RN SHOULD FEEL LIKE: 'I AM COMPLETING SAFETY' NOT 'I AM
-// COMPLETING FOUR DIFFERENT APPLICATIONS.'" Supersedes the four
-// standalone Edit Sheets (EnvironmentalSafetyEditSheet,
-// FallRiskEditSheet, OxygenSafetyEditSheet, DisasterTriageEditSheet),
-// which are removed. This single Sheet walks the SAME four field sets
-// through 5 internal steps (Environmental Safety, Morse Fall Scale,
-// Oxygen Safety, Disaster Triage, Review & Complete), each still
-// rendered through the SAME `renderSafetyStepCards` call (same fields,
-// paths, HOPE mappings, validation, and update() autosave contract --
-// "do not build a new scoring engine" / "do not build a custom
-// fall-risk framework" apply equally here: nothing below captures or
-// recomputes a field, it only sequences and reviews the same
-// RNICA.jsx-owned cards). Oxygen Safety is auto-skipped (never shown)
-// when the patient is not on oxygen, per directive.
-export default function SafetyAssessmentEditSheet({ open, onOpenChange, renderSafetyStepCards, summary }) {
-  const steps = useMemo(
-    () => SAFETY_WIZARD_STEPS.filter((step) => step.id !== "oxygen" || summary?.oxygen?.applicable),
-    [summary?.oxygen?.applicable]
-  );
+// PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+// Assessment" -- supersedes the (2026-10-24) "Safety Is One Assessment"
+// wizard's auto-skip-Oxygen and always-reopen-at-Step-1 behavior. Oxygen
+// Safety is now ALWAYS one of the 5 steps (never filtered out) -- when
+// not applicable it shows an explicit RN-confirmed "Not Applicable" step
+// (section 4), never silently absent. Editing a completed assessment
+// defaults to Step 1 unless opened via a validation deep link, which
+// opens the exact first incomplete step (section 5); `initialStepId`
+// carries that deep link in from the Overview card/validation rail.
+// Footer now offers "Save Draft and Close" on every step and
+// "Complete Safety Assessment" only on the last step (section 2/3),
+// replacing the previous unconditional "Next"/"Done" pair. The step
+// pills' completed indicator reflects each part's actual completion
+// (from `summary`), not merely "already visited" (section 5: "The step
+// indicator must always permit access to completed steps").
+export default function SafetyAssessmentEditSheet({ open, onOpenChange, renderSafetyStepCards, summary, initialStepId, onInitialStepConsumed, onComplete }) {
+  const steps = SAFETY_WIZARD_STEPS;
   const [stepIndex, setStepIndex] = useState(0);
 
-  // Always reopen on step 1 -- a half-finished prior visit should not
-  // silently resume mid-wizard without the RN seeing the full sequence.
   useEffect(() => {
-    if (open) setStepIndex(0);
+    if (!open) return;
+    if (initialStepId) {
+      const idx = steps.findIndex((s) => s.id === initialStepId);
+      setStepIndex(idx >= 0 ? idx : 0);
+      onInitialStepConsumed?.();
+    } else {
+      setStepIndex(0);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
   const activeStep = steps[Math.min(stepIndex, steps.length - 1)];
@@ -48,13 +50,17 @@ export default function SafetyAssessmentEditSheet({ open, onOpenChange, renderSa
   const isFirstStep = stepIndex === 0;
   const isLastStep = stepIndex === steps.length - 1;
 
+  const stepComplete = (step) => {
+    if (step.id === "review") return Boolean(summary?.allPartsComplete);
+    return Boolean(summary?.[step.id]?.complete);
+  };
+
   const goBack = () => setStepIndex((i) => Math.max(0, i - 1));
-  const goNext = () => {
-    if (isLastStep) {
-      onOpenChange(false);
-    } else {
-      setStepIndex((i) => Math.min(steps.length - 1, i + 1));
-    }
+  const goNext = () => setStepIndex((i) => Math.min(steps.length - 1, i + 1));
+  const saveDraftAndClose = () => onOpenChange(false);
+  const completeAssessment = () => {
+    onComplete?.();
+    onOpenChange(false);
   };
 
   return (
@@ -63,15 +69,14 @@ export default function SafetyAssessmentEditSheet({ open, onOpenChange, renderSa
         <SheetHeader className="shrink-0">
           <SheetTitle>Edit Safety & Clinical Risk Assessment</SheetTitle>
           <SheetDescription>
-            One Safety assessment, {steps.length} steps: Environmental Safety, Morse Fall Scale
-            {summary?.oxygen?.applicable ? ", Oxygen Safety" : ""}, Disaster Triage, then Review &amp; Complete.
+            Step {stepIndex + 1} of {steps.length}: {activeStep?.label}
           </SheetDescription>
         </SheetHeader>
 
         <div className="rnica-tw flex shrink-0 items-center gap-1.5 overflow-x-auto pb-2">
           {steps.map((step, i) => {
             const isActive = i === stepIndex;
-            const isDone = i < stepIndex;
+            const isDone = stepComplete(step);
             return (
               <React.Fragment key={step.id}>
                 {i > 0 && <div className="h-px w-3 shrink-0 bg-rnica-border" />}
@@ -98,7 +103,7 @@ export default function SafetyAssessmentEditSheet({ open, onOpenChange, renderSa
 
         <div className="rnica-tw min-h-0 flex-1 overflow-y-auto py-3 pr-1">
           {isReviewStep ? (
-            <SafetyReviewStep summary={summary} />
+            <SafetyReviewStep summary={summary} onJumpToStep={(id) => setStepIndex(steps.findIndex((s) => s.id === id))} />
           ) : (
             renderSafetyStepCards(activeStep.cardTitles)
           )}
@@ -106,14 +111,25 @@ export default function SafetyAssessmentEditSheet({ open, onOpenChange, renderSa
 
         <Separator className="shrink-0" />
         <SheetFooter className="shrink-0 items-center justify-between sm:justify-between">
-          <Button variant="outline" onClick={goBack} disabled={isFirstStep}>
-            <ChevronLeft className="mr-1 h-4 w-4" />
-            Back
-          </Button>
-          <Button onClick={goNext}>
-            {isLastStep ? "Done" : "Next"}
-            {!isLastStep && <ChevronRight className="ml-1 h-4 w-4" />}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={goBack} disabled={isFirstStep}>
+              <ChevronLeft className="mr-1 h-4 w-4" />
+              Back
+            </Button>
+            <Button variant="outline" onClick={saveDraftAndClose}>
+              Save Draft and Close
+            </Button>
+          </div>
+          {isLastStep ? (
+            <Button onClick={completeAssessment} disabled={!summary?.allPartsComplete}>
+              Complete Safety Assessment
+            </Button>
+          ) : (
+            <Button onClick={goNext}>
+              Next
+              <ChevronRight className="ml-1 h-4 w-4" />
+            </Button>
+          )}
         </SheetFooter>
       </SheetContent>
     </Sheet>
@@ -131,14 +147,19 @@ function ReviewRow({ label, value }) {
   );
 }
 
-function ReviewSection({ title, complete, children }) {
+function ReviewSection({ title, complete, onEdit, children }) {
   return (
     <div className="mb-3 rounded-md border border-rnica-border p-3">
       <div className="mb-1 flex items-center justify-between gap-2">
         <h4 className="text-[13px] font-semibold text-rnica-text">{title}</h4>
-        <Badge variant={complete ? "success" : "warning"} className="text-[10px]">
-          {complete ? "Complete" : "Incomplete"}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant={complete ? "success" : "warning"} className="text-[10px]">
+            {complete ? "Complete" : "Incomplete"}
+          </Badge>
+          <button type="button" onClick={onEdit} className="text-[11px] font-medium text-rnica-accent underline">
+            Edit {title}
+          </button>
+        </div>
       </div>
       {children}
     </div>
@@ -149,32 +170,42 @@ function ReviewSection({ title, complete, children }) {
 // Fall Risk Summary, Oxygen Safety Summary, Disaster Triage Summary AS A
 // SINGLE SAFETY RECORD"). Read-only -- every value comes straight from
 // safetyLogic.js's existing summarize* functions (via the shared
-// `summary` prop), nothing is recomputed or fabricated here.
-function SafetyReviewStep({ summary }) {
+// `summary` prop), nothing is recomputed or fabricated here. "Edit X"
+// links (section 11) navigate within this same modal -- they never open
+// a separate modal.
+function SafetyReviewStep({ summary, onJumpToStep }) {
   if (!summary) return null;
   const { environmental, fallRisk, oxygen, disaster } = summary;
   return (
     <div>
-      <ReviewSection title="Environmental Safety" complete={environmental.complete}>
+      <ReviewSection title="Environmental Safety" complete={environmental.complete} onEdit={() => onJumpToStep("environmental")}>
         <ReviewRow label="Setting" value={environmental.setting} />
         <ReviewRow label="Patient Hazard" value={environmental.patientSummary} />
         <ReviewRow label="Staff Hazard" value={environmental.staffSummary} />
+        <ReviewRow label="Risk Target" value={environmental.riskTarget} />
+        <ReviewRow label="Actions Taken" value={(environmental.actionsTaken || []).join(", ")} />
+        <ReviewRow label="Staff Disposition" value={environmental.staffDisposition} />
+        <ReviewRow label="Follow-Up" value={environmental.followUpRequired} />
       </ReviewSection>
-      <ReviewSection title="Fall Risk (Morse Fall Scale)" complete={fallRisk.complete}>
+      <ReviewSection title="Morse Fall Scale" complete={fallRisk.complete} onEdit={() => onJumpToStep("fallRisk")}>
         <ReviewRow label="Score" value={fallRisk.complete ? String(fallRisk.total) : ""} />
         <ReviewRow label="Classification" value={fallRisk.classification} />
-        <ReviewRow label="Trend" value={fallRisk.trend.trend} />
+        <ReviewRow label="Previous Score / Trend" value={fallRisk.trend?.previous ? `${fallRisk.trend.previous.totalScore} / ${fallRisk.trend.trend}` : ""} />
       </ReviewSection>
-      {oxygen.applicable && (
-        <ReviewSection title="Oxygen Safety" complete={oxygen.complete}>
-          <ReviewRow label="Status" value={oxygen.status} />
-          <ReviewRow label="Concerns" value={oxygen.concerns.join(", ")} />
-        </ReviewSection>
-      )}
-      <ReviewSection title="Disaster Triage" complete={disaster.complete}>
+      <ReviewSection title="Oxygen Safety" complete={oxygen.complete} onEdit={() => onJumpToStep("oxygen")}>
+        <ReviewRow label="Status" value={oxygen.applicable ? oxygen.status : "Not Applicable"} />
+        <ReviewRow label="Concerns" value={(oxygen.concerns || []).join(", ")} />
+        <ReviewRow label="Actions Taken" value={(oxygen.actionsTaken || []).join(", ")} />
+        <ReviewRow label="Follow-Up" value={oxygen.followUpRequired} />
+      </ReviewSection>
+      <ReviewSection title="Disaster Triage" complete={disaster.complete} onEdit={() => onJumpToStep("disaster")}>
         <ReviewRow label="Level" value={disaster.shortLabel} />
-        <ReviewRow label="Conditions" value={disaster.conditions.join(", ")} />
+        <ReviewRow label="Contributing Factors" value={(disaster.conditions || []).join(", ")} />
+        <ReviewRow label="Planned Placement" value={disaster.plannedPlacement} />
+        <ReviewRow label="Responsible Support" value={disaster.responsibleSupport} />
+        <ReviewRow label="Transportation" value={disaster.transportationStatus} />
       </ReviewSection>
     </div>
   );
 }
+

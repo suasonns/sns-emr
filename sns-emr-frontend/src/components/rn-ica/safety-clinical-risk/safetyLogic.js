@@ -109,6 +109,23 @@ const ENVIRONMENTAL_HOME_NO_CONCERN = "No Environmental Concerns Identified";
 const STAFF_VISIT_SAFETY_NO_CONCERN = "No Staff Safety Concerns Identified";
 const OXYGEN_SAFETY_NO_CONCERN = "No Concern";
 
+// PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+// Assessment" section 7 -- Environmental Safety must capture, in
+// addition to the hazard lists above, who the hazard targets (Risk
+// Target), what was done about it (Actions Taken), the staff visit
+// disposition when a staff-safety hazard applies, and whether follow-up
+// is required -- not a generic "Observed Concern" with no named hazard
+// or outcome.
+export const ENVIRONMENTAL_RISK_TARGET_OPTIONS = ["Patient", "Staff", "Patient and Staff"];
+export const ENVIRONMENTAL_ACTIONS_TAKEN_OPTIONS = [
+  "Education Provided", "Equipment/Repair Requested", "Caregiver Notified",
+  "Facility Notified", "Referral Made", "No Action Needed", "Other",
+];
+export const ENVIRONMENTAL_STAFF_DISPOSITION_OPTIONS = [
+  "Visit Completed as Scheduled", "Visit Modified for Safety",
+  "Visit Terminated Early", "Law Enforcement Notified",
+];
+
 /** Is the current Site of Service a facility (vs. a private residence)?
  * Verbatim from EnvironmentalSafetyCard's own `isFacility` derivation. */
 export function isFacilitySiteOfService(fullFormData) {
@@ -135,7 +152,23 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
     ? Boolean(facilityStatus)
     : (homeConcerns.length > 0 || noHomeConcerns);
   const staffComplete = staffHazards.length > 0 || noStaffConcerns;
-  const complete = patientComplete && staffComplete;
+
+  // Section 7 additions -- only required when an actual hazard (patient
+  // or staff) was identified; a clean "No Concerns" visit never requires
+  // a risk target, actions taken, disposition, or follow-up decision.
+  const hasAnyHazard = patientHazards.length > 0 || staffHazards.length > 0;
+  const riskTarget = safetyData.environmentalRiskTarget || "";
+  const actionsTaken = safetyData.environmentalActionsTaken || [];
+  const staffDisposition = safetyData.environmentalStaffDisposition || "";
+  const followUpRequired = safetyData.environmentalFollowUpRequired || "";
+  const followUpNote = safetyData.environmentalFollowUpNote || "";
+
+  const riskTargetComplete = !hasAnyHazard || Boolean(riskTarget);
+  const actionsTakenComplete = !hasAnyHazard || actionsTaken.length > 0;
+  const dispositionComplete = staffHazards.length === 0 || Boolean(staffDisposition);
+  const followUpComplete = !hasAnyHazard || Boolean(followUpRequired);
+
+  const complete = patientComplete && staffComplete && riskTargetComplete && actionsTakenComplete && dispositionComplete && followUpComplete;
 
   const patientSummary = isFacility
     ? (facilityStatus === "Observed Concern" ? (facilityConcerns.join(", ") || "Observed Concern") : (facilityStatus || ""))
@@ -149,6 +182,12 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
     staffHazards,
     patientSummary,
     staffSummary,
+    hasAnyHazard,
+    riskTarget,
+    actionsTaken,
+    staffDisposition,
+    followUpRequired,
+    followUpNote,
     clarification: safetyData.environmentalClarificationNote || "",
   };
 }
@@ -156,22 +195,53 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
 /** Oxygen Safety Assessment summary -- Not Applicable / No Concern /
  * Concern, driven by the SAME authoritative in-use source
  * (`respiratory.oxygenTherapy.inUse`, legacy `safety.oxygenInUse`
- * fallback) OxygenSafetyCard already reads. */
+ * fallback) OxygenSafetyCard already reads.
+ *
+ * PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+ * Assessment" section 4 & 9 -- the Oxygen step is never eliminated from
+ * the wizard sequence, even when Not Applicable: the RN must explicitly
+ * confirm "No current oxygen use documented" before it counts as
+ * complete (`oxygenSafetyConfirmedNotApplicable`). When oxygen IS
+ * applicable and an actual concern (not just "No Concern") is
+ * identified, the RN must also capture the actions taken and whether
+ * follow-up is required -- "do not stop at Concern Identified." */
 export function summarizeOxygenSafety(safetyData = {}, fullFormData = {}) {
   const oxygenInUse = fullFormData?.respiratory?.oxygenTherapy?.inUse ?? safetyData.oxygenInUse;
+  const confirmedNotApplicable = Boolean(safetyData.oxygenSafetyConfirmedNotApplicable);
   if (!oxygenInUse) {
-    return { applicable: false, complete: true, status: "Not Applicable", concerns: [], clarification: "" };
+    return {
+      applicable: false,
+      complete: confirmedNotApplicable,
+      confirmedNotApplicable,
+      status: "Not Applicable",
+      concerns: [],
+      actionsTaken: [],
+      followUpRequired: "",
+      followUpNote: "",
+      clarification: "",
+    };
   }
   const concerns = (safetyData.oxygenSafetyConcerns || []);
   const hasNoConcern = concerns.includes(OXYGEN_SAFETY_NO_CONCERN);
   const activeConcerns = concerns.filter((c) => c !== OXYGEN_SAFETY_NO_CONCERN);
-  const complete = concerns.length > 0;
-  const status = !complete ? "" : (hasNoConcern ? "No Concern" : "Concern Identified");
+  const hasConcernDocumented = concerns.length > 0;
+  const actionsTaken = safetyData.oxygenSafetyActionsTaken || [];
+  const followUpRequired = safetyData.oxygenSafetyFollowUpRequired || "";
+  const followUpNote = safetyData.oxygenSafetyFollowUpNote || "";
+  const hasActiveConcern = activeConcerns.length > 0;
+  const actionsComplete = !hasActiveConcern || actionsTaken.length > 0;
+  const followUpComplete = !hasActiveConcern || Boolean(followUpRequired);
+  const complete = hasConcernDocumented && actionsComplete && followUpComplete;
+  const status = !hasConcernDocumented ? "" : (hasNoConcern ? "No Concern" : "Concern Identified");
   return {
     applicable: true,
     complete,
+    confirmedNotApplicable: false,
     status,
     concerns: activeConcerns,
+    actionsTaken,
+    followUpRequired,
+    followUpNote,
     clarification: safetyData.oxygenSafetyClarificationNote || "",
   };
 }
@@ -182,19 +252,48 @@ const DISASTER_TRIAGE_CONDITIONS_PATH_BY_LEVEL = {
   "Level 3 — No need for hospice to assist; has adequate assistance available": "disasterLevelThreeConditions",
 };
 
+// PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+// Assessment" section 10 -- Disaster Triage must answer both "what
+// priority level applies" (Level, unchanged) AND "where will the
+// patient remain or be placed during the emergency." A validated
+// algorithm for computing a "suggested" level distinct from the RN's
+// own selection does not exist in this repository (no source for
+// scoring weights/thresholds was provided, the same gap the owner
+// already rejected once for the custom HospiceMD fall-risk model) --
+// consistent with "do not invent alternate point values," no suggested-
+// level computation is fabricated here. The RN's Level selection is the
+// single, authoritative "RN-confirmed level"; this is disclosed, not
+// silently substituted.
+export const DISASTER_PLACEMENT_OPTIONS = [
+  "Remain at Residence", "Remain at Facility", "Relocate to Alternate Location", "Evacuate to Shelter/Hospital",
+];
+export const DISASTER_TRANSPORTATION_OPTIONS = [
+  "Reliable Transportation Available", "Needs Transportation Assistance", "No Transportation Available",
+];
+export const DISASTER_REQUIREMENTS_OPTIONS = ["Oxygen", "Medication Supply", "DME/Equipment", "Backup Power", "None"];
+
 /** Disaster Triage Assessment summary -- level, short label, dependency
- * factors (the level's selected conditions). */
+ * factors (the level's selected conditions), planned placement,
+ * responsible support, transportation status, and requirements. */
 export function summarizeDisasterTriage(safetyData = {}) {
   const level = safetyData.disasterLevel || "";
-  const complete = Boolean(level);
   const shortLabel = level.startsWith("Level 1") ? "Level 1" : level.startsWith("Level 2") ? "Level 2" : level.startsWith("Level 3") ? "Level 3" : "";
   const conditionsPath = DISASTER_TRIAGE_CONDITIONS_PATH_BY_LEVEL[level];
   const conditions = conditionsPath ? (safetyData[conditionsPath] || []) : [];
+  const plannedPlacement = safetyData.disasterPlannedPlacement || "";
+  const responsibleSupport = safetyData.disasterResponsibleSupport || "";
+  const transportationStatus = safetyData.disasterTransportationStatus || "";
+  const requirements = safetyData.disasterRequirements || [];
+  const complete = Boolean(level) && Boolean(plannedPlacement) && Boolean(transportationStatus);
   return {
     complete,
     level,
     shortLabel,
     conditions,
+    plannedPlacement,
+    responsibleSupport,
+    transportationStatus,
+    requirements,
     clarification: safetyData.disasterTriageClarificationNote || "",
   };
 }
@@ -218,25 +317,59 @@ export const SAFETY_WIZARD_STEPS = [
   { id: "review", label: "Review & Complete", cardTitles: null },
 ];
 
-/** Single composed summary for the whole Safety & Clinical Risk
- * assessment -- the four parts plus one consolidated completion status.
- * Oxygen Safety is excluded from the completed/total counts whenever it
- * is Not Applicable (no active oxygen order/DME/respiratory
- * documentation) -- matching the wizard's auto-skip behavior, so a
- * patient who is not on oxygen is never blocked on a step that does not
- * apply to them. */
+/** Which wizard step (by id) should be opened for the first incomplete
+ * part of the assessment -- used both by validation deep-linking
+ * ("Opening that validation item launches the unified modal at the
+ * first incomplete step") and by Edit Assessment's own default-to-
+ * Step-1-unless-validation rule. Returns "review" once every part is
+ * complete (nothing left to fix, land on the consolidated summary). */
+export function getFirstIncompleteSafetyStepId(summary) {
+  if (!summary?.environmental?.complete) return "environmental";
+  if (!summary?.fallRisk?.complete) return "fallRisk";
+  if (!summary?.oxygen?.complete) return "oxygen";
+  if (!summary?.disaster?.complete) return "disaster";
+  return "review";
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+// Assessment" section 12 -- four states, not two: Not Started / In
+// Progress / Complete / Needs Review. "Complete" requires BOTH every
+// part being complete-or-confirmed-Not-Applicable AND an explicit RN
+// submission via "Complete Safety Assessment" on the Review step
+// (`safetyAssessmentCompletedAt`, section 2/3/12) -- answering every
+// question is not itself the completion action, same as Pain's own
+// "Save Completed Assessment" gesture elsewhere in this app. "Needs
+// Review" is the drift case: a previously-submitted assessment whose
+// underlying data has since become incomplete again (e.g. a field was
+// edited back out, or Oxygen newly became applicable but was never
+// re-confirmed) -- the main page must never keep showing a stale
+// "Complete" badge over data that no longer actually satisfies it.
 export function summarizeSafetyAssessment(safetyData = {}, fullFormData = {}) {
   const environmental = summarizeEnvironmentalSafety(safetyData, fullFormData);
   const fallRisk = summarizeFallRisk(safetyData);
   const oxygen = summarizeOxygenSafety(safetyData, fullFormData);
   const disaster = summarizeDisasterTriage(safetyData);
 
-  const applicableSections = [environmental, fallRisk, disaster];
-  if (oxygen.applicable) applicableSections.push(oxygen);
+  // Oxygen Safety is always counted (never excluded) -- the step itself
+  // is always shown in the wizard sequence per directive section 4; when
+  // Not Applicable, it only counts as complete once the RN has
+  // explicitly confirmed that, never auto-attested.
+  const applicableSections = [environmental, fallRisk, oxygen, disaster];
   const completedCount = applicableSections.filter((s) => s.complete).length;
   const totalCount = applicableSections.length;
-  const complete = completedCount === totalCount;
-  const status = complete ? "Completed" : completedCount === 0 ? "Not Started" : "In Progress";
+  const allPartsComplete = completedCount === totalCount;
 
-  return { environmental, fallRisk, oxygen, disaster, complete, status, completedCount, totalCount };
+  const completedAt = safetyData.safetyAssessmentCompletedAt || "";
+  let status = "Not Started";
+  if (completedAt) {
+    status = allPartsComplete ? "Complete" : "Needs Review";
+  } else if (completedCount > 0) {
+    status = "In Progress";
+  }
+  const complete = status === "Complete";
+
+  return {
+    environmental, fallRisk, oxygen, disaster,
+    complete, allPartsComplete, status, completedCount, totalCount, completedAt,
+  };
 }

@@ -30,7 +30,7 @@ import "../design-system/RnicaTailwind.css";
 const NOT_DOCUMENTED = "Not yet documented";
 
 function StatusBadge({ status }) {
-  const variant = status === "Completed" ? "success" : status === "In Progress" ? "warning" : "neutral";
+  const variant = status === "Complete" ? "success" : status === "Needs Review" ? "critical" : status === "In Progress" ? "warning" : "neutral";
   return (
     <Badge variant={variant} className="text-[11px]">
       {status}
@@ -63,6 +63,9 @@ export default function SafetyAssessmentOverview({
   siteOfService = "",
   oxygenInUse,
   onContinue,
+  onUpdateField,
+  initialStepId,
+  onInitialStepConsumed,
 }) {
   const [editOpen, setEditOpen] = useState(false);
 
@@ -84,6 +87,27 @@ export default function SafetyAssessmentOverview({
     oxygen.clarification,
     disaster.clarification,
   ].filter(Boolean).join(" · ");
+
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" section 2/3/12 -- "Complete" is an explicit RN
+  // submission (the Review step's "Complete Safety Assessment" button),
+  // not merely answering every question; drives the 4-state status
+  // model (`safetyAssessmentCompletedAt`) via the same `onUpdateField`
+  // path every other RNICA field already writes through.
+  const handleComplete = () => {
+    onUpdateField?.("safety", "safetyAssessmentCompletedAt", new Date().toISOString());
+  };
+
+  // Validation deep-link (section 13): "Opening that validation item
+  // launches the unified modal at the first incomplete step." A
+  // non-empty `initialStepId` (set by RNICACommandWorkspace's
+  // Validation rail click handler) auto-opens the Sheet directly at
+  // that step; the Sheet itself resets to Step 1 otherwise (section 5:
+  // "Default to Step 1 unless the user entered through a validation
+  // deep link").
+  React.useEffect(() => {
+    if (initialStepId) setEditOpen(true);
+  }, [initialStepId]);
 
   return (
     <div className="rnica-tw flex flex-col gap-4">
@@ -107,12 +131,10 @@ export default function SafetyAssessmentOverview({
             label="Fall Risk"
             value={fallRisk.complete ? `Score ${fallRisk.total} · ${fallRisk.classification}` : ""}
           />
-          {oxygen.applicable && (
-            <Fact
-              label="Oxygen Safety"
-              value={oxygen.status === "Concern Identified" ? oxygen.concerns.join(", ") : oxygen.status}
-            />
-          )}
+          <Fact
+            label="Oxygen Safety"
+            value={!oxygen.applicable ? (oxygen.confirmedNotApplicable ? "Not Applicable" : "") : (oxygen.status === "Concern Identified" ? oxygen.concerns.join(", ") : oxygen.status)}
+          />
           <Fact
             label="Disaster Triage"
             value={disaster.complete ? [disaster.shortLabel, disaster.conditions.join(", ")].filter(Boolean).join(" · ") : ""}
@@ -133,6 +155,9 @@ export default function SafetyAssessmentOverview({
         onOpenChange={setEditOpen}
         renderSafetyStepCards={renderSafetyStepCards}
         summary={summary}
+        initialStepId={initialStepId}
+        onInitialStepConsumed={onInitialStepConsumed}
+        onComplete={handleComplete}
       />
     </div>
   );

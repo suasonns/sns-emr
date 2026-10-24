@@ -6,20 +6,23 @@ import {
   summarizeDisasterTriage,
   summarizeFallRisk,
   summarizeSafetyAssessment,
+  getFirstIncompleteSafetyStepId,
   isFacilitySiteOfService,
   SAFETY_WIZARD_STEPS,
 } from "./rn-ica/safety-clinical-risk/safetyLogic.js";
 
 // PRODUCT OWNER DIRECTIVE "Replace the Inline Safety Page With Four
-// Guided Assessments" (final), later consolidated by PRODUCT OWNER
-// DECISION "Safety Is One Assessment" -- proves the four underlying
-// summaries (Environmental Safety, Fall Risk, Oxygen Safety, Disaster
-// Triage) still compute "complete" the same way the validateRNICA Lock
-// gates read, that the explicitly-removed main-page items (Patient
-// Safety, Caregiver Safety, Safety Notes, DME, Supplies) are NOT
-// required to finalize, and that the new `summarizeSafetyAssessment`
-// consolidation (single Status, Oxygen auto-skip when not applicable)
-// agrees with the four parts it composes.
+// Guided Assessments" (final), consolidated by PRODUCT OWNER DECISION
+// "Safety Is One Assessment", then superseded by PRODUCT OWNER
+// DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One Assessment" --
+// proves the four underlying summaries (Environmental Safety, Fall
+// Risk, Oxygen Safety, Disaster Triage) compute "complete" per the
+// latest directive's expanded field set, that Oxygen Safety is now
+// ALWAYS counted (never excluded even when Not Applicable, pending an
+// explicit RN confirmation), that the single consolidated
+// `summarizeSafetyAssessment` status model has all four states (Not
+// Started / In Progress / Complete / Needs Review), and that
+// `validateRNICA` now creates exactly ONE Safety Lock gate.
 
 const COMPLETE_MORSE = {
   fallRiskMorseHistoryOfFalling: "No",
@@ -28,6 +31,14 @@ const COMPLETE_MORSE = {
   fallRiskMorseIvHeparinLock: "No",
   fallRiskMorseGaitTransferring: "Normal/Bedrest/Immobile",
   fallRiskMorseMentalStatus: "Oriented to Own Ability",
+};
+
+// Minimal complete Environmental Safety for a clean (no-hazard) home visit --
+// risk target/actions/disposition/follow-up are NOT required because
+// `hasAnyHazard` is false.
+const COMPLETE_ENVIRONMENTAL_HOME_CLEAN = {
+  environmentalHomeConcerns: ["No Environmental Concerns Identified"],
+  environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
 };
 
 const HOME_FULL_FORM_DATA = { demographics: { livingSituation: { siteOfService: "01" } } };
@@ -51,44 +62,61 @@ describe("summarizeEnvironmentalSafety", () => {
     expect(summary.setting).toBe("Home");
     expect(summary.complete).toBe(false);
   });
-  it("is complete for a home residence once 'No Environmental Concerns Identified' + staff safety are both documented", () => {
-    const summary = summarizeEnvironmentalSafety(
-      {
-        environmentalHomeConcerns: ["No Environmental Concerns Identified"],
-        environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
-      },
-      HOME_FULL_FORM_DATA
-    );
+  it("is complete for a clean home visit (no hazards) once both 'No Concern' selections are documented, with no Risk Target/Actions/Follow-Up required", () => {
+    const summary = summarizeEnvironmentalSafety(COMPLETE_ENVIRONMENTAL_HOME_CLEAN, HOME_FULL_FORM_DATA);
+    expect(summary.hasAnyHazard).toBe(false);
     expect(summary.complete).toBe(true);
     expect(summary.patientSummary).toBe("No Environmental Concerns Identified");
     expect(summary.staffSummary).toBe("No Staff Safety Concerns Identified");
   });
-  it("is complete for a home residence with an active hazard + staff hazard documented", () => {
-    const summary = summarizeEnvironmentalSafety(
+  it("is incomplete with an active patient hazard until Risk Target, Actions Taken, and Follow-Up Required are also documented", () => {
+    const partial = summarizeEnvironmentalSafety(
       {
         environmentalHomeConcerns: ["Lighting Concern"],
-        environmentalStaffVisitSafety: ["Aggressive Animal"],
+        environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
       },
       HOME_FULL_FORM_DATA
     );
-    expect(summary.complete).toBe(true);
-    expect(summary.patientHazards).toEqual(["Lighting Concern"]);
-    expect(summary.staffHazards).toEqual(["Aggressive Animal"]);
+    expect(partial.hasAnyHazard).toBe(true);
+    expect(partial.complete).toBe(false);
+
+    const complete = summarizeEnvironmentalSafety(
+      {
+        environmentalHomeConcerns: ["Lighting Concern"],
+        environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+        environmentalRiskTarget: "Patient",
+        environmentalActionsTaken: ["Education Provided"],
+        environmentalFollowUpRequired: "No",
+      },
+      HOME_FULL_FORM_DATA
+    );
+    expect(complete.complete).toBe(true);
+    expect(complete.patientHazards).toEqual(["Lighting Concern"]);
+  });
+  it("additionally requires Staff Visit Disposition when a staff hazard is identified", () => {
+    const baseData = {
+      environmentalHomeConcerns: ["No Environmental Concerns Identified"],
+      environmentalStaffVisitSafety: ["Aggressive Animal"],
+      environmentalRiskTarget: "Staff",
+      environmentalActionsTaken: ["Caregiver Notified"],
+      environmentalFollowUpRequired: "Yes",
+    };
+    const withoutDisposition = summarizeEnvironmentalSafety(baseData, HOME_FULL_FORM_DATA);
+    expect(withoutDisposition.complete).toBe(false);
+
+    const withDisposition = summarizeEnvironmentalSafety(
+      { ...baseData, environmentalStaffDisposition: "Visit Modified for Safety" },
+      HOME_FULL_FORM_DATA
+    );
+    expect(withDisposition.complete).toBe(true);
+    expect(withDisposition.staffHazards).toEqual(["Aggressive Animal"]);
   });
   it("is incomplete for a facility until Facility Managed / Observed Concern is selected", () => {
     const summary = summarizeEnvironmentalSafety({}, FACILITY_FULL_FORM_DATA);
     expect(summary.setting).toBe("Facility");
     expect(summary.complete).toBe(false);
   });
-  it("is complete for a facility once Facility Managed is selected (even with no staff concern documented is still required)", () => {
-    const summary = summarizeEnvironmentalSafety(
-      { environmentalFacilityStatus: "Facility Managed" },
-      FACILITY_FULL_FORM_DATA
-    );
-    expect(summary.patientSummary).toBe("Facility Managed");
-    expect(summary.complete).toBe(false); // staff visit safety still undocumented
-  });
-  it("requires BOTH patient and staff hazard documentation to be complete", () => {
+  it("is complete for a facility once Facility Managed + staff visit safety are both documented (no hazard -> no additional fields required)", () => {
     const summary = summarizeEnvironmentalSafety(
       {
         environmentalFacilityStatus: "Facility Managed",
@@ -96,23 +124,33 @@ describe("summarizeEnvironmentalSafety", () => {
       },
       FACILITY_FULL_FORM_DATA
     );
+    expect(summary.patientSummary).toBe("Facility Managed");
     expect(summary.complete).toBe(true);
   });
 });
 
 describe("summarizeOxygenSafety", () => {
-  it("is Not Applicable (and complete) when the patient is not on oxygen", () => {
+  it("is Not Applicable and incomplete when the patient is not on oxygen and the RN has not yet confirmed Not Applicable", () => {
     const summary = summarizeOxygenSafety({}, { respiratory: { oxygenTherapy: { inUse: false } } });
     expect(summary.applicable).toBe(false);
-    expect(summary.complete).toBe(true);
+    expect(summary.complete).toBe(false);
     expect(summary.status).toBe("Not Applicable");
+  });
+  it("is complete once the RN explicitly confirms Not Applicable", () => {
+    const summary = summarizeOxygenSafety(
+      { oxygenSafetyConfirmedNotApplicable: true },
+      { respiratory: { oxygenTherapy: { inUse: false } } }
+    );
+    expect(summary.applicable).toBe(false);
+    expect(summary.complete).toBe(true);
+    expect(summary.confirmedNotApplicable).toBe(true);
   });
   it("is incomplete when on oxygen but no concern status has been documented", () => {
     const summary = summarizeOxygenSafety({}, { respiratory: { oxygenTherapy: { inUse: true } } });
     expect(summary.applicable).toBe(true);
     expect(summary.complete).toBe(false);
   });
-  it("is complete with 'No Concern' status when only 'No Concern' is selected", () => {
+  it("is complete with 'No Concern' status when only 'No Concern' is selected (no actions/follow-up required)", () => {
     const summary = summarizeOxygenSafety(
       { oxygenSafetyConcerns: ["No Concern"] },
       { respiratory: { oxygenTherapy: { inUse: true } } }
@@ -121,14 +159,24 @@ describe("summarizeOxygenSafety", () => {
     expect(summary.status).toBe("No Concern");
     expect(summary.concerns).toEqual([]);
   });
-  it("is complete with 'Concern Identified' status when an active concern is selected", () => {
-    const summary = summarizeOxygenSafety(
+  it("is incomplete with an active concern until Actions Taken and Follow-Up Required are also documented", () => {
+    const partial = summarizeOxygenSafety(
       { oxygenSafetyConcerns: ["Smoking Near Oxygen"] },
       { respiratory: { oxygenTherapy: { inUse: true } } }
     );
-    expect(summary.complete).toBe(true);
-    expect(summary.status).toBe("Concern Identified");
-    expect(summary.concerns).toEqual(["Smoking Near Oxygen"]);
+    expect(partial.status).toBe("Concern Identified");
+    expect(partial.complete).toBe(false);
+
+    const complete = summarizeOxygenSafety(
+      {
+        oxygenSafetyConcerns: ["Smoking Near Oxygen"],
+        oxygenSafetyActionsTaken: ["Immediate Education Provided", "Caregiver Notified"],
+        oxygenSafetyFollowUpRequired: "Required",
+      },
+      { respiratory: { oxygenTherapy: { inUse: true } } }
+    );
+    expect(complete.complete).toBe(true);
+    expect(complete.concerns).toEqual(["Smoking Near Oxygen"]);
   });
   it("falls back to the legacy safety.oxygenInUse flag when respiratory.oxygenTherapy.inUse is unset", () => {
     const summary = summarizeOxygenSafety({ oxygenInUse: true }, {});
@@ -140,14 +188,26 @@ describe("summarizeDisasterTriage", () => {
   it("is incomplete until a disaster level is selected", () => {
     expect(summarizeDisasterTriage({}).complete).toBe(false);
   });
-  it("is complete once a level is selected, with the matching conditions list", () => {
-    const summary = summarizeDisasterTriage({
+  it("is incomplete with only a level -- Planned Placement and Transportation Status are also required", () => {
+    const partial = summarizeDisasterTriage({
       disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
       disasterLevelTwoConditions: ["Lives above ground floor"],
     });
+    expect(partial.complete).toBe(false);
+    expect(partial.shortLabel).toBe("Level 2");
+    expect(partial.conditions).toEqual(["Lives above ground floor"]);
+  });
+  it("is complete once level, planned placement, and transportation status are all documented", () => {
+    const summary = summarizeDisasterTriage({
+      disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
+      disasterLevelTwoConditions: ["Lives above ground floor"],
+      disasterPlannedPlacement: "Remain at Residence",
+      disasterResponsibleSupport: "Daughter (lives nearby)",
+      disasterTransportationStatus: "Reliable Transportation Available",
+    });
     expect(summary.complete).toBe(true);
-    expect(summary.shortLabel).toBe("Level 2");
-    expect(summary.conditions).toEqual(["Lives above ground floor"]);
+    expect(summary.plannedPlacement).toBe("Remain at Residence");
+    expect(summary.transportationStatus).toBe("Reliable Transportation Available");
   });
 });
 
@@ -172,13 +232,21 @@ function baseFormData() {
   };
 }
 
-describe("validateRNICA -- four guided Safety & Clinical Risk gates", () => {
-  it("blocks Lock when Environmental Safety, Oxygen Safety, and Disaster Triage are all undocumented", () => {
+function fullyCompleteSafetyData() {
+  return {
+    ...COMPLETE_MORSE,
+    ...COMPLETE_ENVIRONMENTAL_HOME_CLEAN,
+    oxygenSafetyConfirmedNotApplicable: true,
+    disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
+    disasterPlannedPlacement: "Remain at Residence",
+    disasterTransportationStatus: "Reliable Transportation Available",
+  };
+}
+
+describe("validateRNICA -- single consolidated Safety & Clinical Risk gate", () => {
+  it("blocks Lock with one safety.assessment error when nothing has been documented", () => {
     const { errors } = validateRNICA(baseFormData(), "ica");
-    expect(errors["safety.environmentalSafety"]).toBeTruthy();
-    expect(errors["safety.disasterTriage"]).toBeTruthy();
-    // Oxygen Safety is Not Applicable by default (no oxygen in use), so it is NOT a blocker here.
-    expect(errors["safety.oxygenSafety"]).toBeUndefined();
+    expect(errors["safety.assessment"]).toBeTruthy();
   });
 
   it("does not require Patient Safety, Caregiver Safety, Safety Notes, DME, or Supplies to finalize", () => {
@@ -186,47 +254,45 @@ describe("validateRNICA -- four guided Safety & Clinical Risk gates", () => {
     expect(Object.keys(errors).some((k) => /patientSafety|caregiverSafety|safetyNotes|dme|supplies/i.test(k))).toBe(false);
   });
 
-  it("clears the Environmental Safety / Oxygen Safety / Disaster Triage gates once all three are documented", () => {
+  it("clears safety.assessment once Environmental, Morse, Oxygen (confirmed N/A), and Disaster are all complete", () => {
     const completeFormData = baseFormData();
-    completeFormData.respiratory.oxygenTherapy = { ...completeFormData.respiratory.oxygenTherapy, inUse: true };
-    completeFormData.safety = {
-      ...completeFormData.safety,
-      ...COMPLETE_MORSE,
-      environmentalHomeConcerns: ["No Environmental Concerns Identified"],
-      environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
-      oxygenSafetyConcerns: ["No Concern"],
-      disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
-    };
+    completeFormData.safety = { ...completeFormData.safety, ...fullyCompleteSafetyData() };
     const { errors } = validateRNICA(completeFormData, "ica");
-    expect(errors["safety.environmentalSafety"]).toBeUndefined();
-    expect(errors["safety.oxygenSafety"]).toBeUndefined();
-    expect(errors["safety.disasterTriage"]).toBeUndefined();
-    expect(errors["safety.fallRiskMorse"]).toBeUndefined();
+    expect(errors["safety.assessment"]).toBeUndefined();
+  });
+
+  it("does NOT require the Review & Complete submission (safetyAssessmentCompletedAt) to clear Lock", () => {
+    const completeFormData = baseFormData();
+    completeFormData.safety = { ...completeFormData.safety, ...fullyCompleteSafetyData() };
+    // Deliberately no safetyAssessmentCompletedAt -- Lock reads allPartsComplete, not the UI submission flag.
+    expect(completeFormData.safety.safetyAssessmentCompletedAt).toBeUndefined();
+    const { errors } = validateRNICA(completeFormData, "ica");
+    expect(errors["safety.assessment"]).toBeUndefined();
   });
 });
 
-// PRODUCT OWNER DECISION "Safety Is One Assessment" -- proves the new
-// consolidated summarizeSafetyAssessment() composer agrees with the four
-// underlying summaries it wraps, reports a single Status the
-// SafetyAssessmentOverview card and SafetyAssessmentEditSheet wizard both
-// read, and correctly excludes the Oxygen Safety step/count whenever the
-// patient is not on oxygen (auto-skip requirement).
-describe("summarizeSafetyAssessment -- single consolidated Safety record", () => {
-  it("reports Not Started when nothing has been documented and excludes the inapplicable Oxygen step from the count", () => {
+// PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+// Assessment" -- proves the 4-state status model, that Oxygen Safety is
+// now ALWAYS counted (never excluded even when Not Applicable), and the
+// deep-link helper used by validation/Edit Assessment navigation.
+describe("summarizeSafetyAssessment -- single consolidated Safety record with 4-state status", () => {
+  it("reports Not Started when nothing has been documented, counting all 4 parts including the inapplicable Oxygen step", () => {
     const formData = baseFormData();
     const summary = summarizeSafetyAssessment(formData.safety, formData);
     expect(summary.oxygen.applicable).toBe(false);
     expect(summary.status).toBe("Not Started");
-    expect(summary.totalCount).toBe(3);
+    expect(summary.totalCount).toBe(4);
     expect(summary.completedCount).toBe(0);
   });
 
-  it("reports In Progress when some but not all applicable parts are documented", () => {
+  it("reports In Progress when some but not all parts are documented", () => {
     const formData = baseFormData();
     formData.safety = {
       ...formData.safety,
       ...COMPLETE_MORSE,
       disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
+      disasterPlannedPlacement: "Remain at Residence",
+      disasterTransportationStatus: "Reliable Transportation Available",
     };
     const summary = summarizeSafetyAssessment(formData.safety, formData);
     expect(summary.fallRisk.complete).toBe(true);
@@ -236,23 +302,39 @@ describe("summarizeSafetyAssessment -- single consolidated Safety record", () =>
     expect(summary.complete).toBe(false);
   });
 
-  it("reports Completed only once every applicable part (including Oxygen, when the patient is on oxygen) is documented", () => {
+  it("stays 'In Progress' (not 'Complete') once every part is answered but the RN has not yet clicked Complete Safety Assessment", () => {
     const formData = baseFormData();
-    formData.respiratory.oxygenTherapy = { ...formData.respiratory.oxygenTherapy, inUse: true };
-    formData.safety = {
-      ...formData.safety,
-      ...COMPLETE_MORSE,
-      environmentalHomeConcerns: ["No Environmental Concerns Identified"],
-      environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
-      oxygenSafetyConcerns: ["No Concern"],
-      disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
-    };
+    formData.safety = { ...formData.safety, ...fullyCompleteSafetyData() };
     const summary = summarizeSafetyAssessment(formData.safety, formData);
-    expect(summary.oxygen.applicable).toBe(true);
+    expect(summary.allPartsComplete).toBe(true);
+    expect(summary.completedAt).toBe("");
+    expect(summary.status).toBe("In Progress");
+    expect(summary.complete).toBe(false);
+  });
+
+  it("reports Complete only once every part is documented AND the RN has submitted via safetyAssessmentCompletedAt", () => {
+    const formData = baseFormData();
+    formData.safety = { ...formData.safety, ...fullyCompleteSafetyData(), safetyAssessmentCompletedAt: "2026-12-01T00:00:00.000Z" };
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
     expect(summary.totalCount).toBe(4);
     expect(summary.completedCount).toBe(4);
+    expect(summary.allPartsComplete).toBe(true);
     expect(summary.complete).toBe(true);
-    expect(summary.status).toBe("Completed");
+    expect(summary.status).toBe("Complete");
+  });
+
+  it("reports Needs Review when a previously-submitted assessment's data has since become incomplete again", () => {
+    const formData = baseFormData();
+    formData.safety = {
+      ...formData.safety,
+      ...fullyCompleteSafetyData(),
+      safetyAssessmentCompletedAt: "2026-12-01T00:00:00.000Z",
+      // Drift: an Environmental field was cleared back out after submission.
+      environmentalHomeConcerns: [],
+    };
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(summary.allPartsComplete).toBe(false);
+    expect(summary.status).toBe("Needs Review");
   });
 
   it("exposes exactly the five SAFETY_WIZARD_STEPS in Environmental -> Fall Risk -> Oxygen -> Disaster -> Review order", () => {
@@ -263,5 +345,25 @@ describe("summarizeSafetyAssessment -- single consolidated Safety record", () =>
       "disaster",
       "review",
     ]);
+  });
+});
+
+describe("getFirstIncompleteSafetyStepId", () => {
+  it("returns 'environmental' when nothing is documented", () => {
+    const formData = baseFormData();
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(getFirstIncompleteSafetyStepId(summary)).toBe("environmental");
+  });
+  it("returns the next incomplete step in order once earlier steps are complete", () => {
+    const formData = baseFormData();
+    formData.safety = { ...formData.safety, ...COMPLETE_ENVIRONMENTAL_HOME_CLEAN, ...COMPLETE_MORSE };
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(getFirstIncompleteSafetyStepId(summary)).toBe("oxygen");
+  });
+  it("returns 'review' once every part is complete", () => {
+    const formData = baseFormData();
+    formData.safety = { ...formData.safety, ...fullyCompleteSafetyData() };
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(getFirstIncompleteSafetyStepId(summary)).toBe("review");
   });
 });

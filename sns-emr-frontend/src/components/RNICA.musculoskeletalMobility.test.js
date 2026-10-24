@@ -659,6 +659,25 @@ function buildFormDataForLockCheck(musculoskeletalOverrides = {}) {
   base.finalization.clinicalNarrative = "Narrative on file.";
   base.finalization.clinicianSignature = "RN Test, RN";
   base.finalization.signatureCertification = true;
+  // Safety & Clinical Risk is also a Lock-blocking requirement
+  // (consolidated single `safety.assessment` gate) -- fully satisfy it
+  // here so these MSK-focused assertions stay isolated to the one new
+  // Ambulation Status error, per this helper's own documented intent.
+  base.safety = {
+    ...base.safety,
+    fallRiskMorseHistoryOfFalling: "No",
+    fallRiskMorseSecondaryDiagnosis: "No",
+    fallRiskMorseAmbulatoryAid: "None/Bed Rest/Nurse Assist",
+    fallRiskMorseIvHeparinLock: "No",
+    fallRiskMorseGaitTransferring: "Normal/Bedrest/Immobile",
+    fallRiskMorseMentalStatus: "Oriented to Own Ability",
+    environmentalHomeConcerns: ["No Environmental Concerns Identified"],
+    environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+    oxygenSafetyConfirmedNotApplicable: true,
+    disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
+    disasterPlannedPlacement: "Remain at Residence",
+    disasterTransportationStatus: "Reliable Transportation Available",
+  };
   base.musculoskeletal = { ...base.musculoskeletal, ...musculoskeletalOverrides };
   return base;
 }

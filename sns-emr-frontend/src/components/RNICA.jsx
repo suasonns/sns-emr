@@ -53,6 +53,13 @@ import {
   summarizeEnvironmentalSafety,
   summarizeOxygenSafety,
   summarizeDisasterTriage,
+  summarizeSafetyAssessment,
+  ENVIRONMENTAL_RISK_TARGET_OPTIONS,
+  ENVIRONMENTAL_ACTIONS_TAKEN_OPTIONS,
+  ENVIRONMENTAL_STAFF_DISPOSITION_OPTIONS,
+  DISASTER_PLACEMENT_OPTIONS,
+  DISASTER_TRANSPORTATION_OPTIONS,
+  DISASTER_REQUIREMENTS_OPTIONS,
 } from "./rn-ica/safety-clinical-risk/safetyLogic";
 import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
 // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2 --
@@ -2244,35 +2251,19 @@ export function validateRNICA(formData, mode = "ica", assessmentType = undefined
   }
 
   // PRODUCT OWNER DECISION (2026-11-29) "Fall Risk Assessment -- Morse
-  // Fall Scale" (final) -- "RNICA completion requires Morse Fall Scale
-  // completed. Not: Manual Low/Moderate/High selection." Hard-blocks
-  // Lock until all 6 Morse factors are answered; reuses
-  // `isFallRiskMorseComplete` (the same predicate the Safety
-  // Documentation Coverage "fallRisk" item's `check` calls) so Coverage
-  // and this Lock gate can never disagree. The legacy manual
-  // `fallRiskLevel` selection no longer satisfies this requirement.
-  if (!isFallRiskMorseComplete(formData.safety || {})) {
-    errors["safety.fallRiskMorse"] = "Complete the Morse Fall Scale (all 6 factors) before finalizing.";
-  }
-
-  // PRODUCT OWNER DIRECTIVE "Replace the Inline Safety Page With Four
-  // Guided Assessments" (final, section 12) -- exactly 4 top-level
-  // Safety & Clinical Risk items are required to finalize: Environmental
-  // Safety complete, Morse Fall Scale complete (above), Oxygen Safety
-  // complete-or-Not-Applicable, Disaster Triage level selected. Patient
-  // Safety, Caregiver Safety, DME, Supplies, and Safety Notes are
-  // explicitly NOT required (directive: "Do not require... Safety Notes
-  // ... DME ... Supplies"). Reuses the exact same summarize* predicates
-  // the new SafetyAssessmentOverview displays, so the Overview's
-  // "Complete"/"Incomplete" badges and this Lock gate can never disagree.
-  if (!summarizeEnvironmentalSafety(formData.safety || {}, formData).complete) {
-    errors["safety.environmentalSafety"] = "Complete the Environmental Safety Assessment (patient and staff visit safety) before finalizing.";
-  }
-  if (!summarizeOxygenSafety(formData.safety || {}, formData).complete) {
-    errors["safety.oxygenSafety"] = "Complete the Oxygen Safety Assessment before finalizing.";
-  }
-  if (!summarizeDisasterTriage(formData.safety || {}).complete) {
-    errors["safety.disasterTriage"] = "Select a Disaster Triage level before finalizing.";
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" sections 12-13 -- RNICA finalization creates exactly ONE
+  // validation item for Safety (not four), reusing the same
+  // `summarizeSafetyAssessment` predicate the unified wizard and the main
+  // Overview card use, so Lock, the Overview badge, and the wizard step
+  // indicators can never disagree. The Lock gate checks only whether
+  // every part is complete-or-confirmed-Not-Applicable
+  // (`allPartsComplete`) -- independent of whether the RN has also
+  // clicked the Review step's "Complete Safety Assessment" submission --
+  // so Lock is never blocked by a redundant UI click once every question
+  // has in fact been answered.
+  if (!summarizeSafetyAssessment(formData.safety || {}, formData).allPartsComplete) {
+   errors["safety.assessment"] = "Complete the Safety & Clinical Risk Assessment (Environmental Safety, Morse Fall Scale, Oxygen Safety, and Disaster Triage) before finalizing.";
   }
 
   return { errors, warnings, isValid: Object.keys(errors).length === 0 };
@@ -7603,12 +7594,29 @@ export const MORSE_FALL_SCALE_SUGGESTED_INTERVENTIONS = {
 // classification/trend, per the owner's exact example layout) without a
 // new scoring engine, a new backend service, or fabricated point values.
 function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFormData }) {
-  const [editing, setEditing] = useState(!isFallRiskMorseComplete(data));
   const score = computeMorseFallScore(data);
   const trend = computeFallRiskTrend(data?.fallRiskHistory);
 
-  const handleComplete = () => {
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" section 3/8 -- no separate "Save Completed Assessment"
+  // button inside an individual step; the RN completes the Safety
+  // assessment once, via "Complete Safety Assessment" on Review &
+  // Complete. The six Morse factors are always visible (no internal
+  // edit/view toggle), and a completed, changed score is recorded to
+  // history automatically -- the previous assessment is never silently
+  // reused as the current visit's answer (factors always start from
+  // this visit's own stored values, never pre-filled from history).
+  const lastHistoryEntry = (data?.fallRiskHistory || [])[(data?.fallRiskHistory || []).length - 1];
+  useEffect(() => {
     if (!score.complete) return;
+    const unchanged = lastHistoryEntry
+      && lastHistoryEntry.historyOfFalling === data.fallRiskMorseHistoryOfFalling
+      && lastHistoryEntry.secondaryDiagnosis === data.fallRiskMorseSecondaryDiagnosis
+      && lastHistoryEntry.ambulatoryAid === data.fallRiskMorseAmbulatoryAid
+      && lastHistoryEntry.ivHeparinLock === data.fallRiskMorseIvHeparinLock
+      && lastHistoryEntry.gaitTransferring === data.fallRiskMorseGaitTransferring
+      && lastHistoryEntry.mentalStatus === data.fallRiskMorseMentalStatus;
+    if (unchanged) return;
     const entry = {
       date: new Date().toISOString().slice(0, 10),
       historyOfFalling: data.fallRiskMorseHistoryOfFalling,
@@ -7622,8 +7630,8 @@ function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFor
     };
     updateField("fallRiskHistory", [...(data?.fallRiskHistory || []), entry]);
     updateField("fallRiskMorseAssessedDate", entry.date);
-    setEditing(false);
-  };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [score.complete, score.total, data?.fallRiskMorseHistoryOfFalling, data?.fallRiskMorseSecondaryDiagnosis, data?.fallRiskMorseAmbulatoryAid, data?.fallRiskMorseIvHeparinLock, data?.fallRiskMorseGaitTransferring, data?.fallRiskMorseMentalStatus]);
 
   const riskColor = score.classification === "High Risk" ? COLORS.error
     : score.classification === "Moderate Risk" ? COLORS.warning
@@ -7632,7 +7640,7 @@ function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFor
   return (
     <div>
       {/* Summary -- owner's exact example layout: Score / Classification /
-          Previous Score / Trend / [Edit Assessment]. */}
+          Previous Score / Trend. */}
       <div style={{ ...styles.infoBox, marginBottom: 10 }}>
         <div style={{ fontWeight: 700, marginBottom: 4 }}>
           {score.complete ? (
@@ -7650,46 +7658,29 @@ function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFor
         {data?.fallRiskMorseAssessedDate && (
           <div style={{ fontSize: 11, color: COLORS.textSecondary || "#888" }}>Date assessed: {data.fallRiskMorseAssessedDate}</div>
         )}
-        <button
-          type="button"
-          onClick={() => setEditing((v) => !v)}
-          style={{ ...styles.btnSecondary, marginTop: 8, fontSize: 11.5, padding: "6px 10px" }}
-        >
-          {editing ? "Hide" : score.complete ? "Edit Assessment" : "Complete Assessment"}
-        </button>
       </div>
 
-      {editing && (
-        <div>
-          {MORSE_FALL_SCALE_FACTORS.map((f) => (
-            <FormSegmented
-              key={f.key}
-              label={f.label}
-              value={data?.[f.dataKey] || ""}
-              onChange={(v) => updateField(f.dataKey, v)}
-              options={f.options}
-            />
-          ))}
-          {score.complete && (
-            <div style={{ ...styles.infoBox, marginTop: 6, marginBottom: 10 }}>
-              <div style={{ fontWeight: 700, color: riskColor }}>Total Score: {score.total} · {score.classification}</div>
-              <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11.5 }}>
-                {score.breakdown.map((b) => (
-                  <li key={b.key}>{b.label}: {b.value} ({b.points} pts)</li>
-                ))}
-              </ul>
-            </div>
-          )}
-          <button
-            type="button"
-            onClick={handleComplete}
-            disabled={!score.complete}
-            style={{ ...styles.btnPrimary, opacity: score.complete ? 1 : 0.5, cursor: score.complete ? "pointer" : "not-allowed" }}
-          >
-            Save Completed Assessment
-          </button>
-        </div>
-      )}
+      <div>
+        {MORSE_FALL_SCALE_FACTORS.map((f) => (
+          <FormSegmented
+            key={f.key}
+            label={f.label}
+            value={data?.[f.dataKey] || ""}
+            onChange={(v) => updateField(f.dataKey, v)}
+            options={f.options}
+          />
+        ))}
+        {score.complete && (
+          <div style={{ ...styles.infoBox, marginTop: 6, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, color: riskColor }}>Total Score: {score.total} · {score.classification}</div>
+            <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 11.5 }}>
+              {score.breakdown.map((b) => (
+                <li key={b.key}>{b.label}: {b.value} ({b.points} pts)</li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
 
       {score.complete && (score.classification === "Moderate Risk" || score.classification === "High Risk") && (
         <div style={{ marginTop: 12 }}>
@@ -7963,6 +7954,21 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
     updateField("environmentalStaffVisitSafety", nextValues.filter((v) => v !== STAFF_VISIT_SAFETY_NO_CONCERN));
   };
 
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" section 7 -- Risk Target, Actions Taken, Staff Visit
+  // Disposition, and Follow-Up are only asked when an actual hazard
+  // (patient and/or staff) was identified; a clean visit never requires
+  // them. "Other" selected anywhere reveals the optional clarification
+  // note -- never required to repeat a structured selection in prose.
+  const patientHazardsForGate = isFacility
+    ? (facilityStatus === "Observed Concern" ? facilityConcerns : [])
+    : homeConcerns;
+  const activeStaffHazards = staffVisitSafety.filter((c) => c !== STAFF_VISIT_SAFETY_NO_CONCERN);
+  const hasAnyHazard = patientHazardsForGate.length > 0 || activeStaffHazards.length > 0;
+  const hasStaffHazard = activeStaffHazards.length > 0;
+  const showsClarification = patientHazardsForGate.includes("Other") || facilityConcerns.includes("Other") || staffVisitSafety.includes("Other");
+  const followUpRequired = data?.environmentalFollowUpRequired || "";
+
   return (
     <div>
       <div style={{ fontSize: 11, color: COLORS?.textSecondary || "#888", margin: "0 0 6px" }}>
@@ -8002,6 +8008,50 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
           options={STAFF_VISIT_SAFETY_OPTIONS}
         />
       </div>
+      {hasAnyHazard && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+          <FormSegmented
+            label="Risk Target"
+            value={data?.environmentalRiskTarget || ""}
+            onChange={(v) => updateField("environmentalRiskTarget", v)}
+            options={ENVIRONMENTAL_RISK_TARGET_OPTIONS}
+          />
+          <FormPillGroup
+            label="Actions Taken"
+            values={data?.environmentalActionsTaken || []}
+            onChange={(v) => updateField("environmentalActionsTaken", v)}
+            options={ENVIRONMENTAL_ACTIONS_TAKEN_OPTIONS}
+          />
+          {hasStaffHazard && (
+            <FormSegmented
+              label="Staff Visit Disposition"
+              value={data?.environmentalStaffDisposition || ""}
+              onChange={(v) => updateField("environmentalStaffDisposition", v)}
+              options={ENVIRONMENTAL_STAFF_DISPOSITION_OPTIONS}
+            />
+          )}
+          <FormSegmented
+            label="Follow-Up Required"
+            value={followUpRequired}
+            onChange={(v) => updateField("environmentalFollowUpRequired", v)}
+            options={["Yes", "No"]}
+          />
+          {followUpRequired === "Yes" && (
+            <FormTextarea
+              label="Follow-Up Note (optional)"
+              value={data?.environmentalFollowUpNote || ""}
+              onChange={(v) => updateField("environmentalFollowUpNote", v)}
+            />
+          )}
+        </div>
+      )}
+      {showsClarification && (
+        <FormTextarea
+          label="Clarification (optional)"
+          value={data?.environmentalClarificationNote || ""}
+          onChange={(v) => updateField("environmentalClarificationNote", v)}
+        />
+      )}
       {(legacyStatus || legacyPatientHazards.length > 0 || legacyStaffHazards.length > 0 || legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0) && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, display: "flex", flexWrap: "wrap", gap: 4 }}>
           {legacyStatus && (
@@ -8246,10 +8296,33 @@ const OXYGEN_SAFETY_CONCERN_OPTIONS = [
 ];
 function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
   const oxygenInUse = fullFormData?.respiratory?.oxygenTherapy?.inUse ?? data?.oxygenInUse;
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" section 4 -- Oxygen Safety is never eliminated from the
+  // wizard sequence just because it is Not Applicable. The RN must
+  // explicitly confirm "No current oxygen use documented" (never
+  // auto-attested) before it counts as complete; see
+  // `oxygenSafetyConfirmedNotApplicable` in safetyLogic.js.
   if (!oxygenInUse) {
+    const confirmed = Boolean(data?.oxygenSafetyConfirmedNotApplicable);
     return (
-      <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555" }}>
-        Not Applicable — Oxygen is not documented as in use (Respiratory).
+      <div>
+        <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555", marginBottom: 8 }}>
+          Oxygen Safety
+          <br />Not Applicable
+          <br />No current oxygen use documented
+        </div>
+        <button
+          type="button"
+          onClick={() => updateField("oxygenSafetyConfirmedNotApplicable", !confirmed)}
+          style={{
+            fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6, cursor: "pointer",
+            border: `1px solid ${confirmed ? COLORS?.success || "#0D9488" : COLORS?.border || "#ccc"}`,
+            background: confirmed ? (COLORS?.successBg || "#ECFDF5") : "transparent",
+            color: confirmed ? (COLORS?.success || "#0D9488") : (COLORS?.textSecondary || "#555"),
+          }}
+        >
+          {confirmed ? "✓ Confirmed Not Applicable" : "Confirm Not Applicable"}
+        </button>
       </div>
     );
   }
@@ -8258,6 +8331,7 @@ function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
   const allConcerns = data?.oxygenSafetyConcerns || [];
   const currentConcerns = allConcerns.filter((c) => OXYGEN_SAFETY_CONCERN_OPTIONS.includes(c));
   const legacyConcerns = allConcerns.filter((c) => !OXYGEN_SAFETY_CONCERN_OPTIONS.includes(c));
+  const activeConcerns = currentConcerns.filter((c) => c !== OXYGEN_SAFETY_NO_CONCERN);
   const handleConcernsChange = (nextValues) => {
     const addedNoConcern = nextValues.includes(OXYGEN_SAFETY_NO_CONCERN) && !currentConcerns.includes(OXYGEN_SAFETY_NO_CONCERN);
     if (addedNoConcern) {
@@ -8267,6 +8341,7 @@ function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
     const withoutNoConcern = nextValues.filter((v) => v !== OXYGEN_SAFETY_NO_CONCERN);
     updateField("oxygenSafetyConcerns", [...withoutNoConcern, ...legacyConcerns]);
   };
+  const followUpRequired = data?.oxygenSafetyFollowUpRequired || "";
   return (
     <div>
       <FormPillGroup
@@ -8275,6 +8350,29 @@ function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
         onChange={handleConcernsChange}
         options={OXYGEN_SAFETY_CONCERN_OPTIONS}
       />
+      {activeConcerns.length > 0 && (
+        <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+          <FormPillGroup
+            label="Actions Taken"
+            values={data?.oxygenSafetyActionsTaken || []}
+            onChange={(v) => updateField("oxygenSafetyActionsTaken", v)}
+            options={["Immediate Education Provided", "Caregiver Notified", "Hospice Supervisor Notified", "Equipment Adjusted/Repaired", "No Action Needed", "Other"]}
+          />
+          <FormSegmented
+            label="Follow-Up Required"
+            value={followUpRequired}
+            onChange={(v) => updateField("oxygenSafetyFollowUpRequired", v)}
+            options={["Yes", "No"]}
+          />
+          {followUpRequired === "Yes" && (
+            <FormTextarea
+              label="Follow-Up Note (optional)"
+              value={data?.oxygenSafetyFollowUpNote || ""}
+              onChange={(v) => updateField("oxygenSafetyFollowUpNote", v)}
+            />
+          )}
+        </div>
+      )}
       {legacyStatus && (
         <div style={{ marginTop: 4, marginBottom: 4 }}>
           <span
@@ -8470,6 +8568,43 @@ function DisasterTriageCard({ data, updateField, styles, COLORS }) {
             onChange={(v) => updateField(selectedLevel.conditionsPath, v)}
             options={selectedLevel.options}
           />
+          {/* PRODUCT OWNER DIRECTIVE (2026-12-01) section 10 -- the step
+              must answer both "what priority level applies?" (above) and
+              "where will the patient remain or be placed during the
+              emergency?" (below). No system-"suggested" level is computed
+              here: unlike Morse, there is no validated, documented scoring
+              source in this repository for an automated disaster-triage
+              level, and inventing one would repeat the exact mistake
+              already rejected for the custom HospiceMD fall-risk model.
+              The RN's own Disaster Level selection above is the sole
+              recorded level; there is deliberately no override-reason
+              field because there is no second ("suggested") level to
+              override. */}
+          <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+            <FormSegmented
+              label="Planned Disaster Placement"
+              value={data?.disasterPlannedPlacement || ""}
+              onChange={(v) => updateField("disasterPlannedPlacement", v)}
+              options={DISASTER_PLACEMENT_OPTIONS}
+            />
+            <FormInput
+              label="Responsible Helper or Facility"
+              value={data?.disasterResponsibleSupport || ""}
+              onChange={(v) => updateField("disasterResponsibleSupport", v)}
+            />
+            <FormSegmented
+              label="Transportation Status"
+              value={data?.disasterTransportationStatus || ""}
+              onChange={(v) => updateField("disasterTransportationStatus", v)}
+              options={DISASTER_TRANSPORTATION_OPTIONS}
+            />
+            <FormPillGroup
+              label="Oxygen / Medication / DME / Power Requirements"
+              values={data?.disasterRequirements || []}
+              onChange={(v) => updateField("disasterRequirements", v)}
+              options={DISASTER_REQUIREMENTS_OPTIONS}
+            />
+          </div>
         </>
       )}
     </div>
@@ -27689,7 +27824,18 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
   // Infection/ACP's own Documentation Coverage elements) rather than
   // alongside `infectionDocumentationCoverage` et al. in the ShadcnCard
   // branch.
-  const safetyDocumentationCoverage = sectionKey === "safety" ? (() => {
+  //
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" section 2 -- "Do not display Safety Documentation
+  // Coverage... inside the modal." `renderSafetyStepCards` (the unified
+  // wizard's only card source) calls this same function with a
+  // `filteredConfig.cards` subset of `SECTION_CONFIGS.safety.cards`; this
+  // banner must therefore be suppressed whenever fewer than the full
+  // legacy card set is being rendered (i.e. inside the wizard), and stay
+  // exactly as before for the full, un-filtered legacy inline Safety
+  // page (the only other caller of this branch).
+  const isFilteredSafetyStepView = sectionKey === "safety" && cards.length < SECTION_CONFIGS.safety.cards.length;
+  const safetyDocumentationCoverage = sectionKey === "safety" && !isFilteredSafetyStepView ? (() => {
     const coverage = computeSafetyDocumentationCoverage({
       ...data,
       siteOfService: fullFormData?.demographics?.livingSituation?.siteOfService || "",

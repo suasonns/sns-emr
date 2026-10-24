@@ -17,6 +17,7 @@ import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeRevi
 import PainSymptomBurdenOverview from "./pain-symptom-burden/PainSymptomBurdenOverview";
 import DiagnosisLcdOverview from "./diagnosis-lcd/DiagnosisLcdOverview";
 import SafetyAssessmentOverview from "./safety-clinical-risk/SafetyAssessmentOverview";
+import { summarizeSafetyAssessment, getFirstIncompleteSafetyStepId } from "./safety-clinical-risk/safetyLogic";
 import {
   PrimaryCard,
   SourceLink,
@@ -659,6 +660,14 @@ export default function RNICACommandWorkspace({
   // AI Action Center / Compliance & Readiness rail panels (no new
   // panels/data -- those are the only working surfaces for this content).
   const [visitRecorderOpen, setVisitRecorderOpen] = useState(false);
+  // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
+  // Assessment" section 13 -- "Opening that validation item launches the
+  // unified modal at the first incomplete step." Set by the Validation
+  // rail's error-click handler below when the clicked key is a
+  // `safety.*` key; consumed (reset) by SafetyAssessmentOverview once the
+  // Sheet has opened at that step, so a later plain "Edit Assessment"
+  // click defaults back to Step 1.
+  const [safetyDeepLinkStepId, setSafetyDeepLinkStepId] = useState(null);
   // FR-011: the persistent Validation drawer is collapsed by default so
   // it doesn't dominate the rail; the RN expands it deliberately, same
   // pattern as the LCD groups and HOPE Comorbidities category groups.
@@ -962,6 +971,9 @@ export default function RNICACommandWorkspace({
           siteOfService={safetySiteOfService}
           oxygenInUse={safetyOxygenInUse}
           onContinue={() => { onNext(); scrollDetailTop(); }}
+          onUpdateField={onUpdateField}
+          initialStepId={safetyDeepLinkStepId}
+          onInitialStepConsumed={() => setSafetyDeepLinkStepId(null)}
         />
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
           <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
@@ -1438,6 +1450,12 @@ export default function RNICACommandWorkspace({
                   {errorKeys.slice(0, 5).map((key) => (
                     <button type="button" className="rnica-command-requirement" key={key} onClick={() => {
                       select(routeForRequirement(key)?.key || "finalization", "requirement");
+                      if (key.startsWith("safety.")) {
+                        setSafetyDeepLinkStepId(getFirstIncompleteSafetyStepId(summarizeSafetyAssessment(safetyData, {
+                          demographics: { livingSituation: { siteOfService: safetySiteOfService } },
+                          respiratory: { oxygenTherapy: { inUse: safetyOxygenInUse } },
+                        })));
+                      }
                     }}>
                       <strong>Required</strong><span>{validation.errors[key]}</span>
                     </button>
