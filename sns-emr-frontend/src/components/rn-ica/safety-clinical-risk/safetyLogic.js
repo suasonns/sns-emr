@@ -198,3 +198,45 @@ export function summarizeDisasterTriage(safetyData = {}) {
     clarification: safetyData.disasterTriageClarificationNote || "",
   };
 }
+
+// PRODUCT OWNER DECISION (2026-10-24) "Safety Is One Assessment" --
+// supersedes the prior "four independent Edit Sheets" presentation.
+// "STOP TREATING SAFETY AS FOUR SEPARATE ASSESSMENTS... REPLACE 4
+// INDEPENDENT ASSESSMENT SHEETS WITH 1 SAFETY ASSESSMENT WIZARD." The
+// four underlying summarize* functions above are UNCHANGED (same
+// fields, same completion rules, same validateRNICA gates) -- this is
+// purely a single composed read of all four plus one consolidated
+// status, so the new single-card Overview and the new single-sheet
+// wizard (and any future caller) always agree on what counts as
+// "Completed" / "In Progress" / "Not Started" for the WHOLE Safety
+// assessment, not just one of its four parts.
+export const SAFETY_WIZARD_STEPS = [
+  { id: "environmental", label: "Environmental Safety", cardTitles: ["Environmental Safety"] },
+  { id: "fallRisk", label: "Morse Fall Scale", cardTitles: ["Fall Risk and Transfer Safety"] },
+  { id: "oxygen", label: "Oxygen Safety", cardTitles: ["Oxygen Safety"] },
+  { id: "disaster", label: "Disaster Triage", cardTitles: ["Disaster Triage"] },
+  { id: "review", label: "Review & Complete", cardTitles: null },
+];
+
+/** Single composed summary for the whole Safety & Clinical Risk
+ * assessment -- the four parts plus one consolidated completion status.
+ * Oxygen Safety is excluded from the completed/total counts whenever it
+ * is Not Applicable (no active oxygen order/DME/respiratory
+ * documentation) -- matching the wizard's auto-skip behavior, so a
+ * patient who is not on oxygen is never blocked on a step that does not
+ * apply to them. */
+export function summarizeSafetyAssessment(safetyData = {}, fullFormData = {}) {
+  const environmental = summarizeEnvironmentalSafety(safetyData, fullFormData);
+  const fallRisk = summarizeFallRisk(safetyData);
+  const oxygen = summarizeOxygenSafety(safetyData, fullFormData);
+  const disaster = summarizeDisasterTriage(safetyData);
+
+  const applicableSections = [environmental, fallRisk, disaster];
+  if (oxygen.applicable) applicableSections.push(oxygen);
+  const completedCount = applicableSections.filter((s) => s.complete).length;
+  const totalCount = applicableSections.length;
+  const complete = completedCount === totalCount;
+  const status = complete ? "Completed" : completedCount === 0 ? "Not Started" : "In Progress";
+
+  return { environmental, fallRisk, oxygen, disaster, complete, status, completedCount, totalCount };
+}

@@ -1519,9 +1519,10 @@ export const INITIAL_FORM = {
     environmentalPatientHazards: [],
     environmentalStaffHazards: [],
     // PRODUCT OWNER DIRECTIVE "Replace the Inline Safety Page With Four
-    // Guided Assessments" (final) -- Environmental Safety becomes a
-    // 4-step guided assessment (see EnvironmentalSafetyEditSheet). These
-    // fields are new; nothing above is renamed/removed.
+    // Guided Assessments" (final), later consolidated by "Safety Is One
+    // Assessment" -- Environmental Safety is now Step 1 of the single
+    // Safety wizard (see SafetyAssessmentEditSheet). These fields are
+    // new; nothing above is renamed/removed.
     // Step 1: residence setting may be corrected for THIS assessment only
     // without changing the Face Sheet's `demographics.livingSituation.
     // siteOfService`; `environmentalOverallStatus` is the new canonical
