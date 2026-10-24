@@ -5,16 +5,21 @@ import {
   summarizeOxygenSafety,
   summarizeDisasterTriage,
   summarizeFallRisk,
+  summarizeSafetyAssessment,
   isFacilitySiteOfService,
+  SAFETY_WIZARD_STEPS,
 } from "./rn-ica/safety-clinical-risk/safetyLogic.js";
 
 // PRODUCT OWNER DIRECTIVE "Replace the Inline Safety Page With Four
-// Guided Assessments" (final) -- proves the four new guided-assessment
+// Guided Assessments" (final), later consolidated by PRODUCT OWNER
+// DECISION "Safety Is One Assessment" -- proves the four underlying
 // summaries (Environmental Safety, Fall Risk, Oxygen Safety, Disaster
-// Triage) compute "complete" the same way the new SafetyAssessmentOverview
-// badges and the validateRNICA Lock gates both read, and that the
-// explicitly-removed main-page items (Patient Safety, Caregiver Safety,
-// Safety Notes, DME, Supplies) are NOT required to finalize.
+// Triage) still compute "complete" the same way the validateRNICA Lock
+// gates read, that the explicitly-removed main-page items (Patient
+// Safety, Caregiver Safety, Safety Notes, DME, Supplies) are NOT
+// required to finalize, and that the new `summarizeSafetyAssessment`
+// consolidation (single Status, Oxygen auto-skip when not applicable)
+// agrees with the four parts it composes.
 
 const COMPLETE_MORSE = {
   fallRiskMorseHistoryOfFalling: "No",
@@ -197,5 +202,66 @@ describe("validateRNICA -- four guided Safety & Clinical Risk gates", () => {
     expect(errors["safety.oxygenSafety"]).toBeUndefined();
     expect(errors["safety.disasterTriage"]).toBeUndefined();
     expect(errors["safety.fallRiskMorse"]).toBeUndefined();
+  });
+});
+
+// PRODUCT OWNER DECISION "Safety Is One Assessment" -- proves the new
+// consolidated summarizeSafetyAssessment() composer agrees with the four
+// underlying summaries it wraps, reports a single Status the
+// SafetyAssessmentOverview card and SafetyAssessmentEditSheet wizard both
+// read, and correctly excludes the Oxygen Safety step/count whenever the
+// patient is not on oxygen (auto-skip requirement).
+describe("summarizeSafetyAssessment -- single consolidated Safety record", () => {
+  it("reports Not Started when nothing has been documented and excludes the inapplicable Oxygen step from the count", () => {
+    const formData = baseFormData();
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(summary.oxygen.applicable).toBe(false);
+    expect(summary.status).toBe("Not Started");
+    expect(summary.totalCount).toBe(3);
+    expect(summary.completedCount).toBe(0);
+  });
+
+  it("reports In Progress when some but not all applicable parts are documented", () => {
+    const formData = baseFormData();
+    formData.safety = {
+      ...formData.safety,
+      ...COMPLETE_MORSE,
+      disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
+    };
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(summary.fallRisk.complete).toBe(true);
+    expect(summary.disaster.complete).toBe(true);
+    expect(summary.environmental.complete).toBe(false);
+    expect(summary.status).toBe("In Progress");
+    expect(summary.complete).toBe(false);
+  });
+
+  it("reports Completed only once every applicable part (including Oxygen, when the patient is on oxygen) is documented", () => {
+    const formData = baseFormData();
+    formData.respiratory.oxygenTherapy = { ...formData.respiratory.oxygenTherapy, inUse: true };
+    formData.safety = {
+      ...formData.safety,
+      ...COMPLETE_MORSE,
+      environmentalHomeConcerns: ["No Environmental Concerns Identified"],
+      environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+      oxygenSafetyConcerns: ["No Concern"],
+      disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
+    };
+    const summary = summarizeSafetyAssessment(formData.safety, formData);
+    expect(summary.oxygen.applicable).toBe(true);
+    expect(summary.totalCount).toBe(4);
+    expect(summary.completedCount).toBe(4);
+    expect(summary.complete).toBe(true);
+    expect(summary.status).toBe("Completed");
+  });
+
+  it("exposes exactly the five SAFETY_WIZARD_STEPS in Environmental -> Fall Risk -> Oxygen -> Disaster -> Review order", () => {
+    expect(SAFETY_WIZARD_STEPS.map((s) => s.id)).toEqual([
+      "environmental",
+      "fallRisk",
+      "oxygen",
+      "disaster",
+      "review",
+    ]);
   });
 });
