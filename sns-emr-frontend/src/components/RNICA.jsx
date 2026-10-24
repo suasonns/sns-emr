@@ -476,7 +476,33 @@ export const INITIAL_FORM = {
       // (Caregiver Capacity, Training Needs/Medication Safety, and
       // Caregiver Readiness respectively). The section now answers each
       // question exactly once.
+      // [REFINEMENT 2026-10-23 round 4] Communication Considerations was
+      // collapsed from three separate questions (Interpreter Needed,
+      // Hearing Accommodation Needed, Language Barrier) — which produced
+      // duplicate documentation (e.g. a Spanish-speaking caregiver would
+      // trigger both "Interpreter Needed = Yes" and "Language Barrier =
+      // Yes" for the same underlying issue) — into a single gate
+      // (communicationBarrier) plus a conditional type (communicationBarrierType)
+      // and optional free-text detail. The legacy fields are retained below
+      // (unused by the UI, not cleared) so no historical data is lost.
+      interpreterNeeded: "",
       signLanguageInterpreterNeeded: "", // If PCG hard of hearing/deaf, sign-language interpreter needed?
+      languageBarrier: "",
+      communicationBarrier: "", // No / Yes / Unable to determine
+      communicationBarrierType: "", // Language / Hearing / Both — shown only when communicationBarrier === "Yes"
+      // [REFINEMENT 2026-10-23 round 5] single actionable field replacing
+      // the communicationBarrier/communicationBarrierType gate+type pair —
+      // options are the accommodation itself (No / Language Interpreter /
+      // Hearing Accommodation / Both / Unable to determine).
+      communicationAccommodation: "",
+      communicationBarrierDetail: "", // Optional free-text
+      // [REFINEMENT 2026-10-23 round 6] "Language Interpreter"/"Hearing
+      // Accommodation" named the problem but not the required action —
+      // replaced the free-text detail field with structured, actionable
+      // follow-ups scoped to whichever accommodation was selected.
+      communicationPrimaryLanguage: "", // Shown when communicationAccommodation includes Language Interpreter
+      communicationInterpreterSource: "", // Shown when communicationAccommodation includes Language Interpreter
+      communicationHearingAccommodationType: "", // Shown when communicationAccommodation includes Hearing Accommodation
       householdChildren: "", // Any young children at home?
       householdChildrenDetail: "",
       householdPets: "", // Any pets? (If yes, specify)
@@ -507,6 +533,14 @@ export const INITIAL_FORM = {
     // Caregiver Capacity rather than a standalone question (see
     // "Caregiver & Support Consolidation" directive, 2026-10-23).
     medicationSafety: {
+      // [REFINEMENT 2026-10-23 round 3] #6: single authoritative field —
+      // "Patient Independent" / "Patient With Assistance" / "Family
+      // Caregiver" / "Facility Staff" / "Unable To Assess" — replacing the
+      // former two-question (capability + responsible-party) flow. The
+      // legacy fields below are still populated from this single
+      // selection so the existing contradiction-warning check and any
+      // historical data continue to work unchanged.
+      administrationResponsibility: "",
       selfAdministersMeds: "",
       medsAdministeredBy: "",
     },
@@ -2528,6 +2562,48 @@ function pcgIsAssessed(pcg) {
 // Decision Maker, then Emergency Contact (an ER contact is not
 // guaranteed to be the caregiver, so it is the last-resort fallback).
 // Returns null (no suggestion) when nothing on file has a name.
+//
+// [BUGFIX 2026-10-23] Some Face Sheet contact records (entered before
+// RNICA's Relationship/Decision-Making Authority split existed) store a
+// single combined string in their relationship field, e.g.
+// "Son / Power of Attorney". Feeding that raw string into RNICA's
+// Relationship field would recreate exactly the merged field the owner
+// explicitly rejected. This helper recognizes a known authority term
+// (Power of Attorney/POA, Healthcare Proxy, Legal Guardian, Conservator)
+// appended after a separator and splits it out, so the suggestion always
+// carries a clean relationship plus a separately identified authority.
+const LEGACY_AUTHORITY_TERMS = [
+  { re: /power of attorney|\bpoa\b/i, label: "Power of Attorney" },
+  { re: /healthcare proxy/i, label: "Healthcare Proxy" },
+  { re: /legal guardian/i, label: "Legal Guardian" },
+  { re: /conservator/i, label: "Conservator" },
+];
+function splitLegacyRelationshipAuthority(rawRelationship) {
+  const text = (rawRelationship || "").trim();
+  if (!text) return { relationship: "", authority: "" };
+  const term = LEGACY_AUTHORITY_TERMS.find((t) => t.re.test(text));
+  if (!term) return { relationship: text, authority: "" };
+  const remainder = text.replace(term.re, "").replace(/^[\s/,\-–]+|[\s/,\-–]+$/g, "").trim();
+  return { relationship: remainder, authority: term.label };
+}
+// [BUGFIX 2026-10-23, cont.] The split above only prevents *new*
+// suggestions from merging relationship+authority. Records saved before
+// the split existed (or via the old suggestion logic) may already have
+// the combined string sitting in the stored `pcg.relationship` field
+// itself. Rather than silently rewriting saved chart data, use the same
+// forward-only display adapter pattern as getEffectiveAbdomenConsistency
+// above: derive a clean value for display only; the instant the RN edits
+// either field directly, the typed value no longer matches the legacy
+// combined pattern and these adapters pass it through unchanged.
+function getEffectivePcgRelationship(pcg) {
+  const stored = pcg?.relationship || "";
+  if (pcg?.legalAuthority) return stored;
+  return splitLegacyRelationshipAuthority(stored).relationship;
+}
+function getEffectivePcgLegalAuthority(pcg) {
+  if (pcg?.legalAuthority) return pcg.legalAuthority;
+  return splitLegacyRelationshipAuthority(pcg?.relationship).authority;
+}
 function getSuggestedCaregiverFromFacesheet(facesheetData) {
   const contacts = facesheetData?.contacts || {};
   const candidates = [
@@ -2538,7 +2614,8 @@ function getSuggestedCaregiverFromFacesheet(facesheetData) {
   ];
   const match = candidates.find((c) => c.entry?.name);
   if (!match) return null;
-  return { name: match.entry.name, relationship: match.entry.relationship, phone: match.entry.phone, source: match.source };
+  const { relationship, authority } = splitLegacyRelationshipAuthority(match.entry.relationship);
+  return { name: match.entry.name, relationship, authority, phone: match.entry.phone, source: match.source };
 }
 
 function FormTriState({ label, value, onChange, hopeCode }) {
@@ -16115,7 +16192,7 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
             document it. */}
         {data.pcg?.noPcg && data.pcg?.noPcgReason && facesheetData?.place_of_service?.current_pos_type && (
           <div style={{ fontSize: 12, color: "#0f766e", marginTop: -4, marginBottom: 8 }}>
-            Facility Type on file (Face Sheet): <strong>{facesheetData.place_of_service.current_pos_name || facesheetData.place_of_service.current_pos_type}</strong> — 24-Hour Staffing Available
+            Facility Type on file (Face Sheet): <strong>{facesheetData.place_of_service.current_pos_name || facesheetData.place_of_service.current_pos_type}</strong> — 24-Hour Facility Staffing
           </div>
         )}
         {!data.pcg?.noPcg ? (
@@ -16143,13 +16220,18 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
                   <div style={{ fontSize: 12.5, color: "#374151" }}>
                     {[suggestion.relationship, suggestion.phone].filter(Boolean).join(" · ")}
                   </div>
+                  {suggestion.authority && (
+                    <div style={{ fontSize: 12.5, color: "#374151" }}>Decision-Making Authority: {suggestion.authority}</div>
+                  )}
                   <div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>Source: {suggestion.source}</div>
                   <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
                     <button type="button" onClick={() => {
                       u("pcg.name", suggestion.name || "");
                       u("pcg.relationship", suggestion.relationship || "");
                       u("pcg.phone", suggestion.phone || "");
+                      if (suggestion.authority) u("pcg.legalAuthority", suggestion.authority);
                       u("pcg.suggestionDismissed", true);
+                      u("pcg.contactSourceFaceSheet", true);
                     }} style={{ fontSize: 12.5, fontWeight: 700, padding: "6px 12px", borderRadius: 5, border: "1px solid #0d9488", background: "#0d9488", color: "#fff", cursor: "pointer" }}>
                       Use Suggested Caregiver
                     </button>
@@ -16161,15 +16243,97 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
                 </div>
               );
             })()}
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
-              <FormInput label="PCG Name" value={data.pcg?.name} onChange={(v) => u("pcg.name", v)} />
-              <FormInput label="Relationship" value={data.pcg?.relationship} onChange={(v) => u("pcg.relationship", v)} />
-              <FormInput label="Phone" value={data.pcg?.phone} onChange={(v) => u("pcg.phone", v)} type="tel" />
+            {/* [OWNER DIRECTIVE "Caregiver & Support Refinement",
+                2026-10-23] #1/#2: the contact block below is reference
+                information about a person, not a clinical finding — label
+                it as such, and show its provenance (Face Sheet) via a
+                prominent badge (not just a small caption) only while the
+                values still match what was auto-populated;
+                `contactSourceFaceSheet` clears the instant the RN edits
+                any of the three fields, since an edited value is no
+                longer a faithful copy of the Face Sheet record.
+                [REFINEMENT 2026-10-23 round 2] #1/#8: the source badge is
+                now a filled, high-contrast pill (not quiet caption text)
+                placed directly above the demographic fields so data
+                ownership is unmistakable at a glance, not only
+                discoverable by reading validation notes. #2 also
+                separates "Relationship" (son, daughter, friend, ...) from
+                "Decision-Making Authority" (POA, guardian, ...) — these
+                were previously at risk of being conflated into one
+                free-text field; they are now two distinct, clearly
+                labeled fields. Legal terminology ("Legal / ...") was
+                trimmed from the label per owner request; the field path
+                (pcg.legalAuthority) and option set are unchanged. */}
+            <div className="rnica-classic-subheading" style={{ fontSize: 12, fontWeight: 700, color: COLORS?.label || "#64748b", textTransform: "uppercase", letterSpacing: "0.03em", marginBottom: 4 }}>
+              Primary Caregiver Information
             </div>
-            <FormRadioGroup label="PCG Anxiety Level" value={data.pcg?.anxietyLevel} onChange={(v) => u("pcg.anxietyLevel", v)}
+            {data.pcg?.contactSourceFaceSheet && (
+              <div style={{ display: "inline-block", fontSize: 11, fontWeight: 700, color: "#fff", background: "#0f766e", borderRadius: 999, padding: "3px 10px", marginBottom: 8 }}>
+                Source: Face Sheet
+              </div>
+            )}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16 }}>
+              <FormInput label="PCG Name" value={data.pcg?.name} onChange={(v) => { u("pcg.name", v); u("pcg.contactSourceFaceSheet", false); }} />
+              <FormInput label="Relationship" value={getEffectivePcgRelationship(data.pcg)} onChange={(v) => { u("pcg.relationship", v); u("pcg.contactSourceFaceSheet", false); }} />
+              <FormInput label="Phone" value={data.pcg?.phone} onChange={(v) => { u("pcg.phone", v); u("pcg.contactSourceFaceSheet", false); }} type="tel" />
+            </div>
+            <FormSelect label="Decision-Making Authority (if applicable)" value={getEffectivePcgLegalAuthority(data.pcg)} onChange={(v) => u("pcg.legalAuthority", v)}
+              options={["None documented", "Power of Attorney", "Healthcare Proxy", "Legal Guardian", "Conservator", "Unable to determine"]} />
+            {/* [REFINEMENT 2026-10-23 round 2] #3: relabeled to name both
+                what is being assessed (distress) and the original CDPH
+                term (anxiety) so clinical meaning isn't lost; same field
+                path/options. */}
+            <FormSegmented label="Caregiver Distress / Anxiety" value={data.pcg?.anxietyLevel} onChange={(v) => u("pcg.anxietyLevel", v)}
               options={["None", "Mild", "Moderate", "Severe"]} />
-            <FormRadioGroup label="Sign-Language Interpreter Needed (if PCG hard of hearing/deaf)" value={data.pcg?.signLanguageInterpreterNeeded} onChange={(v) => u("pcg.signLanguageInterpreterNeeded", v)}
-              options={["No", "Yes", "Unable to determine"]} />
+            {/* [OWNER DIRECTIVE "Caregiver & Support Refinement",
+                2026-10-23] #4: grouped under its own heading rather than
+                floating unlabeled between contact fields and household
+                factors.
+                [REFINEMENT 2026-10-23 round 4] Replaced the three
+                separate questions (Interpreter Needed, Hearing
+                Accommodation Needed, Language Barrier) — which produced
+                duplicate documentation of the same underlying issue — with
+                a two-step gate+type model ("Communication Barrier
+                Present?" then conditional "Barrier Type").
+                [REFINEMENT 2026-10-23 round 5] The gate+type model named
+                the problem but not the required action, so the RN still
+                had to infer what to do next. Collapsed into one
+                actionable field — "Communication Accommodation Needed?"
+                — whose options ARE the accommodation (Language
+                Interpreter / Hearing Accommodation / Both / Unable to
+                determine / No), closer to HospiceMD's original
+                action-oriented "Interpreter Needed?" question.
+                [REFINEMENT 2026-10-23 round 6] Naming the accommodation
+                still stopped short of an actionable outcome (e.g.
+                "Language Interpreter" alone doesn't tell the RN which
+                language or who provides it). Replaced the optional
+                free-text detail field with structured follow-ups scoped
+                to the selected accommodation: Language Interpreter shows
+                Primary Language + Interpreter Source; Hearing
+                Accommodation shows Accommodation Type; Both shows all
+                three. communicationBarrierDetail remains in default
+                state, unused, so no historical free text is lost.
+                Legacy field paths (interpreterNeeded,
+                signLanguageInterpreterNeeded, languageBarrier,
+                communicationBarrier, communicationBarrierType) remain in
+                default state, unused, so no historical data is lost. */}
+            <div className="rnica-classic-subheading" style={{ fontSize: 12, fontWeight: 700, color: COLORS?.label || "#64748b", textTransform: "uppercase", letterSpacing: "0.03em", marginTop: 12, marginBottom: 4 }}>
+              Communication Considerations
+            </div>
+            <FormRadioGroup label="Communication Accommodation Needed?" value={data.pcg?.communicationAccommodation} onChange={(v) => u("pcg.communicationAccommodation", v)}
+              options={["No", "Language Interpreter", "Hearing Accommodation", "Both", "Unable to determine"]} />
+            {(data.pcg?.communicationAccommodation === "Language Interpreter" || data.pcg?.communicationAccommodation === "Both") && (
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 16, marginTop: 4 }}>
+                <FormSelect label="Primary Language" value={data.pcg?.communicationPrimaryLanguage} onChange={(v) => u("pcg.communicationPrimaryLanguage", v)}
+                  options={["Spanish", "Vietnamese", "Mandarin", "Cantonese", "Korean", "Tagalog", "Armenian", "Russian", "Arabic", "Farsi", "Other"]} />
+                <FormSelect label="Interpreter Source" value={data.pcg?.communicationInterpreterSource} onChange={(v) => u("pcg.communicationInterpreterSource", v)}
+                  options={["Family translates", "Staff member translates", "Professional interpreter required", "Translation service available", "Unknown"]} />
+              </div>
+            )}
+            {(data.pcg?.communicationAccommodation === "Hearing Accommodation" || data.pcg?.communicationAccommodation === "Both") && (
+              <FormSelect label="Accommodation Type" value={data.pcg?.communicationHearingAccommodationType} onChange={(v) => u("pcg.communicationHearingAccommodationType", v)}
+                options={["Written communication", "Hearing device in use", "Family assists communication", "ASL interpreter required", "Other"]} />
+            )}
 
             {/* Household factors — cross-checked against real HospiceMD
                 "Communications & Other Factors > PCG" section: "Any young
@@ -16177,6 +16341,16 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
                 are household/safety/care-planning factors, not demographics. */}
             <FormRadioGroup label="Young Children in the Home" value={data.pcg?.householdChildren} onChange={(v) => u("pcg.householdChildren", v)}
               options={["No", "Yes", "Unknown"]} />
+            {/* [OWNER DIRECTIVE "Caregiver & Support Refinement",
+                2026-10-23] #5: clinical justification for this field per
+                owner request — it drives safety planning (medication/
+                sharps storage, fall-hazard review) and bereavement-support
+                referral triage, not a demographic restatement.
+                [REFINEMENT 2026-10-23 round 3] #5: shortened again to the
+                owner's exact wording; intent unchanged. */}
+            <div style={{ fontSize: 11, color: COLORS?.label || "#94a3b8", fontStyle: "italic", marginTop: -4, marginBottom: 8 }}>
+              Impacts safety planning and bereavement-support review.
+            </div>
             {data.pcg?.householdChildren === "Yes" && (
               <FormInput label="Age Range / Safety-Support Concern (if clinically useful)" value={data.pcg?.householdChildrenDetail} onChange={(v) => u("pcg.householdChildrenDetail", v)} />
             )}
@@ -16186,22 +16360,64 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
               <FormInput label="Specify (safety/access/infection concern if applicable)" value={data.pcg?.householdPetsDetail} onChange={(v) => u("pcg.householdPetsDetail", v)} />
             )}
 
-            {/* Patient's own medication self-administration capability —
-                deliberately adjacent to the Caregiver Capacity/Training
-                Needs fields below so both capabilities are reviewed
-                together, but visually distinct (own heading) since
-                HospiceMD tracks these as two separate fields. */}
-            <div className="rnica-classic-subheading" style={{ fontSize: 12, fontWeight: 700, color: COLORS?.label || "#64748b", textTransform: "uppercase", letterSpacing: "0.03em", marginTop: 12, marginBottom: 4 }}>
-              Medication Safety — Patient Self-Administration
-            </div>
-            <FormRadioGroup label="Patient Able to Safely Self-Administer Medications" value={data.medicationSafety?.selfAdministersMeds} onChange={(v) => u("medicationSafety.selfAdministersMeds", v)}
-              options={["Yes", "With assistance", "No", "Not applicable", "Unable to assess"]} />
-            {["With assistance", "No"].includes(data.medicationSafety?.selfAdministersMeds) && (
-              <FormSelect label="If No, Who Administers Medications to Patient" value={data.medicationSafety?.medsAdministeredBy} onChange={(v) => u("medicationSafety.medsAdministeredBy", v)}
-                options={["Primary caregiver", "Family member", "Facility staff", "Hospice staff under an authorized plan", "Other", "No responsible person identified"]} />
+            {/* Medication administration — who is responsible for getting
+                medications into the patient, combining the former two-
+                question flow (patient capability + responsible party)
+                into one pill field per owner directive.
+                [OWNER DIRECTIVE "Caregiver & Support Refinement",
+                2026-10-23] #6 (original): converted to pill controls.
+                [REFINEMENT 2026-10-23 round 3] #6: collapsed to a single
+                authoritative "Medication Administration" field — Patient
+                Independent / Patient With Assistance / Family Caregiver /
+                Facility Staff / Unable To Assess — since asking capability
+                and responsible-party as two separate questions was still
+                more complex than the clinical question actually requires.
+                The selection sets the legacy selfAdministersMeds/
+                medsAdministeredBy fields together (see onChange) so no
+                downstream logic (contradiction warning, below) needed to
+                change its field paths. A free-text "Other / Specify"
+                detail is shown only for the one option ("Family
+                Caregiver") where the contradiction check and care
+                planning benefit from knowing who, specifically — this is
+                the one place "additional detail only when needed"
+                actually applies; the other four options are already
+                fully specific on their own. */}
+            <FormSegmented label="Medication Administration" value={data.medicationSafety?.administrationResponsibility} onChange={(v) => {
+              u("medicationSafety.administrationResponsibility", v);
+              const legacy = {
+                "Patient Independent": { selfAdministersMeds: "Yes", medsAdministeredBy: "" },
+                "Patient With Assistance": { selfAdministersMeds: "With assistance", medsAdministeredBy: "" },
+                "Family Caregiver": { selfAdministersMeds: "No", medsAdministeredBy: "Primary caregiver" },
+                "Facility Staff": { selfAdministersMeds: "Not applicable", medsAdministeredBy: "Facility staff" },
+                "Unable To Assess": { selfAdministersMeds: "Unable to assess", medsAdministeredBy: "" },
+              }[v] || { selfAdministersMeds: "", medsAdministeredBy: "" };
+              u("medicationSafety.selfAdministersMeds", legacy.selfAdministersMeds);
+              u("medicationSafety.medsAdministeredBy", legacy.medsAdministeredBy);
+            }}
+              options={["Patient Independent", "Patient With Assistance", "Family Caregiver", "Facility Staff", "Unable To Assess"]} />
+            {/* [OWNER DIRECTIVE "Caregiver & Support Refinement",
+                2026-10-23] #7: contradiction/review warning — a
+                caregiver documented as "Unable" to provide physical care
+                (Caregiver Capacity, above) cannot simultaneously be the
+                family caregiver responsible for administering medications
+                without an explicit safety plan (e.g., blister packs,
+                remote supervision). Soft, non-blocking warning only,
+                consistent with every other contradiction check in this
+                file (see `styles.warningBox` usages) — it flags the
+                combination for RN review, it does not prevent saving. */}
+            {data.pcg?.caregiverEvaluation?.physicalAbility === "Unable" && data.medicationSafety?.administrationResponsibility === "Family Caregiver" && (
+              <div style={styles.warningBox}>
+                ⚠️ Review: Caregiver Capacity is documented as "Unable", but the family caregiver is also documented as responsible for administering medications. Confirm this reflects an actual safety plan (e.g., pre-filled organizer, remote supervision) or update one of these fields.
+              </div>
             )}
 
-            <FormTextarea label="PCG Concerns / Notes" value={data.pcg?.pcgConcerns} onChange={(v) => u("pcg.pcgConcerns", v)} />
+            {/* [OWNER DIRECTIVE "Caregiver & Support Refinement",
+                2026-10-23] #7: starts at 2 rows (vs. the prior fixed
+                larger box) and grows with typed content via the
+                established `autoGrow` FormTextarea pattern — reduces
+                default height while still expanding when the RN actually
+                needs more room. */}
+            <FormTextarea label="PCG Concerns / Notes" value={data.pcg?.pcgConcerns} onChange={(v) => u("pcg.pcgConcerns", v)} rows={2} autoGrow />
           </>
         ) : null}
       </Card>
@@ -16223,8 +16439,13 @@ function renderDemographics(data, update, COLORS, styles, moduleKey = "all", uiP
           duplicated these two categorical fields. */}
       {!data.pcg?.noPcg && (
       <Card title="Caregiver Capacity & Readiness Evaluation" cms="CDPH Required">
-        <div style={styles.infoBox}>
-          <strong>CDPH Requirement:</strong> The comprehensive assessment must include an evaluation of caregiver
+        {/* [OWNER DIRECTIVE "Caregiver & Support Refinement", 2026-10-23]
+            #8: the highlighted alert-style box was replaced with a plain,
+            muted compliance footnote — the requirement text is unchanged
+            and still present (compliance retained), but it no longer
+            competes visually with the clinical fields below it. */}
+        <div style={{ fontSize: 11, color: COLORS.label || "#64748b", lineHeight: 1.4, marginBottom: 10 }}>
+          CDPH Requirement: the comprehensive assessment must include an evaluation of caregiver
           capacity and readiness to provide care. This section documents the structured evaluation.
         </div>
         {/* [OWNER DIRECTIVE "Caregiver & Support UI/IA Refinement",
@@ -31616,43 +31837,61 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
   // overwrites an RN's explicit answer. `statusAutoDefaulted` is a UI-
   // only transparency flag (not a clinical data point) so the RN can see
   // the pill was defaulted rather than chosen, and it is cleared the
-  // moment the RN changes the pill. Facility-type mapping only covers
-  // the residence types this directive explicitly names (Assisted
-  // Living, Memory Care, Board & Care, SNF, LTC, Hospital); other
-  // residence types (e.g. RCFE, VA facility) are left for manual RN
-  // judgment rather than guessed.
+  // moment the RN changes the pill. Facility-type mapping covers every
+  // residence type the "RNICA Stabilization" directive (2026-10-23)
+  // explicitly names as facility-based care (Assisted Living, Memory
+  // Care, Board & Care, RCFE, SNF, LTC, Hospital, VA Facility); any
+  // other residence type is left for manual RN judgment rather than
+  // guessed.
   useEffect(() => {
-    if (formData.pcg?.assessed) return;
+    // Must wait for the existing-assessment load (see the facesheet-driven
+    // demographics prefill effect above for the same race): that fetch
+    // calls setFormData(merged) wholesale and can resolve after this effect,
+    // silently wiping out the auto-default if it ran first.
+    if (!assessmentLoaded) return;
+    if (formData.demographics?.pcg?.assessed) return;
     const posType = facesheetData?.place_of_service?.current_pos_type || "";
     if (!posType) return;
     const FACILITY_POS_TO_CARE_SETTING = {
       ASSISTED_LIVING: "Assisted Living Facility",
       MEMORY_CARE: "Memory Care",
       BOARD_AND_CARE: "Board & Care",
+      RCFE: "Board & Care",
       SNF: "Skilled Nursing Facility",
       LONG_TERM_CARE: "Skilled Nursing Facility",
       HOSPITAL: "Other facility-based care",
+      VA_FACILITY: "Other facility-based care",
     };
     const careSetting = FACILITY_POS_TO_CARE_SETTING[posType];
     setFormData((prev) => {
-      const currentPcg = prev.pcg || {};
+      const prevDemographics = prev.demographics || {};
+      const currentPcg = prevDemographics.pcg || {};
       if (currentPcg.assessed) return prev; // re-check against latest state
       if (careSetting) {
         const siteOfService = { "Memory Care": "02", "Board & Care": "02", "Skilled Nursing Facility": "04", "Assisted Living Facility": "02", "Other facility-based care": "99" }[careSetting];
         return {
           ...prev,
-          pcg: { ...currentPcg, assessed: true, noPcg: true, noPcgReason: careSetting, statusAutoDefaulted: true },
-          livingSituation: siteOfService
-            ? { ...prev.livingSituation, siteOfService, livingArrangement: "4" }
-            : prev.livingSituation,
+          demographics: {
+            ...prevDemographics,
+            pcg: { ...currentPcg, assessed: true, noPcg: true, noPcgReason: careSetting, statusAutoDefaulted: true },
+            livingSituation: siteOfService
+              ? { ...prevDemographics.livingSituation, siteOfService, livingArrangement: "4" }
+              : prevDemographics.livingSituation,
+          },
         };
       }
       if (posType === "HOME") {
-        return { ...prev, pcg: { ...currentPcg, assessed: true, noPcg: false, statusAutoDefaulted: true } };
+        return {
+          ...prev,
+          demographics: {
+            ...prevDemographics,
+            pcg: { ...currentPcg, assessed: true, noPcg: false, statusAutoDefaulted: true },
+          },
+        };
       }
       return prev;
     });
-  }, [facesheetData, formData.pcg?.assessed]);
+  }, [facesheetData, assessmentLoaded, formData.demographics?.pcg?.assessed]);
 
 
   // it is never "updated" or "recertified" through this same form. Saving
