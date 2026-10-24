@@ -13,7 +13,21 @@ dist-ssr
 test-results/
 playwright-report/
 e2e/.auth/
+e2e/.artifacts/
 *.local
+
+# RNICA verification tooling: generated screenshots/audit output only,
+# never product source. Narrowly scoped so legitimate source under
+# scripts/ is never hidden.
+scripts/tmp-output/
+scripts/*-audit-output/
+scripts/*-panel-output/
+scripts/respiratory-rebuild-output/
+tmp-*.png
+tmp-*.mjs
+out.css
+out_cw.css
+NUL.css
 
 # Editor directories and files
 .vscode/*
