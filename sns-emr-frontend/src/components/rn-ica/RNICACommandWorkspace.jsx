@@ -16,6 +16,7 @@ import EvidenceIntakeOverview from "./evidence-intake/EvidenceIntakeOverview";
 import HopeAdministrativeReview from "./hope-admin-review/HopeAdministrativeReview";
 import PainSymptomBurdenOverview from "./pain-symptom-burden/PainSymptomBurdenOverview";
 import DiagnosisLcdOverview from "./diagnosis-lcd/DiagnosisLcdOverview";
+import SafetyAssessmentOverview from "./safety-clinical-risk/SafetyAssessmentOverview";
 import {
   PrimaryCard,
   SourceLink,
@@ -435,6 +436,10 @@ export default function RNICACommandWorkspace({
   renderPainStepCards,
   diagnosesData,
   renderDiagnosisStepCards,
+  safetyData,
+  renderSafetyStepCards,
+  safetySiteOfService,
+  safetyOxygenInUse,
 }) {
   // Persistent admission/benefit-period reference facts (benefit period #,
   // dates, recert due, allergies, F2F due). Read-only -- sourced live from
@@ -909,6 +914,53 @@ export default function RNICACommandWorkspace({
         <DiagnosisLcdOverview
           diagnosesData={diagnosesData}
           renderDiagnosisStepCards={renderDiagnosisStepCards}
+          onContinue={() => { onNext(); scrollDetailTop(); }}
+        />
+        <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">
+          <button type="button" onClick={() => { onPrevious(); scrollDetailTop(); }}>Previous section</button>
+          <button type="button" onClick={() => { onNext(); scrollDetailTop(); }}>Next section</button>
+        </nav>
+      </RnicaScreenShell>
+    );
+  }
+
+  if (viewMode === "screen" && activeScreen?.key === "safetyClinicalRisk") {
+    // "Replace the Inline Safety Page With Four Guided Assessments"
+    // (final directive): Safety & Clinical Risk is redesigned to the
+    // same compact Overview + Edit Sheet pattern as Diagnosis & LCD
+    // above -- exactly 4 cards (Environmental Safety, Morse Fall Scale,
+    // Oxygen Safety, Disaster Triage); Patient Safety / Caregiver Safety
+    // / Safety Notes / DME / Supplies are no longer separate main-page
+    // cards (their underlying fields/module ownership are unchanged --
+    // see safetyLogic.js). Same renderGenericSection / SECTION_CONFIGS.
+    // safety fields, HOPE mappings, and validation as before -- only how
+    // much is permanently visible vs. behind a focused Edit action
+    // changed. See SafetyAssessmentOverview.jsx for the full rationale.
+    return (
+      <RnicaScreenShell
+        patient={patientWithAdmissionFacts}
+        locked={locked}
+        completedSections={completedSections}
+        totalRoutes={routes.length}
+        activeScreenKey="safetyClinicalRisk"
+        visitMeta={visitMeta}
+        onUpdateField={onUpdateField}
+        updateAssessmentContext={updateAssessmentContext}
+        onSelectScreenTab={selectScreenTab}
+        saving={saving}
+        saveStatus={saveStatus}
+        onSave={onSave}
+        onLock={onLock}
+        canLock={canLock}
+        statusContext={railStatusContext}
+        density={density}
+        onChangeDensity={changeDensity}
+      >
+        <SafetyAssessmentOverview
+          safetyData={safetyData}
+          renderSafetyStepCards={renderSafetyStepCards}
+          siteOfService={safetySiteOfService}
+          oxygenInUse={safetyOxygenInUse}
           onContinue={() => { onNext(); scrollDetailTop(); }}
         />
         <nav className="rnica-command-stepnav rnica-screen__stepnav" aria-label="Section navigation">

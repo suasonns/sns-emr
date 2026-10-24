@@ -49,6 +49,11 @@ import {
   findProbableDuplicateContributingConditions,
   findContributingConditionCrossReferences,
 } from "./rn-ica/diagnosis-lcd/diagnosisLogic";
+import {
+  summarizeEnvironmentalSafety,
+  summarizeOxygenSafety,
+  summarizeDisasterTriage,
+} from "./rn-ica/safety-clinical-risk/safetyLogic";
 import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
 // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2 --
 // shared presentational shell (Pass 1 infrastructure, owner-accepted) now
@@ -1538,6 +1543,35 @@ export const INITIAL_FORM = {
     environmentalActionsOtherSpecify: "",
     environmentalVisitDisposition: "",
     environmentalClarificationNote: "",
+    // PRODUCT OWNER DECISION "Environmental Safety -- Guided Pain-Style
+    // Workflow, Place of Service Visibility" (final) -- Environmental
+    // Safety is redesigned again: Place of Service (HOPE A0215 Site of
+    // Service, same `demographics.livingSituation.siteOfService` read
+    // already used by `isFacility` above) now drives which of two
+    // mutually-exclusive structured checklists is shown -- HOME gets a
+    // flat 9-item concern list (`environmentalHomeConcerns`), FACILITY
+    // gets a 2-state status (`environmentalFacilityStatus`: "Facility
+    // Managed" / "Observed Concern") that reveals a 5-item sub-list
+    // (`environmentalFacilityConcerns`) only when a concern is observed.
+    // The directive explicitly forbids an "All Clear" auto-attestation
+    // (silently marking every item verified) -- there is no default/
+    // auto-selected value for any of these three fields; the RN must
+    // affirmatively pick either a specific concern or the catch-all "No
+    // Environmental Concerns Identified" / "Facility Managed" option.
+    // Staff Visit Safety becomes its own required section
+    // (`environmentalStaffVisitSafety`), shown unconditionally (not
+    // branched by residence type) because hospice-staff visit safety is
+    // a concern in every setting. Every prior-round field above
+    // (`environmentalSafetyStatus`, `environmentalPatientHazards`,
+    // `environmentalStaffHazards`, the 3 column arrays, `environmentalConcerns`,
+    // `homeEnvironment`/`firearmInHome`, the unused 4-step-sheet fields)
+    // is preserved and never deleted/renamed -- see EnvironmentalSafetyCard's
+    // "Previously recorded" chips.
+    environmentalHomeConcerns: [],
+    environmentalFacilityStatus: "",
+    environmentalFacilityConcerns: [],
+    environmentalStaffVisitSafety: [],
+    fallRiskClarificationNote: "",
     fallRiskAssessmentCompleted: false,
     // PRODUCT OWNER DIRECTIVE (2026-11-27) "Safety & Clinical Risk --
     // Stop Adding Complexity" -- the brief HospiceMD-factor scoring
@@ -1609,6 +1643,7 @@ export const INITIAL_FORM = {
     // concern (see OxygenSafetyCard) instead of forcing the RN to type
     // the primary finding into notes.
     oxygenSafetyConcerns: [],
+    oxygenSafetyClarificationNote: "",
     // Caregiver Safety (directive 2026-11-25/26) -- distinct from
     // Caregiver & Support (screen 10, psychosocial/coping focus); this is
     // specifically the caregiver's ability to safely assist with THIS
@@ -1638,6 +1673,7 @@ export const INITIAL_FORM = {
     disasterLevelOneConditions: [],
     disasterLevelTwoConditions: [],
     disasterLevelThreeConditions: [],
+    disasterTriageClarificationNote: "",
     dmeItems: DME_ITEM_LIST.map((item) => ({ item, status: "", specify: "" })),
     dmeNotes: "",
     supplies: {
@@ -2216,6 +2252,26 @@ export function validateRNICA(formData, mode = "ica", assessmentType = undefined
   // `fallRiskLevel` selection no longer satisfies this requirement.
   if (!isFallRiskMorseComplete(formData.safety || {})) {
     errors["safety.fallRiskMorse"] = "Complete the Morse Fall Scale (all 6 factors) before finalizing.";
+  }
+
+  // PRODUCT OWNER DIRECTIVE "Replace the Inline Safety Page With Four
+  // Guided Assessments" (final, section 12) -- exactly 4 top-level
+  // Safety & Clinical Risk items are required to finalize: Environmental
+  // Safety complete, Morse Fall Scale complete (above), Oxygen Safety
+  // complete-or-Not-Applicable, Disaster Triage level selected. Patient
+  // Safety, Caregiver Safety, DME, Supplies, and Safety Notes are
+  // explicitly NOT required (directive: "Do not require... Safety Notes
+  // ... DME ... Supplies"). Reuses the exact same summarize* predicates
+  // the new SafetyAssessmentOverview displays, so the Overview's
+  // "Complete"/"Incomplete" badges and this Lock gate can never disagree.
+  if (!summarizeEnvironmentalSafety(formData.safety || {}, formData).complete) {
+    errors["safety.environmentalSafety"] = "Complete the Environmental Safety Assessment (patient and staff visit safety) before finalizing.";
+  }
+  if (!summarizeOxygenSafety(formData.safety || {}, formData).complete) {
+    errors["safety.oxygenSafety"] = "Complete the Oxygen Safety Assessment before finalizing.";
+  }
+  if (!summarizeDisasterTriage(formData.safety || {}).complete) {
+    errors["safety.disasterTriage"] = "Select a Disaster Triage level before finalizing.";
   }
 
   return { errors, warnings, isValid: Object.keys(errors).length === 0 };
@@ -7819,11 +7875,52 @@ const ENVIRONMENTAL_SAFETY_HAZARD_OPTIONS = [
   "Stairs/Handrails", "Fire Safety", "Utilities/Power",
   "Aggressive Pet", "Weapons", "Unsanitary Conditions", "Other",
 ];
+// PRODUCT OWNER DECISION "Environmental Safety -- Guided Pain-Style
+// Workflow, Place of Service Visibility" (final) -- Place of Service
+// (HOPE A0215 Site of Service, same `isFacility` read above) now drives
+// two fully distinct, mutually-exclusive structured checklists instead
+// of one shared universal status:
+//   HOME: a flat 9-item concern list with an explicit
+//   "No Environmental Concerns Identified" catch-all -- replacing the
+//   retired "All Clear"/blanket-verified behavior, nothing is ever
+//   auto-selected.
+//   FACILITY: a 2-state status ("Facility Managed" / "Observed
+//   Concern") that reveals a 5-item sub-list only when a concern is
+//   observed.
+// The prior universal `ENVIRONMENTAL_SAFETY_STATUS_OPTIONS` 4-option
+// list and the Patient/Staff hazard pill groups above are retired (no
+// longer rendered) but every stored value is preserved and still shown
+// as a "Previously recorded" chip -- nothing is deleted or migrated.
+const ENVIRONMENTAL_HOME_NO_CONCERN = "No Environmental Concerns Identified";
+const ENVIRONMENTAL_HOME_CONCERN_OPTIONS = [
+  "Structural / Access Concern", "Lighting Concern", "Bathroom Safety Concern",
+  "Utility / Power Concern", "Fire / Smoke Safety Concern", "Hot Water Safety Concern",
+  "Infestation / Sanitation Concern", "Medication / Sharps Storage Concern", "Other",
+  ENVIRONMENTAL_HOME_NO_CONCERN,
+];
+const ENVIRONMENTAL_FACILITY_STATUS_OPTIONS = ["Facility Managed", "Observed Concern"];
+const ENVIRONMENTAL_FACILITY_CONCERN_OPTIONS = [
+  "Evacuation Access Concern", "Nurse Call System Concern", "Unsafe Room Environment",
+  "Utility / Power Concern", "Other",
+];
+// Staff Visit Safety is a required section, shown unconditionally
+// (independent of the Home/Facility branch above) -- hospice-staff
+// visit safety applies in every setting. This supersedes the retired
+// `environmentalStaffHazards` pill group, which is preserved and
+// legacy-chipped, never deleted.
+const STAFF_VISIT_SAFETY_NO_CONCERN = "No Staff Safety Concerns Identified";
+const STAFF_VISIT_SAFETY_OPTIONS = [
+  "Aggressive Person", "Active Drug Use / Intoxication", "Weapon Concern",
+  "Aggressive Animal", "Unsafe Entry or Access", "Other",
+  STAFF_VISIT_SAFETY_NO_CONCERN,
+];
 function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
   const siteOfService = fullFormData?.demographics?.livingSituation?.siteOfService || "";
   const isFacility = siteOfService !== "" && siteOfService !== "01";
-  const status = data?.environmentalSafetyStatus || "";
-  const statusIsCurrentOption = ENVIRONMENTAL_SAFETY_STATUS_OPTIONS.includes(status);
+
+  // Legacy (superseded) fields/values -- preserved, never deleted, and
+  // re-surfaced below as read-only "Previously recorded" chips.
+  const legacyStatus = data?.environmentalSafetyStatus || "";
   const legacyHazards = data?.homeEnvironment || [];
   const legacyFirearm = data?.firearmInHome;
   const legacyColumns = [
@@ -7831,52 +7928,105 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
     ...(data?.environmentalLivingAreaConcerns || []),
     ...(data?.environmentalBathroomConcerns || []),
   ];
-  // `environmentalConcerns` (the prior combined Patient+Staff list) is
-  // now entirely legacy -- superseded by the two distinct lists below --
-  // so every value it holds is shown as a "Previously recorded" chip.
   const legacyConcerns = data?.environmentalConcerns || [];
-  const patientHazards = (data?.environmentalPatientHazards || []).filter((c) => ENVIRONMENTAL_SAFETY_PATIENT_HAZARD_OPTIONS.includes(c));
-  const staffHazards = (data?.environmentalStaffHazards || []).filter((c) => ENVIRONMENTAL_SAFETY_STAFF_HAZARD_OPTIONS.includes(c));
-  const handleStatusChange = (v) => updateField("environmentalSafetyStatus", v);
+  const legacyPatientHazards = data?.environmentalPatientHazards || [];
+  const legacyStaffHazards = data?.environmentalStaffHazards || [];
+
+  // HOME -- flat concern list + explicit no-concern catch-all. Nothing
+  // is pre-selected: an empty array means "not yet assessed", never
+  // silently treated as "clear" (no "All Clear" auto-attestation).
+  const homeConcerns = (data?.environmentalHomeConcerns || []).filter((c) => ENVIRONMENTAL_HOME_CONCERN_OPTIONS.includes(c));
+  const handleHomeConcernsChange = (nextValues) => {
+    const addedNoConcern = nextValues.includes(ENVIRONMENTAL_HOME_NO_CONCERN) && !homeConcerns.includes(ENVIRONMENTAL_HOME_NO_CONCERN);
+    if (addedNoConcern) {
+      updateField("environmentalHomeConcerns", [ENVIRONMENTAL_HOME_NO_CONCERN]);
+      return;
+    }
+    updateField("environmentalHomeConcerns", nextValues.filter((v) => v !== ENVIRONMENTAL_HOME_NO_CONCERN));
+  };
+
+  // FACILITY -- 2-state status; the 5-item sub-list is shown only when
+  // a concern is observed (the full HOME checklist is never shown for
+  // a facility-based patient).
+  const facilityStatus = ENVIRONMENTAL_FACILITY_STATUS_OPTIONS.includes(data?.environmentalFacilityStatus) ? data.environmentalFacilityStatus : "";
+  const facilityConcerns = (data?.environmentalFacilityConcerns || []).filter((c) => ENVIRONMENTAL_FACILITY_CONCERN_OPTIONS.includes(c));
+
+  // Staff Visit Safety -- required, shown regardless of Home/Facility.
+  const staffVisitSafety = (data?.environmentalStaffVisitSafety || []).filter((c) => STAFF_VISIT_SAFETY_OPTIONS.includes(c));
+  const handleStaffVisitSafetyChange = (nextValues) => {
+    const addedNoConcern = nextValues.includes(STAFF_VISIT_SAFETY_NO_CONCERN) && !staffVisitSafety.includes(STAFF_VISIT_SAFETY_NO_CONCERN);
+    if (addedNoConcern) {
+      updateField("environmentalStaffVisitSafety", [STAFF_VISIT_SAFETY_NO_CONCERN]);
+      return;
+    }
+    updateField("environmentalStaffVisitSafety", nextValues.filter((v) => v !== STAFF_VISIT_SAFETY_NO_CONCERN));
+  };
+
   return (
     <div>
       <div style={{ fontSize: 11, color: COLORS?.textSecondary || "#888", margin: "0 0 6px" }}>
         {isFacility ? "Facility-based residence (Site of Service on file)" : "Home-based residence"}
       </div>
-      <FormSegmented
-        label="Environmental Safety Status"
-        value={statusIsCurrentOption ? status : ""}
-        onChange={handleStatusChange}
-        options={ENVIRONMENTAL_SAFETY_STATUS_OPTIONS}
-      />
-      {status === "Observed Concerns" && (
+      {!isFacility && (
+        <FormPillGroup
+          label="Home Environmental Safety"
+          values={homeConcerns}
+          onChange={handleHomeConcernsChange}
+          options={ENVIRONMENTAL_HOME_CONCERN_OPTIONS}
+        />
+      )}
+      {isFacility && (
         <>
-          <FormPillGroup
-            label="Patient Environmental Hazards"
-            values={patientHazards}
-            onChange={(v) => updateField("environmentalPatientHazards", v)}
-            options={ENVIRONMENTAL_SAFETY_PATIENT_HAZARD_OPTIONS}
+          <FormSegmented
+            label="Facility Environmental Safety"
+            value={facilityStatus}
+            onChange={(v) => updateField("environmentalFacilityStatus", v)}
+            options={ENVIRONMENTAL_FACILITY_STATUS_OPTIONS}
           />
-          <FormPillGroup
-            label="Staff Visit-Safety Hazards"
-            values={staffHazards}
-            onChange={(v) => updateField("environmentalStaffHazards", v)}
-            options={ENVIRONMENTAL_SAFETY_STAFF_HAZARD_OPTIONS}
-          />
+          {facilityStatus === "Observed Concern" && (
+            <FormPillGroup
+              label="Facility Safety Concerns"
+              values={facilityConcerns}
+              onChange={(v) => updateField("environmentalFacilityConcerns", v)}
+              options={ENVIRONMENTAL_FACILITY_CONCERN_OPTIONS}
+            />
+          )}
         </>
       )}
-      {(!statusIsCurrentOption && status) && (
-        <div style={{ marginTop: 4, marginBottom: 4 }}>
-          <span
-            title="This status was recorded under a prior Environmental Safety option set (or for a different residence type). The stored value has not been changed."
-            className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
-          >
-            ⚠ Previously recorded status: "{status}"
-          </span>
-        </div>
-      )}
-      {(legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0) && (
-        <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+        <FormPillGroup
+          label="Staff Visit Safety"
+          values={staffVisitSafety}
+          onChange={handleStaffVisitSafetyChange}
+          options={STAFF_VISIT_SAFETY_OPTIONS}
+        />
+      </div>
+      {(legacyStatus || legacyPatientHazards.length > 0 || legacyStaffHazards.length > 0 || legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0) && (
+        <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {legacyStatus && (
+            <span
+              title="This status was previously recorded under a retired Environmental Safety option set. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded status: "{legacyStatus}"
+            </span>
+          )}
+          {legacyPatientHazards.map((hazard) => (
+            <span key={`ph-${hazard}`}
+              title="This hazard was previously recorded under the retired Patient Environmental Hazards list. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: "{hazard}"
+            </span>
+          ))}
+          {legacyStaffHazards.map((hazard) => (
+            <span key={`sh-${hazard}`}
+              title="This hazard was previously recorded under the retired Staff Visit-Safety Hazards list. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: "{hazard}"
+            </span>
+          ))}
           {legacyConcerns.map((concern) => (
             <span key={`concern-${concern}`}
               title="This concern was previously recorded under a retired Environmental Concerns option set. The stored value has not been changed."
@@ -8074,9 +8224,24 @@ function IncidentReviewCard({ data, COLORS, patientId, incidentSummary }) {
 // already holding a prior value (e.g. "Improper Storage") automatically
 // renders as a "Previously recorded" chip via the existing legacy-filter
 // below -- no value is deleted or migrated.
+//
+// PRODUCT OWNER DECISION "Environmental Safety -- Guided Pain-Style
+// Workflow, Place of Service Visibility" (final) -- collapses the prior
+// Reviewed/Concern-Identified status gate into a single flat pill list
+// (the directive's exact option set, including an explicit "No Concern"
+// catch-all) so the RN never hits a dead-end status with no outcome
+// recorded, and nothing is auto-attested: the field starts blank and
+// stays blank until the RN affirmatively picks "No Concern" or a
+// specific concern. The retired `oxygenSafetyStatus` ("Reviewed" /
+// "Concern Identified") is preserved and never deleted -- see the
+// "Previously recorded" chip below -- and the lowercase 2026-10-24
+// option strings (e.g. "Smoking near oxygen") are no longer valid
+// selections but still round-trip as legacy chips via the same
+// `oxygenSafetyConcerns` array and legacy-filter mechanism.
+const OXYGEN_SAFETY_NO_CONCERN = "No Concern";
 const OXYGEN_SAFETY_CONCERN_OPTIONS = [
-  "Smoking near oxygen", "Open flame near oxygen", "Unsafe storage",
-  "No backup oxygen or power plan", "Education needed", "Other",
+  OXYGEN_SAFETY_NO_CONCERN, "Smoking Near Oxygen", "Open Flame Near Oxygen", "Unsafe Storage",
+  "No Backup Oxygen / Power Plan", "Education Needed", "Other",
 ];
 function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
   const oxygenInUse = fullFormData?.respiratory?.oxygenTherapy?.inUse ?? data?.oxygenInUse;
@@ -8088,25 +8253,36 @@ function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
     );
   }
   const legacyItems = data?.oxygenSafetyItems || [];
+  const legacyStatus = data?.oxygenSafetyStatus || "";
   const allConcerns = data?.oxygenSafetyConcerns || [];
   const currentConcerns = allConcerns.filter((c) => OXYGEN_SAFETY_CONCERN_OPTIONS.includes(c));
   const legacyConcerns = allConcerns.filter((c) => !OXYGEN_SAFETY_CONCERN_OPTIONS.includes(c));
-  const handleConcernsChange = (nextValues) => updateField("oxygenSafetyConcerns", [...nextValues, ...legacyConcerns]);
+  const handleConcernsChange = (nextValues) => {
+    const addedNoConcern = nextValues.includes(OXYGEN_SAFETY_NO_CONCERN) && !currentConcerns.includes(OXYGEN_SAFETY_NO_CONCERN);
+    if (addedNoConcern) {
+      updateField("oxygenSafetyConcerns", [OXYGEN_SAFETY_NO_CONCERN, ...legacyConcerns]);
+      return;
+    }
+    const withoutNoConcern = nextValues.filter((v) => v !== OXYGEN_SAFETY_NO_CONCERN);
+    updateField("oxygenSafetyConcerns", [...withoutNoConcern, ...legacyConcerns]);
+  };
   return (
     <div>
-      <FormSegmented
+      <FormPillGroup
         label="Oxygen Safety"
-        value={data?.oxygenSafetyStatus || ""}
-        onChange={(v) => updateField("oxygenSafetyStatus", v)}
-        options={["Reviewed", "Concern Identified"]}
+        values={currentConcerns}
+        onChange={handleConcernsChange}
+        options={OXYGEN_SAFETY_CONCERN_OPTIONS}
       />
-      {data?.oxygenSafetyStatus === "Concern Identified" && (
-        <FormPillGroup
-          label="Oxygen Safety Concerns"
-          values={currentConcerns}
-          onChange={handleConcernsChange}
-          options={OXYGEN_SAFETY_CONCERN_OPTIONS}
-        />
+      {legacyStatus && (
+        <div style={{ marginTop: 4, marginBottom: 4 }}>
+          <span
+            title="This status was previously recorded under the retired Reviewed / Concern Identified choice. The stored value has not been changed."
+            className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+          >
+            ⚠ Previously recorded status: "{legacyStatus}"
+          </span>
+        </div>
       )}
       {(legacyItems.length > 0 || legacyConcerns.length > 0) && (
         <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
@@ -20113,21 +20289,36 @@ const SAFETY_COVERAGE_ITEMS = [
     summarize: (d) => d.transferSafetyLevel,
     unresolvedHint: "Select a Transfer Safety level",
   },
-  // Environmental Safety -- single universal 4-option status list (No
-  // Concerns / Concern Present / Facility Managed / Unable To Assess),
-  // not branched by residence type (PRODUCT OWNER DIRECTIVE 2026-10-24
-  // "Environmental Safety -- current implementation too vague"). When
-  // "Concern Present" is active, reports the single structured
-  // patient-and-staff hazard list. Legacy `homeEnvironment`/
-  // `firearmInHome`/the 3 retired concern-column arrays are still
-  // reported if present (a chart saved before this redesign) and
-  // nothing current is set.
+  // Environmental Safety -- PRODUCT OWNER DECISION "Environmental
+  // Safety -- Guided Pain-Style Workflow, Place of Service Visibility"
+  // (final): Place of Service (`siteOfService`, merged in by the call
+  // site) drives which of two checklists applies -- HOME
+  // (`environmentalHomeConcerns`, including the "No Environmental
+  // Concerns Identified" catch-all) or FACILITY
+  // (`environmentalFacilityStatus` + `environmentalFacilityConcerns`).
+  // The retired universal 4-option `environmentalSafetyStatus` list,
+  // the Patient/Staff hazard pill groups, the 3 concern-column arrays,
+  // and legacy `homeEnvironment`/`firearmInHome` are still reported if
+  // a chart saved before this redesign has them set and nothing
+  // current is set for the applicable (Home or Facility) branch.
   {
     key: "homeHazards",
     label: "Environmental Safety",
-    sourceFieldKeys: ["environmentalSafetyStatus", "environmentalPatientHazards", "environmentalStaffHazards", "environmentalConcerns", "environmentalUtilitiesConcerns", "environmentalLivingAreaConcerns", "environmentalBathroomConcerns", "homeEnvironment", "firearmInHome"],
-    check: (d) => Boolean(d.environmentalSafetyStatus) || (d.homeEnvironment || []).length > 0,
+    sourceFieldKeys: ["environmentalHomeConcerns", "environmentalFacilityStatus", "environmentalFacilityConcerns", "environmentalSafetyStatus", "environmentalPatientHazards", "environmentalStaffHazards", "environmentalConcerns", "environmentalUtilitiesConcerns", "environmentalLivingAreaConcerns", "environmentalBathroomConcerns", "homeEnvironment", "firearmInHome"],
+    check: (d) => {
+      const isFacility = Boolean(d.siteOfService) && d.siteOfService !== "01";
+      if (isFacility) return Boolean(d.environmentalFacilityStatus) || Boolean(d.environmentalSafetyStatus);
+      return (d.environmentalHomeConcerns || []).length > 0 || Boolean(d.environmentalSafetyStatus) || (d.homeEnvironment || []).length > 0;
+    },
     summarize: (d) => {
+      const isFacility = Boolean(d.siteOfService) && d.siteOfService !== "01";
+      if (isFacility && d.environmentalFacilityStatus) {
+        const concerns = d.environmentalFacilityConcerns || [];
+        return concerns.length > 0 ? `${d.environmentalFacilityStatus}: ${concerns.join(", ")}` : d.environmentalFacilityStatus;
+      }
+      if (!isFacility && (d.environmentalHomeConcerns || []).length > 0) {
+        return d.environmentalHomeConcerns.join(", ");
+      }
       const currentOptions = ["No Concerns", "Observed Concerns", "Facility Managed", "Unable To Assess"];
       if (d.environmentalSafetyStatus && currentOptions.includes(d.environmentalSafetyStatus)) {
         // PRODUCT OWNER DIRECTIVE (2026-10-24, "Guided Safety
@@ -20148,7 +20339,27 @@ const SAFETY_COVERAGE_ITEMS = [
       const firearm = d.firearmInHome ? ["Firearm in Home"] : [];
       return [...hazards, ...firearm].join(", ");
     },
-    unresolvedHint: "Select an Environmental Safety status",
+    unresolvedHint: "Document Environmental Safety (Home concerns or Facility status)",
+  },
+  // Staff Visit Safety is a required, standalone section (PRODUCT OWNER
+  // DECISION "Environmental Safety -- Guided Pain-Style Workflow"),
+  // shown unconditionally (independent of Home/Facility) -- hospice-
+  // staff visit safety applies in every setting. PRODUCT OWNER
+  // DIRECTIVE "Replace the Inline Safety Page With Four Guided
+  // Assessments" (final, section 12) -- only 4 top-level items are
+  // required to finalize a chart; this item is folded into the single
+  // "Environmental Safety" Lock gate (`summarizeEnvironmentalSafety` in
+  // safetyLogic.js requires both patient AND staff visit safety to be
+  // answered) rather than being its own separate required item. It
+  // remains listed here, unchanged, purely as an informational
+  // Documentation Coverage row.
+  {
+    key: "staffVisitSafety",
+    label: "Staff Visit Safety",
+    sourceFieldKeys: ["environmentalStaffVisitSafety"],
+    check: (d) => (d.environmentalStaffVisitSafety || []).length > 0,
+    summarize: (d) => (d.environmentalStaffVisitSafety || []).join(", "),
+    unresolvedHint: "Document Staff Visit Safety (or No Staff Safety Concerns Identified)",
   },
   // Patient Safety (exception documentation; wandering/impaired
   // judgement/unsafe ambulation/other risks, see PatientSafetyCard above).
@@ -20185,21 +20396,22 @@ const SAFETY_COVERAGE_ITEMS = [
   // (see OxygenSafetyCard's `fullFormData?.respiratory?.oxygenTherapy?.
   // inUse` read) -- "Not Applicable" is itself a complete, documented
   // answer, same convention as other always-`check: () => true` items.
-  // Reports the simplified Reviewed / Concern Identified choice
-  // (directive 2026-11-27); legacy `oxygenSafetyItems` checklist is
-  // still reported if a chart saved before this redesign has it set.
+  // PRODUCT OWNER DECISION "Environmental Safety -- Guided Pain-Style
+  // Workflow, Place of Service Visibility" (final) -- reports the new
+  // flat 7-option pill selection (including the "No Concern" catch-all);
+  // the retired Reviewed/Concern-Identified status and the legacy
+  // `oxygenSafetyItems` checklist are still reported if a chart saved
+  // before this redesign has them set and nothing current is selected.
   {
     key: "oxygenSafety",
     label: "Oxygen Safety",
-    sourceFieldKeys: ["oxygenSafetyStatus", "oxygenSafetyConcerns", "oxygenSafetyItems", "oxygenInUse", "oxygenSafetyReviewed"],
+    sourceFieldKeys: ["oxygenSafetyConcerns", "oxygenSafetyStatus", "oxygenSafetyItems", "oxygenInUse", "oxygenSafetyReviewed"],
     check: () => true,
     summarize: (d) => {
       if (!d.oxygenInUse) return "Not Applicable — No Oxygen in Use";
-      if (d.oxygenSafetyStatus === "Concern Identified") {
-        const concerns = d.oxygenSafetyConcerns || [];
-        return concerns.length > 0 ? `Concern Identified: ${concerns.join(", ")}` : "Concern Identified";
-      }
-      if (d.oxygenSafetyStatus) return d.oxygenSafetyStatus;
+      const concerns = (d.oxygenSafetyConcerns || []).filter((c) => OXYGEN_SAFETY_CONCERN_OPTIONS.includes(c));
+      if (concerns.length > 0) return concerns.join(", ");
+      if (d.oxygenSafetyStatus) return `${d.oxygenSafetyStatus} (legacy)`;
       const items = d.oxygenSafetyItems || [];
       return items.length > 0 ? `Previously Reviewed: ${items.join(", ")}` : "Oxygen in Use — Safety Review Pending";
     },
@@ -27481,6 +27693,15 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
       ...data,
       siteOfService: fullFormData?.demographics?.livingSituation?.siteOfService || "",
       pcgAssessed: Boolean(fullFormData?.demographics?.pcg?.assessed && fullFormData?.demographics?.pcg?.name),
+      // PRODUCT OWNER DIRECTIVE "Replace the Inline Safety Page With Four
+      // Guided Assessments" -- Oxygen Safety's completion/"Not
+      // Applicable" determination must use the SAME authoritative
+      // in-use source OxygenSafetyCard already reads
+      // (`respiratory.oxygenTherapy.inUse`, legacy `safety.oxygenInUse`
+      // fallback), not the legacy field alone -- fixes a pre-existing
+      // inconsistency where this coverage summary could disagree with
+      // the card it describes.
+      oxygenInUse: fullFormData?.respiratory?.oxygenTherapy?.inUse ?? data.oxygenInUse,
     });
     return coverage.length > 0 ? (
       <DocumentationCoverage
@@ -33813,6 +34034,36 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
     );
   };
 
+  // "Replace the Inline Safety Page With Four Guided Assessments" (final
+  // directive). Mirrors renderPainStepCards/renderDiagnosisStepCards
+  // above -- renders only a named subset of SECTION_CONFIGS.safety's
+  // cards through the SAME renderGenericSection the rest of the app
+  // uses (identical fields, paths, HOPE mappings, validation, and
+  // update() autosave contract). Lets SafetyAssessmentOverview show
+  // focused Edit Sheets (Environmental Safety; Fall Risk / Morse Fall
+  // Scale; Oxygen Safety; Disaster Triage) instead of the entire legacy
+  // Safety card grid (12 cards) rendered inline at once.
+  const renderSafetyStepCards = (cardTitles) => {
+    const safetyConfig = SECTION_CONFIGS.safety;
+    const filteredConfig = { ...safetyConfig, cards: safetyConfig.cards.filter((c) => cardTitles.includes(c.title)) };
+    return renderGenericSection(
+      "safety",
+      formData.safety,
+      updateField,
+      filteredConfig,
+      formData.demographics,
+      formData,
+      COLORS,
+      styles,
+      patientId,
+      assessmentId,
+      locked,
+      true,
+      onNavigateToSection,
+      assessmentUiProfile,
+    );
+  };
+
   // ── Body Systems screen (pilot-only) ──────────────────────────────
   // Purely mechanical "is anything here documented" scan used only to
   // badge a body system Reviewed/Not Started in the compact accordion
@@ -34175,6 +34426,23 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
           // LCD Eligibility verification card).
           diagnosesData={formData.diagnoses}
           renderDiagnosisStepCards={renderDiagnosisStepCards}
+          // "Replace the Inline Safety Page With Four Guided
+          // Assessments" (final directive) -- Safety & Clinical Risk's
+          // new compact Overview (SafetyAssessmentOverview, 4 cards:
+          // Environmental Safety, Morse Fall Scale, Oxygen Safety,
+          // Disaster Triage) is a read-only projection of state already
+          // owned by the Safety module; field entry still happens
+          // exclusively through renderSafetyStepCards (Edit Sheets),
+          // the same `renderGenericSection` used everywhere else.
+          safetyData={formData.safety}
+          renderSafetyStepCards={renderSafetyStepCards}
+          // Site of Service (HOPE A0215, `isFacility` branch) and the
+          // authoritative oxygen-in-use flag (Respiratory module) are
+          // the only two cross-module values the Safety summaries need
+          // -- passed explicitly (not the whole formData object) to
+          // match this file's existing narrow-prop convention.
+          safetySiteOfService={formData.demographics?.livingSituation?.siteOfService || ""}
+          safetyOxygenInUse={formData.respiratory?.oxygenTherapy?.inUse}
           // Lets Evidence & Intake's Administrative Demographics section
           // (Language/Interpreter/Ethnicity/Race/Living Arrangement/
           // Availability of Assistance) write directly back into RNICA's
