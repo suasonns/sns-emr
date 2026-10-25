@@ -63,7 +63,19 @@ VALID_PRIORITIES = {"ROUTINE", "URGENT", "STAT"}
 # Disciplines a structured visit-frequency OTHER order can specify. CHHA is
 # the home-health-aide discipline (distinct from LVN/LPN); SC/MSW map to the
 # same aliasing used by form_resolution_service.py.
-VALID_VISIT_FREQUENCY_DISCIPLINES = {"RN", "LVN", "LPN", "CHHA", "MSW", "SC"}
+#
+# SN ("Skilled Nursing") is the single authoritative orderable nursing
+# discipline per the RNICA Orders & POC "SN as primary orderable nursing
+# discipline" directive -- it was already referenced in this function's own
+# supersession-comment example ("SN 2x/week") but missing from this set
+# until now. RN and LVN remain valid values here ONLY for legacy/historical
+# records created before that directive and for reconciliation display
+# (RNICA.jsx "Historical Nursing Allocation") -- they must never be
+# submitted as a *new*, competing nursing-frequency order alongside an
+# active SN order. That contradiction-prevention check belongs at the
+# RNICA Orders & POC save call site, not here; this set only controls
+# which raw string values are structurally valid.
+VALID_VISIT_FREQUENCY_DISCIPLINES = {"SN", "RN", "LVN", "LPN", "CHHA", "MSW", "SC"}
 
 # Roles that may independently verify/enter a clinically-complete order
 # without a separate review checkpoint (a real prescriber authenticating
