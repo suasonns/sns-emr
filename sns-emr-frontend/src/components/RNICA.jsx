@@ -388,35 +388,6 @@ const DEFAULT_EDUCATION_TOPICS = [
   "Signs and symptoms of approaching death", "Grief and bereavement resources",
 ];
 
-// Every discipline that may need an ordered visit frequency — not just the
-// core hospice team. PT/OT/ST, dietitian, podiatry, chaplain/volunteer, etc.
-// can all be added as-needed via the "+ Add Discipline" control below; this
-// list is the full picklist, not a fixed set of rows.
-const VISIT_FREQUENCY_DISCIPLINE_OPTIONS = [
-  { value: "RN", label: "RN — Registered Nurse" },
-  { value: "RN-SUP", label: "RN — Supervisory Visit" },
-  { value: "LVN", label: "LVN/LPN — Licensed Vocational/Practical Nurse" },
-  { value: "HA", label: "HA — Home Health Aide" },
-  { value: "SC", label: "SC — Spiritual Counselor / Chaplain" },
-  { value: "MSW", label: "MSW — Medical Social Worker" },
-  { value: "BSW", label: "BSW — Bachelor Social Worker" },
-  { value: "LCSW", label: "LCSW — Licensed Clinical Social Worker" },
-  { value: "LSW", label: "LSW — Licensed Social Worker" },
-  { value: "VOL", label: "VOL — Volunteer" },
-  { value: "MD", label: "MD — Physician" },
-  { value: "DO", label: "DO — Osteopathic Physician" },
-  { value: "NP", label: "NP — Nurse Practitioner" },
-  { value: "SN", label: "SN — Skilled Nursing" },
-  { value: "PT", label: "PT — Physical Therapist" },
-  { value: "OT", label: "OT — Occupational Therapist" },
-  { value: "ST", label: "ST — Speech Therapist" },
-  { value: "Dietitian", label: "Dietitian" },
-  { value: "Podiatry", label: "Podiatry" },
-  { value: "Pharm.D", label: "Pharm.D — Pharmacist" },
-  { value: "BC", label: "BC — Bereavement Coordinator" },
-  { value: "ADMIN", label: "Administrative Visit" },
-];
-
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
 // Redesign Revision" -- "Do not restrict users to fixed pills. Hospice
 // scheduling is more complex than weekly recurring frequencies." Adds
@@ -477,6 +448,21 @@ const VISIT_FREQUENCY_PERIOD_OPTIONS = [
 // only reachable via the free-form "Other Disciplines" picker).
 // `shortLabel` is unchanged for MD/NP so existing summary chips ("MD:
 // PRN") keep reading the same.
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Redesign
+// Rejected -- One Unified Table" -- "The HospiceMD reference was
+// provided because the workflow is simpler, not because the visual
+// appearance should be copied" + "There is only one visible source of
+// truth for service frequency." Adds "Other Approved Service" ("OTHER")
+// as the 15th canonical, independently-orderable service -- the exact
+// catch-all the directive's Add Row list names for any approved service
+// not already on this list (its displayed name is row-level, via
+// `customLabel`, since "Other Approved Service" alone isn't specific
+// enough to chart). This closes the free-form "Other Disciplines" row
+// grid entirely: RN/LVN/MSW/LCSW/BSW/Chaplain-only/legacy stray
+// discipline codes are never rendered as a competing service row again
+// (no data loss -- any such row already saved on a record stays in
+// form_data.visitFrequency untouched, it's simply no longer surfaced as
+// a second source of truth anywhere in this UI).
 const CANONICAL_VISIT_DISCIPLINES = [
   { code: "SN", label: "Skilled Nursing", shortLabel: "SN" },
   { code: "HA", label: "Home Health Aide", shortLabel: "HA" },
@@ -492,6 +478,7 @@ const CANONICAL_VISIT_DISCIPLINES = [
   { code: "ADMIN", label: "Administrative Visit", shortLabel: "Admin Visit" },
   { code: "RN-SUP", label: "RN Supervisory Visit", shortLabel: "RN Supervisor" },
   { code: "DIET", label: "Dietitian", shortLabel: "Dietitian" },
+  { code: "OTHER", label: "Other Approved Service", shortLabel: "Other" },
 ];
 
 // Options for the SN row's "Expected Provider Mix" -- staffing-only, not
@@ -512,19 +499,21 @@ const SPIRITUAL_COUNSELING_PROVIDER_TYPE_OPTIONS = ["Chaplain", "Clergy", "Volun
 // screen space.
 export const DEFAULT_VISIT_DISCIPLINE_CODES = ["SN", "HA", "SW", "SC", "RN-SUP"];
 // "DIET" (Dietitian) added per the "Orders & POC Frequency Screen
-// Field-Test Readiness" directive's "Add Service" modal list.
-export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN", "DIET"];
+// Field-Test Readiness" directive's "Add Service" modal list. "OTHER"
+// (Other Approved Service) added per "Orders & POC Frequency Redesign
+// Rejected -- One Unified Table" as the catch-all for any approved
+// service not already named on this list -- it replaces the free-form
+// "Other Disciplines" row grid entirely, rather than sitting alongside it.
+export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN", "DIET", "OTHER"];
 
 // Default visit frequency rows for Admissions Order -- only the 5 always-
-// visible disciplines are pre-populated; every optional discipline is
-// added on demand (via its "+ <Discipline>" chip in
-// DisciplineFrequencyOfVisitCard) and any discipline beyond the 13
-// canonical ones (legacy RN/LVN/MSW/LCSW/BSW/Dietitian data, podiatry, an
-// upcoming F2F, etc.) is still added via the free-form "+ Add Other
-// Discipline" editor.
+// visible disciplines are pre-populated; every optional discipline (incl.
+// "Other Approved Service") is added on demand via the single "+ Add Row"
+// action in DisciplineFrequencyOfVisitCard -- there is no second,
+// free-form discipline editor anymore.
 const DEFAULT_VISIT_DISCIPLINES = DEFAULT_VISIT_DISCIPLINE_CODES.map((code) => ({
-  discipline: code, numberOfVisits: "", period: "", prn: false, specify: "",
-  providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "",
+  discipline: code, numberOfVisits: "", period: "", prn: false, specify: "", effectiveDate: "",
+  providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "", customLabel: "",
 }));
 
 // A row is "configured" once it carries ANY physician-ordered scheduling
@@ -553,27 +542,28 @@ export function formatVisitFrequencySummary(row = {}) {
   return "";
 }
 
-// Ordered list of every configured discipline's summary chip -- canonical
-// disciplines first (in the fixed display order above), then any extra/
-// legacy discipline rows (e.g. "SN") in the order they were added. Rows
-// with nothing configured are omitted so the top summary only ever shows
-// disciplines that actually have an order.
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Redesign
+// Rejected -- One Unified Table" -- "There is only one visible source of
+// truth for service frequency." Only the canonical disciplines (in their
+// fixed display order) are ever surfaced here now -- a non-canonical/
+// legacy discipline code (pre-consolidation "RN"/"LVN"/"MSW" data, etc.)
+// is intentionally NOT surfaced in this summary (or anywhere else in the
+// UI) even if still present in the underlying `rows` array, so it can
+// never again read as a second, competing service frequency alongside
+// its canonical replacement (e.g. SN). Rows with nothing configured are
+// omitted so the top summary only ever shows disciplines that actually
+// have an order.
 export function getConfiguredVisitFrequencySummaries(rows = []) {
   const list = Array.isArray(rows) ? rows : [];
   const findRow = (code) => list.find((r) => r.discipline === code);
-  const canonical = CANONICAL_VISIT_DISCIPLINES
-    .map(({ code, shortLabel }) => ({ code, shortLabel, row: findRow(code) }))
-    .filter(({ row }) => row && isVisitFrequencyRowConfigured(row));
-  const extra = list
-    .filter((row) => row.discipline && !CANONICAL_VISIT_DISCIPLINES.some((d) => d.code === row.discipline) && isVisitFrequencyRowConfigured(row))
-    .map((row) => ({
-      code: row.discipline,
-      shortLabel: VISIT_FREQUENCY_DISCIPLINE_OPTIONS.find((o) => o.value === row.discipline)?.label || row.discipline,
-      row,
+  return CANONICAL_VISIT_DISCIPLINES
+    .map(({ code, label, shortLabel }) => ({ code, label, shortLabel, row: findRow(code) }))
+    .filter(({ row }) => row && isVisitFrequencyRowConfigured(row))
+    .map(({ code, label, shortLabel, row }) => ({
+      code,
+      shortLabel: code === "OTHER" ? ((row.customLabel || "").trim() || label) : shortLabel,
+      summary: formatVisitFrequencySummary(row),
     }));
-  return [...canonical, ...extra].map(({ code, shortLabel, row }) => ({
-    code, shortLabel, summary: formatVisitFrequencySummary(row),
-  }));
 }
 
 // PRODUCT OWNER DIRECTIVE (2026-10-25) Section 8 "Plan of Care Review" --
@@ -11315,46 +11305,44 @@ function BodySystemPOCControls({ assessmentId, sectionKey, cardTitle, styles, CO
 
 // SECTION 5B (Admissions Order) — Discipline Frequency of Visit.
 //
-// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
-// Redesign Revision" (round 2) + "SN As Primary Orderable Nursing
-// Discipline" -- summary-first/details-second/exceptions-last (the
-// Infection pattern's actual value, "fast comprehension", NOT
-// "everything becomes pills"): every discipline renders as one summary
-// line (Discipline + its formatted frequency, e.g. "SN  2/week + PRN")
-// with Edit/Remove actions; clicking Edit expands ONLY that one row
-// ("Only the selected discipline expands"). The 5 DEFAULT disciplines
-// (SN/HA/Social Work/Spiritual Counseling/RN Supervisory) always render
-// a summary line, even blank ("Not yet ordered"); the 8 OPTIONAL
-// disciplines (Volunteer/PT/OT/ST/NP/MD/Bereavement/Administrative
-// Visit) aren't shown until added via their "+ <Discipline>" chip. SN is
-// "the physician order" for nursing; RN/LVN are staffing-only sub-fields
-// on the SN row (Expected Provider Mix), never separate frequency
-// orders -- "There must be one authoritative nursing frequency order."
-// Social Work (MSW/LCSW/BSW) and Spiritual Counseling (Chaplain/Clergy/
-// Volunteer Spiritual Support) are likewise one order each plus a
-// Provider Type. Any discipline beyond the canonical 13 (legacy RN/LVN/
-// MSW/LCSW/BSW/Dietitian data, podiatry, Pharm.D, an upcoming F2F, etc.)
-// is still handled by the original free-form "Other Disciplines" row-
-// grid editor, unchanged.
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Redesign
+// Rejected -- One Unified Table" -- rejects the prior two-workflow design
+// ("multiple editing locations and multiple apparent sources of truth":
+// a card list for the 14 canonical disciplines PLUS a separate free-form
+// "Other Disciplines" row grid for anything else, including legacy RN/
+// LVN/MSW/LCSW/BSW rows that were never really separate orders). "The
+// HospiceMD reference was provided because the workflow is simpler, not
+// because the visual appearance should be copied": like HospiceMD's
+// "History of Frequency Of Visit" screen, every service is ONE ROW in
+// ONE table (Service / Frequency / Effective Date / Instructions /
+// Actions) -- unlike HospiceMD, editing happens inline in that same row
+// rather than navigating to a separate page. There is exactly one "+ Add
+// Row" action for adding any of the 10 optional services (including the
+// new "Other Approved Service" catch-all), and RN/LVN coverage (on SN)
+// and Social Work/Spiritual Counseling credentials (Provider Type) are
+// staffing sub-fields nested inside their one service row, never a
+// second row/table -- "There is only one visible source of truth for
+// service frequency." A pre-consolidation legacy discipline code (bare
+// "RN"/"LVN"/"MSW"/etc. rows some older records still carry in
+// form_data.visitFrequency) is simply not rendered here at all anymore
+// (no second editor to render it in) -- the data isn't deleted, it's
+// just no longer a second, competing source of truth.
 function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
   const list = Array.isArray(rows) ? rows : [];
   const [expandedCode, setExpandedCode] = useState(null);
-  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Screen
-  // Field-Test Readiness" -- "Do not display editing controls for every
-  // discipline at once" applies to History the same way it applies to
-  // Edit: only one row's History panel is open at a time, and opening a
-  // row's History collapses any other row's open History panel.
+  // "Do not display editing controls for every discipline at once" --
+  // only one row's History panel is open at a time, and opening one
+  // row's History (or Edit) collapses any other row's open panel.
   const [historyCode, setHistoryCode] = useState(null);
-  // Backing state for the "Add Service" picker -- replaces the
-  // permanently-visible "+ <Discipline>" chip collection with a list
-  // that's only on screen while actively choosing a service to add.
-  const [addServiceOpen, setAddServiceOpen] = useState(false);
+  // Backing state for the single "+ Add Row" action -- an inline Service
+  // picker that lives in the last table row, never a separate screen.
+  const [addRowOpen, setAddRowOpen] = useState(false);
 
   const findRowIndex = (code) => list.findIndex((r) => r.discipline === code);
 
   const blankCanonicalRow = (code, patch = {}) => ({
-    discipline: code, numberOfVisits: "", period: "", prn: false, specify: "",
-    providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "", ...patch,
+    discipline: code, numberOfVisits: "", period: "", prn: false, specify: "", effectiveDate: "",
+    providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "", customLabel: "", ...patch,
   });
 
   const setCanonicalField = (code, patch) => {
@@ -11363,14 +11351,14 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
     else onChange([...list, blankCanonicalRow(code, patch)]);
   };
 
-  // A DEFAULT discipline is never actually removed from the form (it's
+  // A DEFAULT discipline is never actually removed from the table (it's
   // one of the 5 core hospice IDG disciplines expected on essentially
   // every admission) -- "Remove" just clears its charted frequency back
   // to blank. An OPTIONAL discipline was only ever added on demand, so
-  // "Remove" takes it out of the list entirely, reverting to "not
-  // added" (its "+ <Discipline>" chip reappears).
+  // "Remove" takes it out of the list entirely, reverting to "not added".
   const clearDefaultRow = (code) => setCanonicalField(code, {
-    numberOfVisits: "", period: "", prn: false, specify: "", providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "",
+    numberOfVisits: "", period: "", prn: false, specify: "", effectiveDate: "",
+    providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "", customLabel: "",
   });
   const addOptionalDiscipline = (code) => {
     if (findRowIndex(code) < 0) onChange([...list, blankCanonicalRow(code)]);
@@ -11389,315 +11377,270 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
   const addedOptionalCodes = OPTIONAL_VISIT_DISCIPLINE_CODES.filter((code) => findRowIndex(code) >= 0);
   const availableOptionalCodes = OPTIONAL_VISIT_DISCIPLINE_CODES.filter((code) => findRowIndex(code) < 0);
 
-  // One summary-first row: collapsed shows "DISCIPLINE  <frequency
-  // summary, or 'Not yet ordered'>  [Edit] [Remove]"; expanded adds the
-  // structured Frequency/Period/PRN/Frequency Notes editor below it.
+  const cellStyle = { padding: "8px 10px", verticalAlign: "top", borderTop: `1px solid ${COLORS.border}` };
+  const headCellStyle = {
+    padding: "6px 10px", textAlign: "left", fontSize: 10.5, fontWeight: 800, letterSpacing: 0.4,
+    color: COLORS.gray, textTransform: "uppercase", borderBottom: `1px solid ${COLORS.border}`,
+  };
+
+  // One row per service -- collapsed shows plain-text Frequency/
+  // Effective Date/Instructions; Edit swaps those three cells for inline
+  // inputs in the SAME row/table ("without leaving the table"). SN/SW/SC
+  // add one extra full-width sub-row beneath, only while expanded, for
+  // their staffing-only Provider Mix/Provider Type sub-fields.
   const renderDisciplineRow = (code, { removable }) => {
     const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
     const idx = findRowIndex(code);
     const row = idx >= 0 ? list[idx] : null;
     const summary = formatVisitFrequencySummary(row || {});
     const expanded = expandedCode === code;
+    const serviceLabel = code === "OTHER" ? ((row?.customLabel || "").trim() || def?.label || code) : (def?.label || code);
     return (
-      <div key={code} style={{
-        borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, overflow: "hidden",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px" }}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
-            <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.dark, whiteSpace: "nowrap" }}>{def?.label || code}</span>
-            <span style={{ fontSize: 12, color: summary ? COLORS.dark : COLORS.gray, fontStyle: summary ? "normal" : "italic" }}>
-              {summary || "Not yet ordered"}
-            </span>
-          </div>
-          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
-            <button
-              type="button"
-              onClick={() => toggleExpanded(code)}
-              style={{
-                border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
-                fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
-              }}
-            >
-              {expanded ? "Collapse" : "Edit"}
-            </button>
-            {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC
-                Frequency Screen Field-Test Readiness" Section "EACH
-                SERVICE SHALL DISPLAY: Edit / History." Real order
-                history/versioning is Phase 2+ backend work (bridging to
-                `PhysicianOrder`'s append-only status-event audit trail)
-                -- this panel is intentionally honest about that rather
-                than fabricating audit data that doesn't exist yet. */}
-            <button
-              type="button"
-              onClick={() => toggleHistory(code)}
-              style={{
-                border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.dark, cursor: "pointer",
-                fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
-              }}
-            >
-              {historyCode === code ? "Hide History" : "History"}
-            </button>
-            <button
-              type="button"
-              onClick={() => (removable ? removeOptionalRow(code) : clearDefaultRow(code))}
-              title={removable ? "Remove this discipline" : "Clear this discipline's frequency"}
-              style={{
-                border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
-                fontSize: 11, fontWeight: 700, padding: "3px 4px",
-              }}
-            >
-              Remove
-            </button>
-          </div>
-        </div>
-        {historyCode === code && (
-          <div style={{ padding: "0 10px 10px", fontSize: 11.5, color: COLORS.gray, fontStyle: "italic" }}>
-            No order history is available yet. Order history and versioning will appear here once Orders & POC
-            persists to the backend's authoritative order ledger.
-          </div>
-        )}
-        {expanded && (
-          <div style={{
-            display: "grid", gridTemplateColumns: "1.1fr 1.5fr auto 1.8fr", gap: 8, alignItems: "end", padding: "0 10px 10px",
-          }}>
-            <FormInput
-              label="Frequency"
-              value={row?.numberOfVisits || ""}
-              onChange={(v) => setCanonicalField(code, { numberOfVisits: v })}
-              placeholder="e.g., 2, 2W4, 3W2"
-            />
-            <FormSelect
-              label="Period"
-              value={row?.period || ""}
-              onChange={(v) => setCanonicalField(code, { period: v })}
-              options={VISIT_FREQUENCY_PERIOD_OPTIONS}
-            />
-            <FormSegmented
-              label="PRN"
-              value={row?.prn ? "Yes" : "No"}
-              onChange={(v) => setCanonicalField(code, { prn: v === "Yes" })}
-              options={["Yes", "No"]}
-              compact
-            />
-            <FormInput
-              label="Frequency Notes"
-              value={row?.specify || ""}
-              onChange={(v) => setCanonicalField(code, { specify: v })}
-              placeholder="e.g., Within 24 hours of admission then PRN"
-            />
-          </div>
-        )}
-        {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "SN As Primary Orderable
-            Nursing Discipline" -- SN's frequency above is "the physician
-            order"; Provider Mix is purely a staffing plan underneath it
-            ("These fields support staffing. They do not create
-            additional frequency orders"), so RN/LVN coverage never
-            becomes a second nursing order. */}
-        {expanded && code === "SN" && (
-          <div style={{ padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
-            <FormSegmented
-              label="Expected Provider Mix"
-              value={row?.providerMix || ""}
-              onChange={(v) => setCanonicalField(code, { providerMix: v })}
-              options={VISIT_FREQUENCY_PROVIDER_MIX_OPTIONS}
-              compact
-            />
-            {row?.providerMix === "RN/LVN Combination" && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+      <React.Fragment key={code}>
+        <tr>
+          <td style={{ ...cellStyle, fontWeight: 800, color: COLORS.dark, whiteSpace: "nowrap" }}>
+            {code === "OTHER" && expanded ? (
+              <FormInput
+                label=""
+                value={row?.customLabel || ""}
+                onChange={(v) => setCanonicalField(code, { customLabel: v })}
+                placeholder="Name this approved service"
+              />
+            ) : serviceLabel}
+          </td>
+          <td style={cellStyle}>
+            {expanded ? (
+              <div style={{ display: "flex", gap: 6, alignItems: "end" }}>
                 <FormInput
-                  label="RN Coverage"
-                  value={row?.rnCoverage || ""}
-                  onChange={(v) => setCanonicalField(code, { rnCoverage: v })}
-                  placeholder="e.g., Every 14 days"
+                  label=""
+                  value={row?.numberOfVisits || ""}
+                  onChange={(v) => setCanonicalField(code, { numberOfVisits: v })}
+                  placeholder="e.g., 2, 2W4, 3W2"
                 />
-                <FormInput
-                  label="LVN Coverage"
-                  value={row?.lvnCoverage || ""}
-                  onChange={(v) => setCanonicalField(code, { lvnCoverage: v })}
-                  placeholder="e.g., Remaining scheduled SN visits"
+                <FormSelect
+                  label=""
+                  value={row?.period || ""}
+                  onChange={(v) => setCanonicalField(code, { period: v })}
+                  options={VISIT_FREQUENCY_PERIOD_OPTIONS}
+                />
+                <FormSegmented
+                  label="PRN"
+                  value={row?.prn ? "Yes" : "No"}
+                  onChange={(v) => setCanonicalField(code, { prn: v === "Yes" })}
+                  options={["Yes", "No"]}
+                  compact
                 />
               </div>
+            ) : (
+              <span style={{ color: summary ? COLORS.dark : COLORS.gray, fontStyle: summary ? "normal" : "italic" }}>
+                {summary || "Not yet ordered"}
+              </span>
             )}
-          </div>
+          </td>
+          <td style={cellStyle}>
+            {expanded ? (
+              <FormInput
+                label=""
+                type="date"
+                value={row?.effectiveDate || ""}
+                onChange={(v) => setCanonicalField(code, { effectiveDate: v })}
+              />
+            ) : (
+              <span style={{ color: row?.effectiveDate ? COLORS.dark : COLORS.gray, fontStyle: row?.effectiveDate ? "normal" : "italic" }}>
+                {row?.effectiveDate || "—"}
+              </span>
+            )}
+          </td>
+          <td style={cellStyle}>
+            {expanded ? (
+              <FormInput
+                label=""
+                value={row?.specify || ""}
+                onChange={(v) => setCanonicalField(code, { specify: v })}
+                placeholder="e.g., Within 24 hours of admission then PRN"
+              />
+            ) : (
+              <span style={{ color: row?.specify ? COLORS.dark : COLORS.gray, fontStyle: row?.specify ? "normal" : "italic" }}>
+                {row?.specify || "—"}
+              </span>
+            )}
+          </td>
+          <td style={{ ...cellStyle, whiteSpace: "nowrap" }}>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button
+                type="button"
+                onClick={() => toggleExpanded(code)}
+                style={{
+                  border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                  fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
+                }}
+              >
+                {expanded ? "Save" : "Edit"}
+              </button>
+              {/* Real order history/versioning is Phase 2+ backend work
+                  (bridging to `PhysicianOrder`'s append-only status-event
+                  audit trail) -- this panel is intentionally honest about
+                  that rather than fabricating audit data that doesn't
+                  exist yet. */}
+              <button
+                type="button"
+                onClick={() => toggleHistory(code)}
+                style={{
+                  border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.dark, cursor: "pointer",
+                  fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
+                }}
+              >
+                {historyCode === code ? "Hide History" : "History"}
+              </button>
+              <button
+                type="button"
+                onClick={() => (removable ? removeOptionalRow(code) : clearDefaultRow(code))}
+                title={removable ? "Discontinue this service" : "Clear this service's frequency"}
+                style={{
+                  border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
+                  fontSize: 11, fontWeight: 700, padding: "3px 4px",
+                }}
+              >
+                {removable ? "Discontinue" : "Clear"}
+              </button>
+            </div>
+          </td>
+        </tr>
+        {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "SN As Primary Orderable
+            Nursing Discipline" -- SN's Frequency cell above is "the
+            physician order"; Provider Mix is purely a staffing plan
+            nested in the SAME row ("These fields support staffing. They
+            do not create additional frequency orders"), so RN/LVN
+            coverage never becomes a second row/order. Social Work (SW)
+            and Spiritual Counseling (SC) likewise nest their Provider
+            Type (replacing separately-ordered MSW/LCSW/BSW/Chaplain-only
+            rows) in their own one row. */}
+        {expanded && (code === "SN" || code === "SW" || code === "SC") && (
+          <tr>
+            <td colSpan={5} style={{ ...cellStyle, borderTop: "none", paddingTop: 0 }}>
+              {code === "SN" && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  <FormSegmented
+                    label="Expected Provider Mix"
+                    value={row?.providerMix || ""}
+                    onChange={(v) => setCanonicalField(code, { providerMix: v })}
+                    options={VISIT_FREQUENCY_PROVIDER_MIX_OPTIONS}
+                    compact
+                  />
+                  {row?.providerMix === "RN/LVN Combination" && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                      <FormInput
+                        label="RN Coverage"
+                        value={row?.rnCoverage || ""}
+                        onChange={(v) => setCanonicalField(code, { rnCoverage: v })}
+                        placeholder="e.g., Every 14 days"
+                      />
+                      <FormInput
+                        label="LVN Coverage"
+                        value={row?.lvnCoverage || ""}
+                        onChange={(v) => setCanonicalField(code, { lvnCoverage: v })}
+                        placeholder="e.g., Remaining scheduled SN visits"
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+              {code === "SW" && (
+                <FormSegmented
+                  label="Provider Type"
+                  value={row?.providerType || ""}
+                  onChange={(v) => setCanonicalField(code, { providerType: v })}
+                  options={SOCIAL_WORK_PROVIDER_TYPE_OPTIONS}
+                  compact
+                />
+              )}
+              {code === "SC" && (
+                <FormSegmented
+                  label="Provider Type"
+                  value={row?.providerType || ""}
+                  onChange={(v) => setCanonicalField(code, { providerType: v })}
+                  options={SPIRITUAL_COUNSELING_PROVIDER_TYPE_OPTIONS}
+                  compact
+                />
+              )}
+            </td>
+          </tr>
         )}
-        {/* Social Work (SW) and Spiritual Counseling (SC) each
-            consolidate what used to be separately-ordered disciplines
-            (MSW/LCSW/BSW; Chaplain-only) into one order plus a Provider
-            Type, so a staffing-role change never creates a second order. */}
-        {expanded && code === "SW" && (
-          <div style={{ padding: "0 10px 10px" }}>
-            <FormSegmented
-              label="Provider Type"
-              value={row?.providerType || ""}
-              onChange={(v) => setCanonicalField(code, { providerType: v })}
-              options={SOCIAL_WORK_PROVIDER_TYPE_OPTIONS}
-              compact
-            />
-          </div>
+        {historyCode === code && (
+          <tr>
+            <td colSpan={5} style={{ ...cellStyle, borderTop: "none", paddingTop: 0, fontSize: 11.5, color: COLORS.gray, fontStyle: "italic" }}>
+              No order history is available yet. Order history and versioning will appear here once Orders & POC
+              persists to the backend's authoritative order ledger.
+            </td>
+          </tr>
         )}
-        {expanded && code === "SC" && (
-          <div style={{ padding: "0 10px 10px" }}>
-            <FormSegmented
-              label="Provider Type"
-              value={row?.providerType || ""}
-              onChange={(v) => setCanonicalField(code, { providerType: v })}
-              options={SPIRITUAL_COUNSELING_PROVIDER_TYPE_OPTIONS}
-              compact
-            />
-          </div>
-        )}
-      </div>
+      </React.Fragment>
     );
   };
 
-  // Rows for any discipline NOT one of the 13 canonical rows above -- same
-  // free-form row editor this card has always used (legacy RN/LVN/MSW/
-  // LCSW/BSW/Dietitian data from before the SN-consolidation directive,
-  // podiatry, Pharm.D, an upcoming F2F, etc.).
-  const extraRows = list
-    .map((row, idx) => ({ row, idx }))
-    .filter(({ row }) => !CANONICAL_VISIT_DISCIPLINES.some((d) => d.code === row.discipline));
-
-  const updateExtraRow = (idx, patch) => onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-  const removeExtraRow = (idx) => onChange(list.filter((_, i) => i !== idx));
-  const addExtraDiscipline = () => onChange([...list, { discipline: "", numberOfVisits: "", period: "", prn: false, specify: "" }]);
-
   return (
     <div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {DEFAULT_VISIT_DISCIPLINE_CODES.map((code) => renderDisciplineRow(code, { removable: false }))}
-      </div>
-
-      {addedOptionalCodes.length > 0 && (
-        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+      <table style={{ width: "100%", borderCollapse: "collapse" }}>
+        <thead>
+          <tr>
+            <th style={headCellStyle}>Service</th>
+            <th style={headCellStyle}>Frequency</th>
+            <th style={headCellStyle}>Effective Date</th>
+            <th style={headCellStyle}>Instructions</th>
+            <th style={headCellStyle}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {DEFAULT_VISIT_DISCIPLINE_CODES.map((code) => renderDisciplineRow(code, { removable: false }))}
           {addedOptionalCodes.map((code) => renderDisciplineRow(code, { removable: true }))}
-        </div>
-      )}
-
-      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency
-          Screen Field-Test Readiness" -- "REMOVE the visible Add
-          Discipline pill collection ... shall not appear permanently on
-          the screen. REPLACE WITH Add Service [a] Modal list." No
-          modal/dialog primitive exists elsewhere in this file, so this
-          is a single "+ Add Service" button that reveals the picker list
-          only while actively choosing -- it collapses immediately after
-          a selection (or on Cancel), so it is never permanently on
-          screen like the old chip row was. */}
-      {availableOptionalCodes.length > 0 && (
-        <div style={{ marginTop: 10 }}>
-          {!addServiceOpen ? (
-            <button
-              type="button"
-              onClick={() => setAddServiceOpen(true)}
-              style={{
-                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
-                border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
-              }}
-            >
-              + Add Service
-            </button>
-          ) : (
-            <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, background: COLORS.bg }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-                <label style={styles.label}>Add Service</label>
-                <button
-                  type="button"
-                  onClick={() => setAddServiceOpen(false)}
-                  style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 11, fontWeight: 700 }}
-                >
-                  Cancel
-                </button>
-              </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                {availableOptionalCodes.map((code) => {
-                  const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
-                  return (
+          {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency
+              Redesign Rejected -- One Unified Table" -- "Use one Add Row
+              action. The service is selected in that row." A single
+              inline row with a Service picker, appended to (and never
+              leaving) the same table -- not a separate modal/picker
+              panel floating outside it. */}
+          {availableOptionalCodes.length > 0 && (
+            <tr>
+              <td colSpan={5} style={{ ...cellStyle, borderTop: `1px solid ${COLORS.border}` }}>
+                {!addRowOpen ? (
+                  <button
+                    type="button"
+                    onClick={() => setAddRowOpen(true)}
+                    style={{
+                      fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
+                      border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                    }}
+                  >
+                    + Add Row
+                  </button>
+                ) : (
+                  <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
+                    <FormSelect
+                      label="Service"
+                      value=""
+                      onChange={(code) => {
+                        if (code) addOptionalDiscipline(code);
+                        setAddRowOpen(false);
+                      }}
+                      options={availableOptionalCodes.map((code) => {
+                        const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
+                        return { value: code, label: def?.label || code };
+                      })}
+                    />
                     <button
-                      key={code}
                       type="button"
-                      onClick={() => {
-                        addOptionalDiscipline(code);
-                        setAddServiceOpen(false);
-                      }}
-                      style={{
-                        textAlign: "left", fontSize: 12, fontWeight: 600, padding: "6px 8px", borderRadius: 5,
-                        border: "none", background: "transparent", color: COLORS.dark, cursor: "pointer",
-                      }}
+                      onClick={() => setAddRowOpen(false)}
+                      style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 11, fontWeight: 700, padding: "6px 4px" }}
                     >
-                      {def?.label || code}
+                      Cancel
                     </button>
-                  );
-                })}
-              </div>
-            </div>
+                  </div>
+                )}
+              </td>
+            </tr>
           )}
-        </div>
-      )}
-
-      {extraRows.length > 0 && (
-        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={styles.label}>Other Disciplines</label>
-          {extraRows.map(({ row, idx }) => (
-            <div key={idx} style={{
-              display: "grid", gridTemplateColumns: "1.3fr 0.9fr 1.3fr auto 1.6fr auto", gap: 8, alignItems: "end",
-              padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
-            }}>
-              <FormSelect
-                label="Discipline"
-                value={row.discipline}
-                onChange={(v) => updateExtraRow(idx, { discipline: v })}
-                options={VISIT_FREQUENCY_DISCIPLINE_OPTIONS}
-              />
-              <FormInput
-                label="Frequency"
-                value={row.numberOfVisits || ""}
-                onChange={(v) => updateExtraRow(idx, { numberOfVisits: v })}
-                placeholder="e.g., 2, 2W4, 3W2"
-              />
-              <FormSelect
-                label="Period"
-                value={row.period}
-                onChange={(v) => updateExtraRow(idx, { period: v })}
-                options={VISIT_FREQUENCY_PERIOD_OPTIONS}
-              />
-              <FormSegmented
-                label="PRN"
-                value={row.prn ? "Yes" : "No"}
-                onChange={(v) => updateExtraRow(idx, { prn: v === "Yes" })}
-                options={["Yes", "No"]}
-                compact
-              />
-              <FormInput
-                label="Frequency Notes"
-                value={row.specify || row.frequency || ""}
-                onChange={(v) => updateExtraRow(idx, { specify: v })}
-                placeholder="e.g., within 5 days of admission then RECERT and PRN"
-              />
-              <button
-                type="button"
-                onClick={() => removeExtraRow(idx)}
-                title="Remove this discipline"
-                style={{
-                  border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
-                  fontSize: 16, fontWeight: 700, height: 34, alignSelf: "end",
-                }}
-              >
-                ×
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={addExtraDiscipline}
-        style={{
-          marginTop: 10, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
-          border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
-        }}
-      >
-        + Add Other Discipline
-      </button>
+        </tbody>
+      </table>
     </div>
   );
 }
