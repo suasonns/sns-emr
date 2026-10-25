@@ -447,48 +447,73 @@ const VISIT_FREQUENCY_PERIOD_OPTIONS = [
 // Pharm.D, an upcoming F2F, etc.) is still added/removed via "+ Add
 // Discipline", using the original free-form row-grid editor -- exactly
 // as it worked before.
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "SN As Primary Orderable Nursing
+// Discipline" -- "SN SHALL BE THE PRIMARY ORDERABLE NURSING DISCIPLINE.
+// RN and LVN frequencies shall not function as separate ordered nursing
+// disciplines" (three simultaneous nursing frequencies -- SN, RN, LVN --
+// made the physician order ambiguous). Consolidates the orderable
+// disciplines down to the 13 explicitly named under "KEEP AS ORDERABLE
+// DISCIPLINES": SN replaces RN+LVN as the one authoritative nursing
+// frequency order (RN/LVN become staffing-only sub-fields on the SN row
+// -- see `renderDisciplineRow`'s Expected Provider Mix block -- "These
+// fields support staffing. They do not create additional frequency
+// orders"); SW replaces MSW/LCSW/BSW as one Social Work order with a
+// Provider Type sub-field; SC is relabeled from "Spiritual Counselor /
+// Chaplain" to "Spiritual Counseling" with a Provider Type sub-field
+// (Chaplain/Clergy/Volunteer Spiritual Support). PT/OT/ST/NP/MD/
+// Bereavement/Administrative Visit/RN Supervisory Visit are unchanged --
+// "remain independent disciplines because they represent separate
+// ordered services." Dietitian/Nutrition is not in this directive's
+// closed "KEEP AS ORDERABLE DISCIPLINES" list (unlike the prior
+// directive's non-exhaustive "Optional Disciplines" list) -- rather
+// than deleting it outright, it's folded into the existing free-form
+// "Other Disciplines" picker below (same safety net RN/LVN/MSW/LCSW/BSW
+// now use), so it's still selectable, just no longer a fixed row.
 const CANONICAL_VISIT_DISCIPLINES = [
-  { code: "RN", label: "RN Visits", shortLabel: "RN" },
-  { code: "LVN", label: "LVN Visits", shortLabel: "LVN" },
+  { code: "SN", label: "Skilled Nursing", shortLabel: "SN" },
   { code: "HA", label: "Home Health Aide", shortLabel: "HA" },
-  { code: "MD", label: "MD Visits", shortLabel: "MD" },
-  { code: "NP", label: "Nurse Practitioner (NP)", shortLabel: "NP" },
-  { code: "MSW", label: "Medical Social Worker (MSW)", shortLabel: "MSW" },
-  { code: "LCSW", label: "Licensed Clinical Social Worker (LCSW)", shortLabel: "LCSW" },
-  { code: "BSW", label: "Bachelor Social Worker (BSW)", shortLabel: "BSW" },
-  { code: "SC", label: "Spiritual Counselor / Chaplain", shortLabel: "Chaplain" },
+  { code: "SW", label: "Social Work", shortLabel: "Social Work" },
+  { code: "SC", label: "Spiritual Counseling", shortLabel: "Spiritual Counseling" },
   { code: "VOL", label: "Volunteer", shortLabel: "Volunteer" },
   { code: "PT", label: "Physical Therapy (PT)", shortLabel: "PT" },
   { code: "OT", label: "Occupational Therapy (OT)", shortLabel: "OT" },
   { code: "ST", label: "Speech Therapy (ST)", shortLabel: "ST" },
-  { code: "Dietitian", label: "Dietitian / Nutrition", shortLabel: "Dietitian" },
+  { code: "NP", label: "Nurse Practitioner (NP)", shortLabel: "NP" },
+  { code: "MD", label: "MD Visits", shortLabel: "MD" },
   { code: "BC", label: "Bereavement", shortLabel: "Bereavement" },
-  { code: "RN-SUP", label: "RN Supervisory Visit", shortLabel: "RN Supervisor" },
   { code: "ADMIN", label: "Administrative Visit", shortLabel: "Admin Visit" },
+  { code: "RN-SUP", label: "RN Supervisory Visit", shortLabel: "RN Supervisor" },
 ];
+
+// Options for the SN row's "Expected Provider Mix" -- staffing-only, not
+// a frequency order ("They do not create additional frequency orders").
+const VISIT_FREQUENCY_PROVIDER_MIX_OPTIONS = ["RN Only", "LVN Only", "RN/LVN Combination"];
+// Options for the SW row's Provider Type (replaces separate MSW/LCSW/BSW orders).
+const SOCIAL_WORK_PROVIDER_TYPE_OPTIONS = ["MSW", "LCSW", "BSW"];
+// Options for the SC row's Provider Type (replaces the narrower "Chaplain"-only label).
+const SPIRITUAL_COUNSELING_PROVIDER_TYPE_OPTIONS = ["Chaplain", "Clergy", "Volunteer Spiritual Support"];
 
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
 // Redesign Revision" (round 2) -- "Do not display every discipline in
 // expanded edit mode by default ... requires excessive scrolling."
-// Splits the 17 canonical disciplines into the 6 that are always visible
+// Splits the 13 canonical disciplines into the 5 that are always visible
 // (the core hospice IDG team ordered on essentially every admission) and
-// the remaining 11 that are "Display ... only when added" -- an unused
+// the remaining 8 that are "Display ... only when added" -- an unused
 // optional discipline (NP, MD, PT, etc.) no longer occupies permanent
-// screen space. Dietitian/Nutrition isn't named in this directive's
-// "OPTIONAL DISCIPLINES" list, but the prior directive explicitly
-// required it ("even if infrequently used") -- folded into optional
-// rather than silently dropped, preserving that earlier approved work.
-export const DEFAULT_VISIT_DISCIPLINE_CODES = ["RN", "LVN", "HA", "MSW", "SC", "RN-SUP"];
-export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["NP", "MD", "LCSW", "BSW", "PT", "OT", "ST", "VOL", "Dietitian", "BC", "ADMIN"];
+// screen space.
+export const DEFAULT_VISIT_DISCIPLINE_CODES = ["SN", "HA", "SW", "SC", "RN-SUP"];
+export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN"];
 
-// Default visit frequency rows for Admissions Order -- only the 6 always-
+// Default visit frequency rows for Admissions Order -- only the 5 always-
 // visible disciplines are pre-populated; every optional discipline is
 // added on demand (via its "+ <Discipline>" chip in
-// DisciplineFrequencyOfVisitCard) and any discipline beyond the 17
-// canonical ones (legacy "SN" data, podiatry, an upcoming F2F, etc.) is
-// still added via the free-form "+ Add Discipline" editor.
+// DisciplineFrequencyOfVisitCard) and any discipline beyond the 13
+// canonical ones (legacy RN/LVN/MSW/LCSW/BSW/Dietitian data, podiatry, an
+// upcoming F2F, etc.) is still added via the free-form "+ Add Other
+// Discipline" editor.
 const DEFAULT_VISIT_DISCIPLINES = DEFAULT_VISIT_DISCIPLINE_CODES.map((code) => ({
   discipline: code, numberOfVisits: "", period: "", prn: false, specify: "",
+  providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "",
 }));
 
 // A row is "configured" once it carries ANY physician-ordered scheduling
@@ -11280,22 +11305,24 @@ function BodySystemPOCControls({ assessmentId, sectionKey, cardTitle, styles, CO
 // SECTION 5B (Admissions Order) — Discipline Frequency of Visit.
 //
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
-// Redesign Revision" (round 2) -- "Do not display every discipline in
-// expanded edit mode by default ... requires excessive scrolling and
-// visual scanning." Summary-first / details-second / exceptions-last --
-// the Infection pattern's actual value ("fast comprehension", NOT
-// "everything becomes pills"). Every discipline that's in play renders
-// as one summary line (Discipline + its formatted frequency, e.g. "RN
-// 2/week + PRN") with Edit/Remove actions; clicking Edit expands ONLY
-// that one row into the structured Frequency/Period/PRN/Frequency Notes
-// editor -- "Only the selected discipline expands." The 6 DEFAULT
-// disciplines (RN/LVN/HA/MSW/Chaplain/RN Supervisory) always render a
-// summary line, even with nothing charted yet ("Not yet ordered"); the
-// 11 OPTIONAL disciplines (NP/MD/LCSW/BSW/PT/OT/ST/Volunteer/Dietitian/
-// Bereavement/Administrative Visit) aren't shown at all until added via
-// their "+ <Discipline>" chip -- "Display optional disciplines only
-// when added." Any discipline beyond the canonical 17 (legacy "SN" data
-// from before this revision, podiatry, Pharm.D, an upcoming F2F, etc.)
+// Redesign Revision" (round 2) + "SN As Primary Orderable Nursing
+// Discipline" -- summary-first/details-second/exceptions-last (the
+// Infection pattern's actual value, "fast comprehension", NOT
+// "everything becomes pills"): every discipline renders as one summary
+// line (Discipline + its formatted frequency, e.g. "SN  2/week + PRN")
+// with Edit/Remove actions; clicking Edit expands ONLY that one row
+// ("Only the selected discipline expands"). The 5 DEFAULT disciplines
+// (SN/HA/Social Work/Spiritual Counseling/RN Supervisory) always render
+// a summary line, even blank ("Not yet ordered"); the 8 OPTIONAL
+// disciplines (Volunteer/PT/OT/ST/NP/MD/Bereavement/Administrative
+// Visit) aren't shown until added via their "+ <Discipline>" chip. SN is
+// "the physician order" for nursing; RN/LVN are staffing-only sub-fields
+// on the SN row (Expected Provider Mix), never separate frequency
+// orders -- "There must be one authoritative nursing frequency order."
+// Social Work (MSW/LCSW/BSW) and Spiritual Counseling (Chaplain/Clergy/
+// Volunteer Spiritual Support) are likewise one order each plus a
+// Provider Type. Any discipline beyond the canonical 13 (legacy RN/LVN/
+// MSW/LCSW/BSW/Dietitian data, podiatry, Pharm.D, an upcoming F2F, etc.)
 // is still handled by the original free-form "Other Disciplines" row-
 // grid editor, unchanged.
 function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
@@ -11304,21 +11331,28 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
 
   const findRowIndex = (code) => list.findIndex((r) => r.discipline === code);
 
+  const blankCanonicalRow = (code, patch = {}) => ({
+    discipline: code, numberOfVisits: "", period: "", prn: false, specify: "",
+    providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "", ...patch,
+  });
+
   const setCanonicalField = (code, patch) => {
     const idx = findRowIndex(code);
     if (idx >= 0) onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-    else onChange([...list, { discipline: code, numberOfVisits: "", period: "", prn: false, specify: "", ...patch }]);
+    else onChange([...list, blankCanonicalRow(code, patch)]);
   };
 
   // A DEFAULT discipline is never actually removed from the form (it's
-  // one of the 6 core hospice IDG disciplines expected on essentially
+  // one of the 5 core hospice IDG disciplines expected on essentially
   // every admission) -- "Remove" just clears its charted frequency back
   // to blank. An OPTIONAL discipline was only ever added on demand, so
   // "Remove" takes it out of the list entirely, reverting to "not
   // added" (its "+ <Discipline>" chip reappears).
-  const clearDefaultRow = (code) => setCanonicalField(code, { numberOfVisits: "", period: "", prn: false, specify: "" });
+  const clearDefaultRow = (code) => setCanonicalField(code, {
+    numberOfVisits: "", period: "", prn: false, specify: "", providerMix: "", rnCoverage: "", lvnCoverage: "", providerType: "",
+  });
   const addOptionalDiscipline = (code) => {
-    if (findRowIndex(code) < 0) onChange([...list, { discipline: code, numberOfVisits: "", period: "", prn: false, specify: "" }]);
+    if (findRowIndex(code) < 0) onChange([...list, blankCanonicalRow(code)]);
     setExpandedCode(code);
   };
   const removeOptionalRow = (code) => {
@@ -11407,14 +11441,73 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
             />
           </div>
         )}
+        {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "SN As Primary Orderable
+            Nursing Discipline" -- SN's frequency above is "the physician
+            order"; Provider Mix is purely a staffing plan underneath it
+            ("These fields support staffing. They do not create
+            additional frequency orders"), so RN/LVN coverage never
+            becomes a second nursing order. */}
+        {expanded && code === "SN" && (
+          <div style={{ padding: "0 10px 10px", display: "flex", flexDirection: "column", gap: 8 }}>
+            <FormSegmented
+              label="Expected Provider Mix"
+              value={row?.providerMix || ""}
+              onChange={(v) => setCanonicalField(code, { providerMix: v })}
+              options={VISIT_FREQUENCY_PROVIDER_MIX_OPTIONS}
+              compact
+            />
+            {row?.providerMix === "RN/LVN Combination" && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <FormInput
+                  label="RN Coverage"
+                  value={row?.rnCoverage || ""}
+                  onChange={(v) => setCanonicalField(code, { rnCoverage: v })}
+                  placeholder="e.g., Every 14 days"
+                />
+                <FormInput
+                  label="LVN Coverage"
+                  value={row?.lvnCoverage || ""}
+                  onChange={(v) => setCanonicalField(code, { lvnCoverage: v })}
+                  placeholder="e.g., Remaining scheduled SN visits"
+                />
+              </div>
+            )}
+          </div>
+        )}
+        {/* Social Work (SW) and Spiritual Counseling (SC) each
+            consolidate what used to be separately-ordered disciplines
+            (MSW/LCSW/BSW; Chaplain-only) into one order plus a Provider
+            Type, so a staffing-role change never creates a second order. */}
+        {expanded && code === "SW" && (
+          <div style={{ padding: "0 10px 10px" }}>
+            <FormSegmented
+              label="Provider Type"
+              value={row?.providerType || ""}
+              onChange={(v) => setCanonicalField(code, { providerType: v })}
+              options={SOCIAL_WORK_PROVIDER_TYPE_OPTIONS}
+              compact
+            />
+          </div>
+        )}
+        {expanded && code === "SC" && (
+          <div style={{ padding: "0 10px 10px" }}>
+            <FormSegmented
+              label="Provider Type"
+              value={row?.providerType || ""}
+              onChange={(v) => setCanonicalField(code, { providerType: v })}
+              options={SPIRITUAL_COUNSELING_PROVIDER_TYPE_OPTIONS}
+              compact
+            />
+          </div>
+        )}
       </div>
     );
   };
 
-  // Rows for any discipline NOT one of the 17 canonical rows above -- same
-  // free-form row editor this card has always used (e.g. legacy "SN"
-  // data charted before this revision, podiatry, Pharm.D, an upcoming
-  // F2F, etc.).
+  // Rows for any discipline NOT one of the 13 canonical rows above -- same
+  // free-form row editor this card has always used (legacy RN/LVN/MSW/
+  // LCSW/BSW/Dietitian data from before the SN-consolidation directive,
+  // podiatry, Pharm.D, an upcoming F2F, etc.).
   const extraRows = list
     .map((row, idx) => ({ row, idx }))
     .filter(({ row }) => !CANONICAL_VISIT_DISCIPLINES.some((d) => d.code === row.discipline));
