@@ -7,6 +7,8 @@ import {
   computeOrdersPocDocumentationCoverage,
   formatVisitFrequencySummary,
   getConfiguredVisitFrequencySummaries,
+  DEFAULT_VISIT_DISCIPLINE_CODES,
+  OPTIONAL_VISIT_DISCIPLINE_CODES,
 } from "./RNICA.jsx";
 
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
@@ -138,6 +140,23 @@ describe("getConfiguredVisitFrequencySummaries", () => {
   it("returns an empty array when no discipline has been configured", () => {
     expect(getConfiguredVisitFrequencySummaries([])).toEqual([]);
     expect(getConfiguredVisitFrequencySummaries()).toEqual([]);
+  });
+});
+
+describe("DEFAULT_VISIT_DISCIPLINE_CODES / OPTIONAL_VISIT_DISCIPLINE_CODES", () => {
+  it("has exactly the 6 PO-named default disciplines, always rendered", () => {
+    expect(DEFAULT_VISIT_DISCIPLINE_CODES).toEqual(["RN", "LVN", "HA", "MSW", "SC", "RN-SUP"]);
+  });
+  it("has exactly the 10 PO-named optional disciplines plus Dietitian (folded in, not dropped, from the prior directive)", () => {
+    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toEqual(
+      expect.arrayContaining(["NP", "MD", "LCSW", "BSW", "PT", "OT", "ST", "VOL", "BC", "ADMIN", "Dietitian"])
+    );
+    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(11);
+  });
+  it("default and optional codes are disjoint and together cover all 17 canonical disciplines", () => {
+    const overlap = DEFAULT_VISIT_DISCIPLINE_CODES.filter((c) => OPTIONAL_VISIT_DISCIPLINE_CODES.includes(c));
+    expect(overlap).toEqual([]);
+    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(17);
   });
 });
 
