@@ -467,11 +467,27 @@ const CANONICAL_VISIT_DISCIPLINES = [
   { code: "ADMIN", label: "Administrative Visit", shortLabel: "Admin Visit" },
 ];
 
-// Default visit frequency rows for Admissions Order -- every canonical
-// discipline is pre-populated (empty) so each always renders its own
-// fixed row; any other discipline the patient needs is added on demand
-// via "+ Add Discipline" in DisciplineFrequencyOfVisitCard.
-const DEFAULT_VISIT_DISCIPLINES = CANONICAL_VISIT_DISCIPLINES.map(({ code }) => ({
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
+// Redesign Revision" (round 2) -- "Do not display every discipline in
+// expanded edit mode by default ... requires excessive scrolling."
+// Splits the 17 canonical disciplines into the 6 that are always visible
+// (the core hospice IDG team ordered on essentially every admission) and
+// the remaining 11 that are "Display ... only when added" -- an unused
+// optional discipline (NP, MD, PT, etc.) no longer occupies permanent
+// screen space. Dietitian/Nutrition isn't named in this directive's
+// "OPTIONAL DISCIPLINES" list, but the prior directive explicitly
+// required it ("even if infrequently used") -- folded into optional
+// rather than silently dropped, preserving that earlier approved work.
+export const DEFAULT_VISIT_DISCIPLINE_CODES = ["RN", "LVN", "HA", "MSW", "SC", "RN-SUP"];
+export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["NP", "MD", "LCSW", "BSW", "PT", "OT", "ST", "VOL", "Dietitian", "BC", "ADMIN"];
+
+// Default visit frequency rows for Admissions Order -- only the 6 always-
+// visible disciplines are pre-populated; every optional discipline is
+// added on demand (via its "+ <Discipline>" chip in
+// DisciplineFrequencyOfVisitCard) and any discipline beyond the 17
+// canonical ones (legacy "SN" data, podiatry, an upcoming F2F, etc.) is
+// still added via the free-form "+ Add Discipline" editor.
+const DEFAULT_VISIT_DISCIPLINES = DEFAULT_VISIT_DISCIPLINE_CODES.map((code) => ({
   discipline: code, numberOfVisits: "", period: "", prn: false, specify: "",
 }));
 
@@ -11264,25 +11280,27 @@ function BodySystemPOCControls({ assessmentId, sectionKey, cardTitle, styles, CO
 // SECTION 5B (Admissions Order) — Discipline Frequency of Visit.
 //
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
-// Redesign Revision" -- REVERSES the same-day "Orders & POC Still Does
-// Not Follow Infection Design" Section 3 pill row below (kept for
-// reference immediately below, now unused): "The issue was not rows.
-// The issue was poor discipline separation." Every one of the 17
-// `CANONICAL_VISIT_DISCIPLINES` (RN, LVN, RN Supervisory, and NP are now
-// fully independent of each other and of MD/HA, and PT/OT/ST/Dietitian/
-// Bereavement/Administrative Visit are no longer hidden) gets its own
-// always-visible structured row: a free-text Frequency field (so
-// hospice shorthand like "2W4"/"3W2"/"5W1" can be typed directly, not
-// forced into a fixed pill vocabulary), a Period select, a PRN Yes/No
-// toggle, and free-text Frequency Notes. The underlying `{discipline,
-// numberOfVisits, period, specify}` row schema only gains one additive
-// `prn` boolean -- nothing already charted is reinterpreted or lost. Any
-// discipline beyond the canonical 17 (legacy "SN" data from before this
-// revision, podiatry, Pharm.D, an upcoming F2F, etc.) is still
-// addable/removable via "+ Add Discipline", using the original row-grid
-// editor -- that affordance is preserved exactly as it worked before.
+// Redesign Revision" (round 2) -- "Do not display every discipline in
+// expanded edit mode by default ... requires excessive scrolling and
+// visual scanning." Summary-first / details-second / exceptions-last --
+// the Infection pattern's actual value ("fast comprehension", NOT
+// "everything becomes pills"). Every discipline that's in play renders
+// as one summary line (Discipline + its formatted frequency, e.g. "RN
+// 2/week + PRN") with Edit/Remove actions; clicking Edit expands ONLY
+// that one row into the structured Frequency/Period/PRN/Frequency Notes
+// editor -- "Only the selected discipline expands." The 6 DEFAULT
+// disciplines (RN/LVN/HA/MSW/Chaplain/RN Supervisory) always render a
+// summary line, even with nothing charted yet ("Not yet ordered"); the
+// 11 OPTIONAL disciplines (NP/MD/LCSW/BSW/PT/OT/ST/Volunteer/Dietitian/
+// Bereavement/Administrative Visit) aren't shown at all until added via
+// their "+ <Discipline>" chip -- "Display optional disciplines only
+// when added." Any discipline beyond the canonical 17 (legacy "SN" data
+// from before this revision, podiatry, Pharm.D, an upcoming F2F, etc.)
+// is still handled by the original free-form "Other Disciplines" row-
+// grid editor, unchanged.
 function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
   const list = Array.isArray(rows) ? rows : [];
+  const [expandedCode, setExpandedCode] = useState(null);
 
   const findRowIndex = (code) => list.findIndex((r) => r.discipline === code);
 
@@ -11290,6 +11308,107 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
     const idx = findRowIndex(code);
     if (idx >= 0) onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
     else onChange([...list, { discipline: code, numberOfVisits: "", period: "", prn: false, specify: "", ...patch }]);
+  };
+
+  // A DEFAULT discipline is never actually removed from the form (it's
+  // one of the 6 core hospice IDG disciplines expected on essentially
+  // every admission) -- "Remove" just clears its charted frequency back
+  // to blank. An OPTIONAL discipline was only ever added on demand, so
+  // "Remove" takes it out of the list entirely, reverting to "not
+  // added" (its "+ <Discipline>" chip reappears).
+  const clearDefaultRow = (code) => setCanonicalField(code, { numberOfVisits: "", period: "", prn: false, specify: "" });
+  const addOptionalDiscipline = (code) => {
+    if (findRowIndex(code) < 0) onChange([...list, { discipline: code, numberOfVisits: "", period: "", prn: false, specify: "" }]);
+    setExpandedCode(code);
+  };
+  const removeOptionalRow = (code) => {
+    const idx = findRowIndex(code);
+    if (idx >= 0) onChange(list.filter((_, i) => i !== idx));
+    if (expandedCode === code) setExpandedCode(null);
+  };
+
+  const toggleExpanded = (code) => setExpandedCode((cur) => (cur === code ? null : code));
+
+  const addedOptionalCodes = OPTIONAL_VISIT_DISCIPLINE_CODES.filter((code) => findRowIndex(code) >= 0);
+  const availableOptionalCodes = OPTIONAL_VISIT_DISCIPLINE_CODES.filter((code) => findRowIndex(code) < 0);
+
+  // One summary-first row: collapsed shows "DISCIPLINE  <frequency
+  // summary, or 'Not yet ordered'>  [Edit] [Remove]"; expanded adds the
+  // structured Frequency/Period/PRN/Frequency Notes editor below it.
+  const renderDisciplineRow = (code, { removable }) => {
+    const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
+    const idx = findRowIndex(code);
+    const row = idx >= 0 ? list[idx] : null;
+    const summary = formatVisitFrequencySummary(row || {});
+    const expanded = expandedCode === code;
+    return (
+      <div key={code} style={{
+        borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg, overflow: "hidden",
+      }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, padding: "8px 10px" }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 10, minWidth: 0 }}>
+            <span style={{ fontSize: 12, fontWeight: 800, color: COLORS.dark, whiteSpace: "nowrap" }}>{def?.label || code}</span>
+            <span style={{ fontSize: 12, color: summary ? COLORS.dark : COLORS.gray, fontStyle: summary ? "normal" : "italic" }}>
+              {summary || "Not yet ordered"}
+            </span>
+          </div>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button
+              type="button"
+              onClick={() => toggleExpanded(code)}
+              style={{
+                border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
+              }}
+            >
+              {expanded ? "Collapse" : "Edit"}
+            </button>
+            <button
+              type="button"
+              onClick={() => (removable ? removeOptionalRow(code) : clearDefaultRow(code))}
+              title={removable ? "Remove this discipline" : "Clear this discipline's frequency"}
+              style={{
+                border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
+                fontSize: 11, fontWeight: 700, padding: "3px 4px",
+              }}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+        {expanded && (
+          <div style={{
+            display: "grid", gridTemplateColumns: "1.1fr 1.5fr auto 1.8fr", gap: 8, alignItems: "end", padding: "0 10px 10px",
+          }}>
+            <FormInput
+              label="Frequency"
+              value={row?.numberOfVisits || ""}
+              onChange={(v) => setCanonicalField(code, { numberOfVisits: v })}
+              placeholder="e.g., 2, 2W4, 3W2"
+            />
+            <FormSelect
+              label="Period"
+              value={row?.period || ""}
+              onChange={(v) => setCanonicalField(code, { period: v })}
+              options={VISIT_FREQUENCY_PERIOD_OPTIONS}
+            />
+            <FormSegmented
+              label="PRN"
+              value={row?.prn ? "Yes" : "No"}
+              onChange={(v) => setCanonicalField(code, { prn: v === "Yes" })}
+              options={["Yes", "No"]}
+              compact
+            />
+            <FormInput
+              label="Frequency Notes"
+              value={row?.specify || ""}
+              onChange={(v) => setCanonicalField(code, { specify: v })}
+              placeholder="e.g., Within 24 hours of admission then PRN"
+            />
+          </div>
+        )}
+      </div>
+    );
   };
 
   // Rows for any discipline NOT one of the 17 canonical rows above -- same
@@ -11306,52 +11425,43 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
 
   return (
     <div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {CANONICAL_VISIT_DISCIPLINES.map(({ code, label }) => {
-          const idx = findRowIndex(code);
-          const row = idx >= 0 ? list[idx] : null;
-          return (
-            <div key={code} style={{
-              padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
-            }}>
-              <label style={styles.label}>{label}</label>
-              <div style={{
-                display: "grid", gridTemplateColumns: "1.1fr 1.5fr auto 1.8fr", gap: 8, alignItems: "end", marginTop: 4,
-              }}>
-                <FormInput
-                  label="Frequency"
-                  value={row?.numberOfVisits || ""}
-                  onChange={(v) => setCanonicalField(code, { numberOfVisits: v })}
-                  placeholder="e.g., 2, 2W4, 3W2"
-                />
-                <FormSelect
-                  label="Period"
-                  value={row?.period || ""}
-                  onChange={(v) => setCanonicalField(code, { period: v })}
-                  options={VISIT_FREQUENCY_PERIOD_OPTIONS}
-                />
-                <FormSegmented
-                  label="PRN"
-                  value={row?.prn ? "Yes" : "No"}
-                  onChange={(v) => setCanonicalField(code, { prn: v === "Yes" })}
-                  options={["Yes", "No"]}
-                  compact
-                />
-                <FormInput
-                  label="Frequency Notes"
-                  value={row?.specify || ""}
-                  onChange={(v) => setCanonicalField(code, { specify: v })}
-                  placeholder="e.g., Within 24 hours of admission then PRN"
-                />
-              </div>
-            </div>
-          );
-        })}
+      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        {DEFAULT_VISIT_DISCIPLINE_CODES.map((code) => renderDisciplineRow(code, { removable: false }))}
       </div>
+
+      {addedOptionalCodes.length > 0 && (
+        <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          {addedOptionalCodes.map((code) => renderDisciplineRow(code, { removable: true }))}
+        </div>
+      )}
+
+      {availableOptionalCodes.length > 0 && (
+        <div style={{ marginTop: 10 }}>
+          <label style={styles.label}>Add Discipline</label>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
+            {availableOptionalCodes.map((code) => {
+              const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
+              return (
+                <button
+                  key={code}
+                  type="button"
+                  onClick={() => addOptionalDiscipline(code)}
+                  style={{
+                    fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
+                    border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+                  }}
+                >
+                  + {def?.shortLabel || code}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {extraRows.length > 0 && (
         <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
-          <label style={styles.label}>Additional Disciplines</label>
+          <label style={styles.label}>Other Disciplines</label>
           {extraRows.map(({ row, idx }) => (
             <div key={idx} style={{
               display: "grid", gridTemplateColumns: "1.3fr 0.9fr 1.3fr auto 1.6fr auto", gap: 8, alignItems: "end",
@@ -11411,7 +11521,7 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
           border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
         }}
       >
-        + Add Discipline
+        + Add Other Discipline
       </button>
     </div>
   );
