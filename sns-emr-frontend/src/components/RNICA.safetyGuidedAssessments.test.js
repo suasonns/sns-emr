@@ -194,7 +194,7 @@ describe("summarizeDisasterTriage", () => {
   it("is incomplete until a disaster level is selected", () => {
     expect(summarizeDisasterTriage({}).complete).toBe(false);
   });
-  it("is incomplete with only a level -- Planned Placement and Transportation Status are also required", () => {
+  it("is incomplete with only a level -- the full Emergency Support Assessment is also required", () => {
     const partial = summarizeDisasterTriage({
       disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
       disasterLevelTwoConditions: ["Lives above ground floor"],
@@ -203,17 +203,24 @@ describe("summarizeDisasterTriage", () => {
     expect(partial.shortLabel).toBe("Level 2");
     expect(partial.conditions).toEqual(["Lives above ground floor"]);
   });
-  it("is complete once level, planned placement, and transportation status are all documented", () => {
+  it("is complete once level and the full Emergency Support Assessment are documented, even with an unknown Preferred Emergency Location and no Responsible Support", () => {
     const summary = summarizeDisasterTriage({
       disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
       disasterLevelTwoConditions: ["Lives above ground floor"],
-      disasterPlannedPlacement: "Remain at Residence",
-      disasterResponsibleSupport: "Daughter (lives nearby)",
-      disasterTransportationStatus: "Reliable Transportation Available",
+      disasterLivesAlone: "No",
+      disasterRequiresEvacuationAssistance: "No",
+      disasterCaregiverAvailable: "Yes",
+      disasterTransportationAvailable: "Yes",
+      disasterRequiresElectricity: "No",
+      disasterOxygenDependent: "No",
+      disasterBackupPowerAvailable: "Unknown",
+      disasterPreferredEmergencyLocation: "Unknown",
     });
     expect(summary.complete).toBe(true);
-    expect(summary.plannedPlacement).toBe("Remain at Residence");
-    expect(summary.transportationStatus).toBe("Reliable Transportation Available");
+    expect(summary.caregiverAvailable).toBe("Yes");
+    expect(summary.transportationAvailable).toBe("Yes");
+    expect(summary.preferredEmergencyLocation).toBe("Unknown");
+    expect(summary.responsibleSupport).toBe("");
   });
 });
 
@@ -261,9 +268,15 @@ function fullyCompleteSafetyData() {
     ...COMPLETE_ENVIRONMENTAL_HOME_CLEAN,
     oxygenSafetyConfirmedNotApplicable: true,
     disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
-    disasterPlannedPlacement: "Remain at Residence",
+    disasterLivesAlone: "No",
+    disasterRequiresEvacuationAssistance: "No",
+    disasterCaregiverAvailable: "Yes",
+    disasterTransportationAvailable: "Yes",
+    disasterRequiresElectricity: "No",
+    disasterOxygenDependent: "No",
+    disasterBackupPowerAvailable: "Unknown",
+    disasterPreferredEmergencyLocation: "Remain at Residence",
     disasterResponsibleSupport: "Daughter (lives nearby)",
-    disasterTransportationStatus: "Reliable Transportation Available",
   };
 }
 
@@ -315,9 +328,15 @@ describe("summarizeSafetyAssessment -- single consolidated Safety record with 4-
       ...formData.safety,
       ...COMPLETE_MORSE,
       disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
-      disasterPlannedPlacement: "Remain at Residence",
+      disasterLivesAlone: "No",
+      disasterRequiresEvacuationAssistance: "No",
+      disasterCaregiverAvailable: "Yes",
+      disasterTransportationAvailable: "Yes",
+      disasterRequiresElectricity: "No",
+      disasterOxygenDependent: "No",
+      disasterBackupPowerAvailable: "Unknown",
+      disasterPreferredEmergencyLocation: "Remain at Residence",
       disasterResponsibleSupport: "Daughter (lives nearby)",
-      disasterTransportationStatus: "Reliable Transportation Available",
     };
     const summary = summarizeSafetyAssessment(formData.safety, formData);
     expect(summary.fallRisk.complete).toBe(true);
@@ -396,12 +415,19 @@ describe("getFirstIncompleteSafetyStepId", () => {
 // PRODUCT OWNER DEFECT (2026-10-24) "Current Safety Completion Logic Is
 // Invalid" -- a field may be Completed, Not Applicable, or Incomplete,
 // NEVER "Complete" + "Not Yet Documented" simultaneously. These tests
-// cover the exact 7 scenarios the PO required, verifying both (a) the
-// completion boolean is correct and (b) the exposed "is this field even
-// required" flags the Review screen now keys off (`hasAnyHazard`,
-// `staffDispositionRequired`, `hasActiveConcern`,
-// `responsibleSupportRequired`) are correct, so a correctly-skipped
-// field never renders "Not Yet Documented" under a "Complete" badge.
+// cover the exact 5 scenarios the PO required for Environmental/Oxygen
+// Safety, verifying both (a) the completion boolean is correct and (b)
+// the exposed "is this field even required" flags the Review screen
+// keys off (`hasAnyHazard`, `staffDispositionRequired`,
+// `hasActiveConcern`) are correct, so a correctly-skipped field never
+// renders "Not Yet Documented" under a "Complete" badge. Scenarios
+// 6-8 (plus the trailing Responsible Support test) cover the later
+// PRODUCT OWNER DIRECTIVE "Fix Disaster Triage and Review-Step
+// Completion Logic" -- Disaster Triage's required-field verification
+// list (Unknown Preferred Emergency Location, Unknown transportation,
+// Unknown caregiver availability, oxygen/electricity-dependent,
+// lives-alone), none of which require a predicted future placement or
+// a named Responsible Support to reach Complete.
 describe("Safety completion logic never mixes Complete with Not Yet Documented (PO defect fix)", () => {
   it("1. Facility Managed, no staff concern -- Complete, with Risk Target/Actions/Disposition/Follow-Up all correctly NOT required", () => {
     const summary = summarizeEnvironmentalSafety(
@@ -477,36 +503,82 @@ describe("Safety completion logic never mixes Complete with Not Yet Documented (
     expect(complete.complete).toBe(true);
   });
 
-  it("6. Disaster Plan Missing Support -- Remain at Residence without a named Responsible Support can NEVER be Complete", () => {
+  it("6. Disaster assessment can be Complete without any known future Preferred Emergency Location or Responsible Support -- both are optional and 'Unknown'/blank are acceptable, non-blocking answers", () => {
     const summary = summarizeDisasterTriage({
       disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
-      disasterPlannedPlacement: "Remain at Residence",
-      disasterTransportationStatus: "Reliable Transportation Available",
+      disasterLivesAlone: "No",
+      disasterRequiresEvacuationAssistance: "No",
+      disasterCaregiverAvailable: "Yes",
+      disasterTransportationAvailable: "Yes",
+      disasterRequiresElectricity: "No",
+      disasterOxygenDependent: "No",
+      disasterBackupPowerAvailable: "Yes",
+      disasterPreferredEmergencyLocation: "Unknown",
       // disasterResponsibleSupport intentionally omitted
     });
-    expect(summary.responsibleSupportRequired).toBe(true);
+    expect(summary.preferredEmergencyLocation).toBe("Unknown");
     expect(summary.responsibleSupport).toBe("");
-    expect(summary.complete).toBe(false);
-  });
-
-  it("7. Disaster Plan Complete -- Remain at Residence WITH a named Responsible Support is Complete", () => {
-    const summary = summarizeDisasterTriage({
-      disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
-      disasterPlannedPlacement: "Remain at Residence",
-      disasterResponsibleSupport: "Son (co-resident caregiver)",
-      disasterTransportationStatus: "Reliable Transportation Available",
-    });
-    expect(summary.responsibleSupportRequired).toBe(true);
     expect(summary.complete).toBe(true);
   });
 
-  it("Responsible Support is NOT required for placements other than Remain at Residence", () => {
+  it("7. Unknown Transportation Available and Unknown Caregiver Availability both count as answered -- Complete", () => {
+    const summary = summarizeDisasterTriage({
+      disasterLevel: "Level 1 — Hospice must assist; no assistance available",
+      disasterLivesAlone: "Yes",
+      disasterRequiresEvacuationAssistance: "No",
+      disasterCaregiverAvailable: "Unknown",
+      disasterTransportationAvailable: "Unknown",
+      disasterRequiresElectricity: "No",
+      disasterOxygenDependent: "No",
+      disasterBackupPowerAvailable: "Unknown",
+    });
+    expect(summary.caregiverAvailable).toBe("Unknown");
+    expect(summary.transportationAvailable).toBe("Unknown");
+    expect(summary.complete).toBe(true);
+  });
+
+  it("8. Oxygen-dependent, electricity-dependent, lives-alone patient -- Complete once every required Emergency Support Assessment field is answered", () => {
+    const missing = summarizeDisasterTriage({
+      disasterLevel: "Level 1 — Hospice must assist; no assistance available",
+      disasterLivesAlone: "Yes",
+      disasterRequiresEvacuationAssistance: "Yes",
+      disasterOxygenDependent: "Yes",
+      disasterRequiresElectricity: "Yes",
+      // caregiverAvailable, transportationAvailable, backupPowerAvailable intentionally omitted
+    });
+    expect(missing.complete).toBe(false);
+
+    const complete = summarizeDisasterTriage({
+      disasterLevel: "Level 1 — Hospice must assist; no assistance available",
+      disasterLivesAlone: "Yes",
+      disasterRequiresEvacuationAssistance: "Yes",
+      disasterOxygenDependent: "Yes",
+      disasterRequiresElectricity: "Yes",
+      disasterCaregiverAvailable: "No",
+      disasterTransportationAvailable: "No",
+      disasterBackupPowerAvailable: "No",
+    });
+    expect(complete.livesAlone).toBe("Yes");
+    expect(complete.oxygenDependent).toBe("Yes");
+    expect(complete.requiresElectricity).toBe("Yes");
+    expect(complete.complete).toBe(true);
+  });
+
+  it("Responsible Support is never required for completion, even when a Preferred Emergency Location is specified", () => {
     const summary = summarizeDisasterTriage({
       disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
-      disasterPlannedPlacement: "Remain at Facility",
-      disasterTransportationStatus: "Reliable Transportation Available",
+      disasterLivesAlone: "No",
+      disasterRequiresEvacuationAssistance: "No",
+      disasterCaregiverAvailable: "Yes",
+      disasterTransportationAvailable: "Yes",
+      disasterRequiresElectricity: "No",
+      disasterOxygenDependent: "No",
+      disasterBackupPowerAvailable: "Yes",
+      disasterPreferredEmergencyLocation: "Remain at Facility",
+      // disasterResponsibleSupport intentionally omitted
     });
-    expect(summary.responsibleSupportRequired).toBe(false);
+    expect(summary.preferredEmergencyLocation).toBe("Remain at Facility");
+    expect(summary.responsibleSupport).toBe("");
     expect(summary.complete).toBe(true);
   });
 });
