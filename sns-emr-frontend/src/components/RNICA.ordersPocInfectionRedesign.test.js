@@ -156,25 +156,41 @@ describe("getConfiguredVisitFrequencySummaries", () => {
     expect(getConfiguredVisitFrequencySummaries([])).toEqual([]);
     expect(getConfiguredVisitFrequencySummaries()).toEqual([]);
   });
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Screen
+  // Field-Test Readiness" -- Dietitian ("DIET") is now one of the "Add
+  // Service" modal's canonical optional services (previously only a
+  // free-form "Other Disciplines" entry), so it must be recognized as a
+  // canonical discipline (fixed shortLabel, included in the ordered
+  // canonical list) rather than falling through to the legacy/extra path.
+  it("recognizes DIET (Dietitian) as a canonical discipline added by the frequency-screen field-test directive", () => {
+    const summaries = getConfiguredVisitFrequencySummaries([{ discipline: "DIET", period: "per Week" }]);
+    expect(summaries).toEqual([{ code: "DIET", shortLabel: "Dietitian", summary: "per Week" }]);
+  });
 });
 
 describe("DEFAULT_VISIT_DISCIPLINE_CODES / OPTIONAL_VISIT_DISCIPLINE_CODES", () => {
   it("has exactly the 5 always-rendered disciplines, led by SN as the one authoritative nursing order", () => {
     expect(DEFAULT_VISIT_DISCIPLINE_CODES).toEqual(["SN", "HA", "SW", "SC", "RN-SUP"]);
   });
-  it("has exactly the 8 PO-named optional disciplines from the 'SN As Primary Orderable Nursing Discipline' closed list", () => {
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Screen
+  // Field-Test Readiness" added Dietitian ("DIET") as a 9th optional,
+  // independently-orderable service (the "Add Service" modal list names
+  // it alongside Physician Visit/NP Visit/PT/OT/ST/Volunteer/
+  // Bereavement/Administrative Visit) -- previously it was only
+  // reachable via the free-form "Other Disciplines" picker.
+  it("has exactly the 9 PO-named optional disciplines, including Dietitian added by the frequency-screen field-test directive", () => {
     expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toEqual(
-      expect.arrayContaining(["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN"])
+      expect.arrayContaining(["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN", "DIET"])
     );
-    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(8);
+    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(9);
   });
-  it("default and optional codes are disjoint and together cover all 13 canonical disciplines", () => {
+  it("default and optional codes are disjoint and together cover all 14 canonical disciplines", () => {
     const overlap = DEFAULT_VISIT_DISCIPLINE_CODES.filter((c) => OPTIONAL_VISIT_DISCIPLINE_CODES.includes(c));
     expect(overlap).toEqual([]);
-    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(13);
+    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(14);
   });
-  it("no longer treats RN/LVN/MSW/LCSW/BSW/Dietitian as independently orderable disciplines", () => {
-    const removed = ["RN", "LVN", "MSW", "LCSW", "BSW", "Dietitian"];
+  it("no longer treats RN/LVN/MSW/LCSW/BSW as independently orderable disciplines", () => {
+    const removed = ["RN", "LVN", "MSW", "LCSW", "BSW"];
     removed.forEach((code) => {
       expect(DEFAULT_VISIT_DISCIPLINE_CODES).not.toContain(code);
       expect(OPTIONAL_VISIT_DISCIPLINE_CODES).not.toContain(code);
