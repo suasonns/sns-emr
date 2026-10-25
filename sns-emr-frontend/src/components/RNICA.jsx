@@ -33456,20 +33456,40 @@ const SECTION_CONFIGS = {
       // Documentation Coverage summary, always the first card so
       // completion status for every item below is visible before
       // scrolling into any individual form.
+      // PRODUCT OWNER DIRECTIVE (2026-10-25) "Phased Orders & POC
+      // Implementation Plan" Phase 1 Section 2 -- required page
+      // structure order (Documentation Coverage -> POC Problem Review
+      // -> Admission/Physician Order -> Level of Care -> Ordered
+      // Services -> CHHA Assignment -> Initial POC/IDG -> Comfort
+      // Measures -> Verbal Order Verification -> Validation/Final
+      // Review). This reorders the EXISTING cards only -- no
+      // customRenderer, field path, or persistence behavior changes in
+      // this phase (see Phase 1 scope: "without changing order
+      // semantics").
       { title: "Orders & POC Documentation Coverage", customRenderer: "ordersPocCoverage", fields: [] },
-      { title: "Admission Statement", cms: "Verbal Order", fields: [
+      // Section 2 -- "Plan of Care Review" / Problems Identified moved
+      // up per the required order (was last before Completion Summary).
+      { title: "Plan of Care Review", customRenderer: "pocProblemsReview", fields: [] },
+      { title: "Admission / Physician Order", cms: "Verbal Order", fields: [
         { type: "textarea", label: "Admission Order Statement", path: "admissionStatement", rows: 4 },
       ]},
-      // Section 2 -- single-select Infection-style pill. Same
+      // Section 4 -- single-select Infection-style pill. Same
       // `levelOfCare.level` path as the legacy radio (still actively
       // gated by the "Level of Care is required for admission"
       // validation elsewhere) -- only the editing surface changes.
       { title: "Level of Care", customRenderer: "levelOfCarePills", fields: [] },
-      { title: "Discipline Frequency of Visit", customRenderer: "disciplineFrequencyOfVisit", fields: [] },
-      // Section 4 -- ASSIGNED/NOT_ASSIGNED/NOT_APPLICABLE pill group
-      // replacing the textbox/checkbox pair.
-      { title: "HA Assignment", customRenderer: "haAssignment", fields: [] },
-      // Section 5 -- state pills replacing checkbox/date/notes.
+      // Section 5 -- "Ordered Services and Visit Frequencies"; title
+      // renamed to match the directive's terminology (Ordered Service
+      // vs. Service Fulfillment vs. Staff Assignment). SN's "Expected
+      // Provider Mix" + RN/LVN Coverage fulfillment sub-fields remain
+      // nested inside the SN row (not split into a separate top-level
+      // card) -- same customRenderer/path, no semantics change.
+      { title: "Ordered Services and Visit Frequencies", customRenderer: "disciplineFrequencyOfVisit", fields: [] },
+      // Section 6 -- ASSIGNED/NOT_ASSIGNED/NOT_APPLICABLE pill group
+      // replacing the textbox/checkbox pair. Renamed to "CHHA
+      // Assignment" per the directive's terminology.
+      { title: "CHHA Assignment", customRenderer: "haAssignment", fields: [] },
+      // Section 7 -- state pills replacing checkbox/date/notes.
       { title: "Initial POC/IDG", customRenderer: "initialPocStatus", fields: [] },
       // [OWNER DIRECTIVE -- "PRODUCT OWNER REVIEW -- Death & Dying
       // Clinical Evidence vs. Clinical Actions", 2026-10-22] Comfort
@@ -33482,14 +33502,13 @@ const SECTION_CONFIGS = {
       // field/path as before the relocation) so no data migration is
       // required and existing charted values are preserved.
       { title: "Comfort Measures in Place", customRenderer: "comfortMeasuresPocReference", fields: [] },
-      // Section 7 -- renamed per the PO's own section heading ("Verbal
+      // Section 9 -- renamed per the PO's own section heading ("Verbal
       // Order Verification"); the 2 pre-existing fields plus the new
       // `verbalOrderReceived` step, now an independent multi-select pill
       // row instead of 3 checkboxes.
       { title: "Verbal Order Verification", customRenderer: "verbalOrderVerification", fields: [] },
-      // Section 8 -- "Plan of Care Review" / Problems Identified.
-      { title: "Plan of Care Review", customRenderer: "pocProblemsReview", fields: [] },
-      // Section 9 -- Completion Summary, always last.
+      // Section 10 -- Completion Summary / Validation and Final Review,
+      // always last.
       { title: "Completion Summary", customRenderer: "ordersPocCompletionSummary", fields: [] },
     ],
   },
