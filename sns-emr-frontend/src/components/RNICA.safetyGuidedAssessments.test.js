@@ -262,6 +262,7 @@ function fullyCompleteSafetyData() {
     oxygenSafetyConfirmedNotApplicable: true,
     disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
     disasterPlannedPlacement: "Remain at Residence",
+    disasterResponsibleSupport: "Daughter (lives nearby)",
     disasterTransportationStatus: "Reliable Transportation Available",
   };
 }
@@ -315,6 +316,7 @@ describe("summarizeSafetyAssessment -- single consolidated Safety record with 4-
       ...COMPLETE_MORSE,
       disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
       disasterPlannedPlacement: "Remain at Residence",
+      disasterResponsibleSupport: "Daughter (lives nearby)",
       disasterTransportationStatus: "Reliable Transportation Available",
     };
     const summary = summarizeSafetyAssessment(formData.safety, formData);
@@ -388,5 +390,123 @@ describe("getFirstIncompleteSafetyStepId", () => {
     formData.safety = { ...formData.safety, ...fullyCompleteSafetyData() };
     const summary = summarizeSafetyAssessment(formData.safety, formData);
     expect(getFirstIncompleteSafetyStepId(summary)).toBe("review");
+  });
+});
+
+// PRODUCT OWNER DEFECT (2026-10-24) "Current Safety Completion Logic Is
+// Invalid" -- a field may be Completed, Not Applicable, or Incomplete,
+// NEVER "Complete" + "Not Yet Documented" simultaneously. These tests
+// cover the exact 7 scenarios the PO required, verifying both (a) the
+// completion boolean is correct and (b) the exposed "is this field even
+// required" flags the Review screen now keys off (`hasAnyHazard`,
+// `staffDispositionRequired`, `hasActiveConcern`,
+// `responsibleSupportRequired`) are correct, so a correctly-skipped
+// field never renders "Not Yet Documented" under a "Complete" badge.
+describe("Safety completion logic never mixes Complete with Not Yet Documented (PO defect fix)", () => {
+  it("1. Facility Managed, no staff concern -- Complete, with Risk Target/Actions/Disposition/Follow-Up all correctly NOT required", () => {
+    const summary = summarizeEnvironmentalSafety(
+      {
+        environmentalFacilityStatus: "Facility Managed",
+        environmentalStaffSafetyStatus: "No Staff Safety Concern Identified",
+      },
+      FACILITY_FULL_FORM_DATA
+    );
+    expect(summary.complete).toBe(true);
+    expect(summary.hasAnyHazard).toBe(false);
+    expect(summary.staffDispositionRequired).toBe(false);
+  });
+
+  it("2. Home, No Concern -- Complete, with Risk Target/Actions/Disposition/Follow-Up all correctly NOT required", () => {
+    const summary = summarizeEnvironmentalSafety(COMPLETE_ENVIRONMENTAL_HOME_CLEAN, HOME_FULL_FORM_DATA);
+    expect(summary.complete).toBe(true);
+    expect(summary.hasAnyHazard).toBe(false);
+    expect(summary.staffDispositionRequired).toBe(false);
+  });
+
+  it("3. Staff Concern Present -- Risk Target/Actions/Follow-Up AND Staff Disposition all become genuinely required, and the step is Incomplete until every one of them is documented", () => {
+    const base = {
+      environmentalHomeConcerns: ["No Environmental Concerns Identified"],
+      environmentalStaffSafetyStatus: "Staff Safety Concern Identified",
+      environmentalStaffSafetyHazards: ["Firearm concern"],
+    };
+    const missingAll = summarizeEnvironmentalSafety(base, HOME_FULL_FORM_DATA);
+    expect(missingAll.hasAnyHazard).toBe(true);
+    expect(missingAll.staffDispositionRequired).toBe(true);
+    expect(missingAll.complete).toBe(false);
+
+    const fullyDocumented = summarizeEnvironmentalSafety(
+      {
+        ...base,
+        environmentalRiskTarget: "Staff",
+        environmentalActionsTaken: ["Law Enforcement Notified"],
+        environmentalStaffDisposition: "Visit Terminated Early",
+        environmentalFollowUpRequired: "Yes",
+      },
+      HOME_FULL_FORM_DATA
+    );
+    expect(fullyDocumented.complete).toBe(true);
+  });
+
+  it("4. Oxygen No Concern -- Complete, with Concerns/Actions/Follow-Up correctly NOT required (rendered as 'None'/'N/A', never 'Not Yet Documented')", () => {
+    const summary = summarizeOxygenSafety(
+      { oxygenSafetyConcerns: ["No Concern"] },
+      { respiratory: { oxygenTherapy: { inUse: true } } }
+    );
+    expect(summary.applicable).toBe(true);
+    expect(summary.status).toBe("No Concern");
+    expect(summary.hasActiveConcern).toBe(false);
+    expect(summary.complete).toBe(true);
+  });
+
+  it("5. Oxygen Concern Present -- Actions Taken and Follow-Up become genuinely required, and the step is Incomplete until both are documented", () => {
+    const missing = summarizeOxygenSafety(
+      { oxygenSafetyConcerns: ["Smoking Near Oxygen"] },
+      { respiratory: { oxygenTherapy: { inUse: true } } }
+    );
+    expect(missing.hasActiveConcern).toBe(true);
+    expect(missing.complete).toBe(false);
+
+    const complete = summarizeOxygenSafety(
+      {
+        oxygenSafetyConcerns: ["Smoking Near Oxygen"],
+        oxygenSafetyActionsTaken: ["Immediate Education Provided", "Caregiver Notified"],
+        oxygenSafetyFollowUpRequired: "Yes",
+      },
+      { respiratory: { oxygenTherapy: { inUse: true } } }
+    );
+    expect(complete.complete).toBe(true);
+  });
+
+  it("6. Disaster Plan Missing Support -- Remain at Residence without a named Responsible Support can NEVER be Complete", () => {
+    const summary = summarizeDisasterTriage({
+      disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
+      disasterPlannedPlacement: "Remain at Residence",
+      disasterTransportationStatus: "Reliable Transportation Available",
+      // disasterResponsibleSupport intentionally omitted
+    });
+    expect(summary.responsibleSupportRequired).toBe(true);
+    expect(summary.responsibleSupport).toBe("");
+    expect(summary.complete).toBe(false);
+  });
+
+  it("7. Disaster Plan Complete -- Remain at Residence WITH a named Responsible Support is Complete", () => {
+    const summary = summarizeDisasterTriage({
+      disasterLevel: "Level 2 — Hospice must contact to assure adequate assistance; limited assistance available",
+      disasterPlannedPlacement: "Remain at Residence",
+      disasterResponsibleSupport: "Son (co-resident caregiver)",
+      disasterTransportationStatus: "Reliable Transportation Available",
+    });
+    expect(summary.responsibleSupportRequired).toBe(true);
+    expect(summary.complete).toBe(true);
+  });
+
+  it("Responsible Support is NOT required for placements other than Remain at Residence", () => {
+    const summary = summarizeDisasterTriage({
+      disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
+      disasterPlannedPlacement: "Remain at Facility",
+      disasterTransportationStatus: "Reliable Transportation Available",
+    });
+    expect(summary.responsibleSupportRequired).toBe(false);
+    expect(summary.complete).toBe(true);
   });
 });

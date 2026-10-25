@@ -677,6 +677,7 @@ function buildFormDataForLockCheck(musculoskeletalOverrides = {}) {
     oxygenSafetyConfirmedNotApplicable: true,
     disasterLevel: "Level 3 — No need for hospice to assist; has adequate assistance available",
     disasterPlannedPlacement: "Remain at Residence",
+    disasterResponsibleSupport: "Daughter (lives nearby)",
     disasterTransportationStatus: "Reliable Transportation Available",
   };
   base.musculoskeletal = { ...base.musculoskeletal, ...musculoskeletalOverrides };

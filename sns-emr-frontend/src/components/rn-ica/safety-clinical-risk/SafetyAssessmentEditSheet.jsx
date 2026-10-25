@@ -147,6 +147,24 @@ function ReviewRow({ label, value }) {
   );
 }
 
+// PRODUCT OWNER DEFECT (2026-10-24) "Current Safety Completion Logic Is
+// Invalid" -- a field may be Completed, Not Applicable, or Incomplete,
+// never "Complete" + "Not Yet Documented" at the same time. `applicable`
+// tells this row whether its value was ever REQUIRED; when it was not
+// (the step still correctly shows Complete), render the literal "N/A"
+// instead of the ambiguous/alarming "Not yet documented" placeholder.
+function ReviewRowOrNA({ label, value, applicable, naValue = "N/A" }) {
+  if (!applicable) {
+    return (
+      <div className="flex items-start justify-between gap-4 border-b border-rnica-border/50 py-2 last:border-b-0">
+        <span className="w-[42%] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-rnica-muted">{label}</span>
+        <span className="flex-1 text-[12.5px] text-rnica-muted">{naValue}</span>
+      </div>
+    );
+  }
+  return <ReviewRow label={label} value={value} />;
+}
+
 function ReviewSection({ title, complete, onEdit, children }) {
   return (
     <div className="mb-3 rounded-md border border-rnica-border p-3">
@@ -182,10 +200,10 @@ function SafetyReviewStep({ summary, onJumpToStep }) {
         <ReviewRow label="Setting" value={environmental.setting} />
         <ReviewRow label="Patient Hazard" value={environmental.patientSummary} />
         <ReviewRow label="Staff Hazard" value={environmental.staffSummary} />
-        <ReviewRow label="Risk Target" value={environmental.riskTarget} />
-        <ReviewRow label="Actions Taken" value={(environmental.actionsTaken || []).join(", ")} />
-        <ReviewRow label="Staff Disposition" value={environmental.staffDisposition} />
-        <ReviewRow label="Follow-Up" value={environmental.followUpRequired} />
+        <ReviewRowOrNA label="Risk Target" value={environmental.riskTarget} applicable={environmental.hasAnyHazard} />
+        <ReviewRowOrNA label="Actions Taken" value={(environmental.actionsTaken || []).join(", ")} applicable={environmental.hasAnyHazard} />
+        <ReviewRowOrNA label="Staff Disposition" value={environmental.staffDisposition} applicable={environmental.staffDispositionRequired} />
+        <ReviewRowOrNA label="Follow-Up" value={environmental.followUpRequired} applicable={environmental.hasAnyHazard} />
       </ReviewSection>
       <ReviewSection title="Morse Fall Scale" complete={fallRisk.complete} onEdit={() => onJumpToStep("fallRisk")}>
         <ReviewRow label="Score" value={fallRisk.complete ? String(fallRisk.total) : ""} />
@@ -194,15 +212,20 @@ function SafetyReviewStep({ summary, onJumpToStep }) {
       </ReviewSection>
       <ReviewSection title="Oxygen Safety" complete={oxygen.complete} onEdit={() => onJumpToStep("oxygen")}>
         <ReviewRow label="Status" value={oxygen.applicable ? oxygen.status : "Not Applicable"} />
-        <ReviewRow label="Concerns" value={(oxygen.concerns || []).join(", ")} />
-        <ReviewRow label="Actions Taken" value={(oxygen.actionsTaken || []).join(", ")} />
-        <ReviewRow label="Follow-Up" value={oxygen.followUpRequired} />
+        <ReviewRowOrNA
+          label="Concerns"
+          value={(oxygen.concerns || []).join(", ")}
+          applicable={oxygen.applicable && (oxygen.hasActiveConcern || !oxygen.status)}
+          naValue={oxygen.applicable && oxygen.status ? "None" : "N/A"}
+        />
+        <ReviewRowOrNA label="Actions Taken" value={(oxygen.actionsTaken || []).join(", ")} applicable={oxygen.applicable && oxygen.hasActiveConcern} />
+        <ReviewRowOrNA label="Follow-Up" value={oxygen.followUpRequired} applicable={oxygen.applicable && oxygen.hasActiveConcern} />
       </ReviewSection>
       <ReviewSection title="Disaster Triage" complete={disaster.complete} onEdit={() => onJumpToStep("disaster")}>
         <ReviewRow label="Level" value={disaster.shortLabel} />
         <ReviewRow label="Contributing Factors" value={(disaster.conditions || []).join(", ")} />
         <ReviewRow label="Planned Placement" value={disaster.plannedPlacement} />
-        <ReviewRow label="Responsible Support" value={disaster.responsibleSupport} />
+        <ReviewRowOrNA label="Responsible Support" value={disaster.responsibleSupport} applicable={disaster.responsibleSupportRequired} />
         <ReviewRow label="Transportation" value={disaster.transportationStatus} />
       </ReviewSection>
     </div>

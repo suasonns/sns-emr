@@ -387,6 +387,14 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
     cardSummary,
     staffCardSummary,
     hasAnyHazard,
+    // PRODUCT OWNER DEFECT (2026-10-24) "Current Safety Completion Logic
+    // Is Invalid" -- Risk Target / Actions Taken / Follow-Up are only
+    // required when a hazard exists; Staff Disposition is only required
+    // when a STAFF hazard specifically exists (narrower than
+    // `hasAnyHazard`, matching `dispositionComplete` above). Exposed
+    // explicitly so the Review screen can render "N/A" instead of
+    // "Not Yet Documented" for correctly-skipped fields.
+    staffDispositionRequired: staffHazards.length > 0,
     riskTarget,
     actionsTaken,
     staffDisposition,
@@ -421,6 +429,7 @@ export function summarizeOxygenSafety(safetyData = {}, fullFormData = {}) {
       confirmedNotApplicable,
       status: "Not Applicable",
       concerns: [],
+      hasActiveConcern: false,
       actionsTaken: [],
       followUpRequired: "",
       followUpNote: "",
@@ -445,6 +454,7 @@ export function summarizeOxygenSafety(safetyData = {}, fullFormData = {}) {
     confirmedNotApplicable: false,
     status,
     concerns: activeConcerns,
+    hasActiveConcern,
     actionsTaken,
     followUpRequired,
     followUpNote,
@@ -490,7 +500,13 @@ export function summarizeDisasterTriage(safetyData = {}) {
   const responsibleSupport = safetyData.disasterResponsibleSupport || "";
   const transportationStatus = safetyData.disasterTransportationStatus || "";
   const requirements = safetyData.disasterRequirements || [];
-  const complete = Boolean(level) && Boolean(plannedPlacement) && Boolean(transportationStatus);
+  // PRODUCT OWNER DEFECT (2026-10-24) "Current Safety Completion Logic
+  // Is Invalid" -- a patient planned to Remain at Residence during a
+  // disaster MUST have a named Responsible Support person/facility; the
+  // step can never show Complete while that is missing.
+  const responsibleSupportRequired = plannedPlacement === "Remain at Residence";
+  const complete = Boolean(level) && Boolean(plannedPlacement) && Boolean(transportationStatus)
+    && (!responsibleSupportRequired || Boolean(responsibleSupport));
   return {
     complete,
     level,
@@ -498,6 +514,7 @@ export function summarizeDisasterTriage(safetyData = {}) {
     conditions,
     plannedPlacement,
     responsibleSupport,
+    responsibleSupportRequired,
     transportationStatus,
     requirements,
     clarification: safetyData.disasterTriageClarificationNote || "",
