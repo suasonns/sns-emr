@@ -59,19 +59,24 @@ describe("getComfortMeasuresStatus", () => {
 describe("isVisitFrequencyConfigured", () => {
   it("is false for an empty/all-blank row set", () => {
     expect(isVisitFrequencyConfigured([])).toBe(false);
-    expect(isVisitFrequencyConfigured([{ discipline: "RN", numberOfVisits: "", period: "", prn: false }])).toBe(false);
+    expect(isVisitFrequencyConfigured([{ discipline: "SN", numberOfVisits: "", period: "", prn: false }])).toBe(false);
   });
   it("is true once at least one row has a free-text hospice-shorthand frequency", () => {
-    expect(isVisitFrequencyConfigured([{ discipline: "RN", numberOfVisits: "2W4", period: "" }])).toBe(true);
+    expect(isVisitFrequencyConfigured([{ discipline: "SN", numberOfVisits: "2W4", period: "" }])).toBe(true);
   });
   it("is true for a selected Period alone", () => {
     expect(isVisitFrequencyConfigured([{ discipline: "RN-SUP", numberOfVisits: "", period: "every 14 days" }])).toBe(true);
   });
   it("is true for an explicit PRN flag alone", () => {
-    expect(isVisitFrequencyConfigured([{ discipline: "LVN", numberOfVisits: "", period: "", prn: true }])).toBe(true);
+    expect(isVisitFrequencyConfigured([{ discipline: "HA", numberOfVisits: "", period: "", prn: true }])).toBe(true);
   });
   it("is true for a free-text 'specify'/Frequency Notes override even with no frequency/period/PRN", () => {
     expect(isVisitFrequencyConfigured([{ discipline: "SN", specify: "within 5 days of admission" }])).toBe(true);
+  });
+  it("ignores the SN row's staffing-only Provider Mix/Coverage fields -- they are not a frequency order", () => {
+    expect(isVisitFrequencyConfigured([
+      { discipline: "SN", numberOfVisits: "", period: "", prn: false, providerMix: "RN/LVN Combination", rnCoverage: "Every 14 days", lvnCoverage: "Routine visit coverage" },
+    ])).toBe(false);
   });
 });
 
@@ -98,44 +103,54 @@ describe("formatVisitFrequencySummary", () => {
 describe("getConfiguredVisitFrequencySummaries", () => {
   it("returns canonical disciplines in their fixed display order, omitting unconfigured ones", () => {
     const rows = [
-      { discipline: "MSW", numberOfVisits: "1W4" },
-      { discipline: "RN", numberOfVisits: "2W4" },
-      { discipline: "LVN", prn: true },
+      { discipline: "SW", numberOfVisits: "1W4" },
+      { discipline: "SN", numberOfVisits: "2W4" },
       { discipline: "HA", numberOfVisits: "", period: "" },
     ];
     const summaries = getConfiguredVisitFrequencySummaries(rows);
-    expect(summaries.map((s) => s.code)).toEqual(["RN", "LVN", "MSW"]);
-    expect(summaries.find((s) => s.code === "RN")).toEqual({ code: "RN", shortLabel: "RN", summary: "2W4" });
-    expect(summaries.find((s) => s.code === "LVN")).toEqual({ code: "LVN", shortLabel: "LVN", summary: "PRN" });
+    expect(summaries.map((s) => s.code)).toEqual(["SN", "SW"]);
+    expect(summaries.find((s) => s.code === "SN")).toEqual({ code: "SN", shortLabel: "SN", summary: "2W4" });
+    expect(summaries.find((s) => s.code === "SW")).toEqual({ code: "SW", shortLabel: "Social Work", summary: "1W4" });
   });
-  it("matches every literal example from the PO directive", () => {
+  it("matches the acceptance test from the 'SN As Primary Orderable Nursing Discipline' directive -- one nursing order, no RN/LVN contradiction", () => {
     const rows = [
-      { discipline: "RN", numberOfVisits: "2W4" },
-      { discipline: "LVN", prn: true },
+      { discipline: "SN", numberOfVisits: "2", period: "per Week", providerMix: "RN/LVN Combination", rnCoverage: "Every 14 days", lvnCoverage: "Routine visit coverage" },
+    ];
+    const summaries = getConfiguredVisitFrequencySummaries(rows);
+    // Exactly one nursing order (SN); RN/LVN never appear as separate codes.
+    expect(summaries.map((s) => s.code)).toEqual(["SN"]);
+    expect(summaries.find((s) => s.code === "RN")).toBeUndefined();
+    expect(summaries.find((s) => s.code === "LVN")).toBeUndefined();
+    expect(summaries[0].summary).toBe("2 per Week");
+  });
+  it("matches every literal example from the earlier PO directive, re-expressed with the consolidated disciplines", () => {
+    const rows = [
+      { discipline: "SN", numberOfVisits: "2W4" },
       { discipline: "HA", numberOfVisits: "3W4" },
-      { discipline: "MSW", numberOfVisits: "1W4" },
+      { discipline: "SW", numberOfVisits: "1W4" },
       { discipline: "SC", numberOfVisits: "1W4" },
       { discipline: "RN-SUP", period: "every 14 days" },
       { discipline: "NP", prn: true },
     ];
     const summaries = getConfiguredVisitFrequencySummaries(rows);
     const byCode = Object.fromEntries(summaries.map((s) => [s.code, s]));
-    expect(byCode.RN.summary).toBe("2W4");
-    expect(byCode.LVN.summary).toBe("PRN");
+    expect(byCode.SN.summary).toBe("2W4");
     expect(byCode.HA.summary).toBe("3W4");
-    expect(byCode.MSW.summary).toBe("1W4");
-    expect(byCode.SC).toEqual(expect.objectContaining({ shortLabel: "Chaplain", summary: "1W4" }));
+    expect(byCode.SW).toEqual(expect.objectContaining({ shortLabel: "Social Work", summary: "1W4" }));
+    expect(byCode.SC).toEqual(expect.objectContaining({ shortLabel: "Spiritual Counseling", summary: "1W4" }));
     expect(byCode["RN-SUP"]).toEqual(expect.objectContaining({ shortLabel: "RN Supervisor", summary: "every 14 days" }));
     expect(byCode.NP.summary).toBe("PRN");
   });
-  it("still surfaces a legacy/non-canonical discipline (e.g. pre-revision 'SN' data) after the canonical disciplines", () => {
+  it("still surfaces a legacy/non-canonical discipline (e.g. pre-consolidation 'RN'/'LVN' data) after the canonical disciplines", () => {
     const rows = [
-      { discipline: "RN", numberOfVisits: "2W4" },
-      { discipline: "SN", numberOfVisits: "3", period: "per Week" },
+      { discipline: "SN", numberOfVisits: "2W4" },
+      { discipline: "RN", numberOfVisits: "3", period: "per Week" },
+      { discipline: "LVN", prn: true },
     ];
     const summaries = getConfiguredVisitFrequencySummaries(rows);
-    expect(summaries.map((s) => s.code)).toEqual(["RN", "SN"]);
+    expect(summaries.map((s) => s.code)).toEqual(["SN", "RN", "LVN"]);
     expect(summaries[1].summary).toBe("3 per Week");
+    expect(summaries[2].summary).toBe("PRN");
   });
   it("returns an empty array when no discipline has been configured", () => {
     expect(getConfiguredVisitFrequencySummaries([])).toEqual([]);
@@ -144,19 +159,26 @@ describe("getConfiguredVisitFrequencySummaries", () => {
 });
 
 describe("DEFAULT_VISIT_DISCIPLINE_CODES / OPTIONAL_VISIT_DISCIPLINE_CODES", () => {
-  it("has exactly the 6 PO-named default disciplines, always rendered", () => {
-    expect(DEFAULT_VISIT_DISCIPLINE_CODES).toEqual(["RN", "LVN", "HA", "MSW", "SC", "RN-SUP"]);
+  it("has exactly the 5 always-rendered disciplines, led by SN as the one authoritative nursing order", () => {
+    expect(DEFAULT_VISIT_DISCIPLINE_CODES).toEqual(["SN", "HA", "SW", "SC", "RN-SUP"]);
   });
-  it("has exactly the 10 PO-named optional disciplines plus Dietitian (folded in, not dropped, from the prior directive)", () => {
+  it("has exactly the 8 PO-named optional disciplines from the 'SN As Primary Orderable Nursing Discipline' closed list", () => {
     expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toEqual(
-      expect.arrayContaining(["NP", "MD", "LCSW", "BSW", "PT", "OT", "ST", "VOL", "BC", "ADMIN", "Dietitian"])
+      expect.arrayContaining(["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN"])
     );
-    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(11);
+    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(8);
   });
-  it("default and optional codes are disjoint and together cover all 17 canonical disciplines", () => {
+  it("default and optional codes are disjoint and together cover all 13 canonical disciplines", () => {
     const overlap = DEFAULT_VISIT_DISCIPLINE_CODES.filter((c) => OPTIONAL_VISIT_DISCIPLINE_CODES.includes(c));
     expect(overlap).toEqual([]);
-    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(17);
+    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(13);
+  });
+  it("no longer treats RN/LVN/MSW/LCSW/BSW/Dietitian as independently orderable disciplines", () => {
+    const removed = ["RN", "LVN", "MSW", "LCSW", "BSW", "Dietitian"];
+    removed.forEach((code) => {
+      expect(DEFAULT_VISIT_DISCIPLINE_CODES).not.toContain(code);
+      expect(OPTIONAL_VISIT_DISCIPLINE_CODES).not.toContain(code);
+    });
   });
 });
 
