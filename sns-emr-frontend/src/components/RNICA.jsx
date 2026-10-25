@@ -414,92 +414,114 @@ const VISIT_FREQUENCY_DISCIPLINE_OPTIONS = [
   { value: "Podiatry", label: "Podiatry" },
   { value: "Pharm.D", label: "Pharm.D — Pharmacist" },
   { value: "BC", label: "BC — Bereavement Coordinator" },
+  { value: "ADMIN", label: "Administrative Visit" },
 ];
 
-const VISIT_FREQUENCY_COUNT_OPTIONS = Array.from({ length: 10 }, (_, i) => String(i + 1));
-
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
+// Redesign Revision" -- "Do not restrict users to fixed pills. Hospice
+// scheduling is more complex than weekly recurring frequencies." Adds
+// "Daily x 7 days" / "Every Visit" / "Evaluate and Treat" / "Custom
+// Schedule" alongside the pre-existing options; "every 14 days" and the
+// "As Needed"/PRN variants already covered RN Supervisory/PRN cadences.
 const VISIT_FREQUENCY_PERIOD_OPTIONS = [
   "As Needed", "Recert", "As needed and Recert", "One-time then PRN", "1 PRN",
   "per Week", "per Week + 1 PRN Visits", "per Week +2 PRN Visits", "per Week +3 PRN Visits",
   "per 2 Week + 1 PRN Visits", "per 2 Week +2 PRN Visits", "per 2 Week +3 PRN Visits",
   "per Month", "per Month + 1 PRN Visits", "per Month +2 PRN Visits", "per Month +3 PRN Visits",
-  "every 14 days", "Declined", "Daily until further orders", "Face-to-Face",
+  "every 14 days", "Declined", "Daily until further orders", "Daily x 7 days",
+  "Every Visit", "Evaluate and Treat", "Custom Schedule", "Face-to-Face",
 ];
 
-// Default visit frequency rows for Admissions Order — the core hospice IDG
-// disciplines are pre-populated; any other discipline the patient needs
-// (PT/OT/ST, dietitian, podiatry, an upcoming F2F, etc.) is added on demand
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
+// Redesign Revision" -- REVERSES the same-day "Orders & POC Still Does
+// Not Follow Infection Design" Section 3's pill-based frequency model:
+// "The issue was not rows. The issue was poor discipline separation."
+// RN/LVN/RN-Supervisory/NP/MD are operationally distinct and must be
+// schedulable independently, and PT/OT/ST/Dietitian/Bereavement/
+// Administrative Visit must not be hidden from the frequency model.
+// Each of these 17 named disciplines always gets its own fixed,
+// always-visible structured row (Frequency/Period/PRN/Notes) -- modern
+// SNS visual styling is kept, only the HospiceMD-era discipline
+// separation and field flexibility are restored. Any discipline beyond
+// this list (legacy "SN" data from before this revision, podiatry,
+// Pharm.D, an upcoming F2F, etc.) is still added/removed via "+ Add
+// Discipline", using the original free-form row-grid editor -- exactly
+// as it worked before.
+const CANONICAL_VISIT_DISCIPLINES = [
+  { code: "RN", label: "RN Visits", shortLabel: "RN" },
+  { code: "LVN", label: "LVN Visits", shortLabel: "LVN" },
+  { code: "HA", label: "Home Health Aide", shortLabel: "HA" },
+  { code: "MD", label: "MD Visits", shortLabel: "MD" },
+  { code: "NP", label: "Nurse Practitioner (NP)", shortLabel: "NP" },
+  { code: "MSW", label: "Medical Social Worker (MSW)", shortLabel: "MSW" },
+  { code: "LCSW", label: "Licensed Clinical Social Worker (LCSW)", shortLabel: "LCSW" },
+  { code: "BSW", label: "Bachelor Social Worker (BSW)", shortLabel: "BSW" },
+  { code: "SC", label: "Spiritual Counselor / Chaplain", shortLabel: "Chaplain" },
+  { code: "VOL", label: "Volunteer", shortLabel: "Volunteer" },
+  { code: "PT", label: "Physical Therapy (PT)", shortLabel: "PT" },
+  { code: "OT", label: "Occupational Therapy (OT)", shortLabel: "OT" },
+  { code: "ST", label: "Speech Therapy (ST)", shortLabel: "ST" },
+  { code: "Dietitian", label: "Dietitian / Nutrition", shortLabel: "Dietitian" },
+  { code: "BC", label: "Bereavement", shortLabel: "Bereavement" },
+  { code: "RN-SUP", label: "RN Supervisory Visit", shortLabel: "RN Supervisor" },
+  { code: "ADMIN", label: "Administrative Visit", shortLabel: "Admin Visit" },
+];
+
+// Default visit frequency rows for Admissions Order -- every canonical
+// discipline is pre-populated (empty) so each always renders its own
+// fixed row; any other discipline the patient needs is added on demand
 // via "+ Add Discipline" in DisciplineFrequencyOfVisitCard.
-const DEFAULT_VISIT_DISCIPLINES = [
-  { discipline: "SN", numberOfVisits: "", period: "", specify: "" },
-  { discipline: "HA", numberOfVisits: "", period: "", specify: "" },
-  { discipline: "MSW", numberOfVisits: "", period: "", specify: "" },
-  { discipline: "SC", numberOfVisits: "", period: "", specify: "" },
-  { discipline: "RN-SUP", numberOfVisits: "", period: "", specify: "" },
-];
+const DEFAULT_VISIT_DISCIPLINES = CANONICAL_VISIT_DISCIPLINES.map(({ code }) => ({
+  discipline: code, numberOfVisits: "", period: "", prn: false, specify: "",
+}));
 
-// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
-// Follow Infection Design" Section 3 -- the six named disciplines always
-// get a fixed, always-visible frequency card (Infection-style pills)
-// instead of a free-form row grid. Any other discipline the patient needs
-// (PT/OT/ST, dietitian, podiatry, an upcoming F2F, etc.) is still added
-// via "+ Add Discipline" exactly as before -- this list only decides
-// which disciplines get the fixed pill card treatment, it does not limit
-// which disciplines can be ordered.
-const CORE_VISIT_DISCIPLINES = [
-  { code: "SN", label: "Skilled Nursing" },
-  { code: "HA", label: "Home Health Aide" },
-  { code: "MSW", label: "MSW" },
-  { code: "SC", label: "Chaplain" },
-  { code: "VOL", label: "Volunteer" },
-  { code: "RN-SUP", label: "RN Supervisory Visit" },
-];
-
-// Fixed pill vocabulary for a discipline's visit frequency, mapped onto
-// the existing free-form `{numberOfVisits, period, specify}` row schema
-// so no backend/data-model change is required -- only the editing UI
-// changes. "Custom" is the escape hatch for any physician order that
-// doesn't fit one of the 6 named cadences (same free-text field that
-// already existed as "specify").
-const VISIT_FREQUENCY_PILL_OPTIONS = [
-  { value: "DAILY", label: "Daily" },
-  { value: "5X_WEEK", label: "5x Week" },
-  { value: "3X_WEEK", label: "3x Week" },
-  { value: "2X_WEEK", label: "2x Week" },
-  { value: "1X_WEEK", label: "1x Week" },
-  { value: "PRN", label: "PRN" },
-  { value: "CUSTOM", label: "Custom" },
-];
-
-const VISIT_FREQUENCY_PILL_TO_ROW = {
-  DAILY: { numberOfVisits: "", period: "Daily until further orders" },
-  "5X_WEEK": { numberOfVisits: "5", period: "per Week" },
-  "3X_WEEK": { numberOfVisits: "3", period: "per Week" },
-  "2X_WEEK": { numberOfVisits: "2", period: "per Week" },
-  "1X_WEEK": { numberOfVisits: "1", period: "per Week" },
-  PRN: { numberOfVisits: "", period: "As Needed" },
-};
-
-// Reverse-lookup: which pill (if any) represents this row's already-
-// stored numberOfVisits/period/specify. A previously-charted combination
-// that doesn't exactly match one of the 6 named cadences still displays
-// as "Custom" (with its original text visible) rather than silently
-// showing nothing selected -- no previously-documented order is ever
-// hidden.
-export function visitFrequencyPillFromRow(row) {
-  if (!row) return "";
-  if ((row.specify || "").trim()) return "CUSTOM";
-  const match = Object.entries(VISIT_FREQUENCY_PILL_TO_ROW).find(
-    ([, v]) => v.numberOfVisits === (row.numberOfVisits || "") && v.period === (row.period || ""),
-  );
-  if (match) return match[0];
-  return (row.numberOfVisits || row.period) ? "CUSTOM" : "";
+// A row is "configured" once it carries ANY physician-ordered scheduling
+// information -- a literal hospice shorthand typed into Frequency (e.g.
+// "2W4", "3W2"), a selected Period, an explicit PRN flag, or free-text
+// Frequency Notes for a non-standard order. Nothing is required to match
+// a fixed vocabulary.
+function isVisitFrequencyRowConfigured(row = {}) {
+  return Boolean((row.numberOfVisits || "").trim() || (row.period || "").trim() || row.prn || (row.specify || "").trim());
 }
 
-export function visitFrequencyRowFromPill(pill, specifyText) {
-  if (pill === "CUSTOM") return { numberOfVisits: "", period: "", specify: specifyText || "" };
-  const mapped = VISIT_FREQUENCY_PILL_TO_ROW[pill];
-  return mapped ? { ...mapped, specify: "" } : { numberOfVisits: "", period: "", specify: "" };
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
+// Redesign Revision" -- "Display summary ... This summary appears at
+// the top. The detailed rows remain below." Builds the short "RN: 2W4"
+// style chip text for one row: Frequency is shown as-typed (it already
+// carries the full hospice shorthand, e.g. "2W4"/"3W2"), Period is shown
+// alone when Frequency is blank (e.g. RN Supervisory "every 14 days"),
+// and a bare PRN flag with nothing else filled falls back to "PRN".
+export function formatVisitFrequencySummary(row = {}) {
+  const freq = (row.numberOfVisits || "").trim();
+  const period = (row.period || "").trim();
+  if (freq && period) return `${freq} ${period}`;
+  if (freq) return freq;
+  if (period) return period;
+  if (row.prn) return "PRN";
+  return "";
+}
+
+// Ordered list of every configured discipline's summary chip -- canonical
+// disciplines first (in the fixed display order above), then any extra/
+// legacy discipline rows (e.g. "SN") in the order they were added. Rows
+// with nothing configured are omitted so the top summary only ever shows
+// disciplines that actually have an order.
+export function getConfiguredVisitFrequencySummaries(rows = []) {
+  const list = Array.isArray(rows) ? rows : [];
+  const findRow = (code) => list.find((r) => r.discipline === code);
+  const canonical = CANONICAL_VISIT_DISCIPLINES
+    .map(({ code, shortLabel }) => ({ code, shortLabel, row: findRow(code) }))
+    .filter(({ row }) => row && isVisitFrequencyRowConfigured(row));
+  const extra = list
+    .filter((row) => row.discipline && !CANONICAL_VISIT_DISCIPLINES.some((d) => d.code === row.discipline) && isVisitFrequencyRowConfigured(row))
+    .map((row) => ({
+      code: row.discipline,
+      shortLabel: VISIT_FREQUENCY_DISCIPLINE_OPTIONS.find((o) => o.value === row.discipline)?.label || row.discipline,
+      row,
+    }));
+  return [...canonical, ...extra].map(({ code, shortLabel, row }) => ({
+    code, shortLabel, summary: formatVisitFrequencySummary(row),
+  }));
 }
 
 // PRODUCT OWNER DIRECTIVE (2026-10-25) Section 8 "Plan of Care Review" --
@@ -11241,82 +11263,87 @@ function BodySystemPOCControls({ assessmentId, sectionKey, cardTitle, styles, CO
 
 // SECTION 5B (Admissions Order) — Discipline Frequency of Visit.
 //
-// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
-// Follow Infection Design" Section 3 -- replaces the generic add/remove
-// row grid (reject: "field-first", "row-first") with a fixed card per
-// named discipline (Skilled Nursing / Home Health Aide / MSW / Chaplain /
-// Volunteer / RN Supervisory Visit), each using an Infection-style
-// single-select frequency pill row (Daily/5x/3x/2x/1x Week/PRN/Custom)
-// instead of two dropdowns. The underlying `{discipline, numberOfVisits,
-// period, specify}` row schema is completely unchanged -- only the
-// editing surface is replaced, via `visitFrequencyPillFromRow`/
-// `visitFrequencyRowFromPill` above -- so nothing already charted is
-// reinterpreted or lost; a prior combination that doesn't match one of
-// the 6 named pills simply displays as "Custom" with its original text.
-// Any discipline beyond the fixed six (PT/OT/ST, dietitian, podiatry, an
-// upcoming F2F, etc.) is still addable/removable via "+ Add Discipline",
-// using the original row-grid editor -- that affordance is preserved
-// exactly as it worked before this redesign.
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit Frequency
+// Redesign Revision" -- REVERSES the same-day "Orders & POC Still Does
+// Not Follow Infection Design" Section 3 pill row below (kept for
+// reference immediately below, now unused): "The issue was not rows.
+// The issue was poor discipline separation." Every one of the 17
+// `CANONICAL_VISIT_DISCIPLINES` (RN, LVN, RN Supervisory, and NP are now
+// fully independent of each other and of MD/HA, and PT/OT/ST/Dietitian/
+// Bereavement/Administrative Visit are no longer hidden) gets its own
+// always-visible structured row: a free-text Frequency field (so
+// hospice shorthand like "2W4"/"3W2"/"5W1" can be typed directly, not
+// forced into a fixed pill vocabulary), a Period select, a PRN Yes/No
+// toggle, and free-text Frequency Notes. The underlying `{discipline,
+// numberOfVisits, period, specify}` row schema only gains one additive
+// `prn` boolean -- nothing already charted is reinterpreted or lost. Any
+// discipline beyond the canonical 17 (legacy "SN" data from before this
+// revision, podiatry, Pharm.D, an upcoming F2F, etc.) is still
+// addable/removable via "+ Add Discipline", using the original row-grid
+// editor -- that affordance is preserved exactly as it worked before.
 function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
   const list = Array.isArray(rows) ? rows : [];
 
   const findRowIndex = (code) => list.findIndex((r) => r.discipline === code);
 
-  const setCorePill = (code, pill) => {
+  const setCanonicalField = (code, patch) => {
     const idx = findRowIndex(code);
-    const existing = idx >= 0 ? list[idx] : null;
-    const currentPill = visitFrequencyPillFromRow(existing);
-    // Re-clicking the selected pill deselects it, same convention as
-    // every other FormSegmented in this file.
-    const nextPill = currentPill === pill ? "" : pill;
-    const patch = { discipline: code, ...visitFrequencyRowFromPill(nextPill, existing?.specify) };
     if (idx >= 0) onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-    else onChange([...list, patch]);
+    else onChange([...list, { discipline: code, numberOfVisits: "", period: "", prn: false, specify: "", ...patch }]);
   };
 
-  const setCoreCustomText = (code, text) => {
-    const idx = findRowIndex(code);
-    const patch = { discipline: code, numberOfVisits: "", period: "", specify: text };
-    if (idx >= 0) onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
-    else onChange([...list, patch]);
-  };
-
-  // Rows for any discipline NOT one of the 6 fixed cards above -- same
-  // free-form row editor this card has always used.
+  // Rows for any discipline NOT one of the 17 canonical rows above -- same
+  // free-form row editor this card has always used (e.g. legacy "SN"
+  // data charted before this revision, podiatry, Pharm.D, an upcoming
+  // F2F, etc.).
   const extraRows = list
     .map((row, idx) => ({ row, idx }))
-    .filter(({ row }) => !CORE_VISIT_DISCIPLINES.some((d) => d.code === row.discipline));
+    .filter(({ row }) => !CANONICAL_VISIT_DISCIPLINES.some((d) => d.code === row.discipline));
 
   const updateExtraRow = (idx, patch) => onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   const removeExtraRow = (idx) => onChange(list.filter((_, i) => i !== idx));
-  const addExtraDiscipline = () => onChange([...list, { discipline: "", numberOfVisits: "", period: "", specify: "" }]);
+  const addExtraDiscipline = () => onChange([...list, { discipline: "", numberOfVisits: "", period: "", prn: false, specify: "" }]);
 
   return (
     <div>
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        {CORE_VISIT_DISCIPLINES.map(({ code, label }) => {
+        {CANONICAL_VISIT_DISCIPLINES.map(({ code, label }) => {
           const idx = findRowIndex(code);
           const row = idx >= 0 ? list[idx] : null;
-          const selectedPill = visitFrequencyPillFromRow(row);
           return (
             <div key={code} style={{
               padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
             }}>
-              <FormSegmented
-                label={label}
-                value={selectedPill}
-                onChange={(v) => setCorePill(code, v)}
-                options={VISIT_FREQUENCY_PILL_OPTIONS}
-                compact
-              />
-              {selectedPill === "CUSTOM" && (
+              <label style={styles.label}>{label}</label>
+              <div style={{
+                display: "grid", gridTemplateColumns: "1.1fr 1.5fr auto 1.8fr", gap: 8, alignItems: "end", marginTop: 4,
+              }}>
                 <FormInput
-                  label="Specify frequency"
-                  value={row?.specify || ""}
-                  onChange={(v) => setCoreCustomText(code, v)}
-                  placeholder="e.g., within 5 days of admission then RECERT and PRN"
+                  label="Frequency"
+                  value={row?.numberOfVisits || ""}
+                  onChange={(v) => setCanonicalField(code, { numberOfVisits: v })}
+                  placeholder="e.g., 2, 2W4, 3W2"
                 />
-              )}
+                <FormSelect
+                  label="Period"
+                  value={row?.period || ""}
+                  onChange={(v) => setCanonicalField(code, { period: v })}
+                  options={VISIT_FREQUENCY_PERIOD_OPTIONS}
+                />
+                <FormSegmented
+                  label="PRN"
+                  value={row?.prn ? "Yes" : "No"}
+                  onChange={(v) => setCanonicalField(code, { prn: v === "Yes" })}
+                  options={["Yes", "No"]}
+                  compact
+                />
+                <FormInput
+                  label="Frequency Notes"
+                  value={row?.specify || ""}
+                  onChange={(v) => setCanonicalField(code, { specify: v })}
+                  placeholder="e.g., Within 24 hours of admission then PRN"
+                />
+              </div>
             </div>
           );
         })}
@@ -11327,7 +11354,7 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
           <label style={styles.label}>Additional Disciplines</label>
           {extraRows.map(({ row, idx }) => (
             <div key={idx} style={{
-              display: "grid", gridTemplateColumns: "1.3fr 0.7fr 1.3fr 1.6fr auto", gap: 8, alignItems: "end",
+              display: "grid", gridTemplateColumns: "1.3fr 0.9fr 1.3fr auto 1.6fr auto", gap: 8, alignItems: "end",
               padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
             }}>
               <FormSelect
@@ -11336,11 +11363,11 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
                 onChange={(v) => updateExtraRow(idx, { discipline: v })}
                 options={VISIT_FREQUENCY_DISCIPLINE_OPTIONS}
               />
-              <FormSelect
-                label="No. of Visits"
-                value={row.numberOfVisits}
+              <FormInput
+                label="Frequency"
+                value={row.numberOfVisits || ""}
                 onChange={(v) => updateExtraRow(idx, { numberOfVisits: v })}
-                options={VISIT_FREQUENCY_COUNT_OPTIONS}
+                placeholder="e.g., 2, 2W4, 3W2"
               />
               <FormSelect
                 label="Period"
@@ -11348,8 +11375,15 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
                 onChange={(v) => updateExtraRow(idx, { period: v })}
                 options={VISIT_FREQUENCY_PERIOD_OPTIONS}
               />
+              <FormSegmented
+                label="PRN"
+                value={row.prn ? "Yes" : "No"}
+                onChange={(v) => updateExtraRow(idx, { prn: v === "Yes" })}
+                options={["Yes", "No"]}
+                compact
+              />
               <FormInput
-                label="Or specify as required"
+                label="Frequency Notes"
                 value={row.specify || row.frequency || ""}
                 onChange={(v) => updateExtraRow(idx, { specify: v })}
                 placeholder="e.g., within 5 days of admission then RECERT and PRN"
@@ -22780,10 +22814,11 @@ export function getComfortMeasuresStatus(imminentDeath = {}) {
 }
 
 // Visit Frequency is "Configured" once at least one discipline row has a
-// physician-ordered frequency (either a structured count/period pair, or
-// a free-text "specify" override for non-standard orders).
+// physician-ordered frequency (a free-text hospice shorthand like "2W4",
+// a selected Period, an explicit PRN flag, or free-text Frequency Notes
+// for a non-standard order).
 export function isVisitFrequencyConfigured(rows = []) {
-  return (rows || []).some((r) => (r.numberOfVisits && r.period) || (r.specify || "").trim());
+  return (rows || []).some((r) => isVisitFrequencyRowConfigured(r));
 }
 
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Documentation
@@ -25806,9 +25841,32 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           const hasTerminalDeclineEvidence = imminentDeathData.appearsThreeDaysOrLess === "1"
             || (Array.isArray(imminentDeathData.indicators) && imminentDeathData.indicators.length > 0);
           const coverage = computeOrdersPocDocumentationCoverage(data, { hasTerminalDeclineEvidence });
+          // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Visit
+          // Frequency Redesign Revision" -- "Orders & POC Documentation
+          // Coverage shall display: RN: 2W4 / LVN: PRN / HA: 3W4 ... This
+          // summary appears at the top. The detailed rows remain below."
+          // Purely additive to the existing binary "Visit Frequency"
+          // chip above (still gating Completion Summary) -- this is a
+          // second, richer per-discipline display, not a replacement.
+          const visitFrequencySummaries = getConfiguredVisitFrequencySummaries(data.visitFrequency);
           return (
             <div key={ci}>
               <DocumentationCoverage title={card.title} items={coverage} data-testid="orders-poc-documentation-coverage" />
+              {visitFrequencySummaries.length > 0 && (
+                <div data-testid="orders-poc-visit-frequency-summary" style={{
+                  display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8,
+                }}>
+                  {visitFrequencySummaries.map(({ code, shortLabel, summary }) => (
+                    <span key={code} style={{
+                      display: "inline-flex", alignItems: "center", gap: 4, padding: "3px 9px",
+                      borderRadius: 999, fontSize: 11, fontWeight: 700, background: COLORS.bg,
+                      border: `1px solid ${COLORS.border}`, color: COLORS.dark,
+                    }}>
+                      <span style={{ color: COLORS.gray }}>{shortLabel}:</span> {summary}
+                    </span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         }
