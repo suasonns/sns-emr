@@ -229,11 +229,48 @@ export function isFacilitySiteOfService(fullFormData) {
   return siteOfService !== "" && siteOfService !== "01";
 }
 
+// PRODUCT OWNER DIRECTIVE "Checkpoint 3: Environmental Safety Summary
+// Accuracy" (2026-10-24) -- short, clinically-readable Site of Service
+// labels used ONLY for the main-page Environmental Safety summary line
+// (e.g. "Private Home", "Assisted Living"). Deliberately a separate,
+// narrower map from the official long-form CMS A0215 labels
+// (`SITE_OF_SERVICE_LABELS` in HopeAdministrativeReview.jsx /
+// hopeReportMapper.js, which remain the source of truth for the actual
+// HOPE report and are not duplicated or altered here) -- this map exists
+// purely so the summary reads "Private Home" / "Assisted Living" instead
+// of the full CMS phrasing ("Patient's Home/Residence" / "Assisted
+// Living Facility") or a generic "Home"/"Facility".
+const SETTING_SHORT_LABEL_BY_CODE = {
+  "01": "Private Home",
+  "02": "Assisted Living",
+  "03": "Nursing/LTC Facility",
+  "04": "Skilled Nursing Facility",
+  "05": "Inpatient Hospital",
+  "06": "Inpatient Hospice Facility",
+  "07": "Long Term Care Hospital",
+  "08": "Inpatient Psychiatric Facility",
+  "09": "Hospice Home Care Facility",
+  "99": "Facility (Not Listed)",
+};
+
+// PRODUCT OWNER DIRECTIVE "Checkpoint 3" -- "UNABLE TO ASSESS" requires a
+// named reason; a blank Unable-To-Assess status is never allowed. Follows
+// the SAME established "segmented reason + Other free-text" pattern
+// already used by every other Body System's own Unable-to-Assess field
+// (e.g. `respiratoryUnableToAssessReason`/`respiratoryUnableToAssessOther`
+// in RNICA.jsx) -- no new pattern invented.
+export const ENVIRONMENTAL_UNABLE_TO_ASSESS_REASON_OPTIONS = [
+  "Environment Inaccessible",
+  "Immediate Staff-Safety Concern",
+  "Other",
+];
+
 /** Environmental Safety Assessment summary -- setting, completion,
  * patient (Home/Facility) hazards, staff visit-safety hazards. */
 export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {}) {
   const isFacility = isFacilitySiteOfService(fullFormData);
   const setting = isFacility ? "Facility" : "Home";
+  const settingLabel = SETTING_SHORT_LABEL_BY_CODE[getSiteOfServiceCode(fullFormData)] || (isFacility ? "Facility" : "Private Home");
   const homeConcerns = (safetyData.environmentalHomeConcerns || []).filter((c) => c !== ENVIRONMENTAL_HOME_NO_CONCERN);
   const noHomeConcerns = (safetyData.environmentalHomeConcerns || []).includes(ENVIRONMENTAL_HOME_NO_CONCERN);
   const facilityStatus = safetyData.environmentalFacilityStatus || "";
@@ -251,10 +288,22 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
   const noStaffConcerns = staffSafetyStatus === STAFF_SAFETY_STATUS_NO_CONCERN;
   const staffUnableToAssess = staffSafetyStatus === STAFF_SAFETY_STATUS_UNABLE;
 
+  // Checkpoint 3 "UNABLE TO ASSESS" -- a named reason is required
+  // whenever Staff Visit-Safety Status is "Unable to Assess" (the only
+  // Unable-to-Assess gate Environmental Safety currently has); a blank
+  // reason is never permitted to count as documented.
+  const unableToAssessReason = staffUnableToAssess
+    ? (safetyData.environmentalUnableToAssessReason === "Other"
+      ? (safetyData.environmentalUnableToAssessOther || "")
+      : (safetyData.environmentalUnableToAssessReason || ""))
+    : "";
+
   const patientComplete = isFacility
     ? Boolean(facilityStatus)
     : (homeConcerns.length > 0 || noHomeConcerns);
-  const staffComplete = Boolean(staffSafetyStatus) && (staffSafetyStatus !== STAFF_SAFETY_STATUS_CONCERN || staffHazards.length > 0);
+  const staffComplete = Boolean(staffSafetyStatus)
+    && (staffSafetyStatus !== STAFF_SAFETY_STATUS_CONCERN || staffHazards.length > 0)
+    && (!staffUnableToAssess || Boolean(unableToAssessReason));
 
   // Section 7 additions -- only required when an actual hazard (patient
   // or staff) was identified; a clean "No Concerns" visit never requires
@@ -274,17 +323,69 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
   const complete = patientComplete && staffComplete && riskTargetComplete && actionsTakenComplete && dispositionComplete && followUpComplete;
 
   const patientSummary = isFacility
-    ? (facilityStatus === "Observed Concern" ? (facilityConcerns.join(", ") || "Observed Concern") : (facilityStatus || ""))
+    ? (facilityStatus === "Observed Concern" ? facilityConcerns.join(", ") : (facilityStatus || ""))
     : (homeConcerns.length > 0 ? homeConcerns.join(", ") : (noHomeConcerns ? ENVIRONMENTAL_HOME_NO_CONCERN : ""));
   const staffSummary = staffHazards.length > 0 ? staffHazards.join(", ") : (noStaffConcerns ? STAFF_SAFETY_STATUS_NO_CONCERN : (staffUnableToAssess ? STAFF_SAFETY_STATUS_UNABLE : ""));
 
+  // Checkpoint 3 "SETTING CHANGE BEHAVIOR" -- detects a Place-of-Service
+  // change that has invalidated the OTHER branch's previously-recorded
+  // answers (e.g. Facility -> Home: old `environmentalFacilityStatus`
+  // data exists but the new Home branch has not yet been answered). No
+  // new field is introduced: this is inferred purely from which
+  // branch's data is present versus which branch is currently active,
+  // the same "historical values never leak into the current summary"
+  // guarantee already enforced by `patientHazards`/`patientSummary` only
+  // ever reading the CURRENTLY active branch above.
+  const otherSettingHasData = isFacility
+    ? (homeConcerns.length > 0 || noHomeConcerns)
+    : Boolean(facilityStatus);
+  const settingChanged = otherSettingHasData && !patientComplete;
+
+  // Checkpoint 3 "REQUIRED SUMMARY RULES" -- the main-page card summary
+  // must always name the actual finding, never a meaningless placeholder
+  // like bare "Observed Concern" or bare "Facility Managed". Built
+  // SEPARATELY from `patientSummary`/`staffSummary` above (which stay
+  // unchanged for their existing consumers -- the Review & Complete step
+  // and the prior-assessment import banner, both of which already pair
+  // the raw value with their own "Setting: X" label for context) so nothing
+  // else that already reads `patientSummary`/`staffSummary` is altered.
+  let cardSummary = "";
+  if (settingChanged) {
+    cardSummary = "Needs Review — Place of Service Changed";
+  } else if (staffUnableToAssess) {
+    cardSummary = unableToAssessReason ? `Unable To Assess — ${unableToAssessReason}` : "Unable To Assess";
+  } else if (isFacility) {
+    if (facilityStatus === "Facility Managed") {
+      cardSummary = `${settingLabel} — Facility Managed, No Observed Concern`;
+    } else if (facilityStatus === "Observed Concern" && facilityConcerns.length > 0) {
+      cardSummary = `${settingLabel} — ${facilityConcerns.join("; ")}`;
+    }
+  } else if (noHomeConcerns) {
+    cardSummary = `${settingLabel} — No Environmental Concern Identified`;
+  } else if (homeConcerns.length > 0) {
+    cardSummary = `${settingLabel} — ${homeConcerns.join("; ")}`;
+  }
+
+  let staffCardSummary = "";
+  if (staffHazards.length > 0) {
+    staffCardSummary = staffHazards.join("; ");
+  } else if (noStaffConcerns) {
+    staffCardSummary = "No Concern Identified";
+  } else if (staffUnableToAssess) {
+    staffCardSummary = unableToAssessReason ? `Unable to Assess — ${unableToAssessReason}` : "Unable to Assess";
+  }
+
   return {
     setting,
+    settingLabel,
+    settingChanged,
     complete,
     patientHazards,
     staffHazards,
     patientSummary,
     staffSummary,
+    cardSummary,
+    staffCardSummary,
     hasAnyHazard,
     riskTarget,
     actionsTaken,
@@ -293,6 +394,7 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
     followUpNote,
     clarification: safetyData.environmentalClarificationNote || "",
     staffSafetyStatus,
+    unableToAssessReason,
   };
 }
 

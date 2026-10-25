@@ -67,6 +67,7 @@ import {
   STAFF_SAFETY_STATUS_OPTIONS,
   STAFF_SAFETY_HAZARD_CATEGORIES,
   STAFF_SAFETY_HAZARD_OPTIONS,
+  ENVIRONMENTAL_UNABLE_TO_ASSESS_REASON_OPTIONS,
   isFacilitySiteOfService,
 } from "./rn-ica/safety-clinical-risk/safetyLogic";
 import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
@@ -8184,6 +8185,13 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormDa
     if (v !== STAFF_SAFETY_STATUS_CONCERN) {
       updateField("environmentalStaffSafetyHazards", []);
     }
+    // Checkpoint 3 "UNABLE TO ASSESS" -- a reason only applies while
+    // Unable to Assess is selected; moving away from it clears any
+    // previously-entered reason rather than leaving it stale/orphaned.
+    if (v !== STAFF_SAFETY_STATUS_UNABLE) {
+      updateField("environmentalUnableToAssessReason", "");
+      updateField("environmentalUnableToAssessOther", "");
+    }
   };
   const makeStaffSafetyCategoryHandler = (groupOptions) => (nextValuesForGroup) => {
     const others = staffSafetyHazards.filter((v) => !groupOptions.includes(v));
@@ -8316,6 +8324,27 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormDa
             compact
           />
         ))}
+        {staffSafetyStatus === STAFF_SAFETY_STATUS_UNABLE && (
+          <>
+            {/* Checkpoint 3 "UNABLE TO ASSESS" -- a blank Unable-to-Assess
+                status is never allowed; a named reason is required, same
+                segmented-reason-plus-Other-free-text pattern already used
+                by every other Body System's own Unable-to-Assess field. */}
+            <FormSegmented
+              label="Reason Unable to Assess"
+              value={data?.environmentalUnableToAssessReason || ""}
+              onChange={(v) => updateField("environmentalUnableToAssessReason", v)}
+              options={ENVIRONMENTAL_UNABLE_TO_ASSESS_REASON_OPTIONS}
+            />
+            {data?.environmentalUnableToAssessReason === "Other" && (
+              <FormTextarea
+                label="Other Reason (if selected above)"
+                value={data?.environmentalUnableToAssessOther || ""}
+                onChange={(v) => updateField("environmentalUnableToAssessOther", v)}
+              />
+            )}
+          </>
+        )}
       </div>
       {hasAnyHazard && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>

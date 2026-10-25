@@ -125,7 +125,11 @@ export default function SafetyAssessmentOverview({
         <CardContent className="pt-0">
           <Fact
             label="Environmental Safety"
-            value={[environmental.patientSummary, environmental.staffSummary].filter(Boolean).join(" · ")}
+            value={environmental.cardSummary}
+          />
+          <Fact
+            label="Staff Visit Safety"
+            value={environmental.staffCardSummary}
           />
           <Fact
             label="Fall Risk"
