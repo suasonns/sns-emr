@@ -5,18 +5,19 @@ import {
   getComfortMeasuresStatus,
   isVisitFrequencyConfigured,
   computeOrdersPocDocumentationCoverage,
-  visitFrequencyPillFromRow,
-  visitFrequencyRowFromPill,
+  formatVisitFrequencySummary,
+  getConfiguredVisitFrequencySummaries,
 } from "./RNICA.jsx";
 
 // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
-// Follow Infection Design" -- proves the pure derivation/coverage
-// helpers that power the Infection-style redesign (Documentation
-// Coverage summary pills, HA/Initial-POC/Comfort-Measures state pills,
-// Visit Frequency pill<->row mapping). UI rendering itself is exercised
-// by the project's existing manual/live-browser verification process
-// (per established session convention); these tests lock in the pure
-// business logic so it can't silently regress.
+// Follow Infection Design" / "Orders & POC Visit Frequency Redesign
+// Revision" -- proves the pure derivation/coverage helpers that power
+// the Infection-style redesign (Documentation Coverage summary pills,
+// HA/Initial-POC/Comfort-Measures state pills, the per-discipline Visit
+// Frequency summary). UI rendering itself is exercised by the project's
+// existing manual/live-browser verification process (per established
+// session convention); these tests lock in the pure business logic so
+// it can't silently regress.
 
 describe("getHaAssignmentStatus", () => {
   it("is NOT_APPLICABLE when explicitly marked N/A, regardless of any stale aide name", () => {
@@ -56,34 +57,87 @@ describe("getComfortMeasuresStatus", () => {
 describe("isVisitFrequencyConfigured", () => {
   it("is false for an empty/all-blank row set", () => {
     expect(isVisitFrequencyConfigured([])).toBe(false);
-    expect(isVisitFrequencyConfigured([{ discipline: "SN", numberOfVisits: "", period: "" }])).toBe(false);
+    expect(isVisitFrequencyConfigured([{ discipline: "RN", numberOfVisits: "", period: "", prn: false }])).toBe(false);
   });
-  it("is true once at least one row has a structured count+period", () => {
-    expect(isVisitFrequencyConfigured([{ discipline: "SN", numberOfVisits: "3", period: "per Week" }])).toBe(true);
+  it("is true once at least one row has a free-text hospice-shorthand frequency", () => {
+    expect(isVisitFrequencyConfigured([{ discipline: "RN", numberOfVisits: "2W4", period: "" }])).toBe(true);
   });
-  it("is true for a free-text 'specify' override even with no structured count/period", () => {
+  it("is true for a selected Period alone", () => {
+    expect(isVisitFrequencyConfigured([{ discipline: "RN-SUP", numberOfVisits: "", period: "every 14 days" }])).toBe(true);
+  });
+  it("is true for an explicit PRN flag alone", () => {
+    expect(isVisitFrequencyConfigured([{ discipline: "LVN", numberOfVisits: "", period: "", prn: true }])).toBe(true);
+  });
+  it("is true for a free-text 'specify'/Frequency Notes override even with no frequency/period/PRN", () => {
     expect(isVisitFrequencyConfigured([{ discipline: "SN", specify: "within 5 days of admission" }])).toBe(true);
   });
 });
 
-describe("visitFrequencyPillFromRow / visitFrequencyRowFromPill", () => {
-  it("round-trips every named pill through its row shape", () => {
-    for (const pill of ["DAILY", "5X_WEEK", "3X_WEEK", "2X_WEEK", "1X_WEEK", "PRN"]) {
-      const row = visitFrequencyRowFromPill(pill);
-      expect(visitFrequencyPillFromRow(row)).toBe(pill);
-    }
+describe("formatVisitFrequencySummary", () => {
+  it("shows the free-text Frequency plus Period when both are present", () => {
+    expect(formatVisitFrequencySummary({ numberOfVisits: "2", period: "W4" })).toBe("2 W4");
   });
-  it("maps a Custom pill to the free-text 'specify' field", () => {
-    const row = visitFrequencyRowFromPill("CUSTOM", "RECERT and PRN");
-    expect(row.specify).toBe("RECERT and PRN");
-    expect(visitFrequencyPillFromRow(row)).toBe("CUSTOM");
+  it("shows the Frequency alone when it already carries the full hospice shorthand", () => {
+    expect(formatVisitFrequencySummary({ numberOfVisits: "2W4" })).toBe("2W4");
+    expect(formatVisitFrequencySummary({ numberOfVisits: "3W2" })).toBe("3W2");
   });
-  it("shows a previously-charted non-standard count/period combination as Custom rather than hiding it", () => {
-    expect(visitFrequencyPillFromRow({ numberOfVisits: "4", period: "per Week" })).toBe("CUSTOM");
+  it("shows the Period alone when Frequency is blank", () => {
+    expect(formatVisitFrequencySummary({ period: "every 14 days" })).toBe("every 14 days");
   });
-  it("shows nothing selected for a never-touched row", () => {
-    expect(visitFrequencyPillFromRow({ discipline: "SN", numberOfVisits: "", period: "", specify: "" })).toBe("");
-    expect(visitFrequencyPillFromRow(null)).toBe("");
+  it("falls back to 'PRN' when only the PRN flag is set", () => {
+    expect(formatVisitFrequencySummary({ prn: true })).toBe("PRN");
+  });
+  it("is blank for a never-touched row", () => {
+    expect(formatVisitFrequencySummary({})).toBe("");
+    expect(formatVisitFrequencySummary()).toBe("");
+  });
+});
+
+describe("getConfiguredVisitFrequencySummaries", () => {
+  it("returns canonical disciplines in their fixed display order, omitting unconfigured ones", () => {
+    const rows = [
+      { discipline: "MSW", numberOfVisits: "1W4" },
+      { discipline: "RN", numberOfVisits: "2W4" },
+      { discipline: "LVN", prn: true },
+      { discipline: "HA", numberOfVisits: "", period: "" },
+    ];
+    const summaries = getConfiguredVisitFrequencySummaries(rows);
+    expect(summaries.map((s) => s.code)).toEqual(["RN", "LVN", "MSW"]);
+    expect(summaries.find((s) => s.code === "RN")).toEqual({ code: "RN", shortLabel: "RN", summary: "2W4" });
+    expect(summaries.find((s) => s.code === "LVN")).toEqual({ code: "LVN", shortLabel: "LVN", summary: "PRN" });
+  });
+  it("matches every literal example from the PO directive", () => {
+    const rows = [
+      { discipline: "RN", numberOfVisits: "2W4" },
+      { discipline: "LVN", prn: true },
+      { discipline: "HA", numberOfVisits: "3W4" },
+      { discipline: "MSW", numberOfVisits: "1W4" },
+      { discipline: "SC", numberOfVisits: "1W4" },
+      { discipline: "RN-SUP", period: "every 14 days" },
+      { discipline: "NP", prn: true },
+    ];
+    const summaries = getConfiguredVisitFrequencySummaries(rows);
+    const byCode = Object.fromEntries(summaries.map((s) => [s.code, s]));
+    expect(byCode.RN.summary).toBe("2W4");
+    expect(byCode.LVN.summary).toBe("PRN");
+    expect(byCode.HA.summary).toBe("3W4");
+    expect(byCode.MSW.summary).toBe("1W4");
+    expect(byCode.SC).toEqual(expect.objectContaining({ shortLabel: "Chaplain", summary: "1W4" }));
+    expect(byCode["RN-SUP"]).toEqual(expect.objectContaining({ shortLabel: "RN Supervisor", summary: "every 14 days" }));
+    expect(byCode.NP.summary).toBe("PRN");
+  });
+  it("still surfaces a legacy/non-canonical discipline (e.g. pre-revision 'SN' data) after the canonical disciplines", () => {
+    const rows = [
+      { discipline: "RN", numberOfVisits: "2W4" },
+      { discipline: "SN", numberOfVisits: "3", period: "per Week" },
+    ];
+    const summaries = getConfiguredVisitFrequencySummaries(rows);
+    expect(summaries.map((s) => s.code)).toEqual(["RN", "SN"]);
+    expect(summaries[1].summary).toBe("3 per Week");
+  });
+  it("returns an empty array when no discipline has been configured", () => {
+    expect(getConfiguredVisitFrequencySummaries([])).toEqual([]);
+    expect(getConfiguredVisitFrequencySummaries()).toEqual([]);
   });
 });
 
