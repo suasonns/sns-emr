@@ -438,6 +438,85 @@ const DEFAULT_VISIT_DISCIPLINES = [
   { discipline: "RN-SUP", numberOfVisits: "", period: "", specify: "" },
 ];
 
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
+// Follow Infection Design" Section 3 -- the six named disciplines always
+// get a fixed, always-visible frequency card (Infection-style pills)
+// instead of a free-form row grid. Any other discipline the patient needs
+// (PT/OT/ST, dietitian, podiatry, an upcoming F2F, etc.) is still added
+// via "+ Add Discipline" exactly as before -- this list only decides
+// which disciplines get the fixed pill card treatment, it does not limit
+// which disciplines can be ordered.
+const CORE_VISIT_DISCIPLINES = [
+  { code: "SN", label: "Skilled Nursing" },
+  { code: "HA", label: "Home Health Aide" },
+  { code: "MSW", label: "MSW" },
+  { code: "SC", label: "Chaplain" },
+  { code: "VOL", label: "Volunteer" },
+  { code: "RN-SUP", label: "RN Supervisory Visit" },
+];
+
+// Fixed pill vocabulary for a discipline's visit frequency, mapped onto
+// the existing free-form `{numberOfVisits, period, specify}` row schema
+// so no backend/data-model change is required -- only the editing UI
+// changes. "Custom" is the escape hatch for any physician order that
+// doesn't fit one of the 6 named cadences (same free-text field that
+// already existed as "specify").
+const VISIT_FREQUENCY_PILL_OPTIONS = [
+  { value: "DAILY", label: "Daily" },
+  { value: "5X_WEEK", label: "5x Week" },
+  { value: "3X_WEEK", label: "3x Week" },
+  { value: "2X_WEEK", label: "2x Week" },
+  { value: "1X_WEEK", label: "1x Week" },
+  { value: "PRN", label: "PRN" },
+  { value: "CUSTOM", label: "Custom" },
+];
+
+const VISIT_FREQUENCY_PILL_TO_ROW = {
+  DAILY: { numberOfVisits: "", period: "Daily until further orders" },
+  "5X_WEEK": { numberOfVisits: "5", period: "per Week" },
+  "3X_WEEK": { numberOfVisits: "3", period: "per Week" },
+  "2X_WEEK": { numberOfVisits: "2", period: "per Week" },
+  "1X_WEEK": { numberOfVisits: "1", period: "per Week" },
+  PRN: { numberOfVisits: "", period: "As Needed" },
+};
+
+// Reverse-lookup: which pill (if any) represents this row's already-
+// stored numberOfVisits/period/specify. A previously-charted combination
+// that doesn't exactly match one of the 6 named cadences still displays
+// as "Custom" (with its original text visible) rather than silently
+// showing nothing selected -- no previously-documented order is ever
+// hidden.
+export function visitFrequencyPillFromRow(row) {
+  if (!row) return "";
+  if ((row.specify || "").trim()) return "CUSTOM";
+  const match = Object.entries(VISIT_FREQUENCY_PILL_TO_ROW).find(
+    ([, v]) => v.numberOfVisits === (row.numberOfVisits || "") && v.period === (row.period || ""),
+  );
+  if (match) return match[0];
+  return (row.numberOfVisits || row.period) ? "CUSTOM" : "";
+}
+
+export function visitFrequencyRowFromPill(pill, specifyText) {
+  if (pill === "CUSTOM") return { numberOfVisits: "", period: "", specify: specifyText || "" };
+  const mapped = VISIT_FREQUENCY_PILL_TO_ROW[pill];
+  return mapped ? { ...mapped, specify: "" } : { numberOfVisits: "", period: "", specify: "" };
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-10-25) Section 8 "Plan of Care Review" --
+// maps `deriveChhaCareGuidance`'s existing risk-category keys onto the
+// 5 PO-named "Problems Identified" labels, rather than inventing new
+// risk-derivation logic. Only these 5 categories are shown here (per the
+// directive's literal example list); any other active category still
+// surfaces elsewhere (Today's Care Alerts, Safety Alerts, Special
+// Precautions) exactly as before -- this card does not replace those.
+const POC_PROBLEM_REVIEW_MAP = [
+  { key: "severePain", guidanceKey: "severePain", label: "High Pain Burden" },
+  { key: "fallRisk", guidanceKey: "fallRisk", label: "Fall Risk Present" },
+  { key: "oxygen", guidanceKey: "oxygen", label: "Respiratory Concern" },
+  { key: "transferSafety", guidanceKey: "transferSafety", label: "Mobility Limitation" },
+  { key: "swallowing", guidanceKey: "swallowing", label: "Nutrition Risk" },
+];
+
 // ─── Visit meta options (logistics/payroll tracking, shared across all ICA/visit forms) ───
 const CHHA_REASON_FOR_VISIT_OPTIONS = ["Follow-up", "Routine", "CC"];
 
@@ -1471,6 +1550,16 @@ export const INITIAL_FORM = {
     appearsThreeDaysOrLess: "",
     indicators: [],
     comfortMeasuresInPlace: false,
+    // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
+    // Follow Infection Design" Section 6 -- additive 3-state pill
+    // (Established / Not Yet Established / Not Applicable) alongside the
+    // original `comfortMeasuresInPlace` boolean, which can only represent
+    // two of those three states. Legacy records with no `comfortMeasures
+    // Status` fall back to deriving it from the boolean (true ->
+    // Established, false -> Not Yet Established); the boolean is kept in
+    // sync going forward (true only when status is ESTABLISHED) so any
+    // existing boolean-reading code/report is never silently wrong.
+    comfortMeasuresStatus: "",
     familyNotified: false,
     notes: "",
   },
@@ -1789,11 +1878,27 @@ export const INITIAL_FORM = {
     initialPocIdg: {
       created: false, createdDate: "",
       notes: "IDG should only be created after all problems identified during this Assessment have been added to Initial POC using the ADD ISSUE feature.",
+      // PRODUCT OWNER DIRECTIVE (2026-10-25) Section 5 -- additive
+      // 4-state pill (Not Started / In Progress / Created / Requires
+      // Review); the original `created` boolean can only represent two
+      // of those four states, so it's kept in sync (true only when
+      // status is CREATED) rather than replaced, preserving any
+      // existing boolean-reading code/report.
+      status: "",
+      // Section 8 "Plan of Care Review" -- which auto-identified
+      // problems (Fall Risk Present, High Pain Burden, Respiratory
+      // Concern, Mobility Limitation, Nutrition Risk) the RN has
+      // confirmed were carried into the Initial POC via "ADD ISSUE".
+      problemsAddressed: [],
     },
     nonCoveredItems: [],
     toVerification: {
       verbalOrderReadBack: false, verifiedBy: "",
       prescriberContacted: false, verificationTimestamp: "",
+      // PRODUCT OWNER DIRECTIVE (2026-10-25) Section 7 -- "Verbal Order
+      // Received" is a distinct step from "Read Back Verified"; additive
+      // field, independent of the two pre-existing booleans above.
+      verbalOrderReceived: false,
     },
   },
 
@@ -6924,6 +7029,60 @@ function captureSkinImpairmentLaunchContext() {
   }
 }
 
+// PRODUCT OWNER DIRECTIVE (2026-10-24) "Redesign Orders & POC Using
+// Infection as the UI Standard" Issue 1 "CHHA Plan of Care Breaks RNICA
+// Workflow" -- "the RN loses context and workflow position... this is
+// unacceptable during admission." Unlike the Skin Impairment workspace
+// (a separate ROUTE, `/skin-impairments`), CHHA Plan of Care is a
+// sibling PatientChart tab switch (`activeSection` changes, the URL
+// itself never does) -- there is no pathname+search to match against, so
+// this context is keyed by patientId instead and consumed by RNICA's own
+// "am I returning from CHHA" restore effect below. Same deferred-removal
+// treatment as the Skin Impairment context, for the same reason: the
+// embedded Nursing Assessment tab briefly mounts RNICA under a
+// placeholder key before its real `assessmentId` key, and that second,
+// real mount must still see this context to actually apply it.
+const CHHA_POC_LAUNCH_CONTEXT_KEY = "rnica.chhaPocLaunchContext";
+
+function captureChhaPocLaunchContext(patientId) {
+  try {
+    sessionStorage.setItem(CHHA_POC_LAUNCH_CONTEXT_KEY, JSON.stringify({
+      patientId: patientId || "",
+      activeSection: "admissionsOrder",
+      scrollY: getCurrentScrollPosition(),
+      savedAt: Date.now(),
+    }));
+  } catch {
+    // sessionStorage unavailable -- "Return to RNICA" still works (it
+    // just lands on RNICA's own default section instead of Orders & POC).
+  }
+}
+
+let chhaPocLaunchContextClearTimer = null;
+function scheduleChhaPocLaunchContextRemoval() {
+  if (chhaPocLaunchContextClearTimer) {
+    clearTimeout(chhaPocLaunchContextClearTimer);
+  }
+  chhaPocLaunchContextClearTimer = setTimeout(() => {
+    chhaPocLaunchContextClearTimer = null;
+    try { sessionStorage.removeItem(CHHA_POC_LAUNCH_CONTEXT_KEY); } catch {
+      // ignore -- worst case the stale entry is overwritten next time
+    }
+  }, 3000);
+}
+
+function readChhaPocLaunchContext(patientId) {
+  try {
+    const raw = sessionStorage.getItem(CHHA_POC_LAUNCH_CONTEXT_KEY);
+    if (!raw) return null;
+    const ctx = JSON.parse(raw);
+    if (!ctx || ctx.patientId !== (patientId || "")) return null;
+    return ctx;
+  } catch {
+    return null;
+  }
+}
+
 // PRODUCT OWNER CORRECTION (2026-11-24) "Remove Redundant Skin
 // Impairment Inventory Panel From RNICA" -- the prior standalone
 // Inventory card duplicated status/counts the Skin Impairment Assessment
@@ -8113,7 +8272,7 @@ const STAFF_VISIT_SAFETY_OPTIONS = [
   "Aggressive Animal", "Unsafe Entry or Access", "Other",
   STAFF_VISIT_SAFETY_NO_CONCERN,
 ];
-function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId }) {
+function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId, isInitialAdmission = false }) {
   const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
   const isFacility = isFacilitySiteOfService(fullFormData);
 
@@ -8391,7 +8550,16 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormDa
           onChange={(v) => updateField("environmentalClarificationNote", v)}
         />
       )}
-      {(legacyStatus || legacyPatientHazards.length > 0 || legacyStaffHazards.length > 0 || legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0 || legacyHomeConcerns.length > 0 || legacyFacilityConcerns.length > 0 || legacyStaffVisitSafetyFlat.length > 0) && (
+      {/* PRODUCT OWNER DEFECT (2026-10-24) -- "Previously recorded" chips
+          re-surface deprecated field values stored on THIS record's own
+          draft data, regardless of whether a genuine prior assessment
+          exists. On a brand-new Initial Admission (mode === "ica") there
+          is by definition no real prior assessment to reference, so
+          these chips must never display -- they only ever reflected
+          leftover/legacy field values on the current draft itself, not a
+          historical assessment. Gated here; unchanged for Update/Recert
+          visits where the legacy-preservation convention still applies. */}
+      {!isInitialAdmission && (legacyStatus || legacyPatientHazards.length > 0 || legacyStaffHazards.length > 0 || legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0 || legacyHomeConcerns.length > 0 || legacyFacilityConcerns.length > 0 || legacyStaffVisitSafetyFlat.length > 0) && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, display: "flex", flexWrap: "wrap", gap: 4 }}>
           {legacyStaffVisitSafetyFlat.map((concern) => (
             <span key={`staff-flat-legacy-${concern}`}
@@ -8657,7 +8825,7 @@ const OXYGEN_SAFETY_CONCERN_OPTIONS = [
   OXYGEN_SAFETY_NO_CONCERN, "Smoking Near Oxygen", "Open Flame Near Oxygen", "Unsafe Storage",
   "No Backup Oxygen / Power Plan", "Education Needed", "Other",
 ];
-function OxygenSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId }) {
+function OxygenSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId, isInitialAdmission = false }) {
   const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
   const oxygenInUse = fullFormData?.respiratory?.oxygenTherapy?.inUse ?? data?.oxygenInUse;
   // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
@@ -8771,7 +8939,12 @@ function OxygenSafetyCard({ data, updateField, COLORS, styles, fullFormData, pat
           )}
         </div>
       )}
-      {legacyStatus && (
+      {/* PRODUCT OWNER DEFECT (2026-10-24) -- same "Previously recorded"
+          defect as Environmental Safety: these chips re-surface
+          deprecated field values stored on THIS record's own draft data,
+          not a genuine prior assessment. Suppressed on Initial Admission
+          for the same reason (see EnvironmentalSafetyCard). */}
+      {!isInitialAdmission && legacyStatus && (
         <div style={{ marginTop: 4, marginBottom: 4 }}>
           <span
             title="This status was previously recorded under the retired Reviewed / Concern Identified choice. The stored value has not been changed."
@@ -8781,7 +8954,7 @@ function OxygenSafetyCard({ data, updateField, COLORS, styles, fullFormData, pat
           </span>
         </div>
       )}
-      {(legacyItems.length > 0 || legacyConcerns.length > 0) && (
+      {!isInitialAdmission && (legacyItems.length > 0 || legacyConcerns.length > 0) && (
         <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
           {legacyItems.map((it) => (
             <span key={it}
@@ -8965,7 +9138,6 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
     updateField("disasterOxygenDependent", priorData.disasterOxygenDependent || "");
     updateField("disasterBackupPowerAvailable", priorData.disasterBackupPowerAvailable || "");
     updateField("disasterPreferredEmergencyLocation", priorData.disasterPreferredEmergencyLocation || "");
-    updateField("disasterResponsibleSupport", priorData.disasterResponsibleSupport || "");
     updateField("disasterRequirements", priorData.disasterRequirements || []);
     updateField("disasterTriageClarificationNote", priorData.disasterTriageClarificationNote || "");
   };
@@ -8977,7 +9149,6 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
         summaryLines={[
           `Level: ${priorDisaster.shortLabel}`,
           `Preferred Emergency Location: ${priorDisaster.preferredEmergencyLocation || "Unknown"}`,
-          `Support: ${priorDisaster.responsibleSupport || "Unknown"}`,
         ]}
         onNoChange={() => applyDisasterImport("unchanged")}
         onUpdate={() => applyDisasterImport("updated")}
@@ -9071,12 +9242,15 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
               onChange={(v) => updateField("disasterBackupPowerAvailable", v)}
               options={DISASTER_YES_NO_UNKNOWN_OPTIONS}
             />
-            {/* Preferred Emergency Location and Responsible Support are
-                deliberately OPTIONAL -- "Unknown" is an acceptable,
-                non-blocking answer, and Responsible Support is only
-                documented "may be documented" when a location is
-                specified; neither field participates in the completion
-                gate above. */}
+            {/* PRODUCT OWNER DIRECTIVE (2026-10-24) "Remove Responsible
+                Helper or Facility" -- the field was removed entirely
+                (not renamed, not made conditionally optional): nurses
+                cannot reliably predict who will evacuate, transport, or
+                coordinate emergency placement for a future disaster.
+                Preferred Emergency Location remains deliberately
+                OPTIONAL -- "Unknown" is an acceptable, non-blocking
+                answer and does not participate in the completion gate
+                above. */}
             <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555", margin: "14px 0 8px" }}>
               Preferred Emergency Location (Optional)
             </div>
@@ -9085,11 +9259,6 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
               value={data?.disasterPreferredEmergencyLocation || ""}
               onChange={(v) => updateField("disasterPreferredEmergencyLocation", v)}
               options={DISASTER_PREFERRED_EMERGENCY_LOCATION_OPTIONS}
-            />
-            <FormInput
-              label="Responsible Helper or Facility (Optional)"
-              value={data?.disasterResponsibleSupport || ""}
-              onChange={(v) => updateField("disasterResponsibleSupport", v)}
             />
             <FormPillGroup
               label="Oxygen / Medication / DME / Power Requirements"
@@ -11070,84 +11239,139 @@ function BodySystemPOCControls({ assessmentId, sectionKey, cardTitle, styles, CO
 }
 
 
-// SECTION 5B (Admissions Order) — Discipline Frequency of Visit. Physician-
-// ordered visit frequency, one row per discipline, added on demand — not a
-// fixed 5-discipline table. Any discipline the patient needs (PT/OT/ST,
-// dietitian, podiatry consult, an upcoming F2F-driving MD visit, etc.) can
-// be added via "+ Add Discipline", each with its own number-of-visits /
-// period, or a free-text "specify as required" override for anything that
-// doesn't fit the standard period picklist.
+// SECTION 5B (Admissions Order) — Discipline Frequency of Visit.
+//
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
+// Follow Infection Design" Section 3 -- replaces the generic add/remove
+// row grid (reject: "field-first", "row-first") with a fixed card per
+// named discipline (Skilled Nursing / Home Health Aide / MSW / Chaplain /
+// Volunteer / RN Supervisory Visit), each using an Infection-style
+// single-select frequency pill row (Daily/5x/3x/2x/1x Week/PRN/Custom)
+// instead of two dropdowns. The underlying `{discipline, numberOfVisits,
+// period, specify}` row schema is completely unchanged -- only the
+// editing surface is replaced, via `visitFrequencyPillFromRow`/
+// `visitFrequencyRowFromPill` above -- so nothing already charted is
+// reinterpreted or lost; a prior combination that doesn't match one of
+// the 6 named pills simply displays as "Custom" with its original text.
+// Any discipline beyond the fixed six (PT/OT/ST, dietitian, podiatry, an
+// upcoming F2F, etc.) is still addable/removable via "+ Add Discipline",
+// using the original row-grid editor -- that affordance is preserved
+// exactly as it worked before this redesign.
 function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
   const list = Array.isArray(rows) ? rows : [];
 
-  const updateRow = (idx, patch) => {
-    onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const findRowIndex = (code) => list.findIndex((r) => r.discipline === code);
+
+  const setCorePill = (code, pill) => {
+    const idx = findRowIndex(code);
+    const existing = idx >= 0 ? list[idx] : null;
+    const currentPill = visitFrequencyPillFromRow(existing);
+    // Re-clicking the selected pill deselects it, same convention as
+    // every other FormSegmented in this file.
+    const nextPill = currentPill === pill ? "" : pill;
+    const patch = { discipline: code, ...visitFrequencyRowFromPill(nextPill, existing?.specify) };
+    if (idx >= 0) onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    else onChange([...list, patch]);
   };
 
-  const removeRow = (idx) => {
-    onChange(list.filter((_, i) => i !== idx));
+  const setCoreCustomText = (code, text) => {
+    const idx = findRowIndex(code);
+    const patch = { discipline: code, numberOfVisits: "", period: "", specify: text };
+    if (idx >= 0) onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    else onChange([...list, patch]);
   };
 
-  const addRow = () => {
-    onChange([...list, { discipline: "", numberOfVisits: "", period: "", specify: "" }]);
-  };
+  // Rows for any discipline NOT one of the 6 fixed cards above -- same
+  // free-form row editor this card has always used.
+  const extraRows = list
+    .map((row, idx) => ({ row, idx }))
+    .filter(({ row }) => !CORE_VISIT_DISCIPLINES.some((d) => d.code === row.discipline));
+
+  const updateExtraRow = (idx, patch) => onChange(list.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  const removeExtraRow = (idx) => onChange(list.filter((_, i) => i !== idx));
+  const addExtraDiscipline = () => onChange([...list, { discipline: "", numberOfVisits: "", period: "", specify: "" }]);
 
   return (
     <div>
-      <div style={{ ...styles.infoBox, marginBottom: 10 }}>
-        Physician-ordered visit frequency for every discipline on this patient's plan of care. Add a row for each
-        discipline needed — core IDG disciplines are pre-populated below, but any discipline can be added or removed.
+      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {CORE_VISIT_DISCIPLINES.map(({ code, label }) => {
+          const idx = findRowIndex(code);
+          const row = idx >= 0 ? list[idx] : null;
+          const selectedPill = visitFrequencyPillFromRow(row);
+          return (
+            <div key={code} style={{
+              padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
+            }}>
+              <FormSegmented
+                label={label}
+                value={selectedPill}
+                onChange={(v) => setCorePill(code, v)}
+                options={VISIT_FREQUENCY_PILL_OPTIONS}
+                compact
+              />
+              {selectedPill === "CUSTOM" && (
+                <FormInput
+                  label="Specify frequency"
+                  value={row?.specify || ""}
+                  onChange={(v) => setCoreCustomText(code, v)}
+                  placeholder="e.g., within 5 days of admission then RECERT and PRN"
+                />
+              )}
+            </div>
+          );
+        })}
       </div>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        {list.map((row, idx) => (
-          <div key={idx} style={{
-            display: "grid", gridTemplateColumns: "1.3fr 0.7fr 1.3fr 1.6fr auto", gap: 8, alignItems: "end",
-            padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
-          }}>
-            <FormSelect
-              label="Discipline"
-              value={row.discipline}
-              onChange={(v) => updateRow(idx, { discipline: v })}
-              options={VISIT_FREQUENCY_DISCIPLINE_OPTIONS}
-            />
-            <FormSelect
-              label="No. of Visits"
-              value={row.numberOfVisits}
-              onChange={(v) => updateRow(idx, { numberOfVisits: v })}
-              options={VISIT_FREQUENCY_COUNT_OPTIONS}
-            />
-            <FormSelect
-              label="Period"
-              value={row.period}
-              onChange={(v) => updateRow(idx, { period: v })}
-              options={VISIT_FREQUENCY_PERIOD_OPTIONS}
-            />
-            <FormInput
-              label="Or specify as required"
-              value={row.specify || row.frequency || ""}
-              onChange={(v) => updateRow(idx, { specify: v })}
-              placeholder="e.g., within 5 days of admission then RECERT and PRN"
-            />
-            <button
-              type="button"
-              onClick={() => removeRow(idx)}
-              title="Remove this discipline"
-              style={{
-                border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
-                fontSize: 16, fontWeight: 700, height: 34, alignSelf: "end",
-              }}
-            >
-              ×
-            </button>
-          </div>
-        ))}
-        {list.length === 0 && (
-          <div style={{ fontSize: 12, color: COLORS.gray }}>No disciplines added yet.</div>
-        )}
-      </div>
+
+      {extraRows.length > 0 && (
+        <div style={{ marginTop: 14, display: "flex", flexDirection: "column", gap: 8 }}>
+          <label style={styles.label}>Additional Disciplines</label>
+          {extraRows.map(({ row, idx }) => (
+            <div key={idx} style={{
+              display: "grid", gridTemplateColumns: "1.3fr 0.7fr 1.3fr 1.6fr auto", gap: 8, alignItems: "end",
+              padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
+            }}>
+              <FormSelect
+                label="Discipline"
+                value={row.discipline}
+                onChange={(v) => updateExtraRow(idx, { discipline: v })}
+                options={VISIT_FREQUENCY_DISCIPLINE_OPTIONS}
+              />
+              <FormSelect
+                label="No. of Visits"
+                value={row.numberOfVisits}
+                onChange={(v) => updateExtraRow(idx, { numberOfVisits: v })}
+                options={VISIT_FREQUENCY_COUNT_OPTIONS}
+              />
+              <FormSelect
+                label="Period"
+                value={row.period}
+                onChange={(v) => updateExtraRow(idx, { period: v })}
+                options={VISIT_FREQUENCY_PERIOD_OPTIONS}
+              />
+              <FormInput
+                label="Or specify as required"
+                value={row.specify || row.frequency || ""}
+                onChange={(v) => updateExtraRow(idx, { specify: v })}
+                placeholder="e.g., within 5 days of admission then RECERT and PRN"
+              />
+              <button
+                type="button"
+                onClick={() => removeExtraRow(idx)}
+                title="Remove this discipline"
+                style={{
+                  border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer",
+                  fontSize: 16, fontWeight: 700, height: 34, alignSelf: "end",
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <button
         type="button"
-        onClick={addRow}
+        onClick={addExtraDiscipline}
         style={{
           marginTop: 10, fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5,
           border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
@@ -11299,6 +11523,36 @@ const CHHA_TASK_GUIDANCE = {
   "Vital Signs": "Record only -- do not interpret the reading or decide it is \"fine.\" Report any value outside the range given below immediately.",
 };
 
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign (Round 2)"
+// "RISK AND TASK LINKAGE" -- important safety risks must also appear inside
+// their related task groups so the HA is never forced to scroll back up to
+// "Today's Care Alerts" to find the instruction that matters for the task
+// they are about to do. This is deliberate redundancy (per the directive's
+// "SAFETY PRINCIPLE": "Repeat important patient risks ... Do not attempt to
+// eliminate duplication"), not a replacement for the Safety Alerts card.
+const CHHA_RISK_TASK_LINKS = {
+  "Ambulation": ["transferSafety", "fallRisk"],
+  "Transfer": ["transferSafety"],
+  "Feeding": ["swallowing"],
+  "Bathing/Hygiene": ["pressureInjuryRisk", "skinBreakdownRisk"],
+};
+
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign (Round 2)"
+// "RN ADDITIONAL INSTRUCTIONS" -- "Replace giant paragraphs with grouped
+// alert cards ... Use pills and concise bullets. Do not display a wall of
+// text." Stored as chhaPoc.additionalInstructionsByCategory (a JSON object
+// keyed by category code) inside the RN ICA form_data blob -- no schema/
+// migration change, since form_data is already a flexible JSONB field.
+const CHHA_ADDITIONAL_INSTRUCTION_CATEGORIES = [
+  { code: "CALL_RN", label: "Call RN" },
+  { code: "CALL_SUPERVISOR", label: "Call Supervisor" },
+  { code: "SKIN", label: "Skin" },
+  { code: "PAIN", label: "Pain" },
+  { code: "RESPIRATORY", label: "Respiratory" },
+  { code: "BOWEL_PROGRAM", label: "Bowel Program" },
+  { code: "SAFETY", label: "Safety" },
+];
+
 const CHHA_DEPENDENCE_OPTIONS = ["Independent", "Assist", "Complete Dependence"];
 const CHHA_TASK_FREQUENCY_OPTIONS = ["Every visit", "As needed (see instructions for exactly when)"];
 // Minimum safe assist level for ANY transfer/repositioning of this patient --
@@ -11426,7 +11680,7 @@ function deriveChhaCareGuidance({ formData, medications, reportToRole, minimumAs
   if (fallRiskIsModerateOrHigh) {
     categories.push({
       key: "fallRisk",
-      riskLabel: "Fall Risk",
+      riskLabel: "High Fall Risk",
       observe: ["Increased weakness", "Difficulty standing", "New balance problems"],
       safety: ["Keep pathways clear", "Lock wheelchair/bed brakes before any transfer", "Use walker/cane if ordered", "Do not leave the patient unattended during a transfer"],
       escalate: [`Any fall, near fall, or sudden weakness — call ${reportTo} immediately`],
@@ -11440,7 +11694,7 @@ function deriveChhaCareGuidance({ formData, medications, reportToRole, minimumAs
   if (minimumAssistLevel === "2-person assist required" || minimumAssistLevel === "Mechanical lift required — no manual lift") {
     categories.push({
       key: "transferSafety",
-      riskLabel: "Transfer / Lift Safety",
+      riskLabel: "High-Risk Transfer",
       observe: ["Any transfer that cannot be done at the required assist level", "Strain, pain, or skin shearing to the patient or caregiver during a transfer"],
       safety: [
         `Required assist level: ${minimumAssistLevel}. Never attempt a lower level of assist, even if it seems faster or no one else is available.`,
@@ -11450,42 +11704,65 @@ function deriveChhaCareGuidance({ formData, medications, reportToRole, minimumAs
       escalate: [`Unable to safely transfer the patient at the required assist level, or any caregiver/patient injury during a transfer — call ${reportTo} immediately`],
     });
   }
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign
+  // (Round 2)" -- "OXYGEN ALERT" specifies this exact Observe/Do/Call RN
+  // content literally; replaces the prior round's wording to match.
   if (formData?.safety?.oxygenInUse) {
     categories.push({
       key: "oxygen",
-      riskLabel: "Oxygen Use",
-      observe: ["Increased breathing difficulty", "Restlessness", "Lips or skin looking bluish/dusky", "Patient removing the oxygen"],
-      safety: ["No smoking or open flame near the oxygen", "Keep tubing secured, not a tripping hazard", "Do not change the flow rate yourself"],
-      escalate: [`Increased shortness of breath, oxygen not helping, or equipment malfunction — call ${reportTo} immediately`],
+      riskLabel: "Oxygen In Use",
+      observe: ["Increased shortness of breath", "Tubing problems", "Equipment concerns"],
+      safety: ["Keep away from flames", "Keep tubing clear", "Keep concentrator unobstructed"],
+      escalate: [`Increased shortness of breath, equipment concerns, or oxygen interruption — call ${reportTo} immediately`],
     });
   }
   const swallowing = formData?.nutrition?.swallowingIssues || [];
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign
+  // (Round 2)" -- "SWALLOWING ALERT" literal content.
   if (["Dysphagia", "Aspiration risk", "Coughing with swallowing"].some((s) => swallowing.includes(s))) {
     categories.push({
       key: "swallowing",
       riskLabel: "Swallowing Precautions",
-      observe: ["Coughing during meals", "Choking", "Food pocketing in the cheeks", "Wet or gurgly voice after swallowing"],
-      safety: ["Keep the patient upright during and after meals", "Follow the diet/texture ordered exactly", "Small bites, slow feeding — never rush"],
-      escalate: [`Choking episode, unable to swallow, refusing food due to swallowing difficulty, or increased coughing during meals — call ${reportTo} immediately`],
+      observe: ["Coughing during meals", "Choking", "Wet voice", "Pocketing food"],
+      safety: ["Upright during meals", "Follow texture orders exactly", "Small bites"],
+      escalate: [`Choking episode, refusal to eat due to swallowing difficulty, or increased coughing — call ${reportTo} immediately`],
     });
   }
   const pressureRisk = formData?.skinWounds?.pressureInjuryRisk || "";
   if (pressureRisk.startsWith("High") || pressureRisk.startsWith("Moderate")) {
     categories.push({
-      key: "skin",
-      riskLabel: "Skin Precautions",
-      observe: ["Redness", "Open areas", "Drainage", "Swelling"],
-      safety: ["Reposition exactly per the schedule ordered", "Keep skin clean and dry"],
-      escalate: [`New skin breakdown, drainage, or worsening redness — call ${reportTo} immediately`],
+      key: "pressureInjuryRisk",
+      riskLabel: "Pressure-Injury Risk",
+      observe: ["Redness over bony areas (hips, heels, tailbone)", "Skin that stays red after pressure is relieved"],
+      safety: ["Reposition exactly per the schedule ordered", "Keep skin clean and dry", "Use pressure-relief surfaces/devices as ordered"],
+      escalate: [`Any redness that does not fade, or a new open area over a bony prominence — call ${reportTo} immediately`],
     });
   }
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign" --
+  // Pressure-Injury Risk (above, bony prominences/positioning-driven) and
+  // Skin Breakdown Risk (below, any existing wound/fragile-skin finding)
+  // are distinct alert types per the directive's "Supported Alert Types"
+  // list -- never collapsed back into one generic "Skin Precautions" item.
+  const hasExistingSkinFinding = Array.isArray(formData?.skinWounds?.wounds) && formData.skinWounds.wounds.length > 0;
+  if (hasExistingSkinFinding) {
+    categories.push({
+      key: "skinBreakdownRisk",
+      riskLabel: "Skin Breakdown Risk",
+      observe: ["New or worsening redness, drainage, odor, or swelling at a known skin area", "Any new open area anywhere on the body"],
+      safety: ["Do not clean, dress, or treat any wound yourself", "Keep the area as ordered (dressing/positioning) — do not remove a dressing to look"],
+      escalate: [`New drainage, odor, bleeding, or a new open area — call ${reportTo} immediately`],
+    });
+  }
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign
+  // (Round 2)" -- "BLEEDING RISK ALERT" literal content. Medication/
+  // anticoagulant names are never shown -- only aide-relevant instructions.
   if (chhaTextIncludesAny(medNames, CHHA_ANTICOAGULANT_KEYWORDS)) {
     categories.push({
       key: "bleeding",
-      riskLabel: "Bleeding Precautions",
-      observe: ["New bruising", "Bleeding gums", "Blood in urine or stool", "Black/tarry stool", "Nosebleeds", "Pale skin color"],
-      safety: ["Use an electric razor, not a blade", "Use a soft-bristle toothbrush", "Avoid activities likely to cause cuts or skin injury", "Report falls immediately, even minor ones"],
-      escalate: [`Any bleeding, significant bruising, a fall with head impact, or pale skin color — call ${reportTo} immediately`],
+      riskLabel: "Bleeding Risk",
+      observe: ["New bruising", "Bleeding", "Skin tears", "Dark stool"],
+      safety: ["Use gentle care", "Avoid rough repositioning"],
+      escalate: [`Any bleeding, new extensive bruising, or a fall event — call ${reportTo} immediately`],
     });
   }
   if (chhaTextIncludesAny(medNames, CHHA_OPIOID_KEYWORDS)) {
@@ -11506,6 +11783,43 @@ function deriveChhaCareGuidance({ formData, medications, reportToRole, minimumAs
       escalate: [`Shakiness, sweating, confusion, or other signs of low blood sugar — call ${reportTo} immediately`],
     });
   }
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign" --
+  // Severe Pain, Behavioral Safety Concern, and Seizure Precautions are
+  // three more of the directive's required "Supported Alert Types" that
+  // were previously missing entirely. Sourced from already-documented
+  // RNICA fields (pain.painSeverityCategory, safety.patientSafetyConcerns,
+  // neurological.seizureHistory/symptomsDemeanor) -- never invented.
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign
+  // (Round 2)" -- "PAIN ALERT" literal content.
+  if (formData?.pain?.painSeverityCategory === "3") {
+    categories.push({
+      key: "severePain",
+      riskLabel: "Severe Pain",
+      observe: ["Moaning", "Guarding", "Facial grimacing", "Refusing movement"],
+      safety: ["Move slowly", "Reposition gently", "Stop if pain worsens"],
+      escalate: [`Uncontrolled pain, new severe pain, or pain during care — call ${reportTo} immediately`],
+    });
+  }
+  const behavioralConcerns = formData?.safety?.patientSafetyConcerns || [];
+  if (["Wandering Risk", "Elopement Risk", "Self-Harm Risk", "Aggressive/Combative Behavior"].some((c) => behavioralConcerns.includes(c))) {
+    categories.push({
+      key: "behavioralSafety",
+      riskLabel: "Behavioral Safety Concern",
+      observe: ["Attempting to leave unsupervised", "Agitation, aggression, or combative behavior toward self or others", "Sudden confusion or disorientation"],
+      safety: ["Never attempt to physically restrain the patient", "Keep exits in view when wandering/elopement risk is documented", "Stay calm, do not argue or corner the patient"],
+      escalate: [`The patient leaves/attempts to leave unsupervised, becomes aggressive, or you feel unsafe — call ${reportTo} immediately`],
+    });
+  }
+  const demeanor = formData?.neurological?.symptomsDemeanor || [];
+  if (formData?.neurological?.seizureHistory === true || formData?.neurological?.seizureHistory === "Yes" || demeanor.includes("Seizure")) {
+    categories.push({
+      key: "seizurePrecautions",
+      riskLabel: "Seizure Precautions",
+      observe: ["Sudden jerking/shaking movements", "Loss of consciousness or unresponsiveness", "Staring spells or confusion afterward"],
+      safety: ["Do not restrain the patient during a seizure", "Clear the area of hard/sharp objects", "Do not put anything in the patient's mouth", "Turn the patient to the side if possible once movement stops"],
+      escalate: [`Any seizure, a seizure lasting more than a few minutes, or repeated seizures — call ${reportTo} immediately`],
+    });
+  }
   return categories;
 }
 
@@ -11513,6 +11827,7 @@ const DEFAULT_CHHA_POC = {
   tasks: [],
   dietInstructions: "",
   additionalInstructions: "",
+  additionalInstructionsByCategory: {},
   reportToRole: "RN",
   patientWeightLbs: "",
   minimumAssistLevel: "",
@@ -11523,7 +11838,7 @@ const DEFAULT_CHHA_POC = {
   completedBy: "",
 };
 
-export function CHHAPocCard({ patientId, styles, COLORS }) {
+export function CHHAPocCard({ patientId, styles, COLORS, onNavigateToSection }) {
   const [assessmentId, setAssessmentId] = useState(null);
   const [locked, setLocked] = useState(false);
   const [assignedAide, setAssignedAide] = useState("");
@@ -11535,6 +11850,16 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
   const [saving, setSaving] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
   const [customAlertDraft, setCustomAlertDraft] = useState("");
+  // PRODUCT OWNER DIRECTIVE (2026-10-24) "Redesign Orders & POC Using
+  // Infection as the UI Standard" Issue 1 "Return Navigation" / "Context
+  // Banner" -- only shown when the RN actually arrived here from RNICA's
+  // Orders & POC card (via `captureChhaPocLaunchContext`), never when
+  // CHHA was opened directly from its own sidebar entry, per the
+  // directive's "Opened from: RNICA Admission / Section: Orders & POC"
+  // requirement. Read once per patient (not cleared here) -- RNICA's own
+  // restore effect is what consumes/clears it, once the RN actually
+  // clicks "Return to RNICA".
+  const chhaLaunchContext = useMemo(() => readChhaPocLaunchContext(patientId), [patientId]);
 
   const reload = useCallback(() => {
     if (!patientId) return;
@@ -11632,18 +11957,6 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
     const next = (chhaPoc.tasks || []).map((t) => (t.task === taskValue ? { ...t, ...patch } : t));
     persist({ ...chhaPoc, tasks: next });
   };
-  const toggleTaskItem = (taskValue, itemCode, checked) => {
-    const next = (chhaPoc.tasks || []).map((t) => {
-      if (t.task !== taskValue) return t;
-      const items = t.items || [];
-      if (checked) {
-        if (items.some((i) => i.code === itemCode)) return t;
-        return { ...t, items: [...items, { code: itemCode, detail: "" }] };
-      }
-      return { ...t, items: items.filter((i) => i.code !== itemCode) };
-    });
-    persist({ ...chhaPoc, tasks: next });
-  };
   const updateTaskItemDetail = (taskValue, itemCode, detailValue) => {
     const next = (chhaPoc.tasks || []).map((t) => {
       if (t.task !== taskValue) return t;
@@ -11652,12 +11965,38 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
     persist({ ...chhaPoc, tasks: next });
   };
 
+  const returnToRnicaBanner = chhaLaunchContext ? (
+    <div style={{
+      display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8,
+      padding: "8px 12px", borderRadius: 8, marginBottom: 12,
+      background: "rgba(13,148,136,0.08)", border: `1px solid ${COLORS.teal}`,
+    }}>
+      <div style={{ fontSize: 12, color: COLORS.dark }}>
+        <strong>Opened from:</strong> RNICA Admission &nbsp;·&nbsp; <strong>Section:</strong> Orders &amp; POC
+      </div>
+      <button
+        type="button"
+        onClick={() => onNavigateToSection?.("nursing-assessment")}
+        disabled={!onNavigateToSection}
+        style={{ ...styles.btnSecondary, opacity: onNavigateToSection ? 1 : 0.5 }}
+      >
+        ← Return to RNICA Orders &amp; POC
+      </button>
+    </div>
+  ) : null;
+
   if (loading) {
-    return <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>Loading CHHA Plan of Care…</div>;
+    return (
+      <div style={{ padding: 12 }}>
+        {returnToRnicaBanner}
+        <div style={{ padding: 16, fontSize: 12.5, color: COLORS.gray }}>Loading CHHA Plan of Care…</div>
+      </div>
+    );
   }
 
   return (
     <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 12 }}>
+      {returnToRnicaBanner}
       {error && <div style={{ color: COLORS.error, fontSize: 12.5 }}>{error}</div>}
 
       <Card title="CHHA Plan of Care" cms="Home Health Aide">
@@ -11678,9 +12017,13 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
         )}
       </Card>
 
-      {/* ── Today's Key Observations — auto-generated summary card, always at the top ── */}
+      {/* ── PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care
+          Redesign" -- "TODAY'S CARE ALERTS ... DISPLAY ABOVE ALL TASKS":
+          auto-generated risk summary, always rendered before Ordered
+          Tasks below so the aide sees risks before tasks, never the
+          reverse. ── */}
       {(visibleCategories.length > 0 || customAlerts.length > 0) && (
-        <Card title="Today's Key Observations">
+        <Card title="Today's Care Alerts">
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
             {visibleCategories.map((c) => (
               <span key={c.key} style={{
@@ -11767,11 +12110,15 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                   <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.observe.map((t) => <li key={t}>{t}</li>)}</ul>
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Safety</div>
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Do</div>
                   <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.safety.map((t) => <li key={t}>{t}</li>)}</ul>
                 </div>
                 <div>
-                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Escalate — call {chhaReportToLabel(chhaPoc.reportToRole)}</div>
+                  {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care
+                      Redesign (Round 2)" "ALERT CARD STRUCTURE" -- the third
+                      column is literally headed "Call {role}" (e.g. "Call
+                      RN"), not "Report to {role}". */}
+                  <div style={{ fontWeight: 700, marginBottom: 2 }}>Call {chhaReportToLabel(chhaPoc.reportToRole)}</div>
                   <ul style={{ margin: 0, paddingLeft: 16, lineHeight: 1.6 }}>{c.escalate.map((t) => <li key={t}>{t}</li>)}</ul>
                 </div>
               </div>
@@ -11839,6 +12186,14 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
               : chhaPoc.minimumAssistLevel === "Mechanical lift required — no manual lift" ? "MECHANICAL_LIFT" : null;
             const transferRequiredMissing = isTransfer && checked && transferRequiredCode && !items.some((i) => i.code === transferRequiredCode);
             const anyMissing = missingInstructions || opt.items.some((i) => missingItemDetail(i.code)) || transferRequiredMissing;
+            // PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care
+            // Redesign (Round 2)" "RISK AND TASK LINKAGE" -- shown whenever
+            // the category expands, independent of which items are checked,
+            // so the aide never has to scroll back up to "Today's Care
+            // Alerts" to see it.
+            const linkedRiskCategories = (CHHA_RISK_TASK_LINKS[opt.value] || [])
+              .map((key) => visibleCategories.find((c) => c.key === key))
+              .filter(Boolean);
             return (
               <div key={opt.value} style={{
                 borderRadius: 8, border: `1px solid ${anyMissing ? COLORS.warning : COLORS.border}`, background: COLORS.bg, padding: "8px 10px",
@@ -11848,47 +12203,66 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
                   {opt.label}
                 </label>
                 <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 2, marginLeft: 24 }}>{CHHA_TASK_GUIDANCE[opt.value]}</div>
+                {linkedRiskCategories.map((c) => (
+                  <div key={c.key} style={{
+                    fontSize: 11, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg,
+                    borderRadius: 6, padding: "6px 8px", marginTop: 6, marginLeft: 24,
+                  }}>
+                    ⚠️ WARNING — {c.riskLabel}: {c.key === "transferSafety" && chhaPoc.minimumAssistLevel
+                      ? `Always use: ${chhaPoc.minimumAssistLevel}.`
+                      : c.safety.slice(0, 2).join("; ") + "."}
+                  </div>
+                ))}
                 {checked && (
-                  <div style={{ marginTop: 8, marginLeft: 24, display: "grid", gridTemplateColumns: "repeat(2, minmax(220px, 1fr))", gap: "6px 16px" }}>
+                  <div style={{ marginTop: 8, marginLeft: 24 }}>
+                    {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of
+                        Care Redesign" -- "REPLACE LARGE CHECKLIST TABLES
+                        WITH INFECTION-STYLE PILLS": each task's specific
+                        items are now a single-row, multi-select
+                        FormPillGroup (the same ToggleGroup component
+                        Infection uses) instead of a checkbox grid.
+                        Disallowed assist-level codes are excluded from
+                        the options entirely (a hard removal, not merely
+                        disabled) so an unsafe transfer level can never be
+                        selected. */}
+                    <FormPillGroup
+                      values={items.map((i) => i.code)}
+                      onChange={(nextCodes) => {
+                        const nextItems = nextCodes.map((code) => items.find((i) => i.code === code) || { code, detail: "" });
+                        updateTaskField(opt.value, { items: nextItems });
+                      }}
+                      options={opt.items
+                        .filter((itemDef) => {
+                          if (!isTransfer) return true;
+                          if (transferRequiredCode === "MECHANICAL_LIFT" && (itemDef.code === "ONE_PERSON" || itemDef.code === "TWO_PERSON")) return false;
+                          if (transferRequiredCode === "TWO_PERSON" && itemDef.code === "ONE_PERSON") return false;
+                          return true;
+                        })
+                        .map((itemDef) => ({ value: itemDef.code, label: itemDef.label }))}
+                    />
                     {opt.items.map((itemDef) => {
                       const selected = items.find((i) => i.code === itemDef.code);
                       const itemChecked = !!selected;
                       const needsDetail = missingItemDetail(itemDef.code);
-                      const isDisallowedAssist = isTransfer && transferRequiredCode === "MECHANICAL_LIFT" && (itemDef.code === "ONE_PERSON" || itemDef.code === "TWO_PERSON")
-                        ? true
-                        : isTransfer && transferRequiredCode === "TWO_PERSON" && itemDef.code === "ONE_PERSON";
+                      if (!itemChecked || !itemDef.detail) return null;
                       return (
-                        <div key={itemDef.code}>
-                          <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12, color: isDisallowedAssist ? COLORS.gray : COLORS.dark, cursor: isDisallowedAssist ? "not-allowed" : "pointer" }}>
-                            <input
-                              type="checkbox"
-                              checked={itemChecked}
-                              disabled={isDisallowedAssist}
-                              onChange={(e) => toggleTaskItem(opt.value, itemDef.code, e.target.checked)}
-                            />
-                            {itemDef.label}
-                            {isDisallowedAssist && <span style={{ fontSize: 10.5, color: COLORS.error }}>— not safe at this patient's assist level</span>}
-                          </label>
-                          {itemChecked && itemDef.detail && (
-                            <div style={{ marginLeft: 24, marginTop: 4, maxWidth: 420 }}>
-                              <FormInput
-                                label={`${itemDef.detailLabel} (required)`}
-                                value={selected.detail}
-                                onChange={(v) => updateTaskItemDetail(opt.value, itemDef.code, v)}
-                              />
-                              {needsDetail && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
-                            </div>
-                          )}
+                        <div key={itemDef.code} style={{ marginTop: 4, maxWidth: 420 }}>
+                          <FormInput
+                            label={`${itemDef.detailLabel} (required)`}
+                            value={selected.detail}
+                            onChange={(v) => updateTaskItemDetail(opt.value, itemDef.code, v)}
+                          />
+                          {needsDetail && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
                         </div>
                       );
                     })}
                     {transferRequiredMissing && (
-                      <div style={{ gridColumn: "1 / -1", fontSize: 11, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg, borderRadius: 6, padding: "6px 8px" }}>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: COLORS.error, background: COLORS.errorBg, borderRadius: 6, padding: "6px 8px", marginTop: 8 }}>
                         ⚠️ Required: this patient's Minimum Safe Assist Level is "{chhaPoc.minimumAssistLevel}" — check{" "}
                         {transferRequiredCode === "MECHANICAL_LIFT" ? "Mechanical lift" : "2-person assist"} above before finishing this plan.
                       </div>
                     )}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 4 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8, marginTop: 8 }}>
                       <FormSelect label="Dependence Level" value={row.dependence} onChange={(v) => updateTaskField(opt.value, { dependence: v })} options={CHHA_DEPENDENCE_OPTIONS} />
                       <FormSelect label="Frequency" value={row.frequency} onChange={(v) => updateTaskField(opt.value, { frequency: v })} options={CHHA_TASK_FREQUENCY_OPTIONS} />
                       <div>
@@ -11913,13 +12287,79 @@ export function CHHAPocCard({ patientId, styles, COLORS }) {
           <FormTextarea label="Diet / Nutrition Instructions" value={chhaPoc.dietInstructions} onChange={(v) => persist({ ...chhaPoc, dietInstructions: v })} rows={2} />
         </div>
         <div style={{ marginTop: 8 }}>
-          <FormTextarea label="Additional Instructions" value={chhaPoc.additionalInstructions} onChange={(v) => persist({ ...chhaPoc, additionalInstructions: v })} rows={2} />
+          {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care
+              Redesign (Round 2)" "RN ADDITIONAL INSTRUCTIONS" -- replaces
+              the single giant free-text paragraph with grouped, pill-
+              selected categories and concise per-category notes. Legacy
+              free text (if any patient already has it saved) is preserved
+              read-only below rather than discarded. */}
+          <div style={{ fontSize: 11.5, fontWeight: 700, color: COLORS.dark, marginBottom: 4 }}>Additional Instructions</div>
+          {chhaPoc.additionalInstructions?.trim() && (
+            <div style={{ ...styles.infoBox, marginBottom: 8 }}>
+              <div style={{ fontWeight: 700, marginBottom: 2 }}>Previously recorded (general)</div>
+              {chhaPoc.additionalInstructions}
+            </div>
+          )}
+          <FormPillGroup
+            values={Object.keys(chhaPoc.additionalInstructionsByCategory || {})}
+            onChange={(nextCodes) => {
+              const prev = chhaPoc.additionalInstructionsByCategory || {};
+              const next = {};
+              nextCodes.forEach((code) => { next[code] = prev[code] || ""; });
+              persist({ ...chhaPoc, additionalInstructionsByCategory: next });
+            }}
+            options={CHHA_ADDITIONAL_INSTRUCTION_CATEGORIES.map((c) => ({ value: c.code, label: c.label }))}
+          />
+          {CHHA_ADDITIONAL_INSTRUCTION_CATEGORIES.filter((c) => Object.prototype.hasOwnProperty.call(chhaPoc.additionalInstructionsByCategory || {}, c.code)).map((c) => (
+            <div key={c.code} style={{ marginTop: 6 }}>
+              <FormInput
+                label={c.label}
+                value={(chhaPoc.additionalInstructionsByCategory || {})[c.code] || ""}
+                onChange={(v) => persist({
+                  ...chhaPoc,
+                  additionalInstructionsByCategory: { ...(chhaPoc.additionalInstructionsByCategory || {}), [c.code]: v },
+                })}
+                placeholder="Concise instruction (one line)"
+              />
+            </div>
+          ))}
         </div>
         <div style={{ ...styles.infoBox, marginTop: 12 }}>
           If a task cannot be completed safely as written, or any symptom listed above occurs, stop and contact{" "}
           {chhaReportToLabel(chhaPoc.reportToRole)}.
         </div>
       </Card>
+
+      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care and CHHA
+          Visit Documentation Shall Remain Separate Workflows" (follow-up) --
+          "SPECIAL PRECAUTIONS ... ADD A NEW BOTTOM SECTION ... DISPLAY
+          ACTIVE RISK PILLS." Intentionally redundant with Today's Care
+          Alerts / Safety Alerts & Report To / the inline task-level
+          warnings above -- the directive is explicit that risk
+          information must NOT be deduplicated across these four places
+          because patient safety takes priority over normalization. ── */}
+      {(visibleCategories.length > 0 || customAlerts.length > 0) && (
+        <Card title="Special Precautions">
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+            {visibleCategories.map((c) => (
+              <span key={c.key} style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
+                background: "rgba(239,68,68,0.12)", color: COLORS.error, border: "1px solid rgba(239,68,68,0.3)",
+              }}>
+                {c.riskLabel}
+              </span>
+            ))}
+            {customAlerts.map((a) => (
+              <span key={a.key} style={{
+                fontSize: 11, fontWeight: 700, padding: "3px 9px", borderRadius: 999,
+                background: "rgba(239,68,68,0.12)", color: COLORS.error, border: "1px solid rgba(239,68,68,0.3)",
+              }}>
+                {a.text}
+              </span>
+            ))}
+          </div>
+        </Card>
+      )}
 
       {/* ── Completion — required before RN ICA can lock if an aide is assigned ── */}
       <Card title="Completion">
@@ -11999,10 +12439,84 @@ const CHHA_NUTRITION_OPTIONS = [
 // derived from a multi-select checklist without losing signal.
 const CHHA_SKIN_SEVERITY_ORDER = ["BREAKDOWN", "REDNESS", "SWELLING", "BRUISING", "PALE", "NORMAL"];
 
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care Redesign (Round 2)"
+// "VISIT SUMMARY" -- replaces "Patient tolerated care well" as the default
+// primary completion statement with a required structured selection.
+// Rendered as a single-select FormSegmented (Infection-style pill chips)
+// rather than a literal multi-select, because this maps to the existing
+// chha_visit_outcomes.tolerance_to_care column (a single VARCHAR(50)) --
+// a true multi-select would require a schema change, which is not
+// authorized here. A visit has one primary outcome; anything else notable
+// is captured in the "CHHA Observations for RN Review" field below.
 const CHHA_TOLERANCE_OPTIONS = [
-  { value: "WELL_TOLERATED", label: "Patient tolerated care well" },
-  { value: "FAIR", label: "Patient had some difficulty" },
-  { value: "POOR", label: "Patient could not tolerate care as planned" },
+  { value: "NO_SIGNIFICANT_CHANGE", label: "No Significant Change" },
+  { value: "CONDITION_CHANGED", label: "Condition Changed" },
+  { value: "RN_NOTIFIED", label: "RN Notified" },
+  { value: "CAREGIVER_CONCERN_IDENTIFIED", label: "Caregiver Concern Identified" },
+  { value: "UNSAFE_CONDITION_IDENTIFIED", label: "Unsafe Condition Identified" },
+];
+
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care and CHHA Visit
+// Documentation Shall Remain Separate Workflows" -- the Plan of Care (POC)
+// never records what happened at today's visit; the Visit Note's required
+// structured sections for that are: Care Completed, Changes Observed Today,
+// RN Notification, and CHHA Visit Narrative (below). Care Completed/Changes
+// Observed are stored as CHHAVisitTaskResult rows (section_code "CARE_
+// COMPLETED"/"CHANGES_OBSERVED", same flexible EAV mechanism already used
+// for SKIN/RESPIRATION/NUTRITION/SUPPLY) -- no schema change needed.
+const CHHA_VISIT_CARE_COMPLETED_OPTIONS = [
+  "Bath Completed",
+  "Oral Care Completed",
+  "Hair Care Completed",
+  "Feeding Assistance Provided",
+  "Transfer Assistance Provided",
+  "Repositioning Completed",
+  "Patient Refused Care",
+];
+
+const CHHA_VISIT_CHANGES_OBSERVED_OPTIONS = [
+  "No Significant Change",
+  "Increased Weakness",
+  "Increased Pain",
+  "New Skin Concern",
+  "Increased Shortness of Breath",
+  "Reduced Intake",
+  "Behavior Change",
+  "Caregiver Concern",
+  "Equipment Concern",
+];
+
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "DO NOT REMOVE THE INSTRUCTION
+// SECTION" -- "WHEN A CHANGE IS SELECTED, GENERATE A CONTEXTUAL PROMPT."
+// Each selected "Changes Observed Today" pill (other than "No Significant
+// Change", which needs no elaboration) shows its own short free-text
+// prompt so the aide documents specifically what was observed instead of
+// relying on the single shared narrative field. Stored schema-safely as
+// CHHAVisitTaskResult rows (section_code "CHANGE_NOTE", task_code = the
+// option value, result_note = the free text) -- same EAV mechanism as
+// CARE_COMPLETED/CHANGES_OBSERVED, no schema change needed.
+const CHHA_VISIT_CHANGE_PROMPTS = {
+  "Increased Weakness": "Describe the weakness observed",
+  "Increased Pain": "Describe pain observation",
+  "New Skin Concern": "Describe skin observation",
+  "Increased Shortness of Breath": "Describe respiratory observation",
+  "Reduced Intake": "Describe intake observation",
+  "Behavior Change": "Describe behavior change",
+  "Caregiver Concern": "Describe caregiver concern",
+  "Equipment Concern": "Describe equipment concern",
+};
+
+// "RN Notification" (Section 3) -- single-select, replacing the old
+// checkbox + free-text name. chha_visit_outcomes has no "who" column beyond
+// the existing rn_notified (bool) + rn_notified_name (free text), so
+// Supervisor Notified is distinguished schema-safely with a
+// "Supervisor — " prefix on the stored name (stripped back out on load);
+// an unprefixed stored name continues to mean "RN Notified" for every
+// existing record, so no historical data is reinterpreted or lost.
+const CHHA_VISIT_RN_NOTIFICATION_OPTIONS = [
+  { value: "NOT_REQUIRED", label: "Not Required" },
+  { value: "RN_NOTIFIED", label: "RN Notified" },
+  { value: "SUPERVISOR_NOTIFIED", label: "Supervisor Notified" },
 ];
 
 // Per-visit supply/infection-control checklist -- stored as CHHAVisitTaskResult
@@ -12231,17 +12745,21 @@ export function ContinuousCareLogSection({ visitId, discipline, enteredBy, style
 
 const DEFAULT_CHHA_VISIT_NOTE = {
   taskResults: {}, // task value -> { state: "completed"|"refused"|"notDone", note: string }
+  careCompleted: [], // PO Directive (2026-10-25) Section 1
+  changesObserved: [], // PO Directive (2026-10-25) Section 2
+  changeNotes: {}, // option value -> contextual free-text prompt answer
   skin: [],
   respiration: [],
   nutrition: [],
   supplies: [],
   painOrChangeObserved: false,
   painNote: "",
-  toleranceToCare: "WELL_TOLERATED",
+  toleranceToCare: "NO_SIGNIFICANT_CHANGE",
   exceptionNarrative: "",
   caregiverInstructionProvided: false,
   caregiverUnderstandingConfirmed: false,
   rnNotified: false,
+  rnNotificationStatus: "NOT_REQUIRED", // PO Directive (2026-10-25) Section 3
   rnNotifiedName: "",
   visitMeta: DEFAULT_CHHA_VISIT_META,
 };
@@ -12376,6 +12894,9 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
           return;
         }
         const taskResults = {};
+        const careCompleted = [];
+        const changesObserved = [];
+        const changeNotes = {};
         const skin = [];
         const respiration = [];
         const nutrition = [];
@@ -12389,6 +12910,12 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
               assistedBy: "",
               noteIsAuto: false,
             };
+          } else if (t.section_code === "CARE_COMPLETED") {
+            careCompleted.push(t.task_code);
+          } else if (t.section_code === "CHANGES_OBSERVED") {
+            changesObserved.push(t.task_code);
+          } else if (t.section_code === "CHANGE_NOTE") {
+            changeNotes[t.task_code] = t.result_note || "";
           } else if (t.section_code === "OBSERVATION" && t.task_code === "SKIN" && t.observation_code) {
             skin.push(t.observation_code);
           } else if (t.section_code === "OBSERVATION" && t.task_code === "RESPIRATION" && t.observation_code) {
@@ -12399,20 +12926,36 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
             supplies.push(t.task_code);
           }
         });
+        // Supervisor Notified is schema-safely distinguished by a
+        // "Supervisor — " prefix on the stored name; any other stored name
+        // (including every pre-existing record) continues to mean RN
+        // Notified, so no historical data is reinterpreted.
+        const SUPERVISOR_PREFIX = "Supervisor — ";
+        const storedRnName = existing.rn_notified_name || "";
+        const wasSupervisorNotified = storedRnName.startsWith(SUPERVISOR_PREFIX);
+        const rnNotificationStatus = !existing.rn_notified
+          ? "NOT_REQUIRED"
+          : wasSupervisorNotified
+            ? "SUPERVISOR_NOTIFIED"
+            : "RN_NOTIFIED";
         setNote({
           taskResults,
+          careCompleted,
+          changesObserved,
+          changeNotes,
           skin,
           respiration,
           nutrition,
           supplies,
           painOrChangeObserved: !!existing.pain_or_change_observed,
           painNote: existing.exception_narrative && existing.pain_or_change_observed ? existing.exception_narrative : "",
-          toleranceToCare: existing.tolerance_to_care || "WELL_TOLERATED",
+          toleranceToCare: existing.tolerance_to_care || "NO_SIGNIFICANT_CHANGE",
           exceptionNarrative: existing.exception_narrative || "",
           caregiverInstructionProvided: !!existing.caregiver_instruction_provided,
           caregiverUnderstandingConfirmed: !!existing.caregiver_understanding_confirmed,
           rnNotified: !!existing.rn_notified,
-          rnNotifiedName: existing.rn_notified_name || "",
+          rnNotificationStatus,
+          rnNotifiedName: wasSupervisorNotified ? storedRnName.slice(SUPERVISOR_PREFIX.length) : storedRnName,
           visitMeta: {
             correction: !!existing.correction,
             typeOfVisit: existing.type_of_visit || "",
@@ -12568,7 +13111,7 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
     }
     return false;
   }).length;
-  const missingRnNotifiedName = note.rnNotified && !note.rnNotifiedName.trim();
+  const missingRnNotifiedName = note.rnNotificationStatus !== "NOT_REQUIRED" && !note.rnNotifiedName.trim();
   const canSubmit = !visitLocked && !!selectedVisitId && missingTaskNotes === 0 && !missingRnNotifiedName;
 
   const updateVisitMeta = (key, value) => {
@@ -12624,7 +13167,30 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         section_code: "SUPPLY", task_code: v, was_assigned: true, completed: true, refused: false, not_done: false,
         observation_code: null, result_note: null,
       })),
+      ...note.careCompleted.map((v) => ({
+        section_code: "CARE_COMPLETED", task_code: v, was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: null, result_note: null,
+      })),
+      ...note.changesObserved.map((v) => ({
+        section_code: "CHANGES_OBSERVED", task_code: v, was_assigned: true, completed: true, refused: false, not_done: false,
+        observation_code: null, result_note: null,
+      })),
+      ...note.changesObserved
+        .filter((v) => (note.changeNotes[v] || "").trim())
+        .map((v) => ({
+          section_code: "CHANGE_NOTE", task_code: v, was_assigned: true, completed: true, refused: false, not_done: false,
+          observation_code: null, result_note: note.changeNotes[v].trim(),
+        })),
     ];
+
+    // Section 3 "RN Notification" -- Supervisor Notified is encoded
+    // schema-safely as a "Supervisor — " prefix on rn_notified_name (see
+    // CHHA_VISIT_RN_NOTIFICATION_OPTIONS comment above for the full
+    // rationale and the matching load-time parse).
+    const rnNotified = note.rnNotificationStatus !== "NOT_REQUIRED";
+    const rnNotifiedName = rnNotified
+      ? (note.rnNotificationStatus === "SUPERVISOR_NOTIFIED" ? `Supervisor — ${note.rnNotifiedName.trim()}` : note.rnNotifiedName.trim())
+      : null;
 
     upsertChhaVisitOutcome(selectedVisitId, {
       tolerance_to_care: note.toleranceToCare,
@@ -12632,8 +13198,8 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       skin_outcome: skinOutcome,
       pain_or_change_observed: note.painOrChangeObserved,
       rn_notification_required: rnNotificationRequired,
-      rn_notified: note.rnNotified,
-      rn_notified_name: note.rnNotified ? note.rnNotifiedName.trim() : null,
+      rn_notified: rnNotified,
+      rn_notified_name: rnNotifiedName,
       caregiver_instruction_provided: note.caregiverInstructionProvided,
       caregiver_understanding_confirmed: note.caregiverUnderstandingConfirmed,
       exception_narrative: [note.painNote?.trim(), note.exceptionNarrative?.trim()].filter(Boolean).join(" — ") || null,
@@ -12807,9 +13373,9 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         />
       )}
 
-      {/* ── Today's Key Observations — same auto-generated summary as the POC, repeated at the top of every visit ── */}
+      {/* ── Today's Care Alerts — same auto-generated summary as the POC, repeated at the top of every visit ── */}
       {(todayWatchFor.length > 0) && (
-        <Card title="Today's Key Observations">
+        <Card title="Today's Care Alerts">
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 10 }}>
             {derivedCategories.map((c) => (
               <span key={c.key} style={{
@@ -12957,6 +13523,21 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         )}
       </Card>
 
+      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care and CHHA
+          Visit Documentation Shall Remain Separate Workflows" -- Section 1
+          "Care Completed": a quick, high-level summary of what was done
+          today, separate from (and in addition to) the granular per-task
+          completion tracking above. Redundancy with the granular tasks
+          above is intentional per the CHHA safety principle: patient
+          safety takes priority over normalization. */}
+      <Card title="Care Completed">
+        <FormPillGroup
+          values={note.careCompleted}
+          onChange={(v) => setNote((p) => ({ ...p, careCompleted: v }))}
+          options={CHHA_VISIT_CARE_COMPLETED_OPTIONS}
+        />
+      </Card>
+
       {/* ── Structured observations — Skin / Respiration / Nutrition ── */}
       <Card title="Skin">
         <FormCheckboxGroup values={note.skin} onChange={(v) => setNote((p) => ({ ...p, skin: v }))} options={CHHA_SKIN_OPTIONS} label="Observed" />
@@ -13001,6 +13582,33 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         </div>
       </Card>
 
+      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care and CHHA
+          Visit Documentation Shall Remain Separate Workflows" -- Section 2
+          "Changes Observed Today". */}
+      <Card title="Changes Observed Today">
+        <FormPillGroup
+          values={note.changesObserved}
+          onChange={(v) => setNote((p) => ({ ...p, changesObserved: v }))}
+          options={CHHA_VISIT_CHANGES_OBSERVED_OPTIONS}
+        />
+        {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "DO NOT REMOVE THE
+            INSTRUCTION SECTION" -- "WHEN A CHANGE IS SELECTED, GENERATE A
+            CONTEXTUAL PROMPT." Shown per-selection, right below the pills,
+            so the aide elaborates on exactly what they observed. */}
+        {note.changesObserved
+          .filter((v) => CHHA_VISIT_CHANGE_PROMPTS[v])
+          .map((v) => (
+            <div key={v} style={{ marginTop: 8 }}>
+              <FormInput
+                label={`${v} — ${CHHA_VISIT_CHANGE_PROMPTS[v]}`}
+                value={note.changeNotes[v] || ""}
+                onChange={(val) => setNote((p) => ({ ...p, changeNotes: { ...p.changeNotes, [v]: val } }))}
+                disabled={visitLocked}
+              />
+            </div>
+          ))}
+      </Card>
+
       <Card title="Pain / Condition Change">
         <FormCheckbox
           label="Patient showed signs of pain or seemed different from their usual self today"
@@ -13022,22 +13630,17 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
       </Card>
 
       <Card title="Visit Summary">
-        <FormSelect
+        {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care
+            Redesign (Round 2)" "VISIT SUMMARY" -- Infection-style
+            single-select pill chips, required selection before optional
+            comments below. */}
+        <FormSegmented
           label="Overall"
           value={note.toleranceToCare}
           onChange={(v) => setNote((p) => ({ ...p, toleranceToCare: v }))}
           options={CHHA_TOLERANCE_OPTIONS}
           disabled={visitLocked}
         />
-        <div style={{ marginTop: 8 }}>
-          <FormTextarea
-            label="Anything else you noticed (describe only what you saw or heard)"
-            value={note.exceptionNarrative}
-            onChange={(v) => setNote((p) => ({ ...p, exceptionNarrative: v }))}
-            rows={2}
-            disabled={visitLocked}
-          />
-        </div>
         <div style={{ marginTop: 8 }}>
           <FormCheckbox
             label="Reviewed care instructions with family/caregiver present"
@@ -13054,6 +13657,37 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         />
       </Card>
 
+      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "DO NOT REMOVE THE
+          INSTRUCTION SECTION NEAR THE CHHA VISIT DOCUMENTATION AREA" --
+          "ACTIVE VISIT PRECAUTIONS", placed directly above RN Notification
+          and the Visit Narrative so the aide sees the precautions they are
+          expected to follow at the exact place where they document the
+          visit, without having to remember them from the top of the Plan
+          of Care or scroll back up to it. Auto-generated from the same
+          active RNICA risks as "Today's Care Alerts" above (never
+          invented). This duplicates risk information already shown in
+          Care Alerts, Safety Alerts, and inline task warnings in the Plan
+          of Care -- that redundancy is intentional per the directive:
+          "PATIENT SAFETY TAKES PRIORITY OVER MINIMIZING DUPLICATE
+          DISPLAY." */}
+      {derivedCategories.length > 0 && (
+        <Card title="Active Visit Precautions">
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {derivedCategories.map((c) => (
+              <div key={c.key} style={{ borderRadius: 8, border: `1px solid rgba(239,68,68,0.3)`, background: "rgba(239,68,68,0.05)", padding: "8px 10px" }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: COLORS.error, marginBottom: 4 }}>{c.riskLabel}</div>
+                <div style={{ fontSize: 11, color: COLORS.dark }}>
+                  <span style={{ fontWeight: 700 }}>Observe: </span>{c.observe.join(", ")}
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.error, marginTop: 2 }}>
+                  <span style={{ fontWeight: 700 }}>Call RN: </span>{c.escalate.join(", ")}
+                </div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
       <Card title="RN Notification">
         {rnNotificationRequired ? (
           <div style={{ ...styles.infoBox, borderColor: COLORS.error, marginBottom: 10 }}>
@@ -13065,16 +13699,21 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
         ) : (
           <div style={{ fontSize: 12, color: COLORS.gray, marginBottom: 10 }}>Nothing observed today requires RN notification.</div>
         )}
-        <FormCheckbox
-          label={`I notified ${chhaReportToLabel(reportToRole)}`}
-          checked={note.rnNotified}
+        {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care and CHHA
+            Visit Documentation Shall Remain Separate Workflows" -- Section 3
+            "RN Notification", converted from a checkbox + conditional name
+            field into a required 3-state pill selection. */}
+        <FormSegmented
+          label="Notification"
+          value={note.rnNotificationStatus}
+          onChange={(v) => setNote((p) => ({ ...p, rnNotificationStatus: v }))}
+          options={CHHA_VISIT_RN_NOTIFICATION_OPTIONS}
           disabled={visitLocked}
-          onChange={(checked) => setNote((p) => ({ ...p, rnNotified: checked }))}
         />
-        {note.rnNotified && (
+        {note.rnNotificationStatus !== "NOT_REQUIRED" && (
           <div style={{ marginTop: 6 }}>
             <FormInput
-              label="Name of person notified (required)"
+              label={`Name of ${note.rnNotificationStatus === "SUPERVISOR_NOTIFIED" ? "supervisor" : chhaReportToLabel(reportToRole)} notified (required)`}
               value={note.rnNotifiedName}
               onChange={(v) => setNote((p) => ({ ...p, rnNotifiedName: v }))}
               disabled={visitLocked}
@@ -13082,6 +13721,25 @@ export function CHHAVisitNoteCard({ patientId, styles, COLORS }) {
             {missingRnNotifiedName && <div style={{ fontSize: 10.5, color: COLORS.warning, marginTop: 2 }}>Required.</div>}
           </div>
         )}
+      </Card>
+
+      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "CHHA Plan of Care and CHHA
+          Visit Documentation Shall Remain Separate Workflows" -- Section 4
+          "CHHA Visit Narrative" (renamed from "CHHA Observations for RN
+          Review"). Documents today's visit only -- standing risks/tasks/
+          escalation guidance live in the Plan of Care, never here. */}
+      <Card title="CHHA Visit Narrative">
+        <FormTextarea
+          label="CHHA Visit Narrative"
+          placeholder="e.g., Patient received bed bath, oral care, and repositioning assistance. Increased pain was noted during repositioning. New redness observed to coccyx area. Caregiver expressed concern regarding decreased appetite. RN notified."
+          value={note.exceptionNarrative}
+          onChange={(v) => setNote((p) => ({ ...p, exceptionNarrative: v }))}
+          rows={4}
+          disabled={visitLocked}
+        />
+        <div style={{ fontSize: 11, color: COLORS.gray, marginTop: 4 }}>
+          Document observations from today's visit, changes in condition, care provided, caregiver concerns, or information communicated to the RN.
+        </div>
       </Card>
 
       <Card title="Submit">
@@ -22097,6 +22755,111 @@ export function computeAdvancedCarePlanningDocumentationCoverage(d = {}, options
   });
 }
 
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does Not
+// Follow Infection Design" -- pure, directly-testable derivation helpers
+// for the three structured-state fields this redesign introduces. Each
+// derives a stable state string from the field's own explicit value when
+// present, falling back to the pre-existing boolean for any chart saved
+// before this redesign shipped -- no historical data is reinterpreted or
+// lost, and the boolean is kept in sync going forward purely for any
+// external report that still reads it directly.
+export function getHaAssignmentStatus(haAssignment = {}) {
+  if (haAssignment.notApplicable) return "NOT_APPLICABLE";
+  if ((haAssignment.assignedAide || "").trim()) return "ASSIGNED";
+  return "NOT_ASSIGNED";
+}
+
+export function getInitialPocStatus(initialPocIdg = {}) {
+  if (initialPocIdg.status) return initialPocIdg.status;
+  return initialPocIdg.created ? "CREATED" : "NOT_STARTED";
+}
+
+export function getComfortMeasuresStatus(imminentDeath = {}) {
+  if (imminentDeath.comfortMeasuresStatus) return imminentDeath.comfortMeasuresStatus;
+  return imminentDeath.comfortMeasuresInPlace ? "ESTABLISHED" : "NOT_YET_ESTABLISHED";
+}
+
+// Visit Frequency is "Configured" once at least one discipline row has a
+// physician-ordered frequency (either a structured count/period pair, or
+// a free-text "specify" override for non-standard orders).
+export function isVisitFrequencyConfigured(rows = []) {
+  return (rows || []).some((r) => (r.numberOfVisits && r.period) || (r.specify || "").trim());
+}
+
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Documentation
+// Coverage" Section 1 -- same shared `DocumentationCoverage`
+// key/label/complete/value/unresolvedHint/state contract as every other
+// Body System's coverage (Infection, Safety, ACP, etc. above). `extra.
+// hasTerminalDeclineEvidence` mirrors the existing gate already used to
+// decide whether the Comfort Measures card renders at all -- when false,
+// Comfort Measures is correctly "Not Applicable" (never a false "action
+// required" for a field that doesn't apply to this patient yet).
+export function computeOrdersPocDocumentationCoverage(d = {}, extra = {}) {
+  const haStatus = getHaAssignmentStatus(d.haAssignment);
+  const pocStatus = getInitialPocStatus(d.initialPocIdg);
+  const comfortStatus = getComfortMeasuresStatus(extra.imminentDeath || {});
+  const verbalOrderReceived = Boolean(d.toVerification?.verbalOrderReceived);
+  const readBackVerified = Boolean(d.toVerification?.verbalOrderReadBack);
+  const prescriberContacted = Boolean(d.toVerification?.prescriberContacted);
+  const visitFrequencyConfigured = isVisitFrequencyConfigured(d.visitFrequency);
+
+  const items = [
+    {
+      key: "loc",
+      label: "LOC",
+      complete: Boolean(d.levelOfCare?.level),
+      value: d.levelOfCare?.level || null,
+      unresolvedHint: "Select a Level of Care",
+    },
+    {
+      key: "visitFrequency",
+      label: "Visit Frequency",
+      complete: visitFrequencyConfigured,
+      value: visitFrequencyConfigured ? "Configured" : null,
+      unresolvedHint: "Document visit frequency for at least one discipline",
+    },
+    haStatus === "NOT_APPLICABLE"
+      ? { key: "ha", label: "HA", complete: true, value: "N/A", state: "not_applicable" }
+      : {
+          key: "ha",
+          label: "HA",
+          complete: haStatus === "ASSIGNED",
+          value: haStatus === "ASSIGNED" ? "Assigned" : null,
+          unresolvedHint: "Assign a Home Health Aide or mark Not Applicable",
+        },
+    pocStatus === "CREATED"
+      ? { key: "poc", label: "POC", complete: true, value: "Created" }
+      : pocStatus === "REQUIRES_REVIEW"
+        ? { key: "poc", label: "POC", complete: false, state: "action_required", unresolvedHint: "Resolve Initial POC/IDG review" }
+        : pocStatus === "IN_PROGRESS"
+          ? { key: "poc", label: "POC", complete: true, value: "In Progress", state: "pending_non_blocking" }
+          : { key: "poc", label: "POC", complete: false, unresolvedHint: "Start the Initial POC/IDG" },
+    !extra.hasTerminalDeclineEvidence
+      ? { key: "comfortMeasures", label: "Comfort Measures", complete: true, value: "N/A", state: "not_applicable" }
+      : comfortStatus === "ESTABLISHED"
+        ? { key: "comfortMeasures", label: "Comfort Measures", complete: true, value: "In Place" }
+        : comfortStatus === "NOT_APPLICABLE"
+          ? { key: "comfortMeasures", label: "Comfort Measures", complete: true, value: "N/A", state: "not_applicable" }
+          : { key: "comfortMeasures", label: "Comfort Measures", complete: false, unresolvedHint: "Document Comfort Measures status" },
+    readBackVerified
+      ? { key: "verbalOrder", label: "Verbal Order", complete: true, value: "Verified" }
+      : (verbalOrderReceived || prescriberContacted)
+        ? { key: "verbalOrder", label: "Verbal Order", complete: true, value: "In Progress", state: "pending_non_blocking" }
+        : { key: "verbalOrder", label: "Verbal Order", complete: false, unresolvedHint: "Complete verbal order verification" },
+    {
+      key: "physicianOrder",
+      label: "Physician Order",
+      complete: Boolean(d.treatmentMedsOrderCompleted),
+      value: d.treatmentMedsOrderCompleted ? "Complete" : null,
+      unresolvedHint: "Mark the physician order complete",
+    },
+  ];
+  return items.map((item) => ({
+    ...item,
+    unresolvedHint: item.complete ? null : (item.unresolvedHint || null),
+  }));
+}
+
 // PRODUCT OWNER DIRECTIVE (2026-10-16) "Musculoskeletal Mobility
 // Implementation" -- pure, directly-testable gate for "Steps Before
 // Resting" (same "exported pure gate function" precedent as GI's
@@ -24018,7 +24781,7 @@ function GastrointestinalFindingsReviewSummary({ data, onEdit }) {
 // by the Safety section's IncidentReviewCard (read-only "Recent
 // Incident Exists" / "View Incident Log →"), via `patientSummary.
 // incident_summary`. Every other section/caller is unaffected.
-function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}, neuroCognitiveScreenOpen = false, setNeuroCognitiveScreenOpen = () => {}, patientSummary = null) {
+function renderGenericSection(sectionKey, data, update, config, demographics, fullFormData, COLORS, styles, patientId, assessmentId, locked, workspacePilot = false, onNavigateToSection = undefined, uiProfile = {}, neuroCognitiveScreenOpen = false, setNeuroCognitiveScreenOpen = () => {}, patientSummary = null, isInitialAdmission = false) {
   const u = (path, val) => update(sectionKey, path, val);
   const { title, subtitle, cards } = config;
   const resolvedCards = uiProfile.hideSpiritualHopeFields && sectionKey === "spiritual"
@@ -24691,7 +25454,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "safety" && card.customRenderer === "environmentalSafety") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <EnvironmentalSafetyCard data={data} updateField={u} COLORS={COLORS} styles={styles} fullFormData={fullFormData} patientId={patientId} assessmentId={assessmentId} />
+              <EnvironmentalSafetyCard data={data} updateField={u} COLORS={COLORS} styles={styles} fullFormData={fullFormData} patientId={patientId} assessmentId={assessmentId} isInitialAdmission={isInitialAdmission} />
             </Card>
           );
         }
@@ -24715,7 +25478,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "safety" && card.customRenderer === "oxygenSafety") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <OxygenSafetyCard data={data} updateField={u} COLORS={COLORS} styles={styles} fullFormData={fullFormData} patientId={patientId} assessmentId={assessmentId} />
+              <OxygenSafetyCard data={data} updateField={u} COLORS={COLORS} styles={styles} fullFormData={fullFormData} patientId={patientId} assessmentId={assessmentId} isInitialAdmission={isInitialAdmission} />
             </Card>
           );
         }
@@ -25029,6 +25792,56 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does
+        // Not Follow Infection Design" Section 1 -- same shared
+        // `<DocumentationCoverage>` component every Body System uses
+        // (Infection, Safety, etc.), rendered directly (no `<Card>`
+        // wrapper) so its own built-in heading isn't doubled up inside a
+        // second title bar -- matches how every other section renders
+        // this component. Always the first card in `admissionsOrder.
+        // cards` (see SECTION_CONFIG below) so completion status is
+        // visible before scrolling into any individual form.
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "ordersPocCoverage") {
+          const imminentDeathData = fullFormData?.imminentDeath || {};
+          const hasTerminalDeclineEvidence = imminentDeathData.appearsThreeDaysOrLess === "1"
+            || (Array.isArray(imminentDeathData.indicators) && imminentDeathData.indicators.length > 0);
+          const coverage = computeOrdersPocDocumentationCoverage(data, { hasTerminalDeclineEvidence });
+          return (
+            <div key={ci}>
+              <DocumentationCoverage title={card.title} items={coverage} data-testid="orders-poc-documentation-coverage" />
+            </div>
+          );
+        }
+
+        // Section 2 -- single-select Infection-style pill. Same
+        // `levelOfCare.level` path as the legacy radio (actively gated by
+        // the "Level of Care is required for admission" validation
+        // elsewhere) -- only the editing surface changes. Effective Date
+        // and Clinical Justification stay hidden until a level is
+        // selected, so the card doesn't ask for fields that don't apply
+        // yet.
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "levelOfCarePills") {
+          const level = data.levelOfCare?.level || "";
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FormSegmented
+                label="Level of Care"
+                value={level}
+                onChange={(v) => u("levelOfCare.level", v)}
+                options={["Routine Care", "General Inpatient", "Continuous Care", "Respite Care"]}
+              />
+              {level && (
+                <>
+                  <FormInput label="Effective Date" type="date" value={data.levelOfCare?.effectiveDate || ""}
+                    onChange={(v) => u("levelOfCare.effectiveDate", v)} />
+                  <FormTextarea label="Clinical Justification" value={data.levelOfCare?.justification || ""}
+                    onChange={(v) => u("levelOfCare.justification", v)} />
+                </>
+              )}
+            </Card>
+          );
+        }
+
         if (sectionKey === "admissionsOrder" && card.customRenderer === "disciplineFrequencyOfVisit") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
@@ -25042,34 +25855,95 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
           );
         }
 
+        // Section 4 -- ASSIGNED/NOT_ASSIGNED/NOT_APPLICABLE pill group.
+        // `haAssignment.status` is purely derived/display state; the
+        // pills write back to the two original fields
+        // (`assignedAide`/`notApplicable`) so no data-model change is
+        // required and the "Open CHHA Plan of Care" + completion status
+        // wiring below is completely unchanged from before this
+        // redesign.
         if (sectionKey === "admissionsOrder" && card.customRenderer === "haAssignment") {
           const assignedAide = data.haAssignment?.assignedAide || "";
-          const notApplicable = !!data.haAssignment?.notApplicable;
+          const haStatus = getHaAssignmentStatus(data.haAssignment);
           const chhaPocCompleted = fullFormData?.chhaPoc?.completed === true;
+          const setHaStatus = (status) => {
+            if (status === "NOT_APPLICABLE") { u("haAssignment.notApplicable", true); u("haAssignment.assignedAide", ""); }
+            else if (status === "ASSIGNED") { u("haAssignment.notApplicable", false); }
+            else { u("haAssignment.notApplicable", false); u("haAssignment.assignedAide", ""); }
+          };
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <FormInput label="Assigned Home Aide" value={assignedAide} onChange={(v) => u("haAssignment.assignedAide", v)} />
-              <FormCheckbox label="HA Assignment N/A" checked={notApplicable} onChange={(v) => u("haAssignment.notApplicable", v)} />
-              {!notApplicable && (
-                <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-                  <button
-                    type="button"
-                    onClick={() => onNavigateToSection?.("chha-assignment")}
-                    disabled={!onNavigateToSection}
-                    style={{ ...styles.btnSecondary, opacity: onNavigateToSection ? 1 : 0.5 }}
-                    title={onNavigateToSection ? "Open the CHHA Plan of Care" : "Open this patient's chart to reach the CHHA Plan of Care"}
-                  >
-                    → Open CHHA Plan of Care
-                  </button>
-                  {assignedAide.trim() && (
-                    chhaPocCompleted ? (
-                      <span style={{ fontSize: 11.5, color: COLORS.success, fontWeight: 700 }}>✓ CHHA Plan of Care completed</span>
-                    ) : (
-                      <span style={{ fontSize: 11.5, color: COLORS.warning, fontWeight: 700 }}>⚠ CHHA Plan of Care not yet completed</span>
-                    )
-                  )}
-                </div>
+              <FormSegmented
+                label="HA Assignment"
+                value={haStatus === "NOT_ASSIGNED" ? "" : haStatus}
+                onChange={(v) => setHaStatus(v || "NOT_ASSIGNED")}
+                options={[
+                  { value: "", label: "Not Assigned" },
+                  { value: "ASSIGNED", label: "Assigned" },
+                  { value: "NOT_APPLICABLE", label: "Not Applicable" },
+                ]}
+              />
+              {haStatus === "ASSIGNED" && (
+                <>
+                  <FormInput label="Assigned Aide" value={assignedAide} onChange={(v) => u("haAssignment.assignedAide", v)} />
+                  <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        captureChhaPocLaunchContext(patientId);
+                        onNavigateToSection?.("chha-assignment");
+                      }}
+                      disabled={!onNavigateToSection}
+                      style={{ ...styles.btnSecondary, opacity: onNavigateToSection ? 1 : 0.5 }}
+                      title={onNavigateToSection ? "Open the CHHA Plan of Care" : "Open this patient's chart to reach the CHHA Plan of Care"}
+                    >
+                      → Open CHHA Plan of Care
+                    </button>
+                    {assignedAide.trim() && (
+                      chhaPocCompleted ? (
+                        <span style={{ fontSize: 11.5, color: COLORS.success, fontWeight: 700 }}>✓ CHHA POC Configured</span>
+                      ) : (
+                        <span style={{ fontSize: 11.5, color: COLORS.warning, fontWeight: 700 }}>⚠ CHHA POC Incomplete</span>
+                      )
+                    )}
+                  </div>
+                </>
               )}
+            </Card>
+          );
+        }
+
+        // Section 5 -- NOT_STARTED/IN_PROGRESS/CREATED/REQUIRES_REVIEW
+        // state pill, additive `initialPocIdg.status` alongside the
+        // original `created` boolean (kept in sync below so any report
+        // still reading the boolean directly stays correct). Creation
+        // Date only shown once Created; Notes stay optional/always
+        // visible.
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "initialPocStatus") {
+          const pocStatus = getInitialPocStatus(data.initialPocIdg);
+          const setPocStatus = (status) => {
+            u("initialPocIdg.status", status);
+            u("initialPocIdg.created", status === "CREATED");
+          };
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FormSegmented
+                label="Initial POC/IDG Status"
+                value={pocStatus === "NOT_STARTED" ? "" : pocStatus}
+                onChange={(v) => setPocStatus(v || "NOT_STARTED")}
+                options={[
+                  { value: "", label: "Not Started" },
+                  { value: "IN_PROGRESS", label: "In Progress" },
+                  { value: "CREATED", label: "Created" },
+                  { value: "REQUIRES_REVIEW", label: "Requires Review" },
+                ]}
+              />
+              {pocStatus === "CREATED" && (
+                <FormInput label="Created Date" type="date" value={data.initialPocIdg?.createdDate || ""}
+                  onChange={(v) => u("initialPocIdg.createdDate", v)} />
+              )}
+              <FormTextarea label="POC/IDG Notes" value={data.initialPocIdg?.notes || ""}
+                onChange={(v) => u("initialPocIdg.notes", v)} />
             </Card>
           );
         }
@@ -25082,17 +25956,163 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         // J0050 = Yes, or at least one Observed Active-Dying Indicator is
         // checked. Still reads/writes `imminentDeath.comfortMeasuresInPlace`
         // (the original field path) via `update` directly (not the
-        // section-scoped `u`) so no data migration or new field is
-        // required -- only where it renders changed.
+        // section-scoped `u`) so no data migration is required.
+        //
+        // PRODUCT OWNER DIRECTIVE (2026-10-25) Section 6 -- 3-state
+        // ESTABLISHED/NOT_YET_ESTABLISHED/NOT_APPLICABLE pill replacing
+        // the checkbox; additive `imminentDeath.comfortMeasuresStatus`
+        // alongside the original boolean (kept in sync below).
         if (sectionKey === "admissionsOrder" && card.customRenderer === "comfortMeasuresPocReference") {
           const imminentDeathData = fullFormData?.imminentDeath || {};
           const hasTerminalDeclineEvidence = imminentDeathData.appearsThreeDaysOrLess === "1"
             || (Array.isArray(imminentDeathData.indicators) && imminentDeathData.indicators.length > 0);
           if (!hasTerminalDeclineEvidence) return null;
+          const comfortStatus = getComfortMeasuresStatus(imminentDeathData);
+          const setComfortStatus = (status) => {
+            update("imminentDeath", "comfortMeasuresStatus", status);
+            update("imminentDeath", "comfortMeasuresInPlace", status === "ESTABLISHED");
+          };
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <FormCheckbox label="Comfort Measures in Place" checked={!!imminentDeathData.comfortMeasuresInPlace}
-                onChange={(v) => update("imminentDeath", "comfortMeasuresInPlace", v)} />
+              <FormSegmented
+                label="Comfort Measures"
+                value={comfortStatus === "NOT_YET_ESTABLISHED" ? "" : comfortStatus}
+                onChange={(v) => setComfortStatus(v || "NOT_YET_ESTABLISHED")}
+                options={[
+                  { value: "", label: "Not Yet Established" },
+                  { value: "ESTABLISHED", label: "Established" },
+                  { value: "NOT_APPLICABLE", label: "Not Applicable" },
+                ]}
+              />
+            </Card>
+          );
+        }
+
+        // Section 7 -- independent multi-select pills replacing 3
+        // checkboxes. `verbalOrderReceived` is additive; `verbalOrder
+        // ReadBack`/`prescriberContacted` are the original fields,
+        // unchanged paths. "Verified By"/"Verification Timestamp" stay
+        // visible once Read Back is verified (they describe that step).
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "verbalOrderVerification") {
+          const tov = data.toVerification || {};
+          const selected = [
+            tov.verbalOrderReceived && "RECEIVED",
+            tov.verbalOrderReadBack && "READ_BACK",
+            tov.prescriberContacted && "PRESCRIBER_CONTACTED",
+          ].filter(Boolean);
+          const togglePill = (next) => {
+            u("toVerification.verbalOrderReceived", next.includes("RECEIVED"));
+            u("toVerification.verbalOrderReadBack", next.includes("READ_BACK"));
+            u("toVerification.prescriberContacted", next.includes("PRESCRIBER_CONTACTED"));
+          };
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <FormPillGroup
+                label="Verification Steps"
+                values={selected}
+                onChange={togglePill}
+                options={[
+                  { value: "RECEIVED", label: "Verbal Order Received" },
+                  { value: "READ_BACK", label: "Read Back Verified" },
+                  { value: "PRESCRIBER_CONTACTED", label: "Prescriber Contacted" },
+                ]}
+              />
+              {tov.verbalOrderReadBack && (
+                <>
+                  <FormInput label="Verified By" value={tov.verifiedBy || ""} onChange={(v) => u("toVerification.verifiedBy", v)} />
+                  <FormInput label="Verification Timestamp" type="datetime-local" value={tov.verificationTimestamp || ""}
+                    onChange={(v) => u("toVerification.verificationTimestamp", v)} />
+                </>
+              )}
+            </Card>
+          );
+        }
+
+        // Section 8 -- "Plan of Care Review" / "Problems Identified",
+        // reusing the single existing, tested `deriveChhaCareGuidance`
+        // function (already powers CHHA's Today's Care Alerts/Safety
+        // Alerts/Special Precautions and the Visit Note's Active Visit
+        // Precautions) instead of inventing new risk-derivation logic.
+        // Each identified problem is tagged "Added To Initial POC" / "Not
+        // Added Yet" via the additive `initialPocIdg.problemsAddressed`
+        // array -- the RN toggles it directly once the issue has actually
+        // been carried into the POC via "ADD ISSUE" elsewhere.
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "pocProblemsReview") {
+          const guidance = deriveChhaCareGuidance({
+            formData: fullFormData,
+            medications: fullFormData?.medications,
+            reportToRole: fullFormData?.chhaPoc?.reportToRole,
+            minimumAssistLevel: fullFormData?.chhaPoc?.minimumAssistLevel,
+          });
+          const categoryKeys = new Set(guidance.map((c) => c.key));
+          const problemsAddressed = Array.isArray(data.initialPocIdg?.problemsAddressed) ? data.initialPocIdg.problemsAddressed : [];
+          const problems = POC_PROBLEM_REVIEW_MAP.filter((p) => categoryKeys.has(p.guidanceKey));
+          if (problems.length === 0) {
+            return (
+              <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+                <div style={{ fontSize: 12, color: COLORS.gray }}>No auto-identified problems from this assessment yet.</div>
+              </Card>
+            );
+          }
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {problems.map((p) => {
+                  const added = problemsAddressed.includes(p.key);
+                  return (
+                    <div key={p.key} style={{
+                      display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8,
+                      padding: "8px 10px", borderRadius: 8, border: `1px solid ${COLORS.border}`, background: COLORS.bg,
+                    }}>
+                      <span style={{ fontSize: 12.5, fontWeight: 700 }}>{p.label}</span>
+                      <button
+                        type="button"
+                        onClick={() => u("initialPocIdg.problemsAddressed", added
+                          ? problemsAddressed.filter((k) => k !== p.key)
+                          : [...problemsAddressed, p.key])}
+                        style={{
+                          fontSize: 11, fontWeight: 700, padding: "4px 8px", borderRadius: 5, cursor: "pointer",
+                          border: `1px solid ${added ? COLORS.success : COLORS.warning}`,
+                          background: "transparent", color: added ? COLORS.success : COLORS.warning,
+                        }}
+                      >
+                        {added ? "✓ Added To Initial POC" : "⚠ Not Added Yet"}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          );
+        }
+
+        // Section 9 -- Completion Summary, always the last card. Reuses
+        // the same `computeOrdersPocDocumentationCoverage` computation as
+        // the Section 1 coverage card so "Ready"/"Needs Review" and the
+        // bottom summary can never disagree with the top.
+        if (sectionKey === "admissionsOrder" && card.customRenderer === "ordersPocCompletionSummary") {
+          const imminentDeathData = fullFormData?.imminentDeath || {};
+          const hasTerminalDeclineEvidence = imminentDeathData.appearsThreeDaysOrLess === "1"
+            || (Array.isArray(imminentDeathData.indicators) && imminentDeathData.indicators.length > 0);
+          const coverage = computeOrdersPocDocumentationCoverage(data, { hasTerminalDeclineEvidence });
+          const missing = coverage.filter((i) => !i.complete).map((i) => i.unresolvedHint || i.label);
+          const ready = missing.length === 0;
+          return (
+            <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
+              <div style={{
+                padding: "10px 12px", borderRadius: 8,
+                border: `1px solid ${ready ? COLORS.success : COLORS.warning}`,
+                background: COLORS.bg,
+              }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: ready ? COLORS.success : COLORS.warning }}>
+                  {ready ? "✓ Orders & POC Ready" : "⚠ Needs Review"}
+                </div>
+                {!ready && (
+                  <ul style={{ margin: "6px 0 0", paddingLeft: 18, fontSize: 12, color: COLORS.text }}>
+                    {missing.map((m) => <li key={m}>Missing: {m}</li>)}
+                  </ul>
+                )}
+              </div>
             </Card>
           );
         }
@@ -32170,24 +33190,26 @@ const SECTION_CONFIGS = {
     title: "Admissions Order",
     subtitle: "Physician's initial order — LOC, visit frequency, HA assignment, POC/IDG, non-covered items",
     cards: [
+      // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Still Does
+      // Not Follow Infection Design" Section 1 -- Infection-style
+      // Documentation Coverage summary, always the first card so
+      // completion status for every item below is visible before
+      // scrolling into any individual form.
+      { title: "Orders & POC Documentation Coverage", customRenderer: "ordersPocCoverage", fields: [] },
       { title: "Admission Statement", cms: "Verbal Order", fields: [
         { type: "textarea", label: "Admission Order Statement", path: "admissionStatement", rows: 4 },
       ]},
-      { title: "Level of Care", fields: [
-        { type: "radio", label: "Level of Care", path: "levelOfCare.level", options: ["Routine Care", "General Inpatient", "Continuous Care", "Respite Care"] },
-        { type: "input", label: "Effective Date", path: "levelOfCare.effectiveDate", inputType: "date" },
-        { type: "textarea", label: "LOC Justification", path: "levelOfCare.justification" },
-      ]},
+      // Section 2 -- single-select Infection-style pill. Same
+      // `levelOfCare.level` path as the legacy radio (still actively
+      // gated by the "Level of Care is required for admission"
+      // validation elsewhere) -- only the editing surface changes.
+      { title: "Level of Care", customRenderer: "levelOfCarePills", fields: [] },
       { title: "Discipline Frequency of Visit", customRenderer: "disciplineFrequencyOfVisit", fields: [] },
-      { title: "HA Assignment", customRenderer: "haAssignment", fields: [
-        { type: "input", label: "Assigned Home Aide", path: "haAssignment.assignedAide" },
-        { type: "checkbox", label: "HA Assignment N/A", path: "haAssignment.notApplicable" },
-      ]},
-      { title: "Initial POC/IDG", fields: [
-        { type: "checkbox", label: "Initial POC Created", path: "initialPocIdg.created" },
-        { type: "input", label: "Created Date", path: "initialPocIdg.createdDate", inputType: "date" },
-        { type: "textarea", label: "POC/IDG Notes", path: "initialPocIdg.notes" },
-      ]},
+      // Section 4 -- ASSIGNED/NOT_ASSIGNED/NOT_APPLICABLE pill group
+      // replacing the textbox/checkbox pair.
+      { title: "HA Assignment", customRenderer: "haAssignment", fields: [] },
+      // Section 5 -- state pills replacing checkbox/date/notes.
+      { title: "Initial POC/IDG", customRenderer: "initialPocStatus", fields: [] },
       // [OWNER DIRECTIVE -- "PRODUCT OWNER REVIEW -- Death & Dying
       // Clinical Evidence vs. Clinical Actions", 2026-10-22] Comfort
       // Measures is a clinical ACTION (intervention), not J0050
@@ -32199,12 +33221,15 @@ const SECTION_CONFIGS = {
       // field/path as before the relocation) so no data migration is
       // required and existing charted values are preserved.
       { title: "Comfort Measures in Place", customRenderer: "comfortMeasuresPocReference", fields: [] },
-      { title: "T.O. Verification", fields: [
-        { type: "checkbox", label: "Verbal Order Read Back and Verified", path: "toVerification.verbalOrderReadBack" },
-        { type: "input", label: "Verified By", path: "toVerification.verifiedBy" },
-        { type: "checkbox", label: "Prescriber on Call Contacted", path: "toVerification.prescriberContacted" },
-        { type: "input", label: "Verification Timestamp", path: "toVerification.verificationTimestamp", inputType: "datetime-local" },
-      ]},
+      // Section 7 -- renamed per the PO's own section heading ("Verbal
+      // Order Verification"); the 2 pre-existing fields plus the new
+      // `verbalOrderReceived` step, now an independent multi-select pill
+      // row instead of 3 checkboxes.
+      { title: "Verbal Order Verification", customRenderer: "verbalOrderVerification", fields: [] },
+      // Section 8 -- "Plan of Care Review" / Problems Identified.
+      { title: "Plan of Care Review", customRenderer: "pocProblemsReview", fields: [] },
+      // Section 9 -- Completion Summary, always last.
+      { title: "Completion Summary", customRenderer: "ordersPocCompletionSummary", fields: [] },
     ],
   },
 
@@ -32683,6 +33708,36 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       // Double rAF: the just-reopened section's content needs one paint
       // to exist/expand before the page's (or embedded container's)
       // scroll height is correct.
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          restoreScrollPosition(ctx.scrollY);
+        });
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // PRODUCT OWNER DIRECTIVE (2026-10-24) "Redesign Orders & POC Using
+  // Infection as the UI Standard" Issue 1 -- restore counterpart to
+  // `captureChhaPocLaunchContext`. Keyed by patientId (not pathname+
+  // search, which never changes for this round trip -- see the key's
+  // own comment) so it only ever fires when the RN actually used
+  // "← Return to RNICA Orders & POC" from CHHA for THIS patient, never
+  // for an unrelated patient's RNICA that happens to mount afterward.
+  useEffect(() => {
+    if (skinImpairmentWorkspace) return;
+    const ctx = readChhaPocLaunchContext(patientId);
+    if (!ctx) return;
+    scheduleChhaPocLaunchContextRemoval();
+    if (ctx.activeSection) {
+      setActiveSection(ctx.activeSection);
+      setCollapsedSections((prev) => {
+        if (!prev.has(ctx.activeSection)) return prev;
+        const next = new Set(prev);
+        next.delete(ctx.activeSection);
+        return next;
+      });
+    }
+    if (typeof ctx.scrollY === "number") {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           restoreScrollPosition(ctx.scrollY);
@@ -34562,7 +35617,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               : route.formSection === "respiratory"
                 ? renderRespiratoryWithPoc()
                 : config && sectionData
-                  ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen, patientSummary)
+                  ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, false, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen, patientSummary, mode === "ica")
                   : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>}
           </div>
         )}
@@ -34603,6 +35658,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               neuroCognitiveScreenOpen,
               setNeuroCognitiveScreenOpen,
               patientSummary,
+              mode === "ica",
             )
           : <div style={styles.card}><p style={{ color: COLORS.gray }}>Section "{route.key}" — content loading...</p></div>;
 
@@ -34706,6 +35762,10 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
       true,
       onNavigateToSection,
       assessmentUiProfile,
+      undefined,
+      undefined,
+      undefined,
+      mode === "ica",
     );
   };
 
@@ -34758,7 +35818,7 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
         content: module.key === "respiratory"
           ? renderRespiratoryWithPoc()
           : config && sectionData
-            ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen, patientSummary)
+            ? renderGenericSection(route.formSection, sectionData, updateField, config, formData.demographics, formData, COLORS, styles, patientId, assessmentId, locked, true, onNavigateToSection, assessmentUiProfile, neuroCognitiveScreenOpen, setNeuroCognitiveScreenOpen, patientSummary, mode === "ica")
             : null,
       };
     }).filter(Boolean);
