@@ -60,6 +60,13 @@ import {
   DISASTER_PLACEMENT_OPTIONS,
   DISASTER_TRANSPORTATION_OPTIONS,
   DISASTER_REQUIREMENTS_OPTIONS,
+  HOSPICE_CLINICAL_FALL_SAFETY_OPTIONS,
+  STAFF_SAFETY_STATUS_NO_CONCERN,
+  STAFF_SAFETY_STATUS_CONCERN,
+  STAFF_SAFETY_STATUS_UNABLE,
+  STAFF_SAFETY_STATUS_OPTIONS,
+  STAFF_SAFETY_HAZARD_CATEGORIES,
+  STAFF_SAFETY_HAZARD_OPTIONS,
 } from "./rn-ica/safety-clinical-risk/safetyLogic";
 import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
 // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2 --
@@ -141,6 +148,7 @@ import {
   getRnProductivityMetrics,
   listSkinImpairmentsByPatient,
   getSkinImpairmentTimeline,
+  listRnicaAssessmentsByPatientType,
 } from "../api/icaAssessments";
 import { applyStructuredFindings, applyAllNonConflicting, getPendingFindingTargetSections } from "./rn-ica/applyStructuredFindings";
 import { CONCEPT_REGISTRY } from "./rn-ica/structuredFindingRegistry.generated";
@@ -7587,13 +7595,120 @@ export const MORSE_FALL_SCALE_SUGGESTED_INTERVENTIONS = {
   ],
 };
 
+// PRODUCT OWNER DECISION "Importing Prior Safety Assessments" (approved)
+// -- "IMPORTING PRIOR ASSESSMENTS IS APPROVED... CONFIRM CHANGES. DO NOT
+// REBUILD THE ENTIRE ASSESSMENT EACH VISIT." No cross-visit/prior-
+// assessment carry-forward concept exists anywhere else in RNICA (see
+// the "no such concept in this file" comments elsewhere in this file)
+// -- this is the first one, and it deliberately reuses only the
+// EXISTING, unmodified `listRnicaAssessmentsByPatientType` list endpoint
+// (already returns each locked assessment's full `formData`, no backend
+// change needed), called once per assessmentType (RNICA/UPDATE/RECERT --
+// the endpoint can only filter by one type at a time) and merged
+// client-side. Scoped to the patient's CURRENT admission only, which is
+// that endpoint's own existing, unwidened scope.
+//
+// This fetch is READ-ONLY: it never writes to the current assessment.
+// Each of the four Safety cards below decides, independently, whether to
+// show an import banner and only writes the prior values into this
+// visit's own fields when the RN explicitly clicks "No Change Since
+// Last Assessment" or "Update Assessment" -- never a blanket/master
+// toggle spanning multiple domains ("REJECT 'No Cognitive or Functional
+// Impairment' MASTER TOGGLE... THE TOGGLE MAY CREATE FALSE
+// ATTESTATIONS"), and never silently treated as answered/complete before
+// that explicit click (each card's own banner gate hides the editable
+// fields -- and so keeps the step incomplete -- until the RN acts).
+const _priorSafetySnapshotCache = new Map();
+
+async function fetchPriorSafetySnapshot(patientId, currentAssessmentId) {
+  const cacheKey = `${patientId}:${currentAssessmentId || "new"}`;
+  if (_priorSafetySnapshotCache.has(cacheKey)) return _priorSafetySnapshotCache.get(cacheKey);
+  const promise = (async () => {
+    try {
+      const [rnica, update, recert] = await Promise.all([
+        listRnicaAssessmentsByPatientType(patientId, { assessmentType: "RNICA", lockedOnly: true }),
+        listRnicaAssessmentsByPatientType(patientId, { assessmentType: "UPDATE", lockedOnly: true }),
+        listRnicaAssessmentsByPatientType(patientId, { assessmentType: "RECERT", lockedOnly: true }),
+      ]);
+      const all = [
+        ...(rnica?.assessments || []),
+        ...(update?.assessments || []),
+        ...(recert?.assessments || []),
+      ].filter((a) => a.assessmentId !== currentAssessmentId);
+      if (all.length === 0) return null;
+      all.sort((a, b) => new Date(b.lockedAt || b.updatedAt || 0) - new Date(a.lockedAt || a.updatedAt || 0));
+      const prior = all[0];
+      return {
+        priorAssessmentId: prior.assessmentId,
+        priorAssessmentType: prior.assessmentType,
+        priorVisitDate: (prior.lockedAt || prior.updatedAt || "").slice(0, 10),
+        priorSafety: prior.formData?.safety || {},
+        priorFullFormData: prior.formData || {},
+      };
+    } catch {
+      // Best-effort: import must never block charting.
+      return null;
+    }
+  })();
+  _priorSafetySnapshotCache.set(cacheKey, promise);
+  return promise;
+}
+
+function usePriorSafetySnapshot(patientId, assessmentId) {
+  const [snapshot, setSnapshot] = useState(null);
+  useEffect(() => {
+    if (!patientId) { setSnapshot(null); return undefined; }
+    let cancelled = false;
+    fetchPriorSafetySnapshot(patientId, assessmentId).then((result) => {
+      if (!cancelled) setSnapshot(result);
+    });
+    return () => { cancelled = true; };
+  }, [patientId, assessmentId]);
+  return snapshot;
+}
+
+// Shared "Prior assessment on file" import banner used by all four
+// Safety cards -- rendered INSTEAD OF the normal editable fields (never
+// alongside them) until the RN picks one of the two actions, so nothing
+// from this visit is ever recorded as answered/complete by the prior
+// snapshot alone.
+function PriorSafetyImportBanner({ priorVisitDate, summaryLines, onNoChange, onUpdate, COLORS, styles }) {
+  return (
+    <div style={{ ...styles.infoBox, marginBottom: 10 }}>
+      <div style={{ fontWeight: 700, marginBottom: 6 }}>
+        Prior assessment on file{priorVisitDate ? ` (${priorVisitDate})` : ""}
+      </div>
+      <ul style={{ margin: "0 0 10px", paddingLeft: 18, fontSize: 11.5 }}>
+        {summaryLines.map((line) => <li key={line}>{line}</li>)}
+      </ul>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button
+          type="button"
+          onClick={onNoChange}
+          style={{ fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${COLORS?.success || "#0D9488"}`, background: COLORS?.successBg || "#ECFDF5", color: COLORS?.success || "#0D9488" }}
+        >
+          No Change Since Last Assessment
+        </button>
+        <button
+          type="button"
+          onClick={onUpdate}
+          style={{ fontSize: 11.5, fontWeight: 700, padding: "6px 10px", borderRadius: 6, cursor: "pointer", border: `1px solid ${COLORS?.border || "#ccc"}`, background: "transparent", color: COLORS?.textSecondary || "#555" }}
+        >
+          Update Assessment
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // PRODUCT OWNER DECISION (2026-11-29) "Fall Risk Assessment -- Morse Fall
 // Scale" (final) -- guided-assessment model built on the existing Pain
 // Assessment workflow pattern (entry mode captures the 6 factors; the
 // summary at the top always shows the current calculated score/
 // classification/trend, per the owner's exact example layout) without a
 // new scoring engine, a new backend service, or fabricated point values.
-function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFormData }) {
+function FallRiskCard({ data, updateField, assessmentId, patientId, styles, COLORS, fullFormData }) {
+  const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
   const score = computeMorseFallScore(data);
   const trend = computeFallRiskTrend(data?.fallRiskHistory);
 
@@ -7636,6 +7751,40 @@ function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFor
   const riskColor = score.classification === "High Risk" ? COLORS.error
     : score.classification === "Moderate Risk" ? COLORS.warning
     : COLORS.success;
+
+  // PRODUCT OWNER DECISION "Importing Prior Safety Assessments" --
+  // "IMPORT PRIOR MORSE RESPONSES... DO NOT FORCE COMPLETE RE-ENTRY."
+  // The banner only shows while none of the 6 factors have been
+  // answered this visit; importing writes the prior visit's factor
+  // values into this visit's own fields (still fully editable, still
+  // independently re-scored/re-classified above) -- it never silently
+  // marks the step complete on its own, since the RN must click one of
+  // the two actions first.
+  const priorMorse = priorSnapshot ? computeMorseFallScore(priorSnapshot.priorSafety) : null;
+  const morseImportChoice = data?.fallRiskMorseImportChoice || "";
+  const morseHasCurrentAnswer = MORSE_FALL_SCALE_FACTORS.some((f) => Boolean(data?.[f.dataKey]));
+  const showMorseImportBanner = Boolean(priorMorse?.complete) && !morseImportChoice && !morseHasCurrentAnswer;
+
+  const applyMorseImport = (choice) => {
+    const priorData = priorSnapshot?.priorSafety || {};
+    updateField("fallRiskMorseImportChoice", choice);
+    MORSE_FALL_SCALE_FACTORS.forEach((f) => {
+      updateField(f.dataKey, priorData[f.dataKey] || "");
+    });
+  };
+
+  if (showMorseImportBanner) {
+    return (
+      <PriorSafetyImportBanner
+        priorVisitDate={priorSnapshot.priorVisitDate}
+        summaryLines={[`Prior Score: ${priorMorse.total} · ${priorMorse.classification}`]}
+        onNoChange={() => applyMorseImport("unchanged")}
+        onUpdate={() => applyMorseImport("updated")}
+        COLORS={COLORS}
+        styles={styles}
+      />
+    );
+  }
 
   return (
     <div>
@@ -7680,6 +7829,26 @@ function FallRiskCard({ data, updateField, assessmentId, styles, COLORS, fullFor
             </ul>
           </div>
         )}
+      </div>
+
+      {/* PRODUCT OWNER DECISION "Importing Prior Safety Assessments" --
+          "ADD: Hospice Clinical Fall Safety... KEEP MORSE SCORE FOR
+          STANDARDIZED TRENDING." A separate, always-visible, freshly-
+          selected-each-visit field (never auto-imported from a prior
+          visit -- a prior visit's danger-severity judgment is never
+          substituted for this visit's own clinical judgment). Morse
+          answers "how likely is a fall?"; this answers "how dangerous
+          would a fall or transfer event be for this patient?" */}
+      <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+        <FormSegmented
+          label="Hospice Clinical Fall Safety"
+          value={data?.hospiceClinicalFallSafetyLevel || ""}
+          onChange={(v) => updateField("hospiceClinicalFallSafetyLevel", v)}
+          options={HOSPICE_CLINICAL_FALL_SAFETY_OPTIONS}
+        />
+        <div style={{ fontSize: 11, color: COLORS?.textSecondary || "#888", margin: "0 0 6px" }}>
+          Morse asks "How likely is a fall?" Hospice Clinical Fall Safety asks "How dangerous would a fall or transfer event be for this patient?" -- a bedbound patient may still carry high transfer/injury risk.
+        </div>
       </div>
 
       {score.complete && (score.classification === "Moderate Risk" || score.classification === "High Risk") && (
@@ -7871,28 +8040,63 @@ const ENVIRONMENTAL_SAFETY_HAZARD_OPTIONS = [
 // Workflow, Place of Service Visibility" (final) -- Place of Service
 // (HOPE A0215 Site of Service, same `isFacility` read above) now drives
 // two fully distinct, mutually-exclusive structured checklists instead
-// of one shared universal status:
-//   HOME: a flat 9-item concern list with an explicit
-//   "No Environmental Concerns Identified" catch-all -- replacing the
-//   retired "All Clear"/blanket-verified behavior, nothing is ever
-//   auto-selected.
-//   FACILITY: a 2-state status ("Facility Managed" / "Observed
-//   Concern") that reveals a 5-item sub-list only when a concern is
-//   observed.
-// The prior universal `ENVIRONMENTAL_SAFETY_STATUS_OPTIONS` 4-option
-// list and the Patient/Staff hazard pill groups above are retired (no
-// longer rendered) but every stored value is preserved and still shown
-// as a "Previously recorded" chip -- nothing is deleted or migrated.
+// of one shared universal status.
+//
+// PRODUCT OWNER DIRECTIVE (2026-10-24, "Environmental Safety Is Still
+// Too Facility-Centric") -- "MOST HOSPICE SAFETY CONCERNS OCCUR IN THE
+// PATIENT'S HOME... FAST DOES NOT MEAN INCOMPLETE. THE GOAL IS
+// CONDITIONAL DISPLAY, NOT REMOVAL OF CLINICALLY IMPORTANT SAFETY
+// RISKS." The flat 9-item HOME list is replaced with the directive's
+// exact 6-category, 21-item checklist (Access & Mobility, Bathroom
+// Safety, Utilities & Services, Fire & Smoke Safety, Medication &
+// Sharps Safety, Sanitation) plus "Other" and the explicit
+// "No Environmental Concerns Identified" catch-all -- still nothing
+// ever auto-selected. The FACILITY 5-item sub-list is expanded to the
+// directive's exact 8-item list (adding Transfer Area Concern, Bathroom
+// Safety Concern, Equipment Access Concern, and renaming "Nurse Call
+// System Concern" -> "Call Light Concern"). Staff Visit Safety
+// (below) is unchanged -- it already displays unconditionally for both
+// Home and Facility settings, which is exactly what this directive
+// re-confirms. Every prior-round field/value (including the retired
+// flat Home list and the retired "Nurse Call System Concern" facility
+// item) is preserved and never deleted -- shown via the existing
+// "Previously recorded" chip mechanism, never dropped.
 const ENVIRONMENTAL_HOME_NO_CONCERN = "No Environmental Concerns Identified";
+const ENVIRONMENTAL_HOME_CONCERN_CATEGORIES = [
+  {
+    label: "Access & Mobility",
+    options: ["Clutter / Obstructed Walkway", "Throw Rugs / Trip Hazard", "Unsafe Stairs", "Missing Handrails", "Inadequate Lighting", "Unsafe Entry / Exit"],
+  },
+  {
+    label: "Bathroom Safety",
+    options: ["Unsafe Tub/Shower Access", "Grab Bars Needed", "Unsafe Toilet Transfer", "Shower Chair Needed"],
+  },
+  {
+    label: "Utilities & Services",
+    options: ["Electricity Concern", "No Backup Power", "Communication Concern", "Heating/Cooling Concern", "Water/Plumbing Concern"],
+  },
+  {
+    label: "Fire & Smoke Safety",
+    options: ["Smoking Concern", "Open Flame Concern", "Smoke Detector Concern", "Unsafe Cooking"],
+  },
+  {
+    label: "Medication & Sharps Safety",
+    options: ["Medication Storage Concern", "Controlled-Substance Storage Concern", "Sharps Disposal Concern"],
+  },
+  {
+    label: "Sanitation",
+    options: ["Unsanitary Conditions", "Pest Infestation", "Biohazard Exposure"],
+  },
+];
+const ENVIRONMENTAL_HOME_OTHER_OPTIONS = ["Other", ENVIRONMENTAL_HOME_NO_CONCERN];
 const ENVIRONMENTAL_HOME_CONCERN_OPTIONS = [
-  "Structural / Access Concern", "Lighting Concern", "Bathroom Safety Concern",
-  "Utility / Power Concern", "Fire / Smoke Safety Concern", "Hot Water Safety Concern",
-  "Infestation / Sanitation Concern", "Medication / Sharps Storage Concern", "Other",
-  ENVIRONMENTAL_HOME_NO_CONCERN,
+  ...ENVIRONMENTAL_HOME_CONCERN_CATEGORIES.flatMap((category) => category.options),
+  ...ENVIRONMENTAL_HOME_OTHER_OPTIONS,
 ];
 const ENVIRONMENTAL_FACILITY_STATUS_OPTIONS = ["Facility Managed", "Observed Concern"];
 const ENVIRONMENTAL_FACILITY_CONCERN_OPTIONS = [
-  "Evacuation Access Concern", "Nurse Call System Concern", "Unsafe Room Environment",
+  "Unsafe Room Environment", "Transfer Area Concern", "Bathroom Safety Concern",
+  "Call Light Concern", "Evacuation Access Concern", "Equipment Access Concern",
   "Utility / Power Concern", "Other",
 ];
 // Staff Visit Safety is a required section, shown unconditionally
@@ -7906,7 +8110,8 @@ const STAFF_VISIT_SAFETY_OPTIONS = [
   "Aggressive Animal", "Unsafe Entry or Access", "Other",
   STAFF_VISIT_SAFETY_NO_CONCERN,
 ];
-function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
+function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId }) {
+  const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
   const siteOfService = fullFormData?.demographics?.livingSituation?.siteOfService || "";
   const isFacility = siteOfService !== "" && siteOfService !== "01";
 
@@ -7924,34 +8129,65 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
   const legacyPatientHazards = data?.environmentalPatientHazards || [];
   const legacyStaffHazards = data?.environmentalStaffHazards || [];
 
-  // HOME -- flat concern list + explicit no-concern catch-all. Nothing
-  // is pre-selected: an empty array means "not yet assessed", never
-  // silently treated as "clear" (no "All Clear" auto-attestation).
+  // HOME -- categorized concern checklist (6 categories, all writing
+  // into the same `environmentalHomeConcerns` array) + explicit
+  // no-concern catch-all. Nothing is pre-selected: an empty array means
+  // "not yet assessed", never silently treated as "clear" (no
+  // "All Clear" auto-attestation). Any value stored under the retired
+  // flat 9-item list (or anything else no longer offered) is preserved
+  // and surfaced below as a "Previously recorded" chip -- never
+  // dropped.
   const homeConcerns = (data?.environmentalHomeConcerns || []).filter((c) => ENVIRONMENTAL_HOME_CONCERN_OPTIONS.includes(c));
-  const handleHomeConcernsChange = (nextValues) => {
-    const addedNoConcern = nextValues.includes(ENVIRONMENTAL_HOME_NO_CONCERN) && !homeConcerns.includes(ENVIRONMENTAL_HOME_NO_CONCERN);
+  const legacyHomeConcerns = (data?.environmentalHomeConcerns || []).filter((c) => !ENVIRONMENTAL_HOME_CONCERN_OPTIONS.includes(c));
+  // Single handler factory shared by every Home concern pill group
+  // (the 6 category groups + the Other/No-Concern group) -- each group
+  // only ever reports back values from its own `groupOptions`, so the
+  // factory merges that slice back into the full stored array while
+  // re-applying the same "No Concern" exclusivity the prior single flat
+  // group enforced: picking any concern elsewhere always clears a
+  // previously-selected "No Concern", and picking "No Concern" always
+  // clears every other selection.
+  const makeHomeConcernGroupHandler = (groupOptions) => (nextValuesForGroup) => {
+    const addedNoConcern = groupOptions.includes(ENVIRONMENTAL_HOME_NO_CONCERN)
+      && nextValuesForGroup.includes(ENVIRONMENTAL_HOME_NO_CONCERN)
+      && !homeConcerns.includes(ENVIRONMENTAL_HOME_NO_CONCERN);
     if (addedNoConcern) {
       updateField("environmentalHomeConcerns", [ENVIRONMENTAL_HOME_NO_CONCERN]);
       return;
     }
-    updateField("environmentalHomeConcerns", nextValues.filter((v) => v !== ENVIRONMENTAL_HOME_NO_CONCERN));
+    const others = homeConcerns.filter((v) => !groupOptions.includes(v));
+    updateField("environmentalHomeConcerns", [...others, ...nextValuesForGroup].filter((v) => v !== ENVIRONMENTAL_HOME_NO_CONCERN));
   };
 
-  // FACILITY -- 2-state status; the 5-item sub-list is shown only when
+  // FACILITY -- 2-state status; the 8-item sub-list is shown only when
   // a concern is observed (the full HOME checklist is never shown for
-  // a facility-based patient).
+  // a facility-based patient). Any value stored under the retired
+  // 5-item list (e.g. "Nurse Call System Concern") is preserved and
+  // surfaced below as a "Previously recorded" chip -- never dropped.
   const facilityStatus = ENVIRONMENTAL_FACILITY_STATUS_OPTIONS.includes(data?.environmentalFacilityStatus) ? data.environmentalFacilityStatus : "";
   const facilityConcerns = (data?.environmentalFacilityConcerns || []).filter((c) => ENVIRONMENTAL_FACILITY_CONCERN_OPTIONS.includes(c));
+  const legacyFacilityConcerns = (data?.environmentalFacilityConcerns || []).filter((c) => !ENVIRONMENTAL_FACILITY_CONCERN_OPTIONS.includes(c));
 
-  // Staff Visit Safety -- required, shown regardless of Home/Facility.
-  const staffVisitSafety = (data?.environmentalStaffVisitSafety || []).filter((c) => STAFF_VISIT_SAFETY_OPTIONS.includes(c));
-  const handleStaffVisitSafetyChange = (nextValues) => {
-    const addedNoConcern = nextValues.includes(STAFF_VISIT_SAFETY_NO_CONCERN) && !staffVisitSafety.includes(STAFF_VISIT_SAFETY_NO_CONCERN);
-    if (addedNoConcern) {
-      updateField("environmentalStaffVisitSafety", [STAFF_VISIT_SAFETY_NO_CONCERN]);
-      return;
+  // FINAL PRODUCT OWNER DIRECTIVE section 11 -- Staff Visit Safety is
+  // required for both Home and Facility settings, and is now a 2-state
+  // status gate (`environmentalStaffSafetyStatus`) that, only when
+  // "Staff Safety Concern Identified" is selected, reveals 5 full hazard
+  // taxonomies (`environmentalStaffSafetyHazards`). Selecting No Concern
+  // or Unable to Assess hides the hazard categories and does not require
+  // a note. The retired flat 6-option list (`environmentalStaffVisitSafety`)
+  // is preserved in full and legacy-chipped below -- never read again.
+  const staffSafetyStatus = STAFF_SAFETY_STATUS_OPTIONS.includes(data?.environmentalStaffSafetyStatus) ? data.environmentalStaffSafetyStatus : "";
+  const staffSafetyHazards = (data?.environmentalStaffSafetyHazards || []).filter((h) => STAFF_SAFETY_HAZARD_OPTIONS.includes(h));
+  const legacyStaffVisitSafetyFlat = (data?.environmentalStaffVisitSafety || []).filter((c) => STAFF_VISIT_SAFETY_OPTIONS.includes(c));
+  const handleStaffSafetyStatusChange = (v) => {
+    updateField("environmentalStaffSafetyStatus", v);
+    if (v !== STAFF_SAFETY_STATUS_CONCERN) {
+      updateField("environmentalStaffSafetyHazards", []);
     }
-    updateField("environmentalStaffVisitSafety", nextValues.filter((v) => v !== STAFF_VISIT_SAFETY_NO_CONCERN));
+  };
+  const makeStaffSafetyCategoryHandler = (groupOptions) => (nextValuesForGroup) => {
+    const others = staffSafetyHazards.filter((v) => !groupOptions.includes(v));
+    updateField("environmentalStaffSafetyHazards", [...others, ...nextValuesForGroup]);
   };
 
   // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
@@ -7963,11 +8199,61 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
   const patientHazardsForGate = isFacility
     ? (facilityStatus === "Observed Concern" ? facilityConcerns : [])
     : homeConcerns;
-  const activeStaffHazards = staffVisitSafety.filter((c) => c !== STAFF_VISIT_SAFETY_NO_CONCERN);
+  const activeStaffHazards = staffSafetyStatus === STAFF_SAFETY_STATUS_CONCERN ? staffSafetyHazards : [];
   const hasAnyHazard = patientHazardsForGate.length > 0 || activeStaffHazards.length > 0;
   const hasStaffHazard = activeStaffHazards.length > 0;
-  const showsClarification = patientHazardsForGate.includes("Other") || facilityConcerns.includes("Other") || staffVisitSafety.includes("Other");
+  const showsClarification = patientHazardsForGate.includes("Other") || facilityConcerns.includes("Other") || activeStaffHazards.some((h) => h.toLowerCase().includes("other"));
   const followUpRequired = data?.environmentalFollowUpRequired || "";
+
+  // PRODUCT OWNER DECISION "Importing Prior Safety Assessments" --
+  // "IMPORT PRIOR RESPONSES. DISPLAY: No Change Since Last Assessment OR
+  // Update Assessment." The banner only shows while nothing has been
+  // answered for this visit, and only when the prior assessment's
+  // setting (Home/Facility) matches this visit's current setting --
+  // never imports mismatched Home/Facility data.
+  const priorEnv = priorSnapshot ? summarizeEnvironmentalSafety(priorSnapshot.priorSafety, priorSnapshot.priorFullFormData) : null;
+  const environmentalImportChoice = data?.environmentalImportChoice || "";
+  const environmentalHasCurrentAnswer = homeConcerns.length > 0 || Boolean(facilityStatus) || Boolean(staffSafetyStatus);
+  const showEnvironmentalImportBanner = Boolean(priorEnv?.complete)
+    && !environmentalImportChoice
+    && !environmentalHasCurrentAnswer
+    && priorEnv.setting === (isFacility ? "Facility" : "Home");
+
+  const applyEnvironmentalImport = (choice) => {
+    const priorData = priorSnapshot?.priorSafety || {};
+    updateField("environmentalImportChoice", choice);
+    if (isFacility) {
+      updateField("environmentalFacilityStatus", priorData.environmentalFacilityStatus || "");
+      updateField("environmentalFacilityConcerns", priorData.environmentalFacilityConcerns || []);
+    } else {
+      updateField("environmentalHomeConcerns", priorData.environmentalHomeConcerns || []);
+    }
+    updateField("environmentalStaffSafetyStatus", priorData.environmentalStaffSafetyStatus || "");
+    updateField("environmentalStaffSafetyHazards", priorData.environmentalStaffSafetyHazards || []);
+    updateField("environmentalRiskTarget", priorData.environmentalRiskTarget || "");
+    updateField("environmentalActionsTaken", priorData.environmentalActionsTaken || []);
+    updateField("environmentalStaffDisposition", priorData.environmentalStaffDisposition || "");
+    updateField("environmentalFollowUpRequired", priorData.environmentalFollowUpRequired || "");
+    updateField("environmentalFollowUpNote", priorData.environmentalFollowUpNote || "");
+    updateField("environmentalClarificationNote", priorData.environmentalClarificationNote || "");
+  };
+
+  if (showEnvironmentalImportBanner) {
+    return (
+      <PriorSafetyImportBanner
+        priorVisitDate={priorSnapshot.priorVisitDate}
+        summaryLines={[
+          `Setting: ${priorEnv.setting}`,
+          `Patient Hazards: ${priorEnv.patientSummary || "None recorded"}`,
+          `Staff Hazards: ${priorEnv.staffSummary || "None recorded"}`,
+        ]}
+        onNoChange={() => applyEnvironmentalImport("unchanged")}
+        onUpdate={() => applyEnvironmentalImport("updated")}
+        COLORS={COLORS}
+        styles={styles}
+      />
+    );
+  }
 
   return (
     <div>
@@ -7975,12 +8261,25 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
         {isFacility ? "Facility-based residence (Site of Service on file)" : "Home-based residence"}
       </div>
       {!isFacility && (
-        <FormPillGroup
-          label="Home Environmental Safety"
-          values={homeConcerns}
-          onChange={handleHomeConcernsChange}
-          options={ENVIRONMENTAL_HOME_CONCERN_OPTIONS}
-        />
+        <>
+          {ENVIRONMENTAL_HOME_CONCERN_CATEGORIES.map((category) => (
+            <FormPillGroup
+              key={category.label}
+              label={category.label}
+              values={homeConcerns.filter((v) => category.options.includes(v))}
+              onChange={makeHomeConcernGroupHandler(category.options)}
+              options={category.options}
+              compact
+            />
+          ))}
+          <FormPillGroup
+            label="Other / No Concerns Identified"
+            values={homeConcerns.filter((v) => ENVIRONMENTAL_HOME_OTHER_OPTIONS.includes(v))}
+            onChange={makeHomeConcernGroupHandler(ENVIRONMENTAL_HOME_OTHER_OPTIONS)}
+            options={ENVIRONMENTAL_HOME_OTHER_OPTIONS}
+            compact
+          />
+        </>
       )}
       {isFacility && (
         <>
@@ -8001,12 +8300,22 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
         </>
       )}
       <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
-        <FormPillGroup
-          label="Staff Visit Safety"
-          values={staffVisitSafety}
-          onChange={handleStaffVisitSafetyChange}
-          options={STAFF_VISIT_SAFETY_OPTIONS}
+        <FormSegmented
+          label="Staff Visit-Safety Status"
+          value={staffSafetyStatus}
+          onChange={handleStaffSafetyStatusChange}
+          options={STAFF_SAFETY_STATUS_OPTIONS}
         />
+        {staffSafetyStatus === STAFF_SAFETY_STATUS_CONCERN && STAFF_SAFETY_HAZARD_CATEGORIES.map((category) => (
+          <FormPillGroup
+            key={category.label}
+            label={category.label}
+            values={staffSafetyHazards.filter((v) => category.options.includes(v))}
+            onChange={makeStaffSafetyCategoryHandler(category.options)}
+            options={category.options}
+            compact
+          />
+        ))}
       </div>
       {hasAnyHazard && (
         <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
@@ -8052,8 +8361,32 @@ function EnvironmentalSafetyCard({ data, updateField, COLORS, fullFormData }) {
           onChange={(v) => updateField("environmentalClarificationNote", v)}
         />
       )}
-      {(legacyStatus || legacyPatientHazards.length > 0 || legacyStaffHazards.length > 0 || legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0) && (
+      {(legacyStatus || legacyPatientHazards.length > 0 || legacyStaffHazards.length > 0 || legacyHazards.length > 0 || legacyFirearm || legacyColumns.length > 0 || legacyConcerns.length > 0 || legacyHomeConcerns.length > 0 || legacyFacilityConcerns.length > 0 || legacyStaffVisitSafetyFlat.length > 0) && (
         <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px dashed ${COLORS.border}`, display: "flex", flexWrap: "wrap", gap: 4 }}>
+          {legacyStaffVisitSafetyFlat.map((concern) => (
+            <span key={`staff-flat-legacy-${concern}`}
+              title="This value was previously recorded under the retired flat 6-option Staff Visit Safety list. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: "{concern}"
+            </span>
+          ))}
+          {legacyHomeConcerns.map((concern) => (
+            <span key={`home-legacy-${concern}`}
+              title="This concern was previously recorded under the retired flat Home Environmental Safety option list. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: "{concern}"
+            </span>
+          ))}
+          {legacyFacilityConcerns.map((concern) => (
+            <span key={`facility-legacy-${concern}`}
+              title="This concern was previously recorded under the retired Facility Environmental Safety option list. The stored value has not been changed."
+              className="inline-block rounded-full border border-dashed border-rnica-orange px-2 py-[2px] text-[10px] font-semibold leading-[1.6] text-rnica-orange whitespace-nowrap"
+            >
+              ⚠ Previously recorded: "{concern}"
+            </span>
+          ))}
           {legacyStatus && (
             <span
               title="This status was previously recorded under a retired Environmental Safety option set. The stored value has not been changed."
@@ -8294,7 +8627,8 @@ const OXYGEN_SAFETY_CONCERN_OPTIONS = [
   OXYGEN_SAFETY_NO_CONCERN, "Smoking Near Oxygen", "Open Flame Near Oxygen", "Unsafe Storage",
   "No Backup Oxygen / Power Plan", "Education Needed", "Other",
 ];
-function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
+function OxygenSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId }) {
+  const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
   const oxygenInUse = fullFormData?.respiratory?.oxygenTherapy?.inUse ?? data?.oxygenInUse;
   // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
   // Assessment" section 4 -- Oxygen Safety is never eliminated from the
@@ -8342,6 +8676,40 @@ function OxygenSafetyCard({ data, updateField, COLORS, fullFormData }) {
     updateField("oxygenSafetyConcerns", [...withoutNoConcern, ...legacyConcerns]);
   };
   const followUpRequired = data?.oxygenSafetyFollowUpRequired || "";
+
+  // PRODUCT OWNER DECISION "Importing Prior Safety Assessments" --
+  // "IMPORT PRIOR OXYGEN SAFETY RESPONSES. RN CONFIRMS OR UPDATES."
+  const priorOxygen = priorSnapshot ? summarizeOxygenSafety(priorSnapshot.priorSafety, priorSnapshot.priorFullFormData) : null;
+  const oxygenImportChoice = data?.oxygenSafetyImportChoice || "";
+  const oxygenHasCurrentAnswer = currentConcerns.length > 0;
+  const showOxygenImportBanner = Boolean(priorOxygen?.applicable && priorOxygen?.complete) && !oxygenImportChoice && !oxygenHasCurrentAnswer;
+
+  const applyOxygenImport = (choice) => {
+    const priorData = priorSnapshot?.priorSafety || {};
+    updateField("oxygenSafetyImportChoice", choice);
+    updateField("oxygenSafetyConcerns", priorData.oxygenSafetyConcerns || []);
+    updateField("oxygenSafetyActionsTaken", priorData.oxygenSafetyActionsTaken || []);
+    updateField("oxygenSafetyFollowUpRequired", priorData.oxygenSafetyFollowUpRequired || "");
+    updateField("oxygenSafetyFollowUpNote", priorData.oxygenSafetyFollowUpNote || "");
+    updateField("oxygenSafetyClarificationNote", priorData.oxygenSafetyClarificationNote || "");
+  };
+
+  if (showOxygenImportBanner) {
+    return (
+      <PriorSafetyImportBanner
+        priorVisitDate={priorSnapshot.priorVisitDate}
+        summaryLines={[
+          `Status: ${priorOxygen.status}`,
+          `Concerns: ${priorOxygen.concerns.join(", ") || "None"}`,
+        ]}
+        onNoChange={() => applyOxygenImport("unchanged")}
+        onUpdate={() => applyOxygenImport("updated")}
+        COLORS={COLORS}
+        styles={styles}
+      />
+    );
+  }
+
   return (
     <div>
       <FormPillGroup
@@ -8540,9 +8908,49 @@ const DISASTER_TRIAGE_LEVELS = [
   },
 ];
 
-function DisasterTriageCard({ data, updateField, styles, COLORS }) {
+function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, assessmentId }) {
+  const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
   const level = data?.disasterLevel || "";
   const selectedLevel = DISASTER_TRIAGE_LEVELS.find((l) => l.value === level) || null;
+
+  // PRODUCT OWNER DECISION "Importing Prior Safety Assessments" --
+  // "IMPORT PRIOR TRIAGE PLAN. RN CONFIRMS OR UPDATES."
+  const priorDisaster = priorSnapshot ? summarizeDisasterTriage(priorSnapshot.priorSafety) : null;
+  const disasterImportChoice = data?.disasterImportChoice || "";
+  const disasterHasCurrentAnswer = Boolean(level);
+  const showDisasterImportBanner = Boolean(priorDisaster?.complete) && !disasterImportChoice && !disasterHasCurrentAnswer;
+
+  const applyDisasterImport = (choice) => {
+    const priorData = priorSnapshot?.priorSafety || {};
+    updateField("disasterImportChoice", choice);
+    updateField("disasterLevel", priorData.disasterLevel || "");
+    updateField("disasterLevelOneConditions", priorData.disasterLevelOneConditions || []);
+    updateField("disasterLevelTwoConditions", priorData.disasterLevelTwoConditions || []);
+    updateField("disasterLevelThreeConditions", priorData.disasterLevelThreeConditions || []);
+    updateField("disasterPlannedPlacement", priorData.disasterPlannedPlacement || "");
+    updateField("disasterResponsibleSupport", priorData.disasterResponsibleSupport || "");
+    updateField("disasterTransportationStatus", priorData.disasterTransportationStatus || "");
+    updateField("disasterRequirements", priorData.disasterRequirements || []);
+    updateField("disasterTriageClarificationNote", priorData.disasterTriageClarificationNote || "");
+  };
+
+  if (showDisasterImportBanner) {
+    return (
+      <PriorSafetyImportBanner
+        priorVisitDate={priorSnapshot.priorVisitDate}
+        summaryLines={[
+          `Level: ${priorDisaster.shortLabel}`,
+          `Placement: ${priorDisaster.plannedPlacement || "Not recorded"}`,
+          `Support: ${priorDisaster.responsibleSupport || "Not recorded"}`,
+        ]}
+        onNoChange={() => applyDisasterImport("unchanged")}
+        onUpdate={() => applyDisasterImport("updated")}
+        COLORS={COLORS}
+        styles={styles}
+      />
+    );
+  }
+
   return (
     <div>
       {/* PRODUCT OWNER DIRECTIVE (2026-11-26) item 6 -- short "Level 1/2/3"
@@ -20492,9 +20900,14 @@ const SAFETY_COVERAGE_ITEMS = [
   {
     key: "staffVisitSafety",
     label: "Staff Visit Safety",
-    sourceFieldKeys: ["environmentalStaffVisitSafety"],
-    check: (d) => (d.environmentalStaffVisitSafety || []).length > 0,
-    summarize: (d) => (d.environmentalStaffVisitSafety || []).join(", "),
+    sourceFieldKeys: ["environmentalStaffSafetyStatus", "environmentalStaffSafetyHazards", "environmentalStaffVisitSafety"],
+    check: (d) => Boolean(d.environmentalStaffSafetyStatus) || (d.environmentalStaffVisitSafety || []).length > 0,
+    summarize: (d) => {
+      if (d.environmentalStaffSafetyStatus === "Staff Safety Concern Identified") {
+        return (d.environmentalStaffSafetyHazards || []).join(", ") || d.environmentalStaffSafetyStatus;
+      }
+      return d.environmentalStaffSafetyStatus || (d.environmentalStaffVisitSafety || []).join(", ");
+    },
     unresolvedHint: "Document Staff Visit Safety (or No Staff Safety Concerns Identified)",
   },
   // Patient Safety (exception documentation; wandering/impaired
@@ -24185,7 +24598,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "safety" && card.customRenderer === "fallRisk") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <FallRiskCard data={data} updateField={u} assessmentId={assessmentId} styles={styles} COLORS={COLORS} fullFormData={fullFormData} />
+              <FallRiskCard data={data} updateField={u} assessmentId={assessmentId} patientId={patientId} styles={styles} COLORS={COLORS} fullFormData={fullFormData} />
             </Card>
           );
         }
@@ -24193,7 +24606,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "safety" && card.customRenderer === "environmentalSafety") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <EnvironmentalSafetyCard data={data} updateField={u} COLORS={COLORS} fullFormData={fullFormData} />
+              <EnvironmentalSafetyCard data={data} updateField={u} COLORS={COLORS} styles={styles} fullFormData={fullFormData} patientId={patientId} assessmentId={assessmentId} />
             </Card>
           );
         }
@@ -24217,7 +24630,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "safety" && card.customRenderer === "oxygenSafety") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <OxygenSafetyCard data={data} updateField={u} COLORS={COLORS} fullFormData={fullFormData} />
+              <OxygenSafetyCard data={data} updateField={u} COLORS={COLORS} styles={styles} fullFormData={fullFormData} patientId={patientId} assessmentId={assessmentId} />
             </Card>
           );
         }
@@ -24245,7 +24658,7 @@ function renderGenericSection(sectionKey, data, update, config, demographics, fu
         if (sectionKey === "safety" && card.customRenderer === "disasterTriage") {
           return (
             <Card key={ci} title={card.title} hopeCode={card.hopeCode} sfv={card.sfv} cms={card.cms}>
-              <DisasterTriageCard data={data} updateField={u} styles={styles} COLORS={COLORS} />
+              <DisasterTriageCard data={data} updateField={u} styles={styles} COLORS={COLORS} patientId={patientId} assessmentId={assessmentId} />
             </Card>
           );
         }

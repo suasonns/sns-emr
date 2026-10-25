@@ -31,6 +31,11 @@ const COMPLETE_MORSE = {
   fallRiskMorseIvHeparinLock: "No",
   fallRiskMorseGaitTransferring: "Normal/Bedrest/Immobile",
   fallRiskMorseMentalStatus: "Oriented to Own Ability",
+  // PRODUCT OWNER DECISION "Importing Prior Safety Assessments" -- adds a
+  // SEPARATE "Hospice Clinical Fall Safety" precaution-level field
+  // alongside (never merged into) the unchanged Morse score; required
+  // for the Fall Risk step to be considered complete.
+  hospiceClinicalFallSafetyLevel: "Standard Precautions",
 };
 
 // Minimal complete Environmental Safety for a clean (no-hazard) home visit --
@@ -38,7 +43,7 @@ const COMPLETE_MORSE = {
 // `hasAnyHazard` is false.
 const COMPLETE_ENVIRONMENTAL_HOME_CLEAN = {
   environmentalHomeConcerns: ["No Environmental Concerns Identified"],
-  environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+  environmentalStaffSafetyStatus: "No Staff Safety Concern Identified",
 };
 
 const HOME_FULL_FORM_DATA = { demographics: { livingSituation: { siteOfService: "01" } } };
@@ -67,13 +72,13 @@ describe("summarizeEnvironmentalSafety", () => {
     expect(summary.hasAnyHazard).toBe(false);
     expect(summary.complete).toBe(true);
     expect(summary.patientSummary).toBe("No Environmental Concerns Identified");
-    expect(summary.staffSummary).toBe("No Staff Safety Concerns Identified");
+    expect(summary.staffSummary).toBe("No Staff Safety Concern Identified");
   });
   it("is incomplete with an active patient hazard until Risk Target, Actions Taken, and Follow-Up Required are also documented", () => {
     const partial = summarizeEnvironmentalSafety(
       {
         environmentalHomeConcerns: ["Lighting Concern"],
-        environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+        environmentalStaffSafetyStatus: "No Staff Safety Concern Identified",
       },
       HOME_FULL_FORM_DATA
     );
@@ -83,7 +88,7 @@ describe("summarizeEnvironmentalSafety", () => {
     const complete = summarizeEnvironmentalSafety(
       {
         environmentalHomeConcerns: ["Lighting Concern"],
-        environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+        environmentalStaffSafetyStatus: "No Staff Safety Concern Identified",
         environmentalRiskTarget: "Patient",
         environmentalActionsTaken: ["Education Provided"],
         environmentalFollowUpRequired: "No",
@@ -96,7 +101,8 @@ describe("summarizeEnvironmentalSafety", () => {
   it("additionally requires Staff Visit Disposition when a staff hazard is identified", () => {
     const baseData = {
       environmentalHomeConcerns: ["No Environmental Concerns Identified"],
-      environmentalStaffVisitSafety: ["Aggressive Animal"],
+      environmentalStaffSafetyStatus: "Staff Safety Concern Identified",
+      environmentalStaffSafetyHazards: ["Aggressive or uncontrolled animal"],
       environmentalRiskTarget: "Staff",
       environmentalActionsTaken: ["Caregiver Notified"],
       environmentalFollowUpRequired: "Yes",
@@ -109,7 +115,7 @@ describe("summarizeEnvironmentalSafety", () => {
       HOME_FULL_FORM_DATA
     );
     expect(withDisposition.complete).toBe(true);
-    expect(withDisposition.staffHazards).toEqual(["Aggressive Animal"]);
+    expect(withDisposition.staffHazards).toEqual(["Aggressive or uncontrolled animal"]);
   });
   it("is incomplete for a facility until Facility Managed / Observed Concern is selected", () => {
     const summary = summarizeEnvironmentalSafety({}, FACILITY_FULL_FORM_DATA);
@@ -120,7 +126,7 @@ describe("summarizeEnvironmentalSafety", () => {
     const summary = summarizeEnvironmentalSafety(
       {
         environmentalFacilityStatus: "Facility Managed",
-        environmentalStaffVisitSafety: ["No Staff Safety Concerns Identified"],
+        environmentalStaffSafetyStatus: "No Staff Safety Concern Identified",
       },
       FACILITY_FULL_FORM_DATA
     );
@@ -220,6 +226,23 @@ describe("summarizeFallRisk", () => {
     expect(summary.complete).toBe(true);
     expect(summary.total).toBe(0);
     expect(summary.classification).toBe("Low Risk");
+  });
+  // PRODUCT OWNER DECISION "Importing Prior Safety Assessments" -- Morse
+  // scoring itself is UNCHANGED (including "Bedbound = Score 0"); but a
+  // SEPARATE "Hospice Clinical Fall Safety" precaution-level answer is now
+  // ALSO required before the Fall Risk step counts as complete.
+  it("is NOT complete when all 6 Morse factors are answered but Hospice Clinical Fall Safety precaution level is missing", () => {
+    const { hospiceClinicalFallSafetyLevel, ...morseOnly } = COMPLETE_MORSE;
+    const summary = summarizeFallRisk(morseOnly);
+    expect(summary.total).toBe(0);
+    expect(summary.classification).toBe("Low Risk");
+    expect(summary.precautionLevel).toBe("");
+    expect(summary.complete).toBe(false);
+  });
+  it("exposes the Hospice Clinical Fall Safety precaution level separately from the unchanged Morse score", () => {
+    const summary = summarizeFallRisk(COMPLETE_MORSE);
+    expect(summary.precautionLevel).toBe("Standard Precautions");
+    expect(summary.total).toBe(0);
   });
 });
 

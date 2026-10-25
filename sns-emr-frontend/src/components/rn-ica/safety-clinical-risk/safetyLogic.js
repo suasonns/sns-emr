@@ -86,28 +86,105 @@ export function computeFallRiskTrend(history) {
   return { current, previous, change, trend };
 }
 
+// PRODUCT OWNER DECISION "Importing Prior Safety Assessments" (approved)
+// -- "REJECT Bedbound = Score 0 logic. BEDBOUND PATIENTS MAY STILL HAVE
+// HIGH TRANSFER AND INJURY RISK." The Morse score/point table above is
+// UNCHANGED (`gaitTransferring: "Normal/Bedrest/Immobile": 0` is the
+// literal, correct, published 1989 Morse value and "KEEP MORSE SCORE FOR
+// STANDARDIZED TRENDING" is explicit) -- Morse answers "how likely is a
+// fall?" This is a SEPARATE field answering "how dangerous would a fall
+// or transfer event be for this patient?" and is never merged into or
+// substituted for the Morse score/classification.
+export const HOSPICE_CLINICAL_FALL_SAFETY_OPTIONS = [
+  "Standard Precautions",
+  "Enhanced Precautions",
+  "High-Risk Transfer Precautions",
+  "Bedbound Safety Precautions",
+];
+
 /** Fall Risk Assessment summary -- score, classification, major
- * contributors (factors that scored > 0 points), trend. */
+ * contributors (factors that scored > 0 points), trend, and the
+ * separate Hospice Clinical Fall Safety precaution level. */
 export function summarizeFallRisk(safetyData = {}) {
   const score = computeMorseFallScore(safetyData);
   const trend = computeFallRiskTrend(safetyData.fallRiskHistory);
   const majorContributors = score.complete
     ? score.breakdown.filter((b) => b.points > 0).map((b) => b.label)
     : [];
+  const precautionLevel = safetyData.hospiceClinicalFallSafetyLevel || "";
   return {
-    complete: score.complete,
+    complete: score.complete && Boolean(precautionLevel),
     total: score.total,
     classification: score.classification,
     majorContributors,
     trend,
     transferSafetyLevel: safetyData.transferSafetyLevel || "",
     clarification: safetyData.fallRiskClarificationNote || "",
+    precautionLevel,
   };
 }
 
 const ENVIRONMENTAL_HOME_NO_CONCERN = "No Environmental Concerns Identified";
 const STAFF_VISIT_SAFETY_NO_CONCERN = "No Staff Safety Concerns Identified";
 const OXYGEN_SAFETY_NO_CONCERN = "No Concern";
+
+// FINAL PRODUCT OWNER DIRECTIVE section 11 -- Staff Visit Safety is a
+// 2-state status gate plus 5 full hazard taxonomies, replacing the flat
+// `STAFF_VISIT_SAFETY_NO_CONCERN`/6-option list above (preserved,
+// legacy-chipped, never read again).
+export const STAFF_SAFETY_STATUS_NO_CONCERN = "No Staff Safety Concern Identified";
+export const STAFF_SAFETY_STATUS_CONCERN = "Staff Safety Concern Identified";
+export const STAFF_SAFETY_STATUS_UNABLE = "Unable to Assess";
+export const STAFF_SAFETY_STATUS_OPTIONS = [STAFF_SAFETY_STATUS_NO_CONCERN, STAFF_SAFETY_STATUS_CONCERN, STAFF_SAFETY_STATUS_UNABLE];
+export const STAFF_SAFETY_HAZARD_CATEGORIES = [
+  {
+    label: "Violence or Threat",
+    options: [
+      "Aggressive or threatening patient", "Aggressive or threatening family member",
+      "Aggressive or threatening caregiver", "Aggressive or threatening visitor",
+      "Verbal threat or intimidation", "Recent violent behavior",
+      "Domestic-violence concern", "Criminal-activity concern",
+      "Other violence or threat concern",
+    ],
+  },
+  {
+    label: "Substance-Related Risk",
+    options: [
+      "Active illicit-drug use in the residence", "Intoxicated person present",
+      "Unsafe alcohol-related behavior", "Drug-manufacturing or distribution concern",
+      "Drug paraphernalia or unsafe substance exposure", "Heavy smoking or vaping exposure",
+      "Other substance-related risk",
+    ],
+  },
+  {
+    label: "Weapons and Security",
+    options: [
+      "Firearm concern", "Other weapon concern", "Unsecured weapon",
+      "Unsafe neighborhood or building access", "No secure entry or exit",
+      "Staff could be prevented from leaving", "Security assistance needed",
+      "Other weapon or security concern",
+    ],
+  },
+  {
+    label: "Animal Risk",
+    options: [
+      "Aggressive or uncontrolled dog", "Aggressive or uncontrolled animal",
+      "Animal blocks entry or care area", "Animal cannot be secured",
+      "Animal-bite history reported", "Other animal concern",
+    ],
+  },
+  {
+    label: "Physical or Exposure Risk",
+    options: [
+      "Structural hazard", "Electrical hazard", "Severe clutter preventing safe care delivery",
+      "Unsafe stairs or access path", "Poor lighting affecting care delivery",
+      "Unsanitary condition", "Pest or infestation exposure", "Extreme temperature",
+      "Biohazard or sharps exposure", "Required protective equipment unavailable",
+      "Other physical or exposure concern",
+    ],
+  },
+];
+export const STAFF_SAFETY_HAZARD_OPTIONS = STAFF_SAFETY_HAZARD_CATEGORIES.flatMap((c) => c.options);
 
 // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
 // Assessment" section 7 -- Environmental Safety must capture, in
@@ -145,13 +222,20 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
   const patientHazards = isFacility
     ? (facilityStatus === "Observed Concern" ? facilityConcerns : [])
     : homeConcerns;
-  const staffHazards = (safetyData.environmentalStaffVisitSafety || []).filter((c) => c !== STAFF_VISIT_SAFETY_NO_CONCERN);
-  const noStaffConcerns = (safetyData.environmentalStaffVisitSafety || []).includes(STAFF_VISIT_SAFETY_NO_CONCERN);
+  // FINAL PRODUCT OWNER DIRECTIVE section 11 -- Staff Visit Safety is now
+  // a 2-state status gate (`environmentalStaffSafetyStatus`) plus 5
+  // full hazard taxonomies (`environmentalStaffSafetyHazards`), replacing
+  // the retired flat `environmentalStaffVisitSafety` list (preserved,
+  // legacy-chipped, never read here again).
+  const staffSafetyStatus = STAFF_SAFETY_STATUS_OPTIONS.includes(safetyData.environmentalStaffSafetyStatus) ? safetyData.environmentalStaffSafetyStatus : "";
+  const staffHazards = staffSafetyStatus === STAFF_SAFETY_STATUS_CONCERN ? (safetyData.environmentalStaffSafetyHazards || []) : [];
+  const noStaffConcerns = staffSafetyStatus === STAFF_SAFETY_STATUS_NO_CONCERN;
+  const staffUnableToAssess = staffSafetyStatus === STAFF_SAFETY_STATUS_UNABLE;
 
   const patientComplete = isFacility
     ? Boolean(facilityStatus)
     : (homeConcerns.length > 0 || noHomeConcerns);
-  const staffComplete = staffHazards.length > 0 || noStaffConcerns;
+  const staffComplete = Boolean(staffSafetyStatus) && (staffSafetyStatus !== STAFF_SAFETY_STATUS_CONCERN || staffHazards.length > 0);
 
   // Section 7 additions -- only required when an actual hazard (patient
   // or staff) was identified; a clean "No Concerns" visit never requires
@@ -173,7 +257,7 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
   const patientSummary = isFacility
     ? (facilityStatus === "Observed Concern" ? (facilityConcerns.join(", ") || "Observed Concern") : (facilityStatus || ""))
     : (homeConcerns.length > 0 ? homeConcerns.join(", ") : (noHomeConcerns ? ENVIRONMENTAL_HOME_NO_CONCERN : ""));
-  const staffSummary = staffHazards.length > 0 ? staffHazards.join(", ") : (noStaffConcerns ? STAFF_VISIT_SAFETY_NO_CONCERN : "");
+  const staffSummary = staffHazards.length > 0 ? staffHazards.join(", ") : (noStaffConcerns ? STAFF_SAFETY_STATUS_NO_CONCERN : (staffUnableToAssess ? STAFF_SAFETY_STATUS_UNABLE : ""));
 
   return {
     setting,
@@ -189,6 +273,7 @@ export function summarizeEnvironmentalSafety(safetyData = {}, fullFormData = {})
     followUpRequired,
     followUpNote,
     clarification: safetyData.environmentalClarificationNote || "",
+    staffSafetyStatus,
   };
 }
 
