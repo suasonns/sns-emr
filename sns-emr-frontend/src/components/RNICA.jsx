@@ -469,6 +469,14 @@ const VISIT_FREQUENCY_PERIOD_OPTIONS = [
 // than deleting it outright, it's folded into the existing free-form
 // "Other Disciplines" picker below (same safety net RN/LVN/MSW/LCSW/BSW
 // now use), so it's still selectable, just no longer a fixed row.
+// PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Screen
+// Field-Test Readiness" -- the "Add Service" modal list names
+// "Physician Visit" / "Nurse Practitioner Visit" (not the prior "MD
+// Visits" / "Nurse Practitioner (NP)" labels) and adds Dietitian as a
+// 14th canonical, independently-orderable optional service (previously
+// only reachable via the free-form "Other Disciplines" picker).
+// `shortLabel` is unchanged for MD/NP so existing summary chips ("MD:
+// PRN") keep reading the same.
 const CANONICAL_VISIT_DISCIPLINES = [
   { code: "SN", label: "Skilled Nursing", shortLabel: "SN" },
   { code: "HA", label: "Home Health Aide", shortLabel: "HA" },
@@ -478,11 +486,12 @@ const CANONICAL_VISIT_DISCIPLINES = [
   { code: "PT", label: "Physical Therapy (PT)", shortLabel: "PT" },
   { code: "OT", label: "Occupational Therapy (OT)", shortLabel: "OT" },
   { code: "ST", label: "Speech Therapy (ST)", shortLabel: "ST" },
-  { code: "NP", label: "Nurse Practitioner (NP)", shortLabel: "NP" },
-  { code: "MD", label: "MD Visits", shortLabel: "MD" },
+  { code: "NP", label: "Nurse Practitioner Visit", shortLabel: "NP" },
+  { code: "MD", label: "Physician Visit", shortLabel: "MD" },
   { code: "BC", label: "Bereavement", shortLabel: "Bereavement" },
   { code: "ADMIN", label: "Administrative Visit", shortLabel: "Admin Visit" },
   { code: "RN-SUP", label: "RN Supervisory Visit", shortLabel: "RN Supervisor" },
+  { code: "DIET", label: "Dietitian", shortLabel: "Dietitian" },
 ];
 
 // Options for the SN row's "Expected Provider Mix" -- staffing-only, not
@@ -502,7 +511,9 @@ const SPIRITUAL_COUNSELING_PROVIDER_TYPE_OPTIONS = ["Chaplain", "Clergy", "Volun
 // optional discipline (NP, MD, PT, etc.) no longer occupies permanent
 // screen space.
 export const DEFAULT_VISIT_DISCIPLINE_CODES = ["SN", "HA", "SW", "SC", "RN-SUP"];
-export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN"];
+// "DIET" (Dietitian) added per the "Orders & POC Frequency Screen
+// Field-Test Readiness" directive's "Add Service" modal list.
+export const OPTIONAL_VISIT_DISCIPLINE_CODES = ["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN", "DIET"];
 
 // Default visit frequency rows for Admissions Order -- only the 5 always-
 // visible disciplines are pre-populated; every optional discipline is
@@ -11328,6 +11339,16 @@ function BodySystemPOCControls({ assessmentId, sectionKey, cardTitle, styles, CO
 function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
   const list = Array.isArray(rows) ? rows : [];
   const [expandedCode, setExpandedCode] = useState(null);
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Screen
+  // Field-Test Readiness" -- "Do not display editing controls for every
+  // discipline at once" applies to History the same way it applies to
+  // Edit: only one row's History panel is open at a time, and opening a
+  // row's History collapses any other row's open History panel.
+  const [historyCode, setHistoryCode] = useState(null);
+  // Backing state for the "Add Service" picker -- replaces the
+  // permanently-visible "+ <Discipline>" chip collection with a list
+  // that's only on screen while actively choosing a service to add.
+  const [addServiceOpen, setAddServiceOpen] = useState(false);
 
   const findRowIndex = (code) => list.findIndex((r) => r.discipline === code);
 
@@ -11359,9 +11380,11 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
     const idx = findRowIndex(code);
     if (idx >= 0) onChange(list.filter((_, i) => i !== idx));
     if (expandedCode === code) setExpandedCode(null);
+    if (historyCode === code) setHistoryCode(null);
   };
 
   const toggleExpanded = (code) => setExpandedCode((cur) => (cur === code ? null : code));
+  const toggleHistory = (code) => setHistoryCode((cur) => (cur === code ? null : code));
 
   const addedOptionalCodes = OPTIONAL_VISIT_DISCIPLINE_CODES.filter((code) => findRowIndex(code) >= 0);
   const availableOptionalCodes = OPTIONAL_VISIT_DISCIPLINE_CODES.filter((code) => findRowIndex(code) < 0);
@@ -11397,6 +11420,23 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
             >
               {expanded ? "Collapse" : "Edit"}
             </button>
+            {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC
+                Frequency Screen Field-Test Readiness" Section "EACH
+                SERVICE SHALL DISPLAY: Edit / History." Real order
+                history/versioning is Phase 2+ backend work (bridging to
+                `PhysicianOrder`'s append-only status-event audit trail)
+                -- this panel is intentionally honest about that rather
+                than fabricating audit data that doesn't exist yet. */}
+            <button
+              type="button"
+              onClick={() => toggleHistory(code)}
+              style={{
+                border: `1px solid ${COLORS.border}`, background: "transparent", color: COLORS.dark, cursor: "pointer",
+                fontSize: 11, fontWeight: 700, padding: "3px 8px", borderRadius: 5,
+              }}
+            >
+              {historyCode === code ? "Hide History" : "History"}
+            </button>
             <button
               type="button"
               onClick={() => (removable ? removeOptionalRow(code) : clearDefaultRow(code))}
@@ -11410,6 +11450,12 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
             </button>
           </div>
         </div>
+        {historyCode === code && (
+          <div style={{ padding: "0 10px 10px", fontSize: 11.5, color: COLORS.gray, fontStyle: "italic" }}>
+            No order history is available yet. Order history and versioning will appear here once Orders & POC
+            persists to the backend's authoritative order ledger.
+          </div>
+        )}
         {expanded && (
           <div style={{
             display: "grid", gridTemplateColumns: "1.1fr 1.5fr auto 1.8fr", gap: 8, alignItems: "end", padding: "0 10px 10px",
@@ -11528,27 +11574,63 @@ function DisciplineFrequencyOfVisitCard({ rows, onChange, styles, COLORS }) {
         </div>
       )}
 
+      {/* PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency
+          Screen Field-Test Readiness" -- "REMOVE the visible Add
+          Discipline pill collection ... shall not appear permanently on
+          the screen. REPLACE WITH Add Service [a] Modal list." No
+          modal/dialog primitive exists elsewhere in this file, so this
+          is a single "+ Add Service" button that reveals the picker list
+          only while actively choosing -- it collapses immediately after
+          a selection (or on Cancel), so it is never permanently on
+          screen like the old chip row was. */}
       {availableOptionalCodes.length > 0 && (
         <div style={{ marginTop: 10 }}>
-          <label style={styles.label}>Add Discipline</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 4 }}>
-            {availableOptionalCodes.map((code) => {
-              const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
-              return (
+          {!addServiceOpen ? (
+            <button
+              type="button"
+              onClick={() => setAddServiceOpen(true)}
+              style={{
+                fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
+                border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
+              }}
+            >
+              + Add Service
+            </button>
+          ) : (
+            <div style={{ border: `1px solid ${COLORS.border}`, borderRadius: 8, padding: 10, background: COLORS.bg }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+                <label style={styles.label}>Add Service</label>
                 <button
-                  key={code}
                   type="button"
-                  onClick={() => addOptionalDiscipline(code)}
-                  style={{
-                    fontSize: 11, fontWeight: 700, padding: "4px 10px", borderRadius: 999,
-                    border: `1px solid ${COLORS.teal}`, background: "transparent", color: COLORS.teal, cursor: "pointer",
-                  }}
+                  onClick={() => setAddServiceOpen(false)}
+                  style={{ border: "none", background: "transparent", color: COLORS.gray, cursor: "pointer", fontSize: 11, fontWeight: 700 }}
                 >
-                  + {def?.shortLabel || code}
+                  Cancel
                 </button>
-              );
-            })}
-          </div>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                {availableOptionalCodes.map((code) => {
+                  const def = CANONICAL_VISIT_DISCIPLINES.find((d) => d.code === code);
+                  return (
+                    <button
+                      key={code}
+                      type="button"
+                      onClick={() => {
+                        addOptionalDiscipline(code);
+                        setAddServiceOpen(false);
+                      }}
+                      style={{
+                        textAlign: "left", fontSize: 12, fontWeight: 600, padding: "6px 8px", borderRadius: 5,
+                        border: "none", background: "transparent", color: COLORS.dark, cursor: "pointer",
+                      }}
+                    >
+                      {def?.label || code}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
