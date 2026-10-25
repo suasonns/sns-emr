@@ -166,12 +166,23 @@ export const SPECIAL_WISH_REVIEW_STATUS_OPTIONS = [
 ];
 
 
-// Every field here is currently sourced ONLY from this HOPE assessment's
-// own point-in-time response (`formData.demographics` /
-// `formData.livingSituation`) -- there is no Face Sheet-authoritative
-// value to reconcile against yet (see file header comment / repository
-// trace). This state is surfaced honestly rather than labeled "Verified"
-// or "Confirmed", which would imply a reconciliation that hasn't happened.
+// Every field here is sourced from this HOPE assessment's own
+// point-in-time response, which lives in the SAME authoritative
+// `formData.demographics` / `formData.demographics.livingSituation` the
+// rest of RNICA (Safety, the Patient Story "Living Situation" card, and
+// the official HOPE report generator) already reads and writes -- see
+// `onUpdateField` calls below, all of which target section
+// `"demographics"` [PRODUCT OWNER DIRECTIVE "Safety & Clinical Risk
+// Current State Review and Next Actions" (2026-10-24) Issue 1: this
+// screen previously wrote the four Living Environment fields to a
+// disconnected top-level `formData.livingSituation` that nothing else
+// read, so an edit made here never reached Safety or anywhere else
+// without a direct database edit -- fixed]. There is still no separate
+// Face Sheet-backed patient_facesheet column for every one of these
+// seven items to reconcile against (see file header comment /
+// repository trace); this state is surfaced honestly rather than
+// labeled "Verified" or "Confirmed", which would imply a reconciliation
+// that hasn't happened.
 function ReviewSection({ icon: Icon, title, itemCode, fullWidth, children }) {
   return (
     <div className={"rnica-hope-section" + (fullWidth ? " rnica-hope-section--full" : "")}>
@@ -348,7 +359,7 @@ export default function HopeAdministrativeReview({ value, onUpdateField, locked 
               <Select
                 value={demographics.siteOfService || undefined}
                 disabled={locked}
-                onValueChange={(v) => onUpdateField?.("livingSituation", "siteOfService", v)}
+                onValueChange={(v) => onUpdateField?.("demographics", "livingSituation.siteOfService", v)}
               >
                 <SelectTrigger><SelectValue placeholder="Select&hellip;" /></SelectTrigger>
                 <SelectContent>
@@ -363,7 +374,7 @@ export default function HopeAdministrativeReview({ value, onUpdateField, locked 
               <Select
                 value={demographics.admittedFrom || undefined}
                 disabled={locked}
-                onValueChange={(v) => onUpdateField?.("livingSituation", "admittedFrom", v)}
+                onValueChange={(v) => onUpdateField?.("demographics", "livingSituation.admittedFrom", v)}
               >
                 <SelectTrigger><SelectValue placeholder="Select&hellip;" /></SelectTrigger>
                 <SelectContent>
@@ -378,7 +389,7 @@ export default function HopeAdministrativeReview({ value, onUpdateField, locked 
               <Select
                 value={demographics.livingArrangement || undefined}
                 disabled={locked}
-                onValueChange={(v) => onUpdateField?.("livingSituation", "livingArrangement", v)}
+                onValueChange={(v) => onUpdateField?.("demographics", "livingSituation.livingArrangement", v)}
               >
                 <SelectTrigger><SelectValue placeholder="Select&hellip;" /></SelectTrigger>
                 <SelectContent>
@@ -393,7 +404,7 @@ export default function HopeAdministrativeReview({ value, onUpdateField, locked 
               <Select
                 value={demographics.availabilityOfAssistance || undefined}
                 disabled={locked}
-                onValueChange={(v) => onUpdateField?.("livingSituation", "availabilityOfAssistance", v)}
+                onValueChange={(v) => onUpdateField?.("demographics", "livingSituation.availabilityOfAssistance", v)}
               >
                 <SelectTrigger><SelectValue placeholder="Select&hellip;" /></SelectTrigger>
                 <SelectContent>

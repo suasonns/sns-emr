@@ -67,6 +67,7 @@ import {
   STAFF_SAFETY_STATUS_OPTIONS,
   STAFF_SAFETY_HAZARD_CATEGORIES,
   STAFF_SAFETY_HAZARD_OPTIONS,
+  isFacilitySiteOfService,
 } from "./rn-ica/safety-clinical-risk/safetyLogic";
 import { getScaleInterpretation } from "./rn-ica/performanceScaleInterpretations";
 // OWNER DIRECTIVE (2026-10-06) "Body Systems Architecture Review" Pass 2 --
@@ -8112,8 +8113,7 @@ const STAFF_VISIT_SAFETY_OPTIONS = [
 ];
 function EnvironmentalSafetyCard({ data, updateField, COLORS, styles, fullFormData, patientId, assessmentId }) {
   const priorSnapshot = usePriorSafetySnapshot(patientId, assessmentId);
-  const siteOfService = fullFormData?.demographics?.livingSituation?.siteOfService || "";
-  const isFacility = siteOfService !== "" && siteOfService !== "01";
+  const isFacility = isFacilitySiteOfService(fullFormData);
 
   // Legacy (superseded) fields/values -- preserved, never deleted, and
   // re-surfaced below as read-only "Previously recorded" chips.
@@ -34945,10 +34945,19 @@ export default function RNICA({ patientId, assessmentId: existingAssessmentId = 
               raceInformationSourceOther: formData.demographics.raceInformationSourceOther || "",
               ethnicityInformationSource: formData.demographics.ethnicityInformationSource || "",
               ethnicityInformationSourceOther: formData.demographics.ethnicityInformationSourceOther || "",
-              siteOfService: formData.livingSituation?.siteOfService || "",
-              admittedFrom: formData.livingSituation?.admittedFrom || "",
-              livingArrangement: formData.livingSituation?.livingArrangement || "",
-              availabilityOfAssistance: formData.livingSituation?.availabilityOfAssistance || "",
+              // PRODUCT OWNER DIRECTIVE "Safety & Clinical Risk Current
+              // State Review and Next Actions" (2026-10-24) Issue 1 --
+              // these four fields must read the SAME authoritative path
+              // Safety, the official HOPE report generator, and the
+              // "Living Situation" card all already use
+              // (`demographics.livingSituation.*`), not the disconnected
+              // top-level `formData.livingSituation` this previously read
+              // (which nothing else wrote to, so a HOPE Administrative
+              // Review edit never reached Safety/HOPE/anywhere else).
+              siteOfService: formData.demographics?.livingSituation?.siteOfService || "",
+              admittedFrom: formData.demographics?.livingSituation?.admittedFrom || "",
+              livingArrangement: formData.demographics?.livingSituation?.livingArrangement || "",
+              availabilityOfAssistance: formData.demographics?.livingSituation?.availabilityOfAssistance || "",
             },
           }}
           visitMeta={formData.visitMeta}

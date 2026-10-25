@@ -203,10 +203,29 @@ export const ENVIRONMENTAL_STAFF_DISPOSITION_OPTIONS = [
   "Visit Terminated Early", "Law Enforcement Notified",
 ];
 
+/** PRODUCT OWNER DIRECTIVE "Safety & Clinical Risk Current State Review
+ * and Next Actions" (2026-10-24) Issue 1 -- shared Place-of-Service
+ * resolver. `demographics.livingSituation.siteOfService` is the ONE
+ * authoritative Place-of-Service field in the RNICA form: it is read by
+ * Safety (this file), written by the "Living Situation" card in
+ * Patient Story/Demographics (`renderDemographics`), written once by the
+ * Face-Sheet-derived care-setting auto-default effect, and read by the
+ * official HOPE report generator (`hopeReportMapper.js`'s
+ * `demographics.livingSituation`). The HOPE Administrative Review screen
+ * previously read/wrote a disconnected top-level `formData.livingSituation`
+ * that nothing else consulted -- that bug is fixed by having HOPE
+ * Administrative Review's data projection and write-back both go through
+ * this same resolver / the same canonical path, so a Face Sheet /
+ * Patient Story change now flows through to Safety, HOPE, and every other
+ * residence-sensitive section without any direct database edit. */
+export function getSiteOfServiceCode(fullFormData) {
+  return fullFormData?.demographics?.livingSituation?.siteOfService || "";
+}
+
 /** Is the current Site of Service a facility (vs. a private residence)?
  * Verbatim from EnvironmentalSafetyCard's own `isFacility` derivation. */
 export function isFacilitySiteOfService(fullFormData) {
-  const siteOfService = fullFormData?.demographics?.livingSituation?.siteOfService || "";
+  const siteOfService = getSiteOfServiceCode(fullFormData);
   return siteOfService !== "" && siteOfService !== "01";
 }
 
