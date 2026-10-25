@@ -141,20 +141,41 @@ describe("getConfiguredVisitFrequencySummaries", () => {
     expect(byCode["RN-SUP"]).toEqual(expect.objectContaining({ shortLabel: "RN Supervisor", summary: "every 14 days" }));
     expect(byCode.NP.summary).toBe("PRN");
   });
-  it("still surfaces a legacy/non-canonical discipline (e.g. pre-consolidation 'RN'/'LVN' data) after the canonical disciplines", () => {
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Redesign
+  // Rejected -- One Unified Table" -- there is no longer a second,
+  // free-form "Other Disciplines" editor to surface a legacy/
+  // non-canonical discipline code in, so a pre-consolidation 'RN'/'LVN'
+  // row (if one still exists in a patient's older saved data) is simply
+  // not rendered anywhere -- "one visible source of truth for service
+  // frequency." The underlying data isn't deleted; it's just no longer
+  // displayed as a second, competing row.
+  it("does not surface a legacy/non-canonical discipline (e.g. pre-consolidation 'RN'/'LVN' data) -- one source of truth, no second editor", () => {
     const rows = [
       { discipline: "SN", numberOfVisits: "2W4" },
       { discipline: "RN", numberOfVisits: "3", period: "per Week" },
       { discipline: "LVN", prn: true },
     ];
     const summaries = getConfiguredVisitFrequencySummaries(rows);
-    expect(summaries.map((s) => s.code)).toEqual(["SN", "RN", "LVN"]);
-    expect(summaries[1].summary).toBe("3 per Week");
-    expect(summaries[2].summary).toBe("PRN");
+    expect(summaries.map((s) => s.code)).toEqual(["SN"]);
   });
   it("returns an empty array when no discipline has been configured", () => {
     expect(getConfiguredVisitFrequencySummaries([])).toEqual([]);
     expect(getConfiguredVisitFrequencySummaries()).toEqual([]);
+  });
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Redesign
+  // Rejected -- One Unified Table" -- "Other Approved Service" ("OTHER")
+  // is a catch-all for any approved service not already named; its
+  // shortLabel uses the nurse-entered customLabel when set, since "Other
+  // Approved Service" alone isn't descriptive of what was actually added.
+  it("uses customLabel as the shortLabel for an OTHER (Other Approved Service) row when set", () => {
+    const summaries = getConfiguredVisitFrequencySummaries([
+      { discipline: "OTHER", customLabel: "Podiatry", period: "per Month" },
+    ]);
+    expect(summaries).toEqual([{ code: "OTHER", shortLabel: "Podiatry", summary: "per Month" }]);
+  });
+  it("falls back to 'Other Approved Service' as the shortLabel when customLabel is blank", () => {
+    const summaries = getConfiguredVisitFrequencySummaries([{ discipline: "OTHER", period: "per Month" }]);
+    expect(summaries).toEqual([{ code: "OTHER", shortLabel: "Other Approved Service", summary: "per Month" }]);
   });
   // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Screen
   // Field-Test Readiness" -- Dietitian ("DIET") is now one of the "Add
@@ -178,16 +199,21 @@ describe("DEFAULT_VISIT_DISCIPLINE_CODES / OPTIONAL_VISIT_DISCIPLINE_CODES", () 
   // it alongside Physician Visit/NP Visit/PT/OT/ST/Volunteer/
   // Bereavement/Administrative Visit) -- previously it was only
   // reachable via the free-form "Other Disciplines" picker.
-  it("has exactly the 9 PO-named optional disciplines, including Dietitian added by the frequency-screen field-test directive", () => {
+  // PRODUCT OWNER DIRECTIVE (2026-10-25) "Orders & POC Frequency Redesign
+  // Rejected -- One Unified Table" added "Other Approved Service"
+  // ("OTHER") as a 10th optional service -- the single catch-all for any
+  // approved service not already named, reached via the one "+ Add Row"
+  // action rather than a second free-form editor.
+  it("has exactly the 10 PO-named optional disciplines, including Dietitian and the Other Approved Service catch-all", () => {
     expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toEqual(
-      expect.arrayContaining(["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN", "DIET"])
+      expect.arrayContaining(["VOL", "PT", "OT", "ST", "NP", "MD", "BC", "ADMIN", "DIET", "OTHER"])
     );
-    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(9);
+    expect(OPTIONAL_VISIT_DISCIPLINE_CODES).toHaveLength(10);
   });
-  it("default and optional codes are disjoint and together cover all 14 canonical disciplines", () => {
+  it("default and optional codes are disjoint and together cover all 15 canonical disciplines", () => {
     const overlap = DEFAULT_VISIT_DISCIPLINE_CODES.filter((c) => OPTIONAL_VISIT_DISCIPLINE_CODES.includes(c));
     expect(overlap).toEqual([]);
-    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(14);
+    expect(DEFAULT_VISIT_DISCIPLINE_CODES.length + OPTIONAL_VISIT_DISCIPLINE_CODES.length).toBe(15);
   });
   it("no longer treats RN/LVN/MSW/LCSW/BSW as independently orderable disciplines", () => {
     const removed = ["RN", "LVN", "MSW", "LCSW", "BSW"];
