@@ -469,53 +469,87 @@ const DISASTER_TRIAGE_CONDITIONS_PATH_BY_LEVEL = {
 };
 
 // PRODUCT OWNER DIRECTIVE (2026-12-01) "Make Safety & Clinical Risk One
-// Assessment" section 10 -- Disaster Triage must answer both "what
-// priority level applies" (Level, unchanged) AND "where will the
-// patient remain or be placed during the emergency." A validated
-// algorithm for computing a "suggested" level distinct from the RN's
-// own selection does not exist in this repository (no source for
-// scoring weights/thresholds was provided, the same gap the owner
-// already rejected once for the custom HospiceMD fall-risk model) --
-// consistent with "do not invent alternate point values," no suggested-
-// level computation is fabricated here. The RN's Level selection is the
+// Assessment" section 10 -- Disaster Triage must answer "what priority
+// level applies" (Level, unchanged). A validated algorithm for
+// computing a "suggested" level distinct from the RN's own selection
+// does not exist in this repository (no source for scoring
+// weights/thresholds was provided, the same gap the owner already
+// rejected once for the custom HospiceMD fall-risk model) -- consistent
+// with "do not invent alternate point values," no suggested-level
+// computation is fabricated here. The RN's Level selection is the
 // single, authoritative "RN-confirmed level"; this is disclosed, not
 // silently substituted.
-export const DISASTER_PLACEMENT_OPTIONS = [
-  "Remain at Residence", "Remain at Facility", "Relocate to Alternate Location", "Evacuate to Shelter/Hospital",
-];
-export const DISASTER_TRANSPORTATION_OPTIONS = [
-  "Reliable Transportation Available", "Needs Transportation Assistance", "No Transportation Available",
+//
+// PRODUCT OWNER DIRECTIVE (2026-10-24) "Fix Disaster Triage and
+// Review-Step Completion Logic" -- superseded the original "Planned
+// Disaster Placement" required field: "Disaster Triage is asking the RN
+// to predict future placement... overly specific. The RN frequently
+// cannot know this information... Replace Planned Disaster Placement
+// with Emergency Support Assessment." The RN should document WHAT MAKES
+// THE PATIENT VULNERABLE during a disaster (current dependency/support
+// factors below, all required), not predict WHERE the patient will be
+// relocated to (Preferred Emergency Location, now explicitly OPTIONAL --
+// "Unknown" is an acceptable, non-blocking answer). Responsible Support
+// is likewise no longer a required field -- it "may be documented" when
+// an emergency location is specified, otherwise it is Not Applicable /
+// Unknown.
+export const DISASTER_YES_NO_OPTIONS = ["Yes", "No"];
+export const DISASTER_YES_NO_UNKNOWN_OPTIONS = ["Yes", "No", "Unknown"];
+export const DISASTER_PREFERRED_EMERGENCY_LOCATION_OPTIONS = [
+  "Remain at Residence", "Remain at Facility", "Family or Friend Residence", "Community Shelter", "Unknown", "Other",
 ];
 export const DISASTER_REQUIREMENTS_OPTIONS = ["Oxygen", "Medication Supply", "DME/Equipment", "Backup Power", "None"];
 
 /** Disaster Triage Assessment summary -- level, short label, dependency
- * factors (the level's selected conditions), planned placement,
- * responsible support, transportation status, and requirements. */
+ * factors (the level's selected conditions), the required Emergency
+ * Support Assessment (current vulnerability/dependency factors), the
+ * optional Preferred Emergency Location, and the optional Responsible
+ * Support. */
 export function summarizeDisasterTriage(safetyData = {}) {
   const level = safetyData.disasterLevel || "";
   const shortLabel = level.startsWith("Level 1") ? "Level 1" : level.startsWith("Level 2") ? "Level 2" : level.startsWith("Level 3") ? "Level 3" : "";
   const conditionsPath = DISASTER_TRIAGE_CONDITIONS_PATH_BY_LEVEL[level];
   const conditions = conditionsPath ? (safetyData[conditionsPath] || []) : [];
-  const plannedPlacement = safetyData.disasterPlannedPlacement || "";
+  const livesAlone = safetyData.disasterLivesAlone || "";
+  const requiresEvacuationAssistance = safetyData.disasterRequiresEvacuationAssistance || "";
+  const caregiverAvailable = safetyData.disasterCaregiverAvailable || "";
+  const transportationAvailable = safetyData.disasterTransportationAvailable || "";
+  const requiresElectricity = safetyData.disasterRequiresElectricity || "";
+  const oxygenDependent = safetyData.disasterOxygenDependent || "";
+  const backupPowerAvailable = safetyData.disasterBackupPowerAvailable || "";
+  const preferredEmergencyLocation = safetyData.disasterPreferredEmergencyLocation || "";
   const responsibleSupport = safetyData.disasterResponsibleSupport || "";
-  const transportationStatus = safetyData.disasterTransportationStatus || "";
   const requirements = safetyData.disasterRequirements || [];
-  // PRODUCT OWNER DEFECT (2026-10-24) "Current Safety Completion Logic
-  // Is Invalid" -- a patient planned to Remain at Residence during a
-  // disaster MUST have a named Responsible Support person/facility; the
-  // step can never show Complete while that is missing.
-  const responsibleSupportRequired = plannedPlacement === "Remain at Residence";
-  const complete = Boolean(level) && Boolean(plannedPlacement) && Boolean(transportationStatus)
-    && (!responsibleSupportRequired || Boolean(responsibleSupport));
+  // Disaster Triage is complete once Level is selected AND the full
+  // Emergency Support Assessment is answered (Lives Alone, Requires
+  // Evacuation Assistance, Caregiver Available, Transportation
+  // Available, Requires Electricity, Oxygen Dependent, Backup Power
+  // Available -- "Unknown" counts as answered for the three
+  // Yes/No/Unknown questions). Preferred Emergency Location and
+  // Responsible Support are intentionally excluded from this gate --
+  // both remain genuinely optional, never blocking completion.
+  const complete = Boolean(level)
+    && Boolean(livesAlone)
+    && Boolean(requiresEvacuationAssistance)
+    && Boolean(caregiverAvailable)
+    && Boolean(transportationAvailable)
+    && Boolean(requiresElectricity)
+    && Boolean(oxygenDependent)
+    && Boolean(backupPowerAvailable);
   return {
     complete,
     level,
     shortLabel,
     conditions,
-    plannedPlacement,
+    livesAlone,
+    requiresEvacuationAssistance,
+    caregiverAvailable,
+    transportationAvailable,
+    requiresElectricity,
+    oxygenDependent,
+    backupPowerAvailable,
+    preferredEmergencyLocation,
     responsibleSupport,
-    responsibleSupportRequired,
-    transportationStatus,
     requirements,
     clarification: safetyData.disasterTriageClarificationNote || "",
   };

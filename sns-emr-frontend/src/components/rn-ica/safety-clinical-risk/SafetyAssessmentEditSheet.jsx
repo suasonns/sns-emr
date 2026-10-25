@@ -165,6 +165,21 @@ function ReviewRowOrNA({ label, value, applicable, naValue = "N/A" }) {
   return <ReviewRow label={label} value={value} />;
 }
 
+// PRODUCT OWNER DIRECTIVE (2026-10-24) "Fix Disaster Triage and
+// Review-Step Completion Logic" -- "Replace Responsible Support: Not
+// Yet Documented with Responsible Support: Unknown" (and likewise for
+// Preferred Emergency Location) when the field is genuinely optional and
+// simply hasn't been answered. Unlike ReviewRowOrNA, this always shows
+// the real value when one exists -- it only swaps the placeholder text.
+function ReviewRowOrUnknown({ label, value, unknownValue = "Unknown" }) {
+  return (
+    <div className="flex items-start justify-between gap-4 border-b border-rnica-border/50 py-2 last:border-b-0">
+      <span className="w-[42%] shrink-0 text-[11px] font-semibold uppercase tracking-wide text-rnica-muted">{label}</span>
+      <span className="flex-1 text-[12.5px] text-rnica-text">{value || <span className="text-rnica-muted italic">{unknownValue}</span>}</span>
+    </div>
+  );
+}
+
 function ReviewSection({ title, complete, onEdit, children }) {
   return (
     <div className="mb-3 rounded-md border border-rnica-border p-3">
@@ -224,9 +239,15 @@ function SafetyReviewStep({ summary, onJumpToStep }) {
       <ReviewSection title="Disaster Triage" complete={disaster.complete} onEdit={() => onJumpToStep("disaster")}>
         <ReviewRow label="Level" value={disaster.shortLabel} />
         <ReviewRow label="Contributing Factors" value={(disaster.conditions || []).join(", ")} />
-        <ReviewRow label="Planned Placement" value={disaster.plannedPlacement} />
-        <ReviewRowOrNA label="Responsible Support" value={disaster.responsibleSupport} applicable={disaster.responsibleSupportRequired} />
-        <ReviewRow label="Transportation" value={disaster.transportationStatus} />
+        <ReviewRow label="Lives Alone" value={disaster.livesAlone} />
+        <ReviewRow label="Requires Evacuation Assistance" value={disaster.requiresEvacuationAssistance} />
+        <ReviewRow label="Caregiver Available During Emergency" value={disaster.caregiverAvailable} />
+        <ReviewRow label="Transportation Available" value={disaster.transportationAvailable} />
+        <ReviewRow label="Requires Electricity For Medical Equipment" value={disaster.requiresElectricity} />
+        <ReviewRow label="Oxygen Dependent" value={disaster.oxygenDependent} />
+        <ReviewRow label="Backup Power Available" value={disaster.backupPowerAvailable} />
+        <ReviewRowOrUnknown label="Preferred Emergency Location" value={disaster.preferredEmergencyLocation} />
+        <ReviewRowOrUnknown label="Responsible Support" value={disaster.responsibleSupport} />
       </ReviewSection>
     </div>
   );

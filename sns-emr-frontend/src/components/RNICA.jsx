@@ -57,8 +57,9 @@ import {
   ENVIRONMENTAL_RISK_TARGET_OPTIONS,
   ENVIRONMENTAL_ACTIONS_TAKEN_OPTIONS,
   ENVIRONMENTAL_STAFF_DISPOSITION_OPTIONS,
-  DISASTER_PLACEMENT_OPTIONS,
-  DISASTER_TRANSPORTATION_OPTIONS,
+  DISASTER_YES_NO_OPTIONS,
+  DISASTER_YES_NO_UNKNOWN_OPTIONS,
+  DISASTER_PREFERRED_EMERGENCY_LOCATION_OPTIONS,
   DISASTER_REQUIREMENTS_OPTIONS,
   HOSPICE_CLINICAL_FALL_SAFETY_OPTIONS,
   STAFF_SAFETY_STATUS_NO_CONCERN,
@@ -8956,9 +8957,15 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
     updateField("disasterLevelOneConditions", priorData.disasterLevelOneConditions || []);
     updateField("disasterLevelTwoConditions", priorData.disasterLevelTwoConditions || []);
     updateField("disasterLevelThreeConditions", priorData.disasterLevelThreeConditions || []);
-    updateField("disasterPlannedPlacement", priorData.disasterPlannedPlacement || "");
+    updateField("disasterLivesAlone", priorData.disasterLivesAlone || "");
+    updateField("disasterRequiresEvacuationAssistance", priorData.disasterRequiresEvacuationAssistance || "");
+    updateField("disasterCaregiverAvailable", priorData.disasterCaregiverAvailable || "");
+    updateField("disasterTransportationAvailable", priorData.disasterTransportationAvailable || "");
+    updateField("disasterRequiresElectricity", priorData.disasterRequiresElectricity || "");
+    updateField("disasterOxygenDependent", priorData.disasterOxygenDependent || "");
+    updateField("disasterBackupPowerAvailable", priorData.disasterBackupPowerAvailable || "");
+    updateField("disasterPreferredEmergencyLocation", priorData.disasterPreferredEmergencyLocation || "");
     updateField("disasterResponsibleSupport", priorData.disasterResponsibleSupport || "");
-    updateField("disasterTransportationStatus", priorData.disasterTransportationStatus || "");
     updateField("disasterRequirements", priorData.disasterRequirements || []);
     updateField("disasterTriageClarificationNote", priorData.disasterTriageClarificationNote || "");
   };
@@ -8969,8 +8976,8 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
         priorVisitDate={priorSnapshot.priorVisitDate}
         summaryLines={[
           `Level: ${priorDisaster.shortLabel}`,
-          `Placement: ${priorDisaster.plannedPlacement || "Not recorded"}`,
-          `Support: ${priorDisaster.responsibleSupport || "Not recorded"}`,
+          `Preferred Emergency Location: ${priorDisaster.preferredEmergencyLocation || "Unknown"}`,
+          `Support: ${priorDisaster.responsibleSupport || "Unknown"}`,
         ]}
         onNoChange={() => applyDisasterImport("unchanged")}
         onUpdate={() => applyDisasterImport("updated")}
@@ -9005,35 +9012,84 @@ function DisasterTriageCard({ data, updateField, styles, COLORS, patientId, asse
             onChange={(v) => updateField(selectedLevel.conditionsPath, v)}
             options={selectedLevel.options}
           />
-          {/* PRODUCT OWNER DIRECTIVE (2026-12-01) section 10 -- the step
-              must answer both "what priority level applies?" (above) and
-              "where will the patient remain or be placed during the
-              emergency?" (below). No system-"suggested" level is computed
-              here: unlike Morse, there is no validated, documented scoring
-              source in this repository for an automated disaster-triage
-              level, and inventing one would repeat the exact mistake
-              already rejected for the custom HospiceMD fall-risk model.
-              The RN's own Disaster Level selection above is the sole
-              recorded level; there is deliberately no override-reason
-              field because there is no second ("suggested") level to
-              override. */}
+          {/* PRODUCT OWNER DIRECTIVE (2026-10-24) "Fix Disaster Triage and
+              Review-Step Completion Logic" -- replaces the retired
+              "Planned Disaster Placement" required field (section 10's
+              original "where will the patient remain or be placed"
+              framing, superseded here). "The RN frequently cannot know
+              this information... Replace Planned Disaster Placement with
+              Emergency Support Assessment." These 7 questions document
+              CURRENT vulnerability/dependency factors (all required); no
+              system-"suggested" level is computed here for the same
+              reason as before -- there is no validated, documented
+              scoring source in this repository for an automated
+              disaster-triage level. The RN's own Disaster Level
+              selection above remains the sole recorded level. */}
           <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px dashed ${COLORS.border}` }}>
+            <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555", margin: "0 0 8px" }}>
+              Emergency Support Assessment
+            </div>
             <FormSegmented
-              label="Planned Disaster Placement"
-              value={data?.disasterPlannedPlacement || ""}
-              onChange={(v) => updateField("disasterPlannedPlacement", v)}
-              options={DISASTER_PLACEMENT_OPTIONS}
+              label="Lives Alone"
+              value={data?.disasterLivesAlone || ""}
+              onChange={(v) => updateField("disasterLivesAlone", v)}
+              options={DISASTER_YES_NO_OPTIONS}
+            />
+            <FormSegmented
+              label="Requires Evacuation Assistance"
+              value={data?.disasterRequiresEvacuationAssistance || ""}
+              onChange={(v) => updateField("disasterRequiresEvacuationAssistance", v)}
+              options={DISASTER_YES_NO_OPTIONS}
+            />
+            <FormSegmented
+              label="Caregiver Available During Emergency"
+              value={data?.disasterCaregiverAvailable || ""}
+              onChange={(v) => updateField("disasterCaregiverAvailable", v)}
+              options={DISASTER_YES_NO_UNKNOWN_OPTIONS}
+            />
+            <FormSegmented
+              label="Transportation Available"
+              value={data?.disasterTransportationAvailable || ""}
+              onChange={(v) => updateField("disasterTransportationAvailable", v)}
+              options={DISASTER_YES_NO_UNKNOWN_OPTIONS}
+            />
+            <FormSegmented
+              label="Requires Electricity For Medical Equipment"
+              value={data?.disasterRequiresElectricity || ""}
+              onChange={(v) => updateField("disasterRequiresElectricity", v)}
+              options={DISASTER_YES_NO_OPTIONS}
+            />
+            <FormSegmented
+              label="Oxygen Dependent"
+              value={data?.disasterOxygenDependent || ""}
+              onChange={(v) => updateField("disasterOxygenDependent", v)}
+              options={DISASTER_YES_NO_OPTIONS}
+            />
+            <FormSegmented
+              label="Backup Power Available"
+              value={data?.disasterBackupPowerAvailable || ""}
+              onChange={(v) => updateField("disasterBackupPowerAvailable", v)}
+              options={DISASTER_YES_NO_UNKNOWN_OPTIONS}
+            />
+            {/* Preferred Emergency Location and Responsible Support are
+                deliberately OPTIONAL -- "Unknown" is an acceptable,
+                non-blocking answer, and Responsible Support is only
+                documented "may be documented" when a location is
+                specified; neither field participates in the completion
+                gate above. */}
+            <div style={{ fontSize: 12, fontWeight: 600, color: COLORS?.textSecondary || "#555", margin: "14px 0 8px" }}>
+              Preferred Emergency Location (Optional)
+            </div>
+            <FormSegmented
+              label="Preferred Emergency Location"
+              value={data?.disasterPreferredEmergencyLocation || ""}
+              onChange={(v) => updateField("disasterPreferredEmergencyLocation", v)}
+              options={DISASTER_PREFERRED_EMERGENCY_LOCATION_OPTIONS}
             />
             <FormInput
-              label="Responsible Helper or Facility"
+              label="Responsible Helper or Facility (Optional)"
               value={data?.disasterResponsibleSupport || ""}
               onChange={(v) => updateField("disasterResponsibleSupport", v)}
-            />
-            <FormSegmented
-              label="Transportation Status"
-              value={data?.disasterTransportationStatus || ""}
-              onChange={(v) => updateField("disasterTransportationStatus", v)}
-              options={DISASTER_TRANSPORTATION_OPTIONS}
             />
             <FormPillGroup
               label="Oxygen / Medication / DME / Power Requirements"
